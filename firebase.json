@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "target": "banksetu-app",
     "public": "dist",
     "ignore": [
       "firebase.json",

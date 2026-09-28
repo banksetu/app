@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useRef,
   useState,
 } from "react";
@@ -14,7 +13,27 @@ import {
   reauthenticateWithCredential,
 } from "firebase/auth";
 
+import {
+  getDocument,
+  GlobalWorkerOptions,
+} from "pdfjs-dist";
+
+import type {
+  PDFDocumentProxy,
+} from "pdfjs-dist";
+
+import pdfWorker from
+  "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
 import { auth } from "./firebase";
+
+
+/* =========================================================
+   PDF WORKER
+========================================================= */
+
+GlobalWorkerOptions.workerSrc =
+  pdfWorker;
 
 
 /* =========================================================
@@ -76,34 +95,108 @@ type ApiResponse = {
 
 
 /* =========================================================
-   INITIAL FORM
+   CONSTANTS
 ========================================================= */
-
-const emptyForm: CustomerForm = {
-  aofNo: "",
-  enrolId: "",
-  accountNo: "",
-  name: "",
-  coName: "",
-  nominee: "",
-  gender: "",
-  contact: "",
-  status: "",
-  accountOpeningDate: "",
-  address: "",
-  postOffice: "",
-  fullAddress: "",
-  pinCode: "",
-  pan: "",
-  uidaiNo: "",
-  dbtStatus: "",
-  purposeOfAdvance: "",
-  passbookStatus: "",
-};
-
 
 const API_STORAGE_KEY =
   "bankSetuApiUrl";
+
+
+/*
+  Sample AOF PDF customer-photo location.
+
+  Original sample page size:
+  approx 595 x 842 PDF points.
+
+  Customer photo rectangle:
+  x ≈ 434.7
+  y ≈ 184.5
+  width ≈ 96
+  height ≈ 120
+
+  Ratios make crop scale-independent.
+*/
+
+const PDF_PHOTO_REGION = {
+  x: 434.7 / 594.96,
+  y: 184.5 / 841.92,
+  width: 96 / 594.96,
+  height: 120 / 841.92,
+};
+
+
+/* =========================================================
+   TODAY - LOCAL COMPUTER DATE
+========================================================= */
+
+function getTodayLocalDate() {
+  const date =
+    new Date();
+
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1
+    ).padStart(
+      2,
+      "0"
+    );
+
+  const day =
+    String(
+      date.getDate()
+    ).padStart(
+      2,
+      "0"
+    );
+
+  return `${year}-${month}-${day}`;
+}
+
+
+/* =========================================================
+   DEFAULT FORM
+========================================================= */
+
+function createEmptyForm(): CustomerForm {
+  return {
+    aofNo: "",
+    enrolId: "",
+    accountNo: "",
+    name: "",
+    coName: "",
+    nominee: "",
+    gender: "",
+    contact: "",
+
+    status: "Active",
+
+    accountOpeningDate:
+      getTodayLocalDate(),
+
+    address: "",
+    postOffice: "",
+    fullAddress: "",
+    pinCode: "",
+    pan: "",
+
+    /*
+      PDF Aadhaar intentionally
+      NEVER auto-filled.
+    */
+    uidaiNo: "",
+
+    dbtStatus: "Active",
+
+    purposeOfAdvance:
+      "NILL",
+
+    passbookStatus:
+      "Pending",
+  };
+}
 
 
 /* =========================================================
@@ -112,89 +205,129 @@ const API_STORAGE_KEY =
 
 function CustomerEntry() {
   const [form, setForm] =
-    useState<CustomerForm>({
-      ...emptyForm,
-    });
+    useState<CustomerForm>(
+      createEmptyForm()
+    );
 
-  const [searchText, setSearchText] =
+  const [
+    searchText,
+    setSearchText,
+  ] =
     useState("");
 
-  const [message, setMessage] =
+  const [
+    message,
+    setMessage,
+  ] =
     useState("");
 
-  const [messageType, setMessageType] =
+  const [
+    messageType,
+    setMessageType,
+  ] =
     useState<
       "success" | "error" | "info"
     >("info");
 
-  const [saving, setSaving] =
+  const [
+    saving,
+    setSaving,
+  ] =
     useState(false);
 
-  const [searching, setSearching] =
+  const [
+    searching,
+    setSearching,
+  ] =
     useState(false);
 
-  const [updating, setUpdating] =
+  const [
+    updating,
+    setUpdating,
+  ] =
     useState(false);
 
-  const [deleteLoading, setDeleteLoading] =
+  const [
+    extractingPdf,
+    setExtractingPdf,
+  ] =
     useState(false);
 
-  /*
-    Search से customer मिलने के बाद
-    Google Sheet row number यहाँ रहेगा.
-  */
-
-  const [loadedRowNumber, setLoadedRowNumber] =
-    useState<number | null>(null);
-
-  const [loadedPhotoUrl, setLoadedPhotoUrl] =
-    useState("");
-
-  const [photoPreview, setPhotoPreview] =
-    useState("");
-
-  const [photoDataUrl, setPhotoDataUrl] =
-    useState("");
-
-  const [photoFileName, setPhotoFileName] =
-    useState("");
-
-  const [selectedPdfName, setSelectedPdfName] =
-    useState("");
-
-  const [deleteModalOpen, setDeleteModalOpen] =
+  const [
+    deleteLoading,
+    setDeleteLoading,
+  ] =
     useState(false);
 
-  const [deletePassword, setDeletePassword] =
+  const [
+    loadedRowNumber,
+    setLoadedRowNumber,
+  ] =
+    useState<number | null>(
+      null
+    );
+
+  const [
+    loadedPhotoUrl,
+    setLoadedPhotoUrl,
+  ] =
     useState("");
 
-  const [deleteConfirmText, setDeleteConfirmText] =
+  const [
+    photoPreview,
+    setPhotoPreview,
+  ] =
+    useState("");
+
+  const [
+    photoDataUrl,
+    setPhotoDataUrl,
+  ] =
+    useState("");
+
+  const [
+    photoFileName,
+    setPhotoFileName,
+  ] =
+    useState("");
+
+  const [
+    selectedPdfName,
+    setSelectedPdfName,
+  ] =
+    useState("");
+
+  const [
+    deleteModalOpen,
+    setDeleteModalOpen,
+  ] =
+    useState(false);
+
+  const [
+    deletePassword,
+    setDeletePassword,
+  ] =
+    useState("");
+
+  const [
+    deleteConfirmText,
+    setDeleteConfirmText,
+  ] =
     useState("");
 
   const photoInputRef =
-    useRef<HTMLInputElement | null>(null);
+    useRef<HTMLInputElement | null>(
+      null
+    );
 
   const pdfInputRef =
-    useRef<HTMLInputElement | null>(null);
+    useRef<HTMLInputElement | null>(
+      null
+    );
 
-
-  /*
-    Loaded row मौजूद है = Search/Edit mode.
-    नहीं है = New Customer mode.
-  */
 
   const editMode =
     loadedRowNumber !== null;
-
-
-  useEffect(() => {
-    return () => {
-      /*
-        अभी preview Data URL है,
-        इसलिए revoke की जरूरत नहीं.
-      */
-    };
-  }, []);
 
 
   /* =========================================================
@@ -205,12 +338,8 @@ function CustomerEntry() {
     field: keyof CustomerForm,
     value: string
   ) => {
-    let finalValue = value;
-
-    /*
-      Numeric-like sensitive identifiers को
-      text के रूप में ही रखते हैं.
-    */
+    let finalValue =
+      value;
 
     if (
       field === "uidaiNo" ||
@@ -218,49 +347,74 @@ function CustomerEntry() {
       field === "pinCode"
     ) {
       finalValue =
-        value.replace(/\D/g, "");
+        value.replace(
+          /\D/g,
+          ""
+        );
     }
 
-    if (field === "uidaiNo") {
+    if (
+      field === "uidaiNo"
+    ) {
       finalValue =
-        finalValue.slice(0, 12);
+        finalValue.slice(
+          0,
+          12
+        );
     }
 
-    if (field === "contact") {
+    if (
+      field === "contact"
+    ) {
       finalValue =
-        finalValue.slice(0, 15);
+        finalValue.slice(
+          0,
+          15
+        );
     }
 
-    if (field === "pinCode") {
+    if (
+      field === "pinCode"
+    ) {
       finalValue =
-        finalValue.slice(0, 10);
+        finalValue.slice(
+          0,
+          10
+        );
     }
 
-    if (field === "pan") {
+    if (
+      field === "pan"
+    ) {
       finalValue =
         value.toUpperCase();
     }
 
-    setForm((previous) => ({
-      ...previous,
-      [field]: finalValue,
-    }));
+    setForm(
+      (previous) => ({
+        ...previous,
+        [field]:
+          finalValue,
+      })
+    );
   };
 
 
   /* =========================================================
-     GET SAVED API URL
+     API
   ========================================================= */
 
   const getApiUrl = () => {
     const apiUrl =
-      localStorage.getItem(
-        API_STORAGE_KEY
-      )?.trim();
+      localStorage
+        .getItem(
+          API_STORAGE_KEY
+        )
+        ?.trim();
 
     if (!apiUrl) {
       throw new Error(
-        "Google Sheet API is not configured. Open Advanced Administrator Control first."
+        "Google Sheet API is not configured. Open Advanced Administrator Control."
       );
     }
 
@@ -268,96 +422,92 @@ function CustomerEntry() {
   };
 
 
-  /* =========================================================
-     FIREBASE TOKEN
-  ========================================================= */
+  const getFreshIdToken =
+    async (
+      forceRefresh = false
+    ) => {
+      const user =
+        auth.currentUser;
 
-  const getFreshIdToken = async (
-    forceRefresh = false
-  ) => {
-    const user =
-      auth.currentUser;
+      if (!user) {
+        throw new Error(
+          "Login session expired. Please login again."
+        );
+      }
 
-    if (!user) {
-      throw new Error(
-        "Your login session has expired. Please login again."
+      return user.getIdToken(
+        forceRefresh
       );
-    }
-
-    return user.getIdToken(
-      forceRefresh
-    );
-  };
+    };
 
 
-  /* =========================================================
-     PROTECTED API REQUEST
-  ========================================================= */
+  const apiRequest =
+    async <T,>(
+      payload:
+        Record<
+          string,
+          unknown
+        >,
+      forceFreshToken = false
+    ): Promise<T> => {
+      const apiUrl =
+        getApiUrl();
 
-  const apiRequest = async <T,>(
-    payload: Record<string, unknown>,
-    forceFreshToken = false
-  ): Promise<T> => {
-    const apiUrl =
-      getApiUrl();
+      const idToken =
+        await getFreshIdToken(
+          forceFreshToken
+        );
 
-    const idToken =
-      await getFreshIdToken(
-        forceFreshToken
-      );
+      const response =
+        await fetch(
+          apiUrl,
+          {
+            method:
+              "POST",
 
-    /*
-      text/plain रखने से Apps Script के साथ
-      unnecessary browser preflight problem
-      कम होती है.
+            headers: {
+              "Content-Type":
+                "text/plain;charset=utf-8",
+            },
 
-      Body अभी भी JSON है.
-    */
+            body:
+              JSON.stringify({
+                ...payload,
+                idToken,
+              }),
+          }
+        );
 
-    const response =
-      await fetch(apiUrl, {
-        method: "POST",
+      const text =
+        await response.text();
 
-        headers: {
-          "Content-Type":
-            "text/plain;charset=utf-8",
-        },
+      try {
+        return JSON.parse(
+          text
+        ) as T;
 
-        body: JSON.stringify({
-          ...payload,
-          idToken,
-        }),
-      });
-
-    const text =
-      await response.text();
-
-    let result: T;
-
-    try {
-      result =
-        JSON.parse(text) as T;
-    } catch {
-      throw new Error(
-        "Bank Setu API returned an invalid response."
-      );
-    }
-
-    return result;
-  };
+      } catch {
+        throw new Error(
+          "Bank Setu API returned an invalid response."
+        );
+      }
+    };
 
 
   /* =========================================================
-     PHOTO
+     MANUAL PHOTO
   ========================================================= */
 
   const handlePhotoSelect = (
-    event: ChangeEvent<HTMLInputElement>
+    event:
+      ChangeEvent<HTMLInputElement>
   ) => {
     const file =
       event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     const allowedTypes = [
       "image/jpeg",
@@ -367,14 +517,18 @@ function CustomerEntry() {
     ];
 
     if (
-      !allowedTypes.includes(file.type)
+      !allowedTypes.includes(
+        file.type
+      )
     ) {
       showMessage(
-        "Only JPG, PNG or WEBP customer photos are allowed.",
+        "Only JPG, PNG or WEBP photos are allowed.",
         "error"
       );
 
-      event.target.value = "";
+      event.target.value =
+        "";
+
       return;
     }
 
@@ -387,7 +541,9 @@ function CustomerEntry() {
         "error"
       );
 
-      event.target.value = "";
+      event.target.value =
+        "";
+
       return;
     }
 
@@ -415,75 +571,52 @@ function CustomerEntry() {
       );
 
       showMessage(
-        "New customer photo selected.",
+        "Customer photo selected.",
         "info"
       );
     };
 
-    reader.readAsDataURL(file);
-
-    event.target.value = "";
-  };
-
-
-  const removeSelectedPhoto = () => {
-    /*
-      Edit mode में सिर्फ नया selected
-      photo हटेगा. Existing Drive photo
-      delete नहीं होगा.
-    */
-
-    setPhotoDataUrl("");
-    setPhotoFileName("");
-
-    if (editMode) {
-      /*
-        Existing searched photo वापस दिखाएँ.
-        हमारे पास Base64 original अलग store
-        नहीं है, इसलिए loaded photo को search
-        result preview में preserve करने के लिए
-        current state only reset नहीं करेंगे.
-      */
-
-      showMessage(
-        "New photo selection removed. Existing saved photo will remain unchanged.",
-        "info"
-      );
-
-      return;
-    }
-
-    setPhotoPreview("");
-
-    showMessage(
-      "Photo removed.",
-      "info"
+    reader.readAsDataURL(
+      file
     );
+
+    event.target.value =
+      "";
   };
 
 
   /* =========================================================
-     PDF PLACEHOLDER
+     PDF SELECT
   ========================================================= */
 
-  const handlePdfSelect = (
-    event: ChangeEvent<HTMLInputElement>
+  const handlePdfSelect = async (
+    event:
+      ChangeEvent<HTMLInputElement>
   ) => {
     const file =
       event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     if (
       file.type !==
-      "application/pdf"
+        "application/pdf" &&
+      !file.name
+        .toLowerCase()
+        .endsWith(
+          ".pdf"
+        )
     ) {
       showMessage(
         "Please select a PDF file.",
         "error"
       );
 
-      event.target.value = "";
+      event.target.value =
+        "";
+
       return;
     }
 
@@ -491,21 +624,943 @@ function CustomerEntry() {
       file.name
     );
 
+    setExtractingPdf(
+      true
+    );
+
     showMessage(
-      "PDF selected. Automatic PDF data extraction will be connected next.",
+      "Reading PDF, extracting customer details and photo...",
       "info"
     );
 
-    event.target.value = "";
+    try {
+      const buffer =
+        await file.arrayBuffer();
+
+      const pdf =
+        await getDocument({
+          data: buffer,
+        }).promise;
+
+
+      /*
+        TEXT
+      */
+
+      const text =
+        await extractPdfText(
+          pdf
+        );
+
+
+      const extracted =
+        parseCustomerPdf(
+          text
+        );
+
+
+      /*
+        PHOTO
+        Render page 1 and crop
+        fixed portrait position.
+      */
+
+      const extractedPhoto =
+        await cropCustomerPhotoFromPdf(
+          pdf
+        );
+
+
+      setForm(
+        (previous) => ({
+          ...previous,
+
+          aofNo:
+            extracted.aofNo ||
+            previous.aofNo,
+
+          enrolId:
+            extracted.enrolId ||
+            previous.enrolId,
+
+          accountNo:
+            extracted.accountNo ||
+            previous.accountNo,
+
+          name:
+            extracted.name ||
+            previous.name,
+
+          coName:
+            extracted.coName ||
+            previous.coName,
+
+          nominee:
+            extracted.nominee ||
+            previous.nominee,
+
+          gender:
+            extracted.gender ||
+            previous.gender,
+
+          contact:
+            extracted.contact ||
+            previous.contact,
+
+          status:
+            previous.status ||
+            "Active",
+
+          accountOpeningDate:
+            previous.accountOpeningDate ||
+            getTodayLocalDate(),
+
+          address:
+            extracted.address ||
+            previous.address,
+
+          postOffice:
+            extracted.postOffice ||
+            previous.postOffice,
+
+          fullAddress:
+            extracted.fullAddress ||
+            previous.fullAddress,
+
+          pinCode:
+            extracted.pinCode ||
+            previous.pinCode,
+
+          pan:
+            extracted.pan ||
+            previous.pan,
+
+          /*
+            NEVER import masked Aadhaar.
+          */
+
+          uidaiNo: "",
+
+          dbtStatus:
+            previous.dbtStatus ||
+            "Active",
+
+          purposeOfAdvance:
+            previous.purposeOfAdvance ||
+            "NILL",
+
+          passbookStatus:
+            previous.passbookStatus ||
+            "Pending",
+        })
+      );
+
+
+      if (
+        extractedPhoto
+      ) {
+        setPhotoPreview(
+          extractedPhoto
+        );
+
+        setPhotoDataUrl(
+          extractedPhoto
+        );
+
+        const customerId =
+          extracted.enrolId ||
+          "customer";
+
+        /*
+          Backend finally saves photo
+          using Customer ID filename.
+        */
+
+        setPhotoFileName(
+          `${customerId}.jpg`
+        );
+
+        showMessage(
+          "PDF data and customer photo extracted successfully. Aadhaar has been left blank for manual entry.",
+          "success"
+        );
+
+      } else {
+        showMessage(
+          "PDF data extracted successfully. Photo crop could not be generated. Aadhaar has been left blank.",
+          "success"
+        );
+      }
+
+    } catch (error) {
+      console.error(
+        error
+      );
+
+      showMessage(
+        getErrorMessage(
+          error
+        ),
+        "error"
+      );
+
+    } finally {
+      setExtractingPdf(
+        false
+      );
+
+      event.target.value =
+        "";
+    }
   };
 
 
   /* =========================================================
-     VALIDATE FORM
+     PDF TEXT
+  ========================================================= */
+
+  const extractPdfText =
+    async (
+      pdf: PDFDocumentProxy
+    ) => {
+      const pages: string[] =
+        [];
+
+      for (
+        let pageNumber = 1;
+        pageNumber <=
+        pdf.numPages;
+        pageNumber++
+      ) {
+        const page =
+          await pdf.getPage(
+            pageNumber
+          );
+
+        const content =
+          await page.getTextContent();
+
+        const pageText =
+          content.items
+            .map(
+              (item) => {
+                if (
+                  "str" in item
+                ) {
+                  return item.str;
+                }
+
+                return "";
+              }
+            )
+            .join(" ");
+
+        pages.push(
+          pageText
+        );
+      }
+
+      return pages
+        .join("\n")
+        .replace(
+          /\s+/g,
+          " "
+        )
+        .trim();
+    };
+
+
+  /* =========================================================
+     PDF PHOTO CROP
+  ========================================================= */
+
+  const cropCustomerPhotoFromPdf =
+    async (
+      pdf: PDFDocumentProxy
+    ): Promise<string> => {
+      if (
+        pdf.numPages < 1
+      ) {
+        return "";
+      }
+
+
+      const page =
+        await pdf.getPage(
+          1
+        );
+
+
+      /*
+        Higher render scale =
+        sharper photo.
+      */
+
+      const scale =
+        3;
+
+      const viewport =
+        page.getViewport({
+          scale,
+        });
+
+
+      const pageCanvas =
+        document.createElement(
+          "canvas"
+        );
+
+      pageCanvas.width =
+        Math.ceil(
+          viewport.width
+        );
+
+      pageCanvas.height =
+        Math.ceil(
+          viewport.height
+        );
+
+
+      const pageContext =
+        pageCanvas.getContext(
+          "2d",
+          {
+            willReadFrequently:
+              true,
+          }
+        );
+
+
+      if (
+        !pageContext
+      ) {
+        return "";
+      }
+
+
+      /*
+        White base avoids
+        transparent/black areas.
+      */
+
+      pageContext.fillStyle =
+        "#ffffff";
+
+      pageContext.fillRect(
+        0,
+        0,
+        pageCanvas.width,
+        pageCanvas.height
+      );
+
+
+      await page
+        .render({
+          canvasContext:
+            pageContext,
+
+          viewport,
+
+          canvas:
+            pageCanvas,
+        })
+        .promise;
+
+
+      /*
+        Crop using sample-PDF
+        relative coordinates.
+      */
+
+      const cropX =
+        Math.round(
+          pageCanvas.width *
+            PDF_PHOTO_REGION.x
+        );
+
+      const cropY =
+        Math.round(
+          pageCanvas.height *
+            PDF_PHOTO_REGION.y
+        );
+
+      const cropWidth =
+        Math.round(
+          pageCanvas.width *
+            PDF_PHOTO_REGION.width
+        );
+
+      const cropHeight =
+        Math.round(
+          pageCanvas.height *
+            PDF_PHOTO_REGION.height
+        );
+
+
+      if (
+        cropWidth <= 0 ||
+        cropHeight <= 0
+      ) {
+        return "";
+      }
+
+
+      const photoCanvas =
+        document.createElement(
+          "canvas"
+        );
+
+
+      /*
+        Keep original photo
+        proportion while giving
+        enough pixels for Drive.
+      */
+
+      const outputScale =
+        2;
+
+      photoCanvas.width =
+        cropWidth *
+        outputScale;
+
+      photoCanvas.height =
+        cropHeight *
+        outputScale;
+
+
+      const photoContext =
+        photoCanvas.getContext(
+          "2d"
+        );
+
+
+      if (
+        !photoContext
+      ) {
+        return "";
+      }
+
+
+      photoContext.imageSmoothingEnabled =
+        true;
+
+      photoContext.imageSmoothingQuality =
+        "high";
+
+
+      photoContext.drawImage(
+        pageCanvas,
+
+        cropX,
+        cropY,
+        cropWidth,
+        cropHeight,
+
+        0,
+        0,
+        photoCanvas.width,
+        photoCanvas.height
+      );
+
+
+      /*
+        JPEG keeps Drive payload
+        much smaller than PNG.
+      */
+
+      return photoCanvas.toDataURL(
+        "image/jpeg",
+        0.92
+      );
+    };
+
+
+  /* =========================================================
+     PDF PARSER
+  ========================================================= */
+
+  const parseCustomerPdf = (
+    rawText: string
+  ): Partial<CustomerForm> => {
+    const text =
+      rawText
+        .replace(
+          /\s+/g,
+          " "
+        )
+        .trim();
+
+
+    /* AOF */
+
+    const aofNo =
+      firstMatch(
+        text,
+        [
+          /Reference\s*No\.?\s*([A-Z0-9]+)/i,
+
+          /Reference\s*Number\s*([A-Z0-9]+)/i,
+        ]
+      );
+
+
+    /* NAME */
+
+    const name =
+      firstMatch(
+        text,
+        [
+          /Customer\s*Name\s+(.+?)\s+Sex\b/i,
+
+          /Customer\s*Name\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
+        ]
+      );
+
+
+    /* GENDER */
+
+    let gender =
+      firstMatch(
+        text,
+        [
+          /\bSex\s+(Male|Female|Other)\b/i,
+
+          /\bGender\s+(Male|Female|Other)\b/i,
+        ]
+      );
+
+    gender =
+      normalizeGender(
+        gender
+      );
+
+
+    /* ACCOUNT */
+
+    const accountNo =
+      firstMatch(
+        text,
+        [
+          /Account\s*No\.?\s*([A-Z0-9]+)/i,
+        ]
+      );
+
+
+    /* CUSTOMER ID */
+
+    const enrolId =
+      firstMatch(
+        text,
+        [
+          /Customer\s*ID\s*([A-Z0-9]+)/i,
+
+          /Customer\s*Id\s*[:\-]?\s*([A-Z0-9]+)/i,
+        ]
+      );
+
+
+    /* MOBILE */
+
+    const contact =
+      firstMatch(
+        text,
+        [
+          /Mobile\s*No\.?\s*(\d{10,15})/i,
+
+          /Tel\.?\s*No\.?\s*\/?\s*Fax\s*No\.?.*?(\d{10})/i,
+        ]
+      ).replace(
+        /\D/g,
+        ""
+      );
+
+
+    /* FULL ADDRESS */
+
+    let fullAddress =
+      firstMatch(
+        text,
+        [
+          /Flat\s*No\.?\/Bldg\.?\s*Name\s+(.+?)\s+Street\s*\/\s*Road\s*\/\s*Locality/i,
+
+          /Flat\s*No\.?\/Bldg\.?\s*Name\s+(.+?)\s+City\s*\/\s*District\s*\/\s*State/i,
+        ]
+      );
+
+
+    fullAddress =
+      cleanExtractedText(
+        fullAddress
+      );
+
+
+    /* C/O */
+
+    let coName =
+      firstMatch(
+        fullAddress ||
+          text,
+        [
+          /C\/O\s*[:\-]\s*([^,]+)/i,
+
+          /C\/O\s+([^,]+)/i,
+        ]
+      );
+
+
+    if (
+      !coName
+    ) {
+      coName =
+        firstMatch(
+          text,
+          [
+            /Name\s*of\s*Father\s*\/\s*Guardian\s+(.+?)\s+Marital\s*Status/i,
+          ]
+        );
+    }
+
+
+    coName =
+      cleanExtractedText(
+        coName
+      );
+
+
+    /* VILLAGE */
+
+    let address =
+      firstMatch(
+        fullAddress ||
+          text,
+        [
+          /Vill(?:age)?\s*[-:]\s*([^,]+)/i,
+
+          /Vill(?:age)?\s+([^,]+)/i,
+        ]
+      );
+
+
+    address =
+      cleanExtractedText(
+        address
+      );
+
+
+    /* POST OFFICE */
+
+    let postOffice =
+      firstMatch(
+        fullAddress ||
+          text,
+        [
+          /P\.?\s*O\.?\s*[-:]\s*([^,]+)/i,
+
+          /Post\s*Office\s*[-:]\s*([^,]+)/i,
+        ]
+      );
+
+
+    postOffice =
+      cleanExtractedText(
+        postOffice
+      );
+
+
+    /* PIN */
+
+    let pinCode =
+      "";
+
+
+    if (
+      fullAddress
+    ) {
+      const matches =
+        fullAddress.match(
+          /\b\d{6}\b/g
+        );
+
+      if (
+        matches &&
+        matches.length
+      ) {
+        pinCode =
+          matches[
+            matches.length -
+              1
+          ];
+      }
+    }
+
+
+    if (
+      !pinCode
+    ) {
+      const match =
+        text.match(
+          /\b([1-9][0-9]{5})\b/
+        );
+
+      if (
+        match
+      ) {
+        pinCode =
+          match[1];
+      }
+    }
+
+
+    /* NOMINEE */
+
+    const nominee =
+      extractNominee(
+        text
+      );
+
+
+    /* PAN */
+
+    const panMatch =
+      text.match(
+        /\b[A-Z]{5}[0-9]{4}[A-Z]\b/
+      );
+
+
+    const pan =
+      panMatch
+        ? panMatch[0]
+        : "";
+
+
+    return {
+      aofNo:
+        cleanExtractedText(
+          aofNo
+        ),
+
+      enrolId:
+        cleanExtractedText(
+          enrolId
+        ),
+
+      accountNo:
+        cleanExtractedText(
+          accountNo
+        ),
+
+      name:
+        cleanExtractedText(
+          name
+        ),
+
+      coName,
+
+      nominee,
+
+      gender,
+
+      contact,
+
+      address,
+
+      postOffice,
+
+      fullAddress,
+
+      pinCode,
+
+      pan,
+
+      uidaiNo: "",
+    };
+  };
+
+
+  /* =========================================================
+     NOMINEE PARSER
+  ========================================================= */
+
+  const extractNominee = (
+    text: string
+  ) => {
+    const relationships = [
+      "MOTHER",
+      "FATHER",
+      "WIFE",
+      "HUSBAND",
+      "SON",
+      "DAUGHTER",
+      "BROTHER",
+      "SISTER",
+      "GRANDMOTHER",
+      "GRANDFATHER",
+      "GRANDSON",
+      "GRANDDAUGHTER",
+      "UNCLE",
+      "AUNT",
+      "NEPHEW",
+      "NIECE",
+      "OTHER",
+    ].join("|");
+
+
+    const directPattern =
+      new RegExp(
+        `nominee\\.?\\s+([A-Z][A-Z .'-]{1,60}?)\\s+(${relationships})\\b`,
+        "i"
+      );
+
+
+    const direct =
+      text.match(
+        directPattern
+      );
+
+
+    if (
+      direct &&
+      direct[1]
+    ) {
+      return cleanNomineeName(
+        direct[1]
+      );
+    }
+
+
+    const fallbackPattern =
+      new RegExp(
+        `\\b([A-Z][A-Z.'-]*(?:\\s+[A-Z][A-Z.'-]*){0,3})\\s+(${relationships})\\b`,
+        "i"
+      );
+
+
+    const fallback =
+      text.match(
+        fallbackPattern
+      );
+
+
+    if (
+      fallback &&
+      fallback[1]
+    ) {
+      return cleanNomineeName(
+        fallback[1]
+      );
+    }
+
+
+    return "";
+  };
+
+
+  /* =========================================================
+     PARSER HELPERS
+  ========================================================= */
+
+  const firstMatch = (
+    text: string,
+    patterns: RegExp[]
+  ) => {
+    for (
+      const pattern of
+      patterns
+    ) {
+      const match =
+        text.match(
+          pattern
+        );
+
+      if (
+        match &&
+        match[1]
+      ) {
+        return match[1];
+      }
+    }
+
+    return "";
+  };
+
+
+  const cleanExtractedText = (
+    value: string
+  ) => {
+    return value
+      .replace(
+        /\s+/g,
+        " "
+      )
+      .replace(
+        /^[,;:\-\s]+/,
+        ""
+      )
+      .replace(
+        /[,;:\-\s]+$/,
+        ""
+      )
+      .trim();
+  };
+
+
+  const cleanNomineeName = (
+    value: string
+  ) => {
+    return cleanExtractedText(
+      value
+    )
+      .replace(
+        /^OF\s+/i,
+        ""
+      )
+      .replace(
+        /^THE\s+/i,
+        ""
+      )
+      .trim();
+  };
+
+
+  const normalizeGender = (
+    value: string
+  ) => {
+    const gender =
+      value
+        .trim()
+        .toLowerCase();
+
+    if (
+      gender === "male"
+    ) {
+      return "Male";
+    }
+
+    if (
+      gender === "female"
+    ) {
+      return "Female";
+    }
+
+    if (
+      gender === "other"
+    ) {
+      return "Other";
+    }
+
+    return "";
+  };
+
+
+  /* =========================================================
+     VALIDATION
   ========================================================= */
 
   const validateForm = () => {
-    if (!form.name.trim()) {
+    if (
+      !form.name.trim()
+    ) {
       showMessage(
         "Customer Name is required.",
         "error"
@@ -514,7 +1569,10 @@ function CustomerEntry() {
       return false;
     }
 
-    if (!form.accountNo.trim()) {
+
+    if (
+      !form.accountNo.trim()
+    ) {
       showMessage(
         "Account Number is required.",
         "error"
@@ -523,578 +1581,646 @@ function CustomerEntry() {
       return false;
     }
 
-    if (!form.enrolId.trim()) {
-      showMessage(
-        "Customer ID / ENDROL ID is required.",
-        "error"
-      );
-
-      return false;
-    }
 
     if (
-      form.uidaiNo.length !== 12
+      !form.enrolId.trim()
     ) {
       showMessage(
-        "UIDAI / Aadhaar Number must contain exactly 12 digits.",
+        "Customer ID is required.",
         "error"
       );
 
       return false;
     }
+
+
+    if (
+      form.uidaiNo.length !==
+      12
+    ) {
+      showMessage(
+        "UIDAI / Aadhaar Number must contain exactly 12 digits. Please enter it manually.",
+        "error"
+      );
+
+      return false;
+    }
+
 
     return true;
   };
 
 
   /* =========================================================
-     SAVE NEW CUSTOMER
+     SAVE
   ========================================================= */
 
-  const saveCustomer = async () => {
-    if (!validateForm()) {
-      return;
-    }
+  const saveCustomer =
+    async () => {
+      if (
+        !validateForm()
+      ) {
+        return;
+      }
 
-    if (editMode) {
-      showMessage(
-        "This is an existing customer. Use Update Customer instead.",
-        "error"
-      );
 
-      return;
-    }
-
-    setSaving(true);
-
-    showMessage(
-      "Saving customer...",
-      "info"
-    );
-
-    try {
-      const result =
-        await apiRequest<ApiResponse>({
-          action:
-            "saveCustomer",
-
-          customer: {
-            ...form,
-
-            photoDataUrl,
-
-            photoFileName,
-          },
-        });
-
-      if (!result.success) {
+      if (
+        editMode
+      ) {
         showMessage(
-          result.message ||
-            "Customer could not be saved.",
+          "Existing customer loaded. Use Update Customer.",
           "error"
         );
 
         return;
       }
 
-      showMessage(
-        result.message ||
-          "Customer saved successfully.",
-        "success"
+
+      setSaving(
+        true
       );
 
-      /*
-        Successful save के बाद
-        fresh blank form.
-      */
 
-      clearFormOnly();
-
-    } catch (error) {
       showMessage(
-        getErrorMessage(error),
-        "error"
+        "Saving customer...",
+        "info"
       );
 
-    } finally {
-      setSaving(false);
-    }
-  };
+
+      try {
+        const result =
+          await apiRequest<ApiResponse>({
+            action:
+              "saveCustomer",
+
+            customer: {
+              ...form,
+
+              photoDataUrl,
+
+              photoFileName,
+            },
+          });
+
+
+        if (
+          !result.success
+        ) {
+          showMessage(
+            result.message ||
+              "Customer could not be saved.",
+            "error"
+          );
+
+          return;
+        }
+
+
+        showMessage(
+          result.message ||
+            "Customer saved successfully.",
+          "success"
+        );
+
+
+        clearFormOnly();
+
+      } catch (error) {
+        showMessage(
+          getErrorMessage(
+            error
+          ),
+          "error"
+        );
+
+      } finally {
+        setSaving(
+          false
+        );
+      }
+    };
 
 
   /* =========================================================
      SEARCH
   ========================================================= */
 
-  const searchCustomer = async () => {
-    const query =
-      searchText.trim();
+  const searchCustomer =
+    async () => {
+      const query =
+        searchText.trim();
 
-    if (!query) {
-      showMessage(
-        "Enter Account Number, Customer ID, Aadhaar, Mobile, Name, PAN or AOF Number.",
-        "error"
-      );
-
-      return;
-    }
-
-    setSearching(true);
-
-    showMessage(
-      "Searching customer...",
-      "info"
-    );
-
-    try {
-      const result =
-        await apiRequest<SearchCustomerResponse>({
-          action:
-            "searchCustomer",
-
-          query,
-        });
 
       if (
-        !result.success ||
-        !result.customer ||
-        !result.rowNumber
+        !query
       ) {
         showMessage(
-          result.message ||
-            "Customer not found.",
+          "Enter customer search value.",
           "error"
         );
 
         return;
       }
 
-      const customer =
-        result.customer;
 
-      setForm({
-        aofNo:
-          customer.aofNo || "",
-
-        enrolId:
-          customer.enrolId || "",
-
-        accountNo:
-          customer.accountNo || "",
-
-        name:
-          customer.name || "",
-
-        coName:
-          customer.coName || "",
-
-        nominee:
-          customer.nominee || "",
-
-        gender:
-          customer.gender || "",
-
-        contact:
-          customer.contact || "",
-
-        status:
-          customer.status || "",
-
-        accountOpeningDate:
-          customer.accountOpeningDate || "",
-
-        address:
-          customer.address || "",
-
-        postOffice:
-          customer.postOffice || "",
-
-        fullAddress:
-          customer.fullAddress || "",
-
-        pinCode:
-          customer.pinCode || "",
-
-        pan:
-          customer.pan || "",
-
-        uidaiNo:
-          customer.uidaiNo || "",
-
-        dbtStatus:
-          customer.dbtStatus || "",
-
-        purposeOfAdvance:
-          customer.purposeOfAdvance || "",
-
-        passbookStatus:
-          customer.passbookStatus || "",
-      });
-
-      setLoadedRowNumber(
-        result.rowNumber
+      setSearching(
+        true
       );
 
-      setLoadedPhotoUrl(
-        customer.photoUrl || ""
-      );
-
-      setPhotoPreview(
-        customer.photoPreview || ""
-      );
-
-      /*
-        Search के बाद कोई new photo
-        selected नहीं माना जाएगा.
-      */
-
-      setPhotoDataUrl("");
-      setPhotoFileName("");
 
       showMessage(
-        result.message ||
-          "Customer loaded successfully.",
-        "success"
+        "Searching customer...",
+        "info"
       );
 
-    } catch (error) {
-      showMessage(
-        getErrorMessage(error),
-        "error"
-      );
 
-    } finally {
-      setSearching(false);
-    }
-  };
+      try {
+        const result =
+          await apiRequest<SearchCustomerResponse>({
+            action:
+              "searchCustomer",
+
+            query,
+          });
 
 
-  /* =========================================================
-     UPDATE CUSTOMER
-  ========================================================= */
+        if (
+          !result.success ||
+          !result.customer ||
+          !result.rowNumber
+        ) {
+          showMessage(
+            result.message ||
+              "Customer not found.",
+            "error"
+          );
 
-  const updateCustomer = async () => {
-    if (!loadedRowNumber) {
-      showMessage(
-        "Search and load a customer before updating.",
-        "error"
-      );
+          return;
+        }
 
-      return;
-    }
 
-    if (!validateForm()) {
-      return;
-    }
+        const customer =
+          result.customer;
 
-    const confirmed =
-      window.confirm(
-        `Update customer "${form.name}"?`
-      );
 
-    if (!confirmed) {
-      return;
-    }
+        setForm({
+          aofNo:
+            customer.aofNo ||
+            "",
 
-    setUpdating(true);
+          enrolId:
+            customer.enrolId ||
+            "",
 
-    showMessage(
-      "Updating customer...",
-      "info"
-    );
+          accountNo:
+            customer.accountNo ||
+            "",
 
-    try {
-      const result =
-        await apiRequest<ApiResponse>({
-          action:
-            "updateCustomer",
+          name:
+            customer.name ||
+            "",
 
-          rowNumber:
-            loadedRowNumber,
+          coName:
+            customer.coName ||
+            "",
 
-          customer: {
-            ...form,
+          nominee:
+            customer.nominee ||
+            "",
 
-            /*
-              New photo select हुआ है तभी
-              backend photo replace करेगा.
-            */
+          gender:
+            customer.gender ||
+            "",
 
-            photoDataUrl,
+          contact:
+            customer.contact ||
+            "",
 
-            photoFileName,
+          status:
+            customer.status ||
+            "Active",
 
-            photoUrl:
-              loadedPhotoUrl,
-          },
+          accountOpeningDate:
+            normalizeDateForInput(
+              customer.accountOpeningDate
+            ) ||
+            getTodayLocalDate(),
+
+          address:
+            customer.address ||
+            "",
+
+          postOffice:
+            customer.postOffice ||
+            "",
+
+          fullAddress:
+            customer.fullAddress ||
+            "",
+
+          pinCode:
+            customer.pinCode ||
+            "",
+
+          pan:
+            customer.pan ||
+            "",
+
+          uidaiNo:
+            customer.uidaiNo ||
+            "",
+
+          dbtStatus:
+            customer.dbtStatus ||
+            "Active",
+
+          purposeOfAdvance:
+            customer.purposeOfAdvance ||
+            "NILL",
+
+          passbookStatus:
+            customer.passbookStatus ||
+            "Pending",
         });
 
-      if (!result.success) {
+
+        setLoadedRowNumber(
+          result.rowNumber
+        );
+
+
+        setLoadedPhotoUrl(
+          customer.photoUrl ||
+          ""
+        );
+
+
+        setPhotoPreview(
+          customer.photoPreview ||
+          ""
+        );
+
+
+        setPhotoDataUrl(
+          ""
+        );
+
+
+        setPhotoFileName(
+          ""
+        );
+
+
         showMessage(
-          result.message ||
-            "Customer update failed.",
+          "Customer loaded successfully.",
+          "success"
+        );
+
+      } catch (error) {
+        showMessage(
+          getErrorMessage(
+            error
+          ),
           "error"
         );
 
+      } finally {
+        setSearching(
+          false
+        );
+      }
+    };
+
+
+  /* =========================================================
+     UPDATE
+  ========================================================= */
+
+  const updateCustomer =
+    async () => {
+      if (
+        !loadedRowNumber
+      ) {
         return;
       }
 
-      showMessage(
-        result.message ||
-          "Customer updated successfully.",
-        "success"
-      );
 
-      /*
-        Updated version फिर से search करें,
-        ताकि latest Drive photo भी वापस load हो.
-      */
-
-      const refreshQuery =
-        form.accountNo ||
-        form.enrolId;
-
-      if (refreshQuery) {
-        setSearchText(
-          refreshQuery
-        );
+      if (
+        !validateForm()
+      ) {
+        return;
       }
 
-      setPhotoDataUrl("");
-      setPhotoFileName("");
 
-    } catch (error) {
-      showMessage(
-        getErrorMessage(error),
-        "error"
-      );
-
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-
-  /* =========================================================
-     OPEN DELETE CONFIRMATION
-  ========================================================= */
-
-  const openDeleteModal = () => {
-    if (!loadedRowNumber) {
-      showMessage(
-        "Search a customer first.",
-        "error"
-      );
-
-      return;
-    }
-
-    setDeletePassword("");
-    setDeleteConfirmText("");
-    setDeleteModalOpen(true);
-  };
-
-
-  /* =========================================================
-     DELETE WITH FIREBASE RE-AUTH
-  ========================================================= */
-
-  const deleteCustomer = async () => {
-    if (!loadedRowNumber) {
-      return;
-    }
-
-    if (!deletePassword) {
-      showMessage(
-        "Enter the current administrator password.",
-        "error"
-      );
-
-      return;
-    }
-
-    if (
-      deleteConfirmText.trim().toUpperCase() !==
-      "DELETE CUSTOMER"
-    ) {
-      showMessage(
-        'Type "DELETE CUSTOMER" exactly to confirm.',
-        "error"
-      );
-
-      return;
-    }
-
-    const user =
-      auth.currentUser;
-
-    if (
-      !user ||
-      !user.email
-    ) {
-      showMessage(
-        "Administrator login session was not found.",
-        "error"
-      );
-
-      return;
-    }
-
-    setDeleteLoading(true);
-
-    showMessage(
-      "Verifying administrator...",
-      "info"
-    );
-
-    try {
-      /*
-        Step 1:
-        Firebase password verification.
-      */
-
-      const credential =
-        EmailAuthProvider.credential(
-          user.email,
-          deletePassword
+      const confirmed =
+        window.confirm(
+          `Update customer "${form.name}"?`
         );
 
-      await reauthenticateWithCredential(
-        user,
-        credential
+
+      if (
+        !confirmed
+      ) {
+        return;
+      }
+
+
+      setUpdating(
+        true
       );
 
-      /*
-        Step 2:
-        Re-authentication के बाद
-        fresh Firebase ID token.
-      */
 
-      const freshToken =
-        await user.getIdToken(
-          true
-        );
-
-      /*
-        Step 3:
-        Backend फिर Firestore role देखेगा.
-        केवल role=admin delete कर पाएगा.
-      */
-
-      const apiUrl =
-        getApiUrl();
-
-      const response =
-        await fetch(apiUrl, {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "text/plain;charset=utf-8",
-          },
-
-          body: JSON.stringify({
+      try {
+        const result =
+          await apiRequest<ApiResponse>({
             action:
-              "deleteCustomer",
+              "updateCustomer",
 
             rowNumber:
               loadedRowNumber,
 
-            idToken:
-              freshToken,
-          }),
-        });
+            customer: {
+              ...form,
 
-      const result =
-        (await response.json()) as ApiResponse;
+              photoDataUrl,
 
-      if (!result.success) {
+              photoFileName,
+
+              photoUrl:
+                loadedPhotoUrl,
+            },
+          });
+
+
+        if (
+          !result.success
+        ) {
+          showMessage(
+            result.message ||
+              "Update failed.",
+            "error"
+          );
+
+          return;
+        }
+
+
         showMessage(
-          result.message ||
-            "Customer deletion failed.",
+          "Customer updated successfully.",
+          "success"
+        );
+
+
+        setPhotoDataUrl(
+          ""
+        );
+
+
+        setPhotoFileName(
+          ""
+        );
+
+      } catch (error) {
+        showMessage(
+          getErrorMessage(
+            error
+          ),
+          "error"
+        );
+
+      } finally {
+        setUpdating(
+          false
+        );
+      }
+    };
+
+
+  /* =========================================================
+     DELETE
+  ========================================================= */
+
+  const deleteCustomer =
+    async () => {
+      if (
+        !loadedRowNumber
+      ) {
+        return;
+      }
+
+
+      if (
+        !deletePassword
+      ) {
+        showMessage(
+          "Enter administrator password.",
           "error"
         );
 
         return;
       }
 
-      setDeleteModalOpen(false);
 
-      showMessage(
-        result.message ||
+      if (
+        deleteConfirmText
+          .trim()
+          .toUpperCase() !==
+        "DELETE CUSTOMER"
+      ) {
+        showMessage(
+          'Type "DELETE CUSTOMER".',
+          "error"
+        );
+
+        return;
+      }
+
+
+      const user =
+        auth.currentUser;
+
+
+      if (
+        !user ||
+        !user.email
+      ) {
+        showMessage(
+          "Administrator login session not found.",
+          "error"
+        );
+
+        return;
+      }
+
+
+      setDeleteLoading(
+        true
+      );
+
+
+      try {
+        const credential =
+          EmailAuthProvider
+            .credential(
+              user.email,
+              deletePassword
+            );
+
+
+        await reauthenticateWithCredential(
+          user,
+          credential
+        );
+
+
+        const freshToken =
+          await user.getIdToken(
+            true
+          );
+
+
+        const apiUrl =
+          getApiUrl();
+
+
+        const response =
+          await fetch(
+            apiUrl,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "text/plain;charset=utf-8",
+              },
+
+              body:
+                JSON.stringify({
+                  action:
+                    "deleteCustomer",
+
+                  rowNumber:
+                    loadedRowNumber,
+
+                  idToken:
+                    freshToken,
+                }),
+            }
+          );
+
+
+        const result =
+          (await response.json()) as ApiResponse;
+
+
+        if (
+          !result.success
+        ) {
+          showMessage(
+            result.message ||
+              "Delete failed.",
+            "error"
+          );
+
+          return;
+        }
+
+
+        setDeleteModalOpen(
+          false
+        );
+
+
+        clearFormOnly();
+
+
+        setSearchText(
+          ""
+        );
+
+
+        showMessage(
           "Customer deleted successfully.",
-        "success"
-      );
+          "success"
+        );
 
+      } catch (error) {
+        console.error(
+          error
+        );
+
+        showMessage(
+          "Administrator verification failed or delete permission denied.",
+          "error"
+        );
+
+      } finally {
+        setDeleteLoading(
+          false
+        );
+
+        setDeletePassword(
+          ""
+        );
+
+        setDeleteConfirmText(
+          ""
+        );
+      }
+    };
+
+
+  /* =========================================================
+     NEW / CLEAR
+  ========================================================= */
+
+  const startNewCustomer =
+    () => {
       clearFormOnly();
-      setSearchText("");
 
-    } catch (error) {
-      console.error(error);
+      setSearchText(
+        ""
+      );
 
       showMessage(
-        "Administrator verification failed or you do not have permission to delete this customer.",
-        "error"
+        "New Customer mode ready.",
+        "info"
+      );
+    };
+
+
+  const clearFormOnly =
+    () => {
+      setForm(
+        createEmptyForm()
       );
 
-    } finally {
-      setDeleteLoading(false);
-      setDeletePassword("");
-      setDeleteConfirmText("");
-    }
-  };
+      setLoadedRowNumber(
+        null
+      );
 
+      setLoadedPhotoUrl(
+        ""
+      );
 
-  /* =========================================================
-     NEW CUSTOMER
-  ========================================================= */
+      setPhotoPreview(
+        ""
+      );
 
-  const startNewCustomer = () => {
-    clearFormOnly();
+      setPhotoDataUrl(
+        ""
+      );
 
-    setSearchText("");
+      setPhotoFileName(
+        ""
+      );
 
-    showMessage(
-      "New Customer mode ready.",
-      "info"
-    );
-  };
+      setSelectedPdfName(
+        ""
+      );
+    };
 
-
-  const clearFormOnly = () => {
-    setForm({
-      ...emptyForm,
-    });
-
-    setLoadedRowNumber(
-      null
-    );
-
-    setLoadedPhotoUrl(
-      ""
-    );
-
-    setPhotoPreview(
-      ""
-    );
-
-    setPhotoDataUrl(
-      ""
-    );
-
-    setPhotoFileName(
-      ""
-    );
-
-    setSelectedPdfName(
-      ""
-    );
-  };
-
-
-  /* =========================================================
-     MESSAGE
-  ========================================================= */
 
   const showMessage = (
     text: string,
@@ -1103,8 +2229,13 @@ function CustomerEntry() {
       | "error"
       | "info"
   ) => {
-    setMessage(text);
-    setMessageType(type);
+    setMessage(
+      text
+    );
+
+    setMessageType(
+      type
+    );
   };
 
 
@@ -1114,8 +2245,6 @@ function CustomerEntry() {
 
   return (
     <div style={styles.wrapper}>
-      {/* PAGE TITLE */}
-
       <div style={styles.pageHeading}>
         <p style={styles.eyebrow}>
           BANK SETU
@@ -1126,12 +2255,10 @@ function CustomerEntry() {
         </h1>
 
         <p style={styles.subtitle}>
-          Add Customer • Search Customer • Upload Information
+          Add Customer • Search Customer • PDF Auto Fill
         </p>
       </div>
 
-
-      {/* MODE INDICATOR */}
 
       <div
         style={{
@@ -1149,18 +2276,26 @@ function CustomerEntry() {
               : "New Customer Mode"}
           </strong>
 
-          <span style={styles.modeDescription}>
+          <span
+            style={
+              styles.modeDescription
+            }
+          >
             {editMode
               ? `Loaded Google Sheet Row: ${loadedRowNumber}`
-              : "Fill the form and save a new customer."}
+              : "Fill manually or import customer PDF."}
           </span>
         </div>
 
         {editMode && (
           <button
             type="button"
-            style={styles.newCustomerButton}
-            onClick={startNewCustomer}
+            style={
+              styles.newCustomerButton
+            }
+            onClick={
+              startNewCustomer
+            }
           >
             ＋ New Customer
           </button>
@@ -1168,9 +2303,11 @@ function CustomerEntry() {
       </div>
 
 
-      {/* TOP TOOLS */}
+      <section
+        className="customer-top-grid"
+        style={styles.topGrid}
+      >
 
-      <section style={styles.topGrid}>
         {/* SEARCH */}
 
         <div style={styles.toolCard}>
@@ -1182,9 +2319,14 @@ function CustomerEntry() {
             Find Customer
           </h2>
 
-          <p style={styles.toolDescription}>
-            Account No, Customer ID, Aadhaar,
-            Mobile, Name, PAN or AOF No.
+          <p
+            style={
+              styles.toolDescription
+            }
+          >
+            Account No, Customer ID,
+            Aadhaar, Mobile, Name,
+            PAN or AOF No.
           </p>
 
           <div style={styles.searchRow}>
@@ -1192,7 +2334,9 @@ function CustomerEntry() {
               type="text"
               value={searchText}
               placeholder="Search customer..."
-              style={styles.searchInput}
+              style={
+                styles.searchInput
+              }
               onChange={(event) =>
                 setSearchText(
                   event.target.value
@@ -1200,7 +2344,8 @@ function CustomerEntry() {
               }
               onKeyDown={(event) => {
                 if (
-                  event.key === "Enter"
+                  event.key ===
+                  "Enter"
                 ) {
                   searchCustomer();
                 }
@@ -1209,8 +2354,12 @@ function CustomerEntry() {
 
             <button
               type="button"
-              style={styles.searchButton}
-              onClick={searchCustomer}
+              style={
+                styles.searchButton
+              }
+              onClick={
+                searchCustomer
+              }
               disabled={searching}
             >
               {searching
@@ -1233,11 +2382,21 @@ function CustomerEntry() {
               <img
                 src={photoPreview}
                 alt="Customer"
-                style={styles.photoImage}
+                style={
+                  styles.photoImage
+                }
               />
             ) : (
-              <div style={styles.photoPlaceholder}>
-                <span style={styles.photoIcon}>
+              <div
+                style={
+                  styles.photoPlaceholder
+                }
+              >
+                <span
+                  style={
+                    styles.photoIcon
+                  }
+                >
                   👤
                 </span>
 
@@ -1248,29 +2407,21 @@ function CustomerEntry() {
             )}
           </div>
 
-          <div style={styles.photoActions}>
-            <button
-              type="button"
-              style={styles.smallButton}
-              onClick={() =>
-                photoInputRef.current?.click()
-              }
-            >
-              {photoPreview
-                ? "Change Photo"
-                : "Upload Photo"}
-            </button>
-
-            {photoDataUrl && (
-              <button
-                type="button"
-                style={styles.secondarySmallButton}
-                onClick={removeSelectedPhoto}
-              >
-                Cancel New Photo
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            style={
+              styles.smallButton
+            }
+            onClick={() =>
+              photoInputRef
+                .current
+                ?.click()
+            }
+          >
+            {photoPreview
+              ? "Change Photo"
+              : "Upload Photo"}
+          </button>
 
           <input
             ref={photoInputRef}
@@ -1279,7 +2430,9 @@ function CustomerEntry() {
             style={{
               display: "none",
             }}
-            onChange={handlePhotoSelect}
+            onChange={
+              handlePhotoSelect
+            }
           />
         </div>
 
@@ -1295,22 +2448,42 @@ function CustomerEntry() {
             Customer PDF
           </h2>
 
-          <p style={styles.toolDescription}>
-            PDF auto form-fill will be connected in the next step.
+          <p
+            style={
+              styles.toolDescription
+            }
+          >
+            Select Account Opening
+            Form PDF to auto-fill
+            details and crop customer
+            photo.
           </p>
 
           <button
             type="button"
-            style={styles.pdfButton}
+            style={
+              styles.pdfButton
+            }
             onClick={() =>
-              pdfInputRef.current?.click()
+              pdfInputRef
+                .current
+                ?.click()
+            }
+            disabled={
+              extractingPdf
             }
           >
-            📄 Select PDF
+            {extractingPdf
+              ? "⏳ Reading PDF..."
+              : "📄 Select PDF & Auto Fill"}
           </button>
 
           {selectedPdfName && (
-            <div style={styles.pdfName}>
+            <div
+              style={
+                styles.pdfName
+              }
+            >
               {selectedPdfName}
             </div>
           )}
@@ -1322,7 +2495,9 @@ function CustomerEntry() {
             style={{
               display: "none",
             }}
-            onChange={handlePdfSelect}
+            onChange={
+              handlePdfSelect
+            }
           />
         </div>
       </section>
@@ -1335,15 +2510,18 @@ function CustomerEntry() {
           style={{
             ...styles.message,
 
-            ...(messageType === "success"
+            ...(messageType ===
+            "success"
               ? styles.successMessage
               : {}),
 
-            ...(messageType === "error"
+            ...(messageType ===
+            "error"
               ? styles.errorMessage
               : {}),
 
-            ...(messageType === "info"
+            ...(messageType ===
+            "info"
               ? styles.infoMessage
               : {}),
           }}
@@ -1353,7 +2531,7 @@ function CustomerEntry() {
       )}
 
 
-      {/* CUSTOMER FORM */}
+      {/* FORM */}
 
       <section style={styles.formCard}>
         <div style={styles.formHeading}>
@@ -1476,7 +2654,6 @@ function CustomerEntry() {
               )
             }
             options={[
-              "",
               "Active",
               "Inactive",
               "Pending",
@@ -1486,7 +2663,9 @@ function CustomerEntry() {
 
           <Field
             label="A/C OPENING DATE"
-            value={form.accountOpeningDate}
+            value={
+              form.accountOpeningDate
+            }
             type="date"
             onChange={(value) =>
               changeField(
@@ -1497,7 +2676,7 @@ function CustomerEntry() {
           />
 
           <Field
-            label="ADDRESS"
+            label="ADDRESS / VILLAGE"
             value={form.address}
             onChange={(value) =>
               changeField(
@@ -1509,7 +2688,9 @@ function CustomerEntry() {
 
           <Field
             label="POST OFFICE"
-            value={form.postOffice}
+            value={
+              form.postOffice
+            }
             onChange={(value) =>
               changeField(
                 "postOffice",
@@ -1518,9 +2699,14 @@ function CustomerEntry() {
             }
           />
 
-          <Field
+
+          {/* FULL ADDRESS BIG BOX */}
+
+          <TextAreaField
             label="FULL ADDRESS"
-            value={form.fullAddress}
+            value={
+              form.fullAddress
+            }
             onChange={(value) =>
               changeField(
                 "fullAddress",
@@ -1528,6 +2714,7 @@ function CustomerEntry() {
               )
             }
           />
+
 
           <Field
             label="PIN CODE"
@@ -1567,7 +2754,9 @@ function CustomerEntry() {
 
           <SelectField
             label="DBT STATUS"
-            value={form.dbtStatus}
+            value={
+              form.dbtStatus
+            }
             onChange={(value) =>
               changeField(
                 "dbtStatus",
@@ -1575,7 +2764,6 @@ function CustomerEntry() {
               )
             }
             options={[
-              "",
               "Active",
               "Inactive",
               "Pending",
@@ -1585,7 +2773,9 @@ function CustomerEntry() {
 
           <Field
             label="PURPOSE OF ADVANCE"
-            value={form.purposeOfAdvance}
+            value={
+              form.purposeOfAdvance
+            }
             onChange={(value) =>
               changeField(
                 "purposeOfAdvance",
@@ -1596,7 +2786,9 @@ function CustomerEntry() {
 
           <SelectField
             label="PASS BOOK STATUS"
-            value={form.passbookStatus}
+            value={
+              form.passbookStatus
+            }
             onChange={(value) =>
               changeField(
                 "passbookStatus",
@@ -1604,7 +2796,6 @@ function CustomerEntry() {
               )
             }
             options={[
-              "",
               "Pending",
               "Printed",
               "Delivered",
@@ -1614,21 +2805,27 @@ function CustomerEntry() {
         </div>
 
 
-        {/* ACTION BUTTONS */}
-
         <div
           className="customer-action-buttons"
-          style={styles.formActions}
+          style={
+            styles.formActions
+          }
         >
           {!editMode && (
             <button
               type="button"
-              style={styles.saveButton}
-              onClick={saveCustomer}
-              disabled={saving}
+              style={
+                styles.saveButton
+              }
+              onClick={
+                saveCustomer
+              }
+              disabled={
+                saving
+              }
             >
               {saving
-                ? "Saving Customer..."
+                ? "Saving..."
                 : "✓ Save Customer"}
             </button>
           )}
@@ -1638,9 +2835,15 @@ function CustomerEntry() {
             <>
               <button
                 type="button"
-                style={styles.updateButton}
-                onClick={updateCustomer}
-                disabled={updating}
+                style={
+                  styles.updateButton
+                }
+                onClick={
+                  updateCustomer
+                }
+                disabled={
+                  updating
+                }
               >
                 {updating
                   ? "Updating..."
@@ -1649,16 +2852,26 @@ function CustomerEntry() {
 
               <button
                 type="button"
-                style={styles.deleteButton}
-                onClick={openDeleteModal}
+                style={
+                  styles.deleteButton
+                }
+                onClick={() =>
+                  setDeleteModalOpen(
+                    true
+                  )
+                }
               >
                 🗑 Delete Customer
               </button>
 
               <button
                 type="button"
-                style={styles.cancelEditButton}
-                onClick={startNewCustomer}
+                style={
+                  styles.cancelEditButton
+                }
+                onClick={
+                  startNewCustomer
+                }
               >
                 ＋ New Customer
               </button>
@@ -1671,68 +2884,50 @@ function CustomerEntry() {
       {/* DELETE MODAL */}
 
       {deleteModalOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.deleteModal}>
-            <div style={styles.modalTop}>
-              <div>
-                <p style={styles.dangerLabel}>
-                  ADMINISTRATOR AUTHORIZATION
-                </p>
+        <div
+          style={
+            styles.modalOverlay
+          }
+        >
+          <div
+            style={
+              styles.deleteModal
+            }
+          >
+            <h2
+              style={
+                styles.deleteTitle
+              }
+            >
+              Delete Customer
+            </h2>
 
-                <h2 style={styles.deleteTitle}>
-                  Delete Customer
-                </h2>
-              </div>
+            <p
+              style={
+                styles.deleteWarning
+              }
+            >
+              Administrator
+              authentication is
+              required.
+            </p>
 
-              <button
-                type="button"
-                style={styles.modalClose}
-                onClick={() =>
-                  setDeleteModalOpen(false)
-                }
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={styles.deleteWarning}>
-              <strong>
-                ⚠ Permanent action
-              </strong>
-
-              <span>
-                This will delete the customer's Google Sheet
-                record and associated Drive photo/PDF where
-                available.
-              </span>
-            </div>
-
-            <div style={styles.deleteCustomerInfo}>
-              <strong>
-                {form.name ||
-                  "Customer"}
-              </strong>
-
-              <span>
-                Account:{" "}
-                {form.accountNo || "-"}
-              </span>
-
-              <span>
-                Customer ID:{" "}
-                {form.enrolId || "-"}
-              </span>
-            </div>
-
-            <label style={styles.label}>
-              Current Administrator Password
+            <label
+              style={
+                styles.label
+              }
+            >
+              Current Admin Password
             </label>
 
             <input
               type="password"
-              value={deletePassword}
-              placeholder="Enter admin password"
-              style={styles.input}
+              value={
+                deletePassword
+              }
+              style={
+                styles.input
+              }
               onChange={(event) =>
                 setDeletePassword(
                   event.target.value
@@ -1740,15 +2935,22 @@ function CustomerEntry() {
               }
             />
 
-            <label style={styles.label}>
+            <label
+              style={
+                styles.label
+              }
+            >
               Type DELETE CUSTOMER
             </label>
 
             <input
               type="text"
-              value={deleteConfirmText}
-              placeholder="DELETE CUSTOMER"
-              style={styles.dangerInput}
+              value={
+                deleteConfirmText
+              }
+              style={
+                styles.input
+              }
               onChange={(event) =>
                 setDeleteConfirmText(
                   event.target.value
@@ -1756,23 +2958,37 @@ function CustomerEntry() {
               }
             />
 
-            <div style={styles.modalActions}>
+            <div
+              style={
+                styles.modalActions
+              }
+            >
               <button
                 type="button"
-                style={styles.finalDeleteButton}
-                onClick={deleteCustomer}
-                disabled={deleteLoading}
+                style={
+                  styles.finalDeleteButton
+                }
+                onClick={
+                  deleteCustomer
+                }
+                disabled={
+                  deleteLoading
+                }
               >
                 {deleteLoading
-                  ? "Verifying & Deleting..."
+                  ? "Deleting..."
                   : "Delete Permanently"}
               </button>
 
               <button
                 type="button"
-                style={styles.modalCancelButton}
+                style={
+                  styles.modalCancelButton
+                }
                 onClick={() =>
-                  setDeleteModalOpen(false)
+                  setDeleteModalOpen(
+                    false
+                  )
                 }
               >
                 Cancel
@@ -1785,7 +3001,7 @@ function CustomerEntry() {
 
       <style>
         {`
-          @media (max-width: 950px) {
+          @media (max-width: 900px) {
             .customer-top-grid {
               grid-template-columns:
                 1fr 1fr !important;
@@ -1793,6 +3009,11 @@ function CustomerEntry() {
           }
 
           @media (max-width: 760px) {
+            .customer-top-grid {
+              grid-template-columns:
+                1fr !important;
+            }
+
             .customer-action-buttons {
               flex-direction:
                 column !important;
@@ -1811,7 +3032,7 @@ function CustomerEntry() {
 
 
 /* =========================================================
-   FIELD
+   NORMAL FIELD
 ========================================================= */
 
 function Field({
@@ -1824,9 +3045,11 @@ function Field({
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange:
+    (value: string) => void;
   required?: boolean;
   type?: string;
+
   inputMode?:
     | "text"
     | "numeric"
@@ -1838,12 +3061,24 @@ function Field({
     | "none";
 }) {
   return (
-    <label style={styles.field}>
-      <span style={styles.label}>
+    <label
+      style={
+        styles.field
+      }
+    >
+      <span
+        style={
+          styles.label
+        }
+      >
         {label}
 
         {required && (
-          <span style={styles.required}>
+          <span
+            style={
+              styles.required
+            }
+          >
             {" "}*
           </span>
         )}
@@ -1852,8 +3087,12 @@ function Field({
       <input
         type={type}
         value={value}
-        inputMode={inputMode}
-        style={styles.input}
+        inputMode={
+          inputMode
+        }
+        style={
+          styles.input
+        }
         onChange={(event) =>
           onChange(
             event.target.value
@@ -1866,7 +3105,52 @@ function Field({
 
 
 /* =========================================================
-   SELECT FIELD
+   FULL ADDRESS MULTILINE
+========================================================= */
+
+function TextAreaField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange:
+    (value: string) => void;
+}) {
+  return (
+    <label
+      style={
+        styles.fullAddressField
+      }
+    >
+      <span
+        style={
+          styles.label
+        }
+      >
+        {label}
+      </span>
+
+      <textarea
+        value={value}
+        rows={3}
+        style={
+          styles.textarea
+        }
+        onChange={(event) =>
+          onChange(
+            event.target.value
+          )
+        }
+      />
+    </label>
+  );
+}
+
+
+/* =========================================================
+   SELECT
 ========================================================= */
 
 function SelectField({
@@ -1877,36 +3161,51 @@ function SelectField({
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange:
+    (value: string) => void;
   options: string[];
 }) {
   return (
-    <label style={styles.field}>
-      <span style={styles.label}>
+    <label
+      style={
+        styles.field
+      }
+    >
+      <span
+        style={
+          styles.label
+        }
+      >
         {label}
       </span>
 
       <select
         value={value}
-        style={styles.select}
+        style={
+          styles.select
+        }
         onChange={(event) =>
           onChange(
             event.target.value
           )
         }
       >
-        {options.map((option) => (
-          <option
-            key={
-              option ||
-              "__empty"
-            }
-            value={option}
-          >
-            {option ||
-              "Select"}
-          </option>
-        ))}
+        {options.map(
+          (option) => (
+            <option
+              key={
+                option ||
+                "__empty"
+              }
+              value={
+                option
+              }
+            >
+              {option ||
+                "Select"}
+            </option>
+          )
+        )}
       </select>
     </label>
   );
@@ -1914,7 +3213,66 @@ function SelectField({
 
 
 /* =========================================================
-   ERROR MESSAGE
+   DATE NORMALIZER
+========================================================= */
+
+function normalizeDateForInput(
+  value?: string
+) {
+  if (
+    !value
+  ) {
+    return "";
+  }
+
+
+  const clean =
+    value.trim();
+
+
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      clean
+    )
+  ) {
+    return clean;
+  }
+
+
+  const match =
+    clean.match(
+      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+    );
+
+
+  if (
+    match
+  ) {
+    const day =
+      match[1].padStart(
+        2,
+        "0"
+      );
+
+    const month =
+      match[2].padStart(
+        2,
+        "0"
+      );
+
+    const year =
+      match[3];
+
+    return `${year}-${month}-${day}`;
+  }
+
+
+  return "";
+}
+
+
+/* =========================================================
+   ERROR
 ========================================================= */
 
 function getErrorMessage(
@@ -1926,7 +3284,9 @@ function getErrorMessage(
     return error.message;
   }
 
-  return String(error);
+  return String(
+    error
+  );
 }
 
 
@@ -1952,69 +3312,61 @@ const styles: Record<
   eyebrow: {
     margin: 0,
     color: "#42dfc4",
-    fontSize: "8px",
-    fontWeight: 800,
+    fontSize: "9px",
+    fontWeight: 900,
     letterSpacing: "1.8px",
   },
 
   heading: {
     margin: "6px 0",
     color: "#ffffff",
-    fontSize: "27px",
+    fontSize: "29px",
+    fontWeight: 800,
   },
 
   subtitle: {
     margin: 0,
     color: "#91a7b3",
-    fontSize: "10px",
+    fontSize: "11px",
   },
-
-
-  /* MODE */
 
   modeBar: {
     display: "flex",
+    justifyContent:
+      "space-between",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: "15px",
-
-    padding: "13px 16px",
-
-    marginBottom: "16px",
-
+    gap: "14px",
+    padding: "14px 17px",
     borderRadius: "13px",
+    marginBottom: "16px",
   },
 
   newModeBar: {
     background:
       "rgba(55,220,195,0.055)",
-
     border:
       "1px solid rgba(55,220,195,0.12)",
-
     color: "#47e1c7",
   },
 
   editModeBar: {
     background:
       "rgba(59,153,246,0.07)",
-
     border:
       "1px solid rgba(59,153,246,0.15)",
-
     color: "#74b8ff",
   },
 
   modeDescription: {
     display: "block",
-    marginTop: "3px",
-    color: "#93a8b3",
-    fontSize: "8px",
+    marginTop: "4px",
+    color: "#a2b5be",
+    fontSize: "9px",
   },
 
   newCustomerButton: {
-    height: "37px",
-    padding: "0 13px",
+    height: "38px",
+    padding: "0 14px",
     borderRadius: "9px",
     border:
       "1px solid rgba(55,220,195,0.16)",
@@ -2022,50 +3374,35 @@ const styles: Record<
       "rgba(55,220,195,0.07)",
     color: "#4be1c7",
     cursor: "pointer",
-    fontWeight: 700,
+    fontWeight: 800,
   },
-
-
-  /* TOP GRID */
 
   topGrid: {
     display: "grid",
     gridTemplateColumns:
       "1.35fr 0.75fr 0.9fr",
-
     gap: "14px",
-
     marginBottom: "16px",
   },
 
   toolCard: {
-    minHeight: "180px",
-
-    boxSizing: "border-box",
-
+    minHeight: "185px",
     padding: "18px",
-
+    boxSizing: "border-box",
     borderRadius: "17px",
-
     border:
       "1px solid rgba(255,255,255,0.06)",
-
     background:
       "linear-gradient(145deg,#09232e,#0b2a36)",
   },
 
   photoCard: {
-    minHeight: "180px",
-
-    boxSizing: "border-box",
-
+    minHeight: "185px",
     padding: "14px",
-
+    boxSizing: "border-box",
     borderRadius: "17px",
-
     border:
       "1px solid rgba(55,220,195,0.11)",
-
     background:
       "linear-gradient(145deg,#092630,#0a303c)",
   },
@@ -2074,21 +3411,21 @@ const styles: Record<
     margin: 0,
     color: "#45dfc5",
     fontSize: "8px",
-    fontWeight: 800,
+    fontWeight: 900,
     letterSpacing: "1.4px",
   },
 
   toolTitle: {
     margin: "6px 0",
     color: "#fff",
-    fontSize: "17px",
+    fontSize: "18px",
+    fontWeight: 800,
   },
 
   toolDescription: {
-    minHeight: "28px",
-    margin: "0 0 13px",
-    color: "#8fa5b1",
-    fontSize: "8px",
+    minHeight: "30px",
+    color: "#94a9b4",
+    fontSize: "9px",
     lineHeight: 1.5,
   },
 
@@ -2098,61 +3435,43 @@ const styles: Record<
   },
 
   searchInput: {
-    minWidth: 0,
     flex: 1,
-
-    height: "43px",
-
-    padding: "0 12px",
-
+    minWidth: 0,
+    height: "44px",
+    padding: "0 13px",
     boxSizing: "border-box",
-
     borderRadius: "10px",
-
     border:
       "1px solid rgba(255,255,255,0.07)",
-
     outline: "none",
-
     background: "#0a303c",
-
-    color: "#fff",
+    color: "#ffffff",
+    fontSize: "13px",
+    fontWeight: 700,
   },
 
   searchButton: {
-    minWidth: "88px",
-    height: "43px",
-
+    minWidth: "90px",
+    height: "44px",
     border: "none",
     borderRadius: "10px",
-
     background:
       "linear-gradient(90deg,#34dcbf,#2faade)",
-
     color: "#032229",
-
-    fontWeight: 800,
+    fontWeight: 900,
     cursor: "pointer",
   },
 
-
-  /* PHOTO */
-
   photoArea: {
-    height: "105px",
-
+    height: "112px",
     marginTop: "8px",
-
+    marginBottom: "8px",
     display: "flex",
-    alignItems: "center",
     justifyContent: "center",
-
+    alignItems: "center",
     overflow: "hidden",
-
     borderRadius: "12px",
-
     background: "#071d27",
-
     border:
       "1px dashed rgba(55,220,195,0.15)",
   },
@@ -2160,7 +3479,6 @@ const styles: Record<
   photoImage: {
     width: "100%",
     height: "100%",
-
     objectFit: "contain",
   },
 
@@ -2169,200 +3487,127 @@ const styles: Record<
     flexDirection: "column",
     alignItems: "center",
     gap: "4px",
-
     color: "#718b98",
-
-    fontSize: "8px",
+    fontSize: "9px",
   },
 
   photoIcon: {
-    fontSize: "28px",
-  },
-
-  photoActions: {
-    display: "flex",
-    gap: "6px",
-
-    marginTop: "8px",
+    fontSize: "30px",
   },
 
   smallButton: {
-    flex: 1,
-
-    minHeight: "33px",
-
+    width: "100%",
+    height: "34px",
     border: "none",
-
     borderRadius: "9px",
-
     background:
       "rgba(55,220,195,0.10)",
-
     color: "#4be1c7",
-
     cursor: "pointer",
-
-    fontSize: "8px",
-    fontWeight: 700,
+    fontWeight: 800,
   },
-
-  secondarySmallButton: {
-    minHeight: "33px",
-
-    padding: "0 9px",
-
-    borderRadius: "9px",
-
-    border:
-      "1px solid rgba(255,255,255,0.07)",
-
-    background:
-      "rgba(255,255,255,0.035)",
-
-    color: "#b5c4cb",
-
-    cursor: "pointer",
-
-    fontSize: "8px",
-  },
-
-
-  /* PDF */
 
   pdfButton: {
     width: "100%",
-    height: "43px",
-
+    height: "44px",
     border:
       "1px dashed rgba(55,220,195,0.22)",
-
     borderRadius: "10px",
-
     background:
       "rgba(55,220,195,0.045)",
-
     color: "#48dfc5",
-
     cursor: "pointer",
-
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   pdfName: {
     marginTop: "8px",
-
-    padding: "7px",
-
-    borderRadius: "8px",
-
-    background:
-      "rgba(255,255,255,0.03)",
-
-    color: "#9fb1ba",
-
-    fontSize: "8px",
-
+    color: "#afc0c8",
+    fontSize: "9px",
+    fontWeight: 700,
     wordBreak: "break-all",
   },
 
-
-  /* MESSAGE */
-
   message: {
     marginBottom: "16px",
-
-    padding: "12px 14px",
-
+    padding: "13px 15px",
     borderRadius: "11px",
-
-    fontSize: "9px",
-
+    fontSize: "10px",
+    fontWeight: 700,
     lineHeight: 1.5,
   },
 
   successMessage: {
     background:
       "rgba(55,220,195,0.07)",
-
-    border:
-      "1px solid rgba(55,220,195,0.10)",
-
     color: "#4be2c8",
   },
 
   errorMessage: {
     background:
       "rgba(255,80,80,0.07)",
-
-    border:
-      "1px solid rgba(255,80,80,0.11)",
-
     color: "#ff9898",
   },
 
   infoMessage: {
     background:
       "rgba(66,153,225,0.07)",
-
-    border:
-      "1px solid rgba(66,153,225,0.11)",
-
     color: "#8cc5ff",
   },
 
-
-  /* FORM */
-
   formCard: {
-    padding: "22px",
-
+    padding: "23px",
     borderRadius: "18px",
-
     background:
       "linear-gradient(145deg,#09232e,#0b2a36)",
-
     border:
       "1px solid rgba(255,255,255,0.06)",
   },
 
   formHeading: {
     textAlign: "center",
-
-    marginBottom: "20px",
+    marginBottom: "21px",
   },
 
   formTitle: {
-    margin: "6px 0 0",
-
+    margin: "6px 0",
     color: "#fff",
-
-    fontSize: "19px",
+    fontSize: "20px",
+    fontWeight: 800,
   },
 
   formGrid: {
     display: "grid",
-
     gridTemplateColumns:
       "repeat(auto-fit,minmax(220px,1fr))",
-
-    gap: "14px",
+    gap: "15px",
+    alignItems: "start",
   },
 
   field: {
-    minWidth: 0,
-
     display: "flex",
     flexDirection: "column",
+    gap: "7px",
+  },
 
-    gap: "6px",
+  /*
+    Full address gets more room.
+    On wider screens it spans
+    two grid columns.
+  */
+
+  fullAddressField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "7px",
+    gridColumn:
+      "span 2",
   },
 
   label: {
-    color: "#cddbe2",
-
-    fontSize: "9px",
-
-    fontWeight: 700,
+    color: "#d8e4e9",
+    fontSize: "10px",
+    fontWeight: 800,
   },
 
   required: {
@@ -2371,335 +3616,183 @@ const styles: Record<
 
   input: {
     width: "100%",
-    height: "44px",
-
+    height: "46px",
     boxSizing: "border-box",
-
-    padding: "0 12px",
-
-    outline: "none",
-
+    padding: "0 13px",
     borderRadius: "10px",
-
     border:
-      "1px solid rgba(255,255,255,0.07)",
-
+      "1px solid rgba(255,255,255,0.075)",
+    outline: "none",
     background: "#0a303c",
+    color: "#ffffff",
+    fontSize: "13px",
+    fontWeight: 700,
+    letterSpacing: "0.15px",
+  },
 
-    color: "#fff",
+  /*
+    Larger multi-line address box.
+    Long address automatically wraps.
+  */
 
-    fontSize: "10px",
+  textarea: {
+    width: "100%",
+    minHeight: "92px",
+    boxSizing: "border-box",
+    padding: "12px 13px",
+    borderRadius: "10px",
+    border:
+      "1px solid rgba(255,255,255,0.075)",
+    outline: "none",
+    resize: "vertical",
+    background: "#0a303c",
+    color: "#ffffff",
+    fontSize: "13px",
+    fontWeight: 700,
+    lineHeight: 1.55,
+    fontFamily:
+      "inherit",
+    whiteSpace:
+      "pre-wrap",
+    overflowWrap:
+      "anywhere",
   },
 
   select: {
     width: "100%",
-    height: "44px",
-
+    height: "46px",
     boxSizing: "border-box",
-
-    padding: "0 12px",
-
-    outline: "none",
-
+    padding: "0 13px",
     borderRadius: "10px",
-
     border:
-      "1px solid rgba(255,255,255,0.07)",
-
+      "1px solid rgba(255,255,255,0.075)",
+    outline: "none",
     background: "#0a303c",
-
-    color: "#fff",
-
-    fontSize: "10px",
+    color: "#ffffff",
+    fontSize: "13px",
+    fontWeight: 700,
   },
 
   formActions: {
     display: "flex",
-
     gap: "10px",
-
     flexWrap: "wrap",
-
-    marginTop: "22px",
+    marginTop: "23px",
   },
 
   saveButton: {
     minWidth: "180px",
-    height: "46px",
-
+    height: "47px",
     border: "none",
-
     borderRadius: "11px",
-
     background:
       "linear-gradient(90deg,#35dcbf,#2eaade)",
-
     color: "#032329",
-
-    fontWeight: 800,
-
+    fontSize: "11px",
+    fontWeight: 900,
     cursor: "pointer",
   },
 
   updateButton: {
     minWidth: "180px",
-    height: "46px",
-
+    height: "47px",
     border: "none",
-
     borderRadius: "11px",
-
     background:
       "linear-gradient(90deg,#37dfc3,#35a7f1)",
-
     color: "#032329",
-
-    fontWeight: 800,
-
+    fontWeight: 900,
     cursor: "pointer",
   },
 
   deleteButton: {
     minWidth: "165px",
-    height: "46px",
-
+    height: "47px",
     borderRadius: "11px",
-
     border:
       "1px solid rgba(255,80,80,0.17)",
-
     background:
       "rgba(255,80,80,0.055)",
-
     color: "#ff9494",
-
-    fontWeight: 700,
-
+    fontWeight: 800,
     cursor: "pointer",
   },
 
   cancelEditButton: {
     minWidth: "145px",
-    height: "46px",
-
+    height: "47px",
     borderRadius: "11px",
-
     border:
       "1px solid rgba(255,255,255,0.08)",
-
     background:
       "rgba(255,255,255,0.035)",
-
     color: "#c5d4db",
-
+    fontWeight: 800,
     cursor: "pointer",
   },
 
-
-  /* DELETE MODAL */
-
   modalOverlay: {
     position: "fixed",
-
     inset: 0,
-
     zIndex: 5000,
-
     display: "flex",
-
-    alignItems: "center",
-
     justifyContent: "center",
-
+    alignItems: "center",
     padding: "20px",
-
     background:
       "rgba(0,0,0,0.72)",
-
     backdropFilter:
       "blur(7px)",
   },
 
   deleteModal: {
     width: "100%",
-
-    maxWidth: "530px",
-
-    boxSizing: "border-box",
-
+    maxWidth: "500px",
     padding: "22px",
-
+    boxSizing: "border-box",
     borderRadius: "19px",
-
+    background: "#111d25",
     border:
       "1px solid rgba(255,80,80,0.12)",
-
-    background:
-      "linear-gradient(145deg,#111d25,#191c24)",
-
-    boxShadow:
-      "0 25px 70px rgba(0,0,0,0.55)",
-  },
-
-  modalTop: {
-    display: "flex",
-
-    justifyContent: "space-between",
-
-    alignItems: "flex-start",
-
-    marginBottom: "16px",
-  },
-
-  dangerLabel: {
-    margin: 0,
-
-    color: "#ff8585",
-
-    fontSize: "8px",
-
-    fontWeight: 800,
-
-    letterSpacing: "1.3px",
   },
 
   deleteTitle: {
-    margin: "6px 0 0",
-
     color: "#fff",
-
     fontSize: "21px",
   },
 
-  modalClose: {
-    width: "35px",
-    height: "35px",
-
-    border: "none",
-
-    borderRadius: "10px",
-
-    background:
-      "rgba(255,255,255,0.05)",
-
-    color: "#fff",
-
-    cursor: "pointer",
-
-    fontSize: "20px",
-  },
-
   deleteWarning: {
-    display: "flex",
-
-    flexDirection: "column",
-
-    gap: "5px",
-
-    padding: "13px",
-
-    marginBottom: "14px",
-
-    borderRadius: "11px",
-
-    background:
-      "rgba(255,70,70,0.06)",
-
-    border:
-      "1px solid rgba(255,70,70,0.10)",
-
     color: "#ffabab",
-
-    fontSize: "9px",
-
-    lineHeight: 1.5,
-  },
-
-  deleteCustomerInfo: {
-    display: "flex",
-
-    flexDirection: "column",
-
-    gap: "3px",
-
-    padding: "12px",
-
-    marginBottom: "15px",
-
-    borderRadius: "10px",
-
-    background:
-      "rgba(255,255,255,0.035)",
-
-    color: "#aebec6",
-
-    fontSize: "9px",
-  },
-
-  dangerInput: {
-    width: "100%",
-    height: "44px",
-
-    boxSizing: "border-box",
-
-    padding: "0 12px",
-
-    marginTop: "6px",
-    marginBottom: "13px",
-
-    outline: "none",
-
-    borderRadius: "10px",
-
-    border:
-      "1px solid rgba(255,80,80,0.16)",
-
-    background: "#26191d",
-
-    color: "#fff",
+    fontSize: "10px",
+    fontWeight: 700,
   },
 
   modalActions: {
     display: "flex",
-
     gap: "9px",
-
-    marginTop: "5px",
+    marginTop: "15px",
   },
 
   finalDeleteButton: {
     flex: 1,
-
-    minHeight: "44px",
-
+    height: "44px",
     border: "none",
-
     borderRadius: "10px",
-
     background: "#c83f4c",
-
     color: "#fff",
-
     fontWeight: 800,
-
     cursor: "pointer",
   },
 
   modalCancelButton: {
     minWidth: "100px",
-
-    minHeight: "44px",
-
+    height: "44px",
     borderRadius: "10px",
-
     border:
       "1px solid rgba(255,255,255,0.08)",
-
     background:
       "rgba(255,255,255,0.04)",
-
-    color: "#c8d5db",
-
+    color: "#fff",
     cursor: "pointer",
   },
 };

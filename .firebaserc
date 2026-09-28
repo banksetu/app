@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "banksetu-69e2f"
-  }
+  },
+  "targets": {
+    "banksetu-69e2f": {
+      "hosting": {
+        "banksetu-app": [
+          "banksetu-app"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
