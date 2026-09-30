@@ -1,0 +1,20 @@
+BANK SETU - FIXED FIREBASE FUNCTIONS
+
+Fixed:
+- Migrated Firebase Admin usage to modular imports.
+- Replaced admin.firestore() with getFirestore().
+- Replaced admin.auth() with getAuth().
+- Replaced admin.firestore.FieldValue.serverTimestamp() with FieldValue.serverTimestamp().
+- Kept approveUser, blockUser, unblockUser and deleteUser callable functions.
+- Kept admin authorization and self-action protection.
+- Set Node runtime to 22 to match firebase-admin 14.5.0 requirements.
+
+After replacing your old functions folder, run from /workspaces/app:
+
+cd functions
+npm install
+npm run build
+
+If build succeeds:
+cd ..
+firebase deploy --only functions

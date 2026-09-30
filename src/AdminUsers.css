@@ -1,0 +1,257 @@
+.admin-users-fab {
+  position: relative;
+  min-height: 46px;
+  padding: 0 17px;
+  border: 1px solid rgba(65, 231, 214, 0.3);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2ce1d0, #3ca7ff);
+  color: #03141d;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+}
+
+.admin-users-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 9, 18, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.admin-users-panel {
+  width: min(920px, 100%);
+  max-height: min(760px, 92vh);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background: linear-gradient(160deg, #0c2345, #07152a 70%);
+  color: #fff;
+  box-shadow: 0 35px 100px rgba(0, 0, 0, 0.55);
+}
+
+.admin-users-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.admin-users-kicker {
+  display: inline-block;
+  margin-bottom: 7px;
+  color: #42e7d4;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+}
+
+.admin-users-header h2 {
+  margin: 0 0 5px;
+  font-size: 22px;
+  color: #fff;
+}
+
+.admin-users-header p {
+  margin: 0;
+  color: #8298b2;
+  font-size: 11px;
+}
+
+.admin-users-close {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.admin-users-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 16px 24px;
+}
+
+.admin-users-toolbar input {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.045);
+  color: #fff;
+}
+
+.admin-users-toolbar input:focus {
+  border-color: rgba(44, 225, 208, 0.7);
+}
+
+.admin-users-toolbar button {
+  min-height: 44px;
+  padding: 0 15px;
+  border: 1px solid rgba(44, 225, 208, 0.22);
+  border-radius: 12px;
+  background: rgba(44, 225, 208, 0.08);
+  color: #55ead8;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-users-message {
+  margin: 0 24px 12px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  font-size: 11px;
+}
+
+.admin-users-message.success {
+  color: #72f0d5;
+  background: rgba(44, 231, 210, 0.08);
+  border: 1px solid rgba(44, 231, 210, 0.16);
+}
+
+.admin-users-message.error {
+  color: #ff9a9a;
+  background: rgba(255, 92, 92, 0.08);
+  border: 1px solid rgba(255, 92, 92, 0.14);
+}
+
+.admin-users-list {
+  overflow: auto;
+  padding: 0 24px 24px;
+}
+
+.admin-user-card {
+  display: grid;
+  grid-template-columns: minmax(230px, 1.3fr) minmax(190px, 0.8fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 15px;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.admin-user-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.admin-user-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #39e0c5, #28a9e8);
+  color: #032127;
+  font-weight: 900;
+}
+
+.admin-user-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-user-info strong,
+.admin-user-info span,
+.admin-user-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-info strong { font-size: 12px; }
+.admin-user-info span { color: #a9bbcf; font-size: 10px; }
+.admin-user-info small { color: #60758e; font-size: 8px; }
+
+.admin-user-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-user-meta > span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #9fb1c5;
+  font-size: 9px;
+  text-transform: capitalize;
+}
+
+.admin-user-status.status-approved { color: #69ead5; background: rgba(44, 231, 210, 0.08); }
+.admin-user-status.status-pending { color: #ffd978; background: rgba(255, 206, 80, 0.08); }
+.admin-user-status.status-blocked { color: #ff9696; background: rgba(255, 92, 92, 0.09); }
+
+.admin-user-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.admin-user-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-user-actions .approve,
+.admin-user-actions .unblock { color: #60ead6; border-color: rgba(44, 231, 210, 0.22); }
+.admin-user-actions .block { color: #ffd36d; border-color: rgba(255, 211, 109, 0.2); }
+.admin-user-actions .delete { color: #ff9292; border-color: rgba(255, 92, 92, 0.22); }
+.admin-user-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.admin-users-empty {
+  padding: 34px 10px;
+  text-align: center;
+  color: #758ba5;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .admin-users-overlay { padding: 10px; }
+  .admin-users-panel { max-height: 95vh; border-radius: 18px; }
+  .admin-users-header { padding: 18px; }
+  .admin-users-toolbar { padding: 12px 18px; grid-template-columns: 1fr; }
+  .admin-users-message { margin-left: 18px; margin-right: 18px; }
+  .admin-users-list { padding: 0 18px 18px; }
+  .admin-user-card { grid-template-columns: 1fr; gap: 11px; }
+  .admin-user-actions { justify-content: flex-start; }
+  .admin-users-fab { right: 14px; bottom: 14px; }
+}
+
+.admin-users-embedded { position: static; width: 100%; max-width: none; max-height: none; box-sizing: border-box; }
+.admin-user-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin: 0 0 14px; }
+.admin-user-stats > div { padding:14px; border-radius:12px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); display:flex; flex-direction:column; gap:5px; }
+.admin-user-stats strong { color:#fff; font-size:22px; }
+.admin-user-stats span { color:#9fb2bc; font-size:10px; }
+@media (max-width:700px){ .admin-user-stats{grid-template-columns:repeat(2,minmax(0,1fr));} }

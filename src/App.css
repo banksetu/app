@@ -1,782 +1,3713 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
+
+
+
+
+
+
 * {
+
+
+
   box-sizing: border-box;
+
+
+
   margin: 0;
+
+
+
   padding: 0;
+
+
+
 }
+
+
+
+
+
+
 
 html,
+
+
+
 body,
+
+
+
 #root {
+
+
+
   width: 100%;
+
+
+
   min-height: 100%;
+
+
+
 }
+
+
+
+
+
+
 
 body {
+
+
+
   font-family: "Inter", sans-serif;
+
+
+
   background: #07111f;
+
+
+
   color: #fff;
+
+
+
 }
+
+
+
+
+
+
 
 button,
+
+
+
 input {
+
+
+
   font-family: inherit;
+
+
+
 }
+
+
+
+
+
+
 
 /* =========================
+
+
+
    APP LOADER
+
+
+
 ========================= */
 
+
+
+
+
+
+
 .app-loader {
+
+
+
   min-height: 100vh;
+
+
+
   display: flex;
+
+
+
   flex-direction: column;
+
+
+
   align-items: center;
+
+
+
   justify-content: center;
+
+
+
   gap: 16px;
 
+
+
+
+
+
+
   background:
+
+
+
     radial-gradient(circle at 20% 20%, rgba(0, 229, 255, 0.15), transparent 32%),
+
+
+
     radial-gradient(circle at 80% 80%, rgba(0, 102, 255, 0.2), transparent 35%),
+
+
+
     #07111f;
+
+
+
 }
 
+
+
+
+
+
+
 .loader-logo {
+
+
+
   width: 76px;
+
+
+
   height: 76px;
+
+
+
   border-radius: 24px;
 
+
+
+
+
+
+
   display: flex;
+
+
+
   align-items: center;
+
+
+
   justify-content: center;
+
+
+
   gap: 2px;
+
+
+
+
+
+
 
   background: linear-gradient(145deg, #0b57d0, #11d9dc);
 
+
+
+
+
+
+
   box-shadow:
+
+
+
     0 18px 40px rgba(17, 217, 220, 0.25),
+
+
+
     0 0 35px rgba(29, 116, 255, 0.25);
+
+
+
 }
+
+
+
+
+
+
 
 .loader-bank,
+
+
+
 .loader-setu {
+
+
+
   font-size: 28px;
+
+
+
   font-weight: 800;
+
+
+
 }
+
+
+
+
+
+
 
 .loader-bank {
+
+
+
   color: white;
+
+
+
 }
+
+
+
+
+
+
 
 .loader-setu {
+
+
+
   color: #ffd76a;
+
+
+
 }
+
+
+
+
+
+
 
 .app-loader p {
+
+
+
   color: #9fb0c7;
+
+
+
   font-size: 13px;
+
+
+
 }
 
+
+
+
+
+
+
 /* =========================
+
+
+
    LOGIN PAGE
+
+
+
 ========================= */
 
+
+
+
+
+
+
 .login-page {
+
+
+
   min-height: 100vh;
+
+
+
   width: 100%;
 
+
+
+
+
+
+
   display: flex;
+
+
+
   align-items: center;
+
+
+
   justify-content: center;
+
+
+
+
+
+
 
   padding: 28px 18px;
 
+
+
+
+
+
+
   position: relative;
+
+
+
   overflow: hidden;
 
+
+
+
+
+
+
   background:
+
+
+
     radial-gradient(circle at 12% 15%, rgba(0, 220, 255, 0.2), transparent 30%),
+
+
+
     radial-gradient(circle at 88% 85%, rgba(43, 97, 255, 0.28), transparent 34%),
+
+
+
     radial-gradient(circle at 78% 15%, rgba(0, 255, 207, 0.12), transparent 26%),
+
+
+
     linear-gradient(145deg, #06111f 0%, #081b36 45%, #0b1b3f 100%);
+
+
+
 }
+
+
+
+
+
+
 
 .ambient {
+
+
+
   position: absolute;
+
+
+
   border-radius: 50%;
+
+
+
   filter: blur(60px);
+
+
+
   pointer-events: none;
+
+
+
 }
+
+
+
+
+
+
 
 .ambient-one {
+
+
+
   width: 400px;
+
+
+
   height: 400px;
+
+
+
   top: -180px;
+
+
+
   left: -150px;
+
+
+
   background: rgba(15, 217, 209, 0.18);
+
+
+
 }
+
+
+
+
+
+
 
 .ambient-two {
+
+
+
   width: 480px;
+
+
+
   height: 480px;
+
+
+
   right: -190px;
+
+
+
   bottom: -210px;
+
+
+
   background: rgba(43, 87, 255, 0.2);
+
+
+
 }
+
+
+
+
+
+
 
 .login-shell {
+
+
+
   width: 100%;
+
+
+
   max-width: 480px;
+
+
+
   position: relative;
+
+
+
   z-index: 5;
+
+
+
 }
 
+
+
+
+
+
+
 .login-card {
+
+
+
   width: 100%;
+
+
+
+
+
+
 
   padding: 34px 34px 26px;
 
+
+
+
+
+
+
   border-radius: 28px;
 
+
+
+
+
+
+
   background:
+
+
+
     linear-gradient(
+
+
+
       160deg,
+
+
+
       rgba(12, 35, 69, 0.96),
+
+
+
       rgba(7, 21, 42, 0.96)
+
+
+
     );
+
+
+
+
+
+
 
   border: 1px solid rgba(255, 255, 255, 0.08);
 
+
+
+
+
+
+
   box-shadow:
+
+
+
     0 35px 90px rgba(0, 0, 0, 0.48),
+
+
+
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
+
+
+
+
+
+
   backdrop-filter: blur(20px);
+
+
+
   -webkit-backdrop-filter: blur(20px);
+
+
+
 }
 
+
+
+
+
+
+
 /* =========================
+
+
+
    LOGO
+
+
+
 ========================= */
 
+
+
+
+
+
+
 .banksetu-logo {
+
+
+
   width: 92px;
+
+
+
   height: 92px;
+
+
+
+
+
+
 
   margin: 0 auto 16px;
 
+
+
+
+
+
+
   border-radius: 24px;
+
+
+
+
+
+
 
   background-image: url("./assets/bank-setu-logo.png");
+
+
+
   background-size: cover;
+
+
+
   background-position: center;
+
+
+
   background-repeat: no-repeat;
 
+
+
+
+
+
+
   box-shadow:
+
+
+
     0 18px 40px rgba(0, 213, 255, 0.25),
+
+
+
     0 0 28px rgba(0, 174, 255, 0.22);
 
+
+
+
+
+
+
   position: relative;
+
+
+
   overflow: hidden;
+
+
+
 }
 
+
+
+
+
+
+
 .banksetu-logo::after {
+
+
+
   content: "";
 
+
+
+
+
+
+
   position: absolute;
+
+
+
   inset: 0;
 
+
+
+
+
+
+
   border-radius: 24px;
+
+
+
+
+
+
 
   border: 1px solid rgba(255, 255, 255, 0.22);
 
+
+
+
+
+
+
   pointer-events: none;
+
+
+
 }
+
+
+
+
+
+
 
 .logo-ring,
+
+
+
 .logo-bridge {
+
+
+
   display: none;
+
+
+
 }
 
+
+
+
+
+
+
 /* =========================
+
+
+
    BRAND
+
+
+
 ========================= */
+
+
+
+
+
+
 
 .brand {
+
+
+
   text-align: center;
+
+
+
   margin-bottom: 26px;
+
+
+
 }
+
+
+
+
+
+
 
 .brand h1 {
+
+
+
   font-size: 28px;
+
+
+
   font-weight: 800;
+
+
+
   letter-spacing: 1px;
 
+
+
+
+
+
+
   color: #ffffff;
+
+
+
 }
+
+
+
+
+
+
 
 .brand h1 span {
+
+
+
   background: linear-gradient(90deg, #2fe6dc, #ffd66b);
+
+
+
   -webkit-background-clip: text;
+
+
+
   -webkit-text-fill-color: transparent;
+
+
+
 }
+
+
+
+
+
+
 
 .brand p {
+
+
+
   margin-top: 7px;
 
+
+
+
+
+
+
   font-size: 11px;
+
+
+
   font-weight: 500;
+
+
+
   letter-spacing: 0.4px;
 
+
+
+
+
+
+
   color: #7f95b0;
+
+
+
 }
+
+
+
+
+
+
 
 /* =========================
+
+
+
    WELCOME AREA
+
+
+
 ========================= */
 
+
+
+
+
+
+
 .welcome {
+
+
+
   margin-bottom: 24px;
+
+
+
 }
 
+
+
+
+
+
+
 .welcome-chip {
+
+
+
   display: inline-flex;
+
+
+
   align-items: center;
+
+
+
+
+
+
 
   padding: 6px 10px;
 
+
+
+
+
+
+
   border-radius: 999px;
+
+
+
+
+
+
 
   margin-bottom: 12px;
 
+
+
+
+
+
+
   color: #37e8d4;
+
+
+
   background: rgba(55, 232, 212, 0.08);
+
+
+
   border: 1px solid rgba(55, 232, 212, 0.18);
 
+
+
+
+
+
+
   font-size: 9px;
+
+
+
   font-weight: 800;
+
+
+
   letter-spacing: 1.5px;
+
+
+
 }
 
+
+
+
+
+
+
 .welcome h2 {
+
+
+
   font-size: 23px;
+
+
+
   font-weight: 800;
+
+
+
+
+
+
 
   color: white;
 
+
+
+
+
+
+
   margin-bottom: 7px;
+
+
+
 }
+
+
+
+
+
+
 
 .welcome p {
+
+
+
   font-size: 12px;
+
+
+
   line-height: 1.5;
 
+
+
+
+
+
+
   color: #879bb5;
+
+
+
 }
+
+
+
+
+
+
 
 /* =========================
+
+
+
    FORM FIELDS
+
+
+
 ========================= */
 
+
+
+
+
+
+
 .field {
+
+
+
   margin-bottom: 17px;
+
+
+
 }
 
+
+
+
+
+
+
 .field label {
+
+
+
   display: block;
+
+
+
+
+
+
 
   margin-bottom: 8px;
 
+
+
+
+
+
+
   font-size: 12px;
+
+
+
   font-weight: 650;
 
+
+
+
+
+
+
   color: #d6e1ed;
+
+
+
 }
+
+
+
+
+
+
 
 .field-label-row {
+
+
+
   display: flex;
+
+
+
   align-items: center;
+
+
+
   justify-content: space-between;
+
+
+
   gap: 10px;
+
+
+
 }
 
+
+
+
+
+
+
 .forgot-link {
+
+
+
   border: none;
+
+
+
   background: transparent;
+
+
+
+
+
+
 
   color: #35e0d1;
 
+
+
+
+
+
+
   font-size: 10px;
+
+
+
   font-weight: 700;
 
+
+
+
+
+
+
   cursor: pointer;
+
+
+
 }
 
+
+
+
+
+
+
 .input-box {
+
+
+
   min-height: 54px;
 
+
+
+
+
+
+
   display: flex;
+
+
+
   align-items: center;
+
+
+
+
+
+
 
   border-radius: 15px;
 
+
+
+
+
+
+
   background: rgba(255, 255, 255, 0.045);
+
+
+
   border: 1px solid rgba(255, 255, 255, 0.09);
 
+
+
+
+
+
+
   transition: 0.22s ease;
+
+
+
 }
+
+
+
+
+
+
 
 .input-box:hover {
+
+
+
   background: rgba(255, 255, 255, 0.055);
+
+
+
 }
 
+
+
+
+
+
+
 .input-box:focus-within {
+
+
+
   border-color: rgba(43, 226, 210, 0.8);
+
+
+
+
+
+
 
   background: rgba(43, 226, 210, 0.055);
 
+
+
+
+
+
+
   box-shadow:
+
+
+
     0 0 0 4px rgba(43, 226, 210, 0.07),
+
+
+
     0 10px 28px rgba(0, 0, 0, 0.1);
+
+
+
 }
 
+
+
+
+
+
+
 .field-icon {
+
+
+
   width: 46px;
+
+
+
   flex-shrink: 0;
+
+
+
+
+
+
 
   text-align: center;
 
+
+
+
+
+
+
   color: #6b839f;
 
+
+
+
+
+
+
   font-size: 14px;
+
+
+
 }
 
+
+
+
+
+
+
 .input-box input {
+
+
+
   flex: 1;
+
+
+
   min-width: 0;
+
+
+
+
+
+
 
   height: 52px;
 
+
+
+
+
+
+
   border: none;
+
+
+
   outline: none;
 
+
+
+
+
+
+
   background: transparent;
+
+
+
+
+
+
 
   color: white;
 
+
+
+
+
+
+
   font-size: 13px;
 
+
+
+
+
+
+
   padding: 0 10px;
+
+
+
 }
+
+
+
+
+
+
 
 .input-box input::placeholder {
+
+
+
   color: #5f738d;
+
+
+
 }
 
+
+
+
+
+
+
 .password-toggle {
+
+
+
   border: none;
+
+
+
   background: transparent;
+
+
+
+
+
+
 
   color: #39e0d1;
 
+
+
+
+
+
+
   font-size: 10px;
+
+
+
   font-weight: 800;
+
+
+
+
+
+
 
   cursor: pointer;
 
+
+
+
+
+
+
   padding: 10px 14px;
+
+
+
 }
 
+
+
+
+
+
+
 /* =========================
+
+
+
    ERROR / MESSAGE
+
+
+
 ========================= */
 
+
+
+
+
+
+
 .form-message {
+
+
+
   display: flex;
+
+
+
   align-items: center;
+
+
+
   justify-content: center;
+
+
+
   gap: 8px;
+
+
+
+
+
+
 
   margin-bottom: 14px;
 
+
+
+
+
+
+
   padding: 10px 12px;
+
+
+
+
+
+
 
   border-radius: 11px;
 
+
+
+
+
+
+
   font-size: 11px;
+
+
+
   line-height: 1.4;
+
+
+
 }
+
+
+
+
+
+
 
 .error-message {
+
+
+
   color: #ff9797;
 
+
+
+
+
+
+
   background: rgba(255, 92, 92, 0.08);
+
+
+
   border: 1px solid rgba(255, 92, 92, 0.12);
+
+
+
 }
 
+
+
+
+
+
+
 .error-message span {
+
+
+
   width: 18px;
+
+
+
+  height: 18px;
+
+
+
+
+
+
+
+  border-radius: 50%;
+
+
+
+
+
+
+
+  display: inline-flex;
+
+
+
+  align-items: center;
+
+
+
+  justify-content: center;
+
+
+
+
+
+
+
+  background: rgba(255, 92, 92, 0.13);
+
+
+
+
+
+
+
+  font-size: 10px;
+
+
+
+  font-weight: 800;
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   LOGIN OPTIONS
+
+
+
+========================= */
+
+
+
+
+
+
+
+.login-options {
+
+
+
+  display: flex;
+
+
+
+  align-items: center;
+
+
+
+  justify-content: space-between;
+
+
+
+
+
+
+
+  gap: 12px;
+
+
+
+
+
+
+
+  margin: 3px 0 21px;
+
+
+
+}
+
+
+
+
+
+
+
+.remember {
+
+
+
+  display: flex;
+
+
+
+  align-items: center;
+
+
+
+  gap: 8px;
+
+
+
+
+
+
+
+  color: #8298b2;
+
+
+
+
+
+
+
+  font-size: 10px;
+
+
+
+
+
+
+
+  cursor: pointer;
+
+
+
+}
+
+
+
+
+
+
+
+.remember input {
+
+
+
+  accent-color: #2de3d3;
+
+
+
+}
+
+
+
+
+
+
+
+.encrypted {
+
+
+
+  color: #37e8d4;
+
+
+
+
+
+
+
+  font-size: 9px;
+
+
+
+  font-weight: 700;
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   SIGN IN BUTTON
+
+
+
+========================= */
+
+
+
+
+
+
+
+.sign-in {
+
+
+
+  width: 100%;
+
+
+
+  min-height: 54px;
+
+
+
+
+
+
+
+  border: none;
+
+
+
+  border-radius: 15px;
+
+
+
+
+
+
+
+  display: flex;
+
+
+
+  align-items: center;
+
+
+
+  justify-content: center;
+
+
+
+
+
+
+
+  gap: 12px;
+
+
+
+
+
+
+
+  background:
+
+
+
+    linear-gradient(
+
+
+
+      100deg,
+
+
+
+      #29e1cf,
+
+
+
+      #34bfff 60%,
+
+
+
+      #5d8cff
+
+
+
+    );
+
+
+
+
+
+
+
+  color: #04131c;
+
+
+
+
+
+
+
+  font-size: 13px;
+
+
+
+  font-weight: 800;
+
+
+
+
+
+
+
+  cursor: pointer;
+
+
+
+
+
+
+
+  box-shadow:
+
+
+
+    0 16px 34px rgba(44, 201, 255, 0.22);
+
+
+
+
+
+
+
+  transition: 0.22s ease;
+
+
+
+}
+
+
+
+
+
+
+
+.sign-in:hover {
+
+
+
+  transform: translateY(-2px);
+
+
+
+
+
+
+
+  box-shadow:
+
+
+
+    0 19px 38px rgba(44, 201, 255, 0.3);
+
+
+
+}
+
+
+
+
+
+
+
+.sign-in:active {
+
+
+
+  transform: translateY(0);
+
+
+
+}
+
+
+
+
+
+
+
+.sign-in:disabled {
+
+
+
+  opacity: 0.65;
+
+
+
+  cursor: not-allowed;
+
+
+
+  transform: none;
+
+
+
+}
+
+
+
+
+
+
+
+.arrow {
+
+
+
+  font-size: 19px;
+
+
+
+  transition: 0.22s ease;
+
+
+
+}
+
+
+
+
+
+
+
+.sign-in:hover .arrow {
+
+
+
+  transform: translateX(4px);
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   SIGNUP AREA
+
+
+
+========================= */
+
+
+
+
+
+
+
+.signup-section {
+
+
+
+  margin-top: 24px;
+
+
+
+}
+
+
+
+
+
+
+
+.divider {
+
+
+
+  display: grid;
+
+
+
+  grid-template-columns: 1fr auto 1fr;
+
+
+
+  align-items: center;
+
+
+
+  gap: 10px;
+
+
+
+
+
+
+
+  margin-bottom: 14px;
+
+
+
+}
+
+
+
+
+
+
+
+.divider span {
+
+
+
+  height: 1px;
+
+
+
+
+
+
+
+  background:
+
+
+
+    linear-gradient(
+
+
+
+      90deg,
+
+
+
+      transparent,
+
+
+
+      rgba(255, 255, 255, 0.09),
+
+
+
+      transparent
+
+
+
+    );
+
+
+
+}
+
+
+
+
+
+
+
+.divider p {
+
+
+
+  color: #6f839c;
+
+
+
+
+
+
+
+  font-size: 10px;
+
+
+
+}
+
+
+
+
+
+
+
+.create-account-button {
+
+
+
+  width: 100%;
+
+
+
+  min-height: 50px;
+
+
+
+
+
+
+
+  border-radius: 14px;
+
+
+
+
+
+
+
+  border: 1px solid rgba(60, 225, 213, 0.24);
+
+
+
+
+
+
+
+  background: rgba(60, 225, 213, 0.05);
+
+
+
+
+
+
+
+  color: #4de4d4;
+
+
+
+
+
+
+
+  font-size: 12px;
+
+
+
+  font-weight: 800;
+
+
+
+
+
+
+
+  cursor: pointer;
+
+
+
+
+
+
+
+  transition: 0.22s ease;
+
+
+
+}
+
+
+
+
+
+
+
+.create-account-button:hover {
+
+
+
+  background: rgba(60, 225, 213, 0.1);
+
+
+
+
+
+
+
+  border-color: rgba(60, 225, 213, 0.42);
+
+
+
+
+
+
+
+  transform: translateY(-1px);
+
+
+
+}
+
+
+
+
+
+
+
+.approval-note {
+
+
+
+  margin-top: 10px;
+
+
+
+
+
+
+
+  text-align: center;
+
+
+
+
+
+
+
+  color: #60758e;
+
+
+
+
+
+
+
+  font-size: 9px;
+
+
+
+  line-height: 1.4;
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   FOOTER
+
+
+
+========================= */
+
+
+
+
+
+
+
+.login-footer {
+
+
+
+  margin-top: 22px;
+
+
+
+
+
+
+
+  padding-top: 18px;
+
+
+
+
+
+
+
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+
+
+
+
+
+
+
+  display: flex;
+
+
+
+  align-items: center;
+
+
+
+  justify-content: center;
+
+
+
+  gap: 7px;
+
+
+
+
+
+
+
+  color: #5e728b;
+
+
+
+
+
+
+
+  font-size: 9px;
+
+
+
+  letter-spacing: 0.4px;
+
+
+
+}
+
+
+
+
+
+
+
+.status-dot {
+
+
+
+  width: 7px;
+
+
+
+  height: 7px;
+
+
+
+
+
+
+
+  border-radius: 50%;
+
+
+
+
+
+
+
+  background: #2ce7d2;
+
+
+
+
+
+
+
+  box-shadow: 0 0 10px rgba(44, 231, 210, 0.9);
+
+
+
+}
+
+
+
+
+
+
+
+.footer-separator {
+
+
+
+  color: #40536a;
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   SIGNUP PAGE SUPPORT
+
+
+
+========================= */
+
+
+
+
+
+
+
+.login-card form + .secure-message {
+
+
+
+  margin-top: 20px;
+
+
+
+}
+
+
+
+
+
+
+
+.secure-message {
+
+
+
+  display: flex;
+
+
+
+  align-items: center;
+
+
+
+  justify-content: center;
+
+
+
+
+
+
+
+  gap: 7px;
+
+
+
+
+
+
+
+  margin-top: 20px;
+
+
+
+
+
+
+
+  color: #657a93;
+
+
+
+
+
+
+
+  font-size: 9px;
+
+
+
+}
+
+
+
+
+
+
+
+.secure-dot {
+
+
+
+  width: 7px;
+
+
+
+  height: 7px;
+
+
+
+
+
+
+
+  border-radius: 50%;
+
+
+
+
+
+
+
+  background: #2ce7d2;
+
+
+
+
+
+
+
+  box-shadow: 0 0 10px rgba(44, 231, 210, 0.8);
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   TABLET
+
+
+
+========================= */
+
+
+
+
+
+
+
+@media (max-width: 768px) {
+
+
+
+  .login-page {
+
+
+
+    padding: 20px 14px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .login-shell {
+
+
+
+    max-width: 450px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .login-card {
+
+
+
+    padding: 30px 26px 24px;
+
+
+
+    border-radius: 24px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .banksetu-logo {
+
+
+
+    width: 82px;
+
+
+
+    height: 82px;
+
+
+
+    border-radius: 22px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .brand h1 {
+
+
+
+    font-size: 25px;
+
+
+
+  }
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   MOBILE / APP
+
+
+
+========================= */
+
+
+
+
+
+
+
+@media (max-width: 480px) {
+
+
+
+  .login-page {
+
+
+
+    align-items: flex-start;
+
+
+
+    padding: 14px 10px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .login-shell {
+
+
+
+    max-width: 100%;
+
+
+
+  }
+
+
+
+
+
+
+
+  .login-card {
+
+
+
+    margin-top: 8px;
+
+
+
+
+
+
+
+    padding: 26px 18px 20px;
+
+
+
+
+
+
+
+    border-radius: 22px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .banksetu-logo {
+
+
+
+    width: 74px;
+
+
+
+    height: 74px;
+
+
+
+    border-radius: 20px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .brand {
+
+
+
+    margin-bottom: 22px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .brand h1 {
+
+
+
+    font-size: 23px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .welcome h2 {
+
+
+
+    font-size: 21px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .input-box {
+
+
+
+    min-height: 51px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .input-box input {
+
+
+
+    height: 49px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .login-options {
+
+
+
+    align-items: flex-start;
+
+
+
+  }
+
+
+
+
+
+
+
+  .encrypted {
+
+
+
+    margin-top: 2px;
+
+
+
+  }
+
+
+
+}
+
+
+
+
+
+
+
+/* =========================
+
+
+
+   SMALL MOBILE
+
+
+
+========================= */
+
+
+
+
+
+
+
+@media (max-width: 360px) {
+
+
+
+  .login-card {
+
+
+
+    padding-left: 15px;
+
+
+
+    padding-right: 15px;
+
+
+
+  }
+
+
+
+
+
+
+
+  .login-options {
+
+
+
+    flex-direction: column;
+
+
+
+  }
+
+
+
+
+
+
+
+  .encrypted {
+
+
+
+    align-self: flex-end;
+
+
+
+  }
+
+
+
+}
+
+
+
+/* =========================
+
+   BANK SETU AUTH UI - COMPACT LOGIN + SUCCESS
+
+========================= */
+
+
+
+.login-card {
+
+  padding-top: 28px;
+
+}
+
+
+
+.brand {
+
+  margin-bottom: 14px;
+
+}
+
+
+
+.welcome {
+
+  margin-bottom: 16px;
+
+  text-align: center;
+
+}
+
+
+
+.welcome h2 {
+
+  margin-bottom: 0;
+
+}
+
+
+
+.field label {
+
+  text-align: left;
+
+}
+
+
+
+.field-label-row label {
+
+  text-align: left;
+
+}
+
+
+
+.forgot-link:disabled {
+
+  opacity: 0.6;
+
+  cursor: not-allowed;
+
+}
+
+
+
+.success-message {
+
+  color: #72f0d5;
+
+  background: rgba(44, 231, 210, 0.08);
+
+  border: 1px solid rgba(44, 231, 210, 0.16);
+
+}
+
+
+
+.success-message span {
+
+  width: 18px;
+
   height: 18px;
 
   border-radius: 50%;
 
   display: inline-flex;
+
   align-items: center;
+
   justify-content: center;
 
-  background: rgba(255, 92, 92, 0.13);
+  flex-shrink: 0;
 
-  font-size: 10px;
-  font-weight: 800;
-}
-
-/* =========================
-   LOGIN OPTIONS
-========================= */
-
-.login-options {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-
-  gap: 12px;
-
-  margin: 3px 0 21px;
-}
-
-.remember {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  color: #8298b2;
+  background: rgba(44, 231, 210, 0.14);
 
   font-size: 10px;
 
-  cursor: pointer;
-}
-
-.remember input {
-  accent-color: #2de3d3;
-}
-
-.encrypted {
-  color: #37e8d4;
-
-  font-size: 9px;
-  font-weight: 700;
-}
-
-/* =========================
-   SIGN IN BUTTON
-========================= */
-
-.sign-in {
-  width: 100%;
-  min-height: 54px;
-
-  border: none;
-  border-radius: 15px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  gap: 12px;
-
-  background:
-    linear-gradient(
-      100deg,
-      #29e1cf,
-      #34bfff 60%,
-      #5d8cff
-    );
-
-  color: #04131c;
-
-  font-size: 13px;
   font-weight: 800;
 
-  cursor: pointer;
-
-  box-shadow:
-    0 16px 34px rgba(44, 201, 255, 0.22);
-
-  transition: 0.22s ease;
 }
 
-.sign-in:hover {
-  transform: translateY(-2px);
 
-  box-shadow:
-    0 19px 38px rgba(44, 201, 255, 0.3);
-}
 
-.sign-in:active {
-  transform: translateY(0);
-}
+.auth-action-row {
 
-.sign-in:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.arrow {
-  font-size: 19px;
-  transition: 0.22s ease;
-}
-
-.sign-in:hover .arrow {
-  transform: translateX(4px);
-}
-
-/* =========================
-   SIGNUP AREA
-========================= */
-
-.signup-section {
-  margin-top: 24px;
-}
-
-.divider {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
+
+  grid-template-columns: 1fr 1fr;
+
   gap: 10px;
 
-  margin-bottom: 14px;
+  width: 100%;
+
 }
 
-.divider span {
-  height: 1px;
+
+
+.auth-action-row .sign-in,
+
+.auth-action-row .create-account-button {
+
+  width: 100%;
+
+  min-width: 0;
+
+  min-height: 52px;
+
+}
+
+
+
+.auth-action-row .create-account-button {
+
+  margin: 0;
+
+}
+
+
+
+.compact-approval-note {
+
+  margin-top: 10px;
+
+}
+
+
+
+.login-footer {
+
+  margin-top: 16px;
+
+  padding-top: 14px;
+
+}
+
+
+
+.login-success-page {
+
+  min-height: 100vh;
+
+  width: 100%;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  padding: 20px;
 
   background:
-    linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.09),
-      transparent
-    );
+
+    radial-gradient(circle at 20% 20%, rgba(0, 220, 255, 0.18), transparent 30%),
+
+    radial-gradient(circle at 80% 80%, rgba(43, 97, 255, 0.25), transparent 34%),
+
+    linear-gradient(145deg, #06111f 0%, #081b36 45%, #0b1b3f 100%);
+
 }
 
-.divider p {
-  color: #6f839c;
 
-  font-size: 10px;
-}
 
-.create-account-button {
-  width: 100%;
-  min-height: 50px;
+.login-success-card {
 
-  border-radius: 14px;
+  width: min(390px, 100%);
 
-  border: 1px solid rgba(60, 225, 213, 0.24);
-
-  background: rgba(60, 225, 213, 0.05);
-
-  color: #4de4d4;
-
-  font-size: 12px;
-  font-weight: 800;
-
-  cursor: pointer;
-
-  transition: 0.22s ease;
-}
-
-.create-account-button:hover {
-  background: rgba(60, 225, 213, 0.1);
-
-  border-color: rgba(60, 225, 213, 0.42);
-
-  transform: translateY(-1px);
-}
-
-.approval-note {
-  margin-top: 10px;
+  padding: 38px 24px;
 
   text-align: center;
 
-  color: #60758e;
+  border-radius: 24px;
 
-  font-size: 9px;
-  line-height: 1.4;
+  background: linear-gradient(160deg, rgba(12, 35, 69, 0.97), rgba(7, 21, 42, 0.97));
+
+  border: 1px solid rgba(255, 255, 255, 0.09);
+
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+
 }
 
-/* =========================
-   FOOTER
-========================= */
 
-.login-footer {
-  margin-top: 22px;
 
-  padding-top: 18px;
+.login-success-check {
 
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  width: 72px;
+
+  height: 72px;
+
+  margin: 0 auto 18px;
 
   display: flex;
+
   align-items: center;
+
   justify-content: center;
-  gap: 7px;
-
-  color: #5e728b;
-
-  font-size: 9px;
-  letter-spacing: 0.4px;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
 
   border-radius: 50%;
 
-  background: #2ce7d2;
+  background: rgba(44, 231, 210, 0.13);
 
-  box-shadow: 0 0 10px rgba(44, 231, 210, 0.9);
+  border: 1px solid rgba(44, 231, 210, 0.3);
+
+  color: #47ead6;
+
+  font-size: 36px;
+
+  font-weight: 800;
+
+  box-shadow: 0 0 30px rgba(44, 231, 210, 0.14);
+
 }
 
-.footer-separator {
-  color: #40536a;
+
+
+.login-success-card h2 {
+
+  margin-bottom: 8px;
+
+  font-size: 24px;
+
+  color: #ffffff;
+
 }
 
-/* =========================
-   SIGNUP PAGE SUPPORT
-========================= */
 
-.login-card form + .secure-message {
-  margin-top: 20px;
+
+.login-success-card p {
+
+  color: #8fa5bf;
+
+  font-size: 12px;
+
 }
 
-.secure-message {
-  display: flex;
-  align-items: center;
-  justify-content: center;
 
-  gap: 7px;
-
-  margin-top: 20px;
-
-  color: #657a93;
-
-  font-size: 9px;
-}
-
-.secure-dot {
-  width: 7px;
-  height: 7px;
-
-  border-radius: 50%;
-
-  background: #2ce7d2;
-
-  box-shadow: 0 0 10px rgba(44, 231, 210, 0.8);
-}
-
-/* =========================
-   TABLET
-========================= */
-
-@media (max-width: 768px) {
-  .login-page {
-    padding: 20px 14px;
-  }
-
-  .login-shell {
-    max-width: 450px;
-  }
-
-  .login-card {
-    padding: 30px 26px 24px;
-    border-radius: 24px;
-  }
-
-  .banksetu-logo {
-    width: 82px;
-    height: 82px;
-    border-radius: 22px;
-  }
-
-  .brand h1 {
-    font-size: 25px;
-  }
-}
-
-/* =========================
-   MOBILE / APP
-========================= */
 
 @media (max-width: 480px) {
-  .login-page {
-    align-items: flex-start;
-    padding: 14px 10px;
-  }
-
-  .login-shell {
-    max-width: 100%;
-  }
 
   .login-card {
-    margin-top: 8px;
 
-    padding: 26px 18px 20px;
+    margin-top: 4px;
 
-    border-radius: 22px;
+    padding-top: 20px;
+
   }
+
+
 
   .banksetu-logo {
-    width: 74px;
-    height: 74px;
-    border-radius: 20px;
+
+    width: 68px;
+
+    height: 68px;
+
+    margin-bottom: 10px;
+
   }
+
+
 
   .brand {
-    margin-bottom: 22px;
+
+    margin-bottom: 12px;
+
   }
 
-  .brand h1 {
-    font-size: 23px;
+
+
+  .welcome {
+
+    margin-bottom: 14px;
+
   }
 
-  .welcome h2 {
-    font-size: 21px;
+
+
+  .field {
+
+    margin-bottom: 14px;
+
   }
 
-  .input-box {
-    min-height: 51px;
-  }
 
-  .input-box input {
-    height: 49px;
-  }
 
   .login-options {
-    align-items: flex-start;
+
+    margin-bottom: 16px;
+
   }
 
-  .encrypted {
-    margin-top: 2px;
+
+
+  .auth-action-row {
+
+    gap: 8px;
+
   }
+
+
+
+  .auth-action-row .sign-in,
+
+  .auth-action-row .create-account-button {
+
+    min-height: 48px;
+
+    font-size: 11px;
+
+  }
+
 }
 
-/* =========================
-   SMALL MOBILE
-========================= */
+
 
 @media (max-width: 360px) {
-  .login-card {
-    padding-left: 15px;
-    padding-right: 15px;
+
+  .auth-action-row {
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 7px;
+
   }
 
-  .login-options {
-    flex-direction: column;
+
+
+  .auth-action-row .sign-in,
+
+  .auth-action-row .create-account-button {
+
+    padding-left: 8px;
+
+    padding-right: 8px;
+
+    font-size: 10px;
+
   }
 
-  .encrypted {
-    align-self: flex-end;
-  }
+}
+/* =========================
+   BANK SETU ROLE / ADMIN USER MANAGEMENT SUPPORT
+========================= */
+.banksetu-session {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Existing Dashboard currently labels this menu as Admin.
+   For normal users, show User and hide Advanced Administrator Control. */
+.banksetu-role-user .admin-label {
+  font-size: 0 !important;
+}
+
+.banksetu-role-user .admin-label::after {
+  content: "User";
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Profile menu item visibility is controlled by Dashboard.tsx role checks.
+   Do not hide by button position: for a normal user the third button is Logout. */
+/* =========================================================
+   BANK SETU REFERENCE UI — purple SaaS dashboard redesign
+   ========================================================= */
+:root{--bs-purple:#7867f5;--bs-purple2:#9279ff;--bs-ink:#31314a;--bs-muted:#8b8ca7;--bs-surface:#fff;--bs-bg:#f6f5fb}
+body{background:#8b7cf7;color:var(--bs-ink)}
+.banksetu-app-shell{background:linear-gradient(135deg,#8e7df8 0%,#a78cf8 48%,#8172ef 100%)!important;padding:34px!important;gap:0!important;min-height:100vh!important}
+.banksetu-sidebar{height:calc(100vh - 68px)!important;top:34px!important;width:220px!important;padding:26px 16px!important;border:0!important;border-radius:22px 0 0 22px!important;box-shadow:0 28px 70px rgba(75,56,170,.25)!important;background:linear-gradient(180deg,#6f5dea 0%,#7967f2 48%,#6653dd 100%)!important;overflow:auto!important}
+.banksetu-sidebar button{font-weight:600!important;font-size:12px!important;letter-spacing:.01em}
+.banksetu-sidebar nav button{border-radius:9px!important;padding:11px 12px!important;margin:1px 0!important}
+.banksetu-sidebar nav button:hover{background:rgba(255,255,255,.13)!important}
+.banksetu-main-workspace{min-height:calc(100vh - 68px)!important;margin-top:34px!important;margin-bottom:34px!important;padding:18px 22px 34px!important;border-radius:0 22px 22px 0!important;background:#f8f7fc!important;box-shadow:20px 28px 70px rgba(75,56,170,.18)!important;color:var(--bs-ink)!important;overflow:hidden}
+.dashboard-top-bar{min-height:76px!important;border:0!important;border-radius:14px!important;background:#fff!important;box-shadow:0 7px 25px rgba(69,62,116,.08)!important;color:var(--bs-ink)!important}
+.dashboard-top-bar h1,.dashboard-top-bar h2,.dashboard-top-bar strong{color:#34344c!important}.dashboard-top-bar span,.dashboard-top-bar small{color:#6f7089!important}
+.persistent-bank-header{background:#fff!important;border-color:#eeedf6!important;box-shadow:none!important}
+.dashboard-stats-grid{gap:14px!important;margin-top:18px!important}
+.dashboard-stat-card{min-height:128px!important;border:0!important;border-radius:10px!important;box-shadow:0 8px 24px rgba(74,65,122,.08)!important;position:relative!important;overflow:hidden!important;color:#fff!important}
+.dashboard-stat-card:nth-child(1){background:linear-gradient(135deg,#ff7fa6,#f76596)!important}.dashboard-stat-card:nth-child(2){background:linear-gradient(135deg,#a889f7,#866de8)!important}.dashboard-stat-card:nth-child(3){background:linear-gradient(135deg,#62d7a3,#45c58e)!important}.dashboard-stat-card:nth-child(4){background:linear-gradient(135deg,#ffd56d,#f5bd48)!important}
+.dashboard-stat-card:after{content:"";position:absolute;width:95px;height:95px;border-radius:50%;right:-28px;bottom:-38px;background:rgba(255,255,255,.12)}
+.dashboard-stat-icon{background:rgba(255,255,255,.2)!important;color:#fff!important}.dashboard-stat-badge,.dashboard-stat-value,.dashboard-stat-title{color:#fff!important}
+.dashboard-stat-value{font-size:28px!important}.dashboard-stat-title{font-weight:600!important;opacity:.96}
+.dashboard-quick-panel{background:#fff!important;border:0!important;border-radius:12px!important;box-shadow:0 8px 26px rgba(69,62,116,.08)!important;color:var(--bs-ink)!important}
+.dashboard-quick-panel h2{color:#36364e!important}.dashboard-quick-panel p{color:#9293aa!important}
+.banksetu-main-workspace input,.banksetu-main-workspace select,.banksetu-main-workspace textarea{background:#fff!important;color:#36364e!important;border-color:#e7e5f1!important;box-shadow:none!important}
+.banksetu-main-workspace input::placeholder,.banksetu-main-workspace textarea::placeholder{color:#a5a5b8!important}
+.banksetu-main-workspace article,.banksetu-main-workspace form{transition:transform .18s ease,box-shadow .18s ease}
+
+/* Login + signup in the same visual language */
+.login-page{background:linear-gradient(135deg,#8c7bf7 0%,#a78df9 48%,#8272ef 100%)!important;padding:28px!important}
+.login-page:before,.login-page:after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.07);pointer-events:none}.login-page:before{width:420px;height:420px;left:-130px;top:-120px}.login-page:after{width:520px;height:520px;right:-180px;bottom:-210px}
+.ambient{display:none!important}.login-shell{max-width:440px!important}.login-card{padding:34px 38px 28px!important;border-radius:18px!important;background:#fff!important;border:0!important;box-shadow:0 30px 80px rgba(69,49,155,.28)!important;backdrop-filter:none!important;color:#34344c!important}
+.banksetu-logo{width:72px!important;height:72px!important;border-radius:16px!important;margin-bottom:13px!important;box-shadow:0 12px 28px rgba(119,100,238,.2)!important}.brand{margin-bottom:18px!important}.brand h1{color:#38384f!important;font-size:25px!important}.brand h1 span{background:linear-gradient(90deg,#715de9,#9a7df8)!important;-webkit-background-clip:text!important}.welcome h2{color:#34344c!important}.welcome p,.approval-note,.login-footer{color:#9292a8!important}.welcome-chip{background:#f0edff!important;color:#725ee9!important}
+.field label{color:#5f6075!important}.input-box{background:#f8f7fc!important;border:1px solid #e9e7f2!important;box-shadow:none!important}.input-box:focus-within{border-color:#8b75f3!important;box-shadow:0 0 0 3px rgba(123,102,239,.1)!important}.input-box input{color:#38384f!important}.input-box input::placeholder{color:#aaa9ba!important}.field-icon{color:#7965ec!important}.forgot-link{color:#7662e9!important}.remember{color:#77788d!important}.encrypted{color:#53b990!important}.sign-in{background:linear-gradient(135deg,#735fe9,#9276f5)!important;box-shadow:0 10px 24px rgba(116,95,233,.25)!important}.create-account-button{border-color:#ddd8f6!important;color:#715de3!important;background:#f7f5ff!important}
+
+@media(max-width:900px){.banksetu-app-shell{padding:0!important}.banksetu-main-workspace{margin:0!important;min-height:100vh!important;border-radius:0!important;padding:12px 14px 30px!important}.banksetu-sidebar{top:0!important;height:100vh!important;border-radius:0 20px 20px 0!important}.dashboard-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.dashboard-stats-grid{grid-template-columns:1fr!important}.login-page{padding:16px!important}.login-card{padding:28px 20px 22px!important;border-radius:16px!important}.dashboard-top-bar{border-radius:12px!important}}
+
+/* =========================================================
+   BANK SETU FINAL UI SYSTEM — reference matched, app-wide
+   ========================================================= */
+:root{--ui-bg:#f2f3f8;--ui-surface:#fff;--ui-surface-2:#f8f8fc;--ui-text:#34344c;--ui-muted:#85869b;--ui-border:#e6e5ef;--ui-purple:#7562ea;--ui-shadow:0 10px 28px rgba(66,58,110,.09)}
+html,body,#root{min-height:100%;background:var(--ui-bg)!important;color:var(--ui-text)!important}
+body{overflow-x:hidden!important}
+.banksetu-app-shell{width:100%!important;min-height:100vh!important;padding:0!important;gap:0!important;background:var(--ui-bg)!important;align-items:stretch!important}
+.banksetu-sidebar{position:sticky!important;top:0!important;width:220px!important;height:100vh!important;min-height:100vh!important;padding:22px 15px!important;border:0!important;border-radius:0!important;box-shadow:8px 0 26px rgba(80,65,170,.10)!important;overflow-y:auto!important;overscroll-behavior:contain!important;z-index:50!important}
+.banksetu-sidebar nav{gap:5px!important}
+.banksetu-sidebar nav button{position:relative!important;min-height:42px!important;padding:10px 12px!important;border:0!important;border-radius:9px!important;color:rgba(255,255,255,.84)!important;font-size:12px!important;font-weight:600!important;box-shadow:none!important;transition:.18s ease!important}
+.banksetu-sidebar nav button:hover{background:rgba(255,255,255,.10)!important;color:#fff!important;transform:translateX(2px)}
+.banksetu-sidebar nav button[style*="linear-gradient"]{background:#fff!important;color:#6e5ae2!important;box-shadow:0 8px 20px rgba(50,36,135,.18)!important;font-weight:800!important}
+.banksetu-main-workspace{flex:1!important;width:calc(100% - 220px)!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--ui-bg)!important;color:var(--ui-text)!important;box-shadow:none!important;overflow:visible!important}
+.dashboard-top-bar{min-height:76px!important;margin:0 0 18px!important;padding:10px 16px!important;border:1px solid #ecebf3!important;border-radius:13px!important;background:#fff!important;color:var(--ui-text)!important;box-shadow:0 6px 20px rgba(66,58,110,.06)!important}
+.dashboard-top-bar *{text-shadow:none!important}.dashboard-top-bar h1,.dashboard-top-bar h2,.dashboard-top-bar h3,.dashboard-top-bar strong{color:var(--ui-text)!important}.dashboard-top-bar p,.dashboard-top-bar span,.dashboard-top-bar small{color:#696a7d!important}
+.persistent-bank-header{background:#fff!important;border-color:#ecebf3!important;color:var(--ui-text)!important}
+.dashboard-stats-grid{gap:14px!important;margin:0 0 18px!important}.dashboard-stat-card{min-height:126px!important;border:0!important;border-radius:10px!important;box-shadow:var(--ui-shadow)!important;color:#fff!important}.dashboard-stat-card:nth-child(1){background:linear-gradient(135deg,#ff7ca5,#f45f92)!important}.dashboard-stat-card:nth-child(2){background:linear-gradient(135deg,#ad8df8,#8469e7)!important}.dashboard-stat-card:nth-child(3){background:linear-gradient(135deg,#68dca9,#44c58e)!important}.dashboard-stat-card:nth-child(4){background:linear-gradient(135deg,#ffd970,#f4bb43)!important}.dashboard-stat-card *{color:#fff!important}.dashboard-quick-panel{padding:18px!important;border:1px solid #ecebf3!important;border-radius:12px!important;background:#fff!important;color:var(--ui-text)!important;box-shadow:var(--ui-shadow)!important}.dashboard-quick-panel h1,.dashboard-quick-panel h2,.dashboard-quick-panel h3,.dashboard-quick-panel strong{color:var(--ui-text)!important}.dashboard-quick-panel p,.dashboard-quick-panel span{color:var(--ui-muted)!important}
+
+/* Every feature page gets one coherent light canvas */
+.customer-entry-wrapper,.customers-page,.passbook-page,.aof-module,.reports-page,.settings-page,.admin-users-panel{color:var(--ui-text)!important}
+.customer-entry-wrapper{max-width:none!important;padding:22px!important;border-radius:16px!important;background:#e9ebf1!important}
+.customer-entry-title,.customers-heading h1,.passbook-heading h1,.module-head h1,.reports-page h1,.settings-page h1{color:var(--ui-text)!important}
+.customers-page,.passbook-page,.aof-module{padding:22px!important;border-radius:16px!important;background:#f0f1f5!important}
+.customers-heading p,.passbook-heading p,.module-head p{color:var(--ui-muted)!important;opacity:1!important}
+
+/* Customer Entry: override old inline dark cards */
+.customer-entry-wrapper .customer-top-grid>div,.customer-entry-wrapper .customer-photo-card,.customer-entry-wrapper .customer-form-card{background:#fff!important;border:1px solid #dedee9!important;box-shadow:0 8px 22px rgba(70,64,104,.07)!important;backdrop-filter:none!important;color:var(--ui-text)!important}
+.customer-entry-wrapper .customer-form-card{background:#fbfbfd!important}
+.customer-entry-wrapper h1,.customer-entry-wrapper h2,.customer-entry-wrapper h3,.customer-entry-wrapper strong,.customer-entry-wrapper label,.customer-entry-wrapper .customer-field span{color:var(--ui-text)!important}
+.customer-entry-wrapper p,.customer-entry-wrapper small{color:var(--ui-muted)!important}
+.customer-entry-wrapper input,.customer-entry-wrapper select,.customer-entry-wrapper textarea{background:#fff!important;color:var(--ui-text)!important;border:1px solid #dcdce7!important;box-shadow:none!important}
+.customer-entry-wrapper input::placeholder,.customer-entry-wrapper textarea::placeholder{color:#aaaabb!important}
+.customer-entry-wrapper input:focus,.customer-entry-wrapper select:focus,.customer-entry-wrapper textarea:focus{border-color:#8b77ef!important;box-shadow:0 0 0 3px rgba(117,98,234,.10)!important;outline:none!important}
+.customer-entry-wrapper .customer-photo-area{background:#f1f2f6!important;border-color:#d5d4e2!important;color:#77788c!important}
+
+/* Customers / search / preview */
+.customer-search-card,.passbook-search-card,.aof-module .search-panel{background:#fff!important;border:1px solid var(--ui-border)!important;box-shadow:var(--ui-shadow)!important;color:var(--ui-text)!important}
+.search-label,.passbook-search-label,.aof-module .search-label{color:#6e5ae2!important}
+.search-input,.passbook-search-input,.aof-module .search-row input{background:#f7f7fb!important;color:var(--ui-text)!important;border:1px solid #dedde8!important;box-shadow:none!important}
+.search-input::placeholder,.passbook-search-input::placeholder,.aof-module input::placeholder{color:#a0a0b2!important}
+.search-input:focus,.passbook-search-input:focus,.aof-module .search-row input:focus{border-color:#8a75ef!important;box-shadow:0 0 0 3px rgba(117,98,234,.10)!important}
+.search-button,.passbook-button.search-button,.aof-module .search-row button{background:linear-gradient(135deg,#7662e9,#9178f5)!important;color:#fff!important;box-shadow:0 7px 16px rgba(117,98,234,.20)!important}
+.preview-wrapper,.customer-preview,.passbook-shell,.edit-panel,.customer-empty,.passbook-empty{background:#fff!important;color:var(--ui-text)!important;border-color:var(--ui-border)!important;box-shadow:var(--ui-shadow)!important}
+.preview-title,.customer-preview-heading,.preview-heading,.edit-title,.info-label,.info-colon,.info-value{color:var(--ui-text)!important}
+.customer-status-strip{background:#f7f7fb!important;border-color:var(--ui-border)!important}.status-item,.status-item *{color:var(--ui-text)!important}
+
+/* Selection modals */
+.match-modal-backdrop{background:rgba(44,38,78,.48)!important}.match-modal{background:#fff!important;border:1px solid var(--ui-border)!important;box-shadow:0 28px 70px rgba(46,39,91,.22)!important}.match-modal-header{border-color:var(--ui-border)!important}.match-modal-header h3,.match-name{color:var(--ui-text)!important}.match-modal-header p,.match-details{color:var(--ui-muted)!important}.match-modal-close{background:#f4f3fa!important;color:#5f5f73!important;border-color:var(--ui-border)!important}.match-card{background:#f8f8fc!important;border-color:var(--ui-border)!important}.match-select-button{background:#7662e9!important;color:#fff!important}
+
+/* Passbook and AOF content readability */
+.passbook-page .pb-block,.passbook-page .passbook-print-area{color:#111827!important}.passbook-page .pb-line,.passbook-page .pb-address-line{color:#111827!important}.passbook-page input,.passbook-page select,.passbook-page textarea,.aof-module input,.aof-module select,.aof-module textarea{background:#fff!important;color:var(--ui-text)!important;border-color:#dedde8!important}.edit-panel h3,.edit-panel p,.edit-panel label{color:var(--ui-text)!important}.aof-module .preview-card,.aof-module .result-card,.aof-module .pdf-preview,.aof-module section{color:var(--ui-text)}
+
+/* Settings/Admin surfaces */
+.admin-users-panel,.admin-user-card,.admin-users-toolbar,.settings-card,.settings-section{background:#fff!important;color:var(--ui-text)!important;border-color:var(--ui-border)!important;box-shadow:var(--ui-shadow)!important}.admin-users-panel h1,.admin-users-panel h2,.admin-users-panel h3,.admin-user-card strong,.admin-user-card span{color:var(--ui-text)!important}.admin-users-panel p,.admin-user-card small{color:var(--ui-muted)!important}.admin-users-toolbar input{background:#f7f7fb!important;color:var(--ui-text)!important;border-color:var(--ui-border)!important}
+
+/* Login/sign-up final polish */
+.login-page{min-height:100vh!important;background:linear-gradient(135deg,#8d7cf7 0%,#a68df8 50%,#8171ef 100%)!important}.login-card{background:#fff!important;color:var(--ui-text)!important;border:0!important;box-shadow:0 30px 80px rgba(65,48,150,.27)!important}.signup-section{background:#fff!important;color:var(--ui-text)!important}.signup-section h1,.signup-section h2,.signup-section h3,.signup-section label{color:var(--ui-text)!important}.signup-section p{color:var(--ui-muted)!important}
+
+/* Responsive: no purple strip under content; one full-width canvas */
+@media(max-width:900px){body{overflow:auto!important}.banksetu-app-shell{display:block!important;background:var(--ui-bg)!important}.banksetu-sidebar{position:fixed!important;top:0!important;left:-240px!important;width:230px!important;height:100dvh!important;min-height:100dvh!important;border-radius:0 18px 18px 0!important;transition:left .22s ease!important}.banksetu-sidebar.open{left:0!important}.banksetu-main-workspace{width:100%!important;min-height:100dvh!important;margin:0!important;padding:12px 12px 30px!important;background:var(--ui-bg)!important}.dashboard-top-bar{margin-bottom:12px!important}.customer-entry-wrapper,.customers-page,.passbook-page,.aof-module{padding:14px!important;border-radius:12px!important}.customer-top-grid{grid-template-columns:1fr!important}.customer-form-grid{grid-template-columns:1fr!important}.customer-full-address{grid-column:span 1!important}.dashboard-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.banksetu-main-workspace{padding:10px 9px 24px!important}.dashboard-stats-grid{grid-template-columns:1fr!important}.dashboard-stat-card{min-height:112px!important}.customer-entry-wrapper,.customers-page,.passbook-page,.aof-module{padding:10px!important}.customer-search-card,.passbook-search-card,.aof-module .search-panel{padding:14px!important}.search-row,.passbook-search-row,.aof-module .search-row{flex-direction:column!important}.search-button,.passbook-button.search-button,.aof-module .search-row button{width:100%!important}.customer-preview,.passbook-shell{overflow-x:auto!important}.match-card{grid-template-columns:1fr!important}}
+
+/* =========================================================
+   BANK SETU FINAL UI V8 — unified reference-style system
+   ========================================================= */
+:root{
+  --bs-bg:#f4f5fa;--bs-surface:#fff;--bs-surface-soft:#f8f8fc;--bs-text:#24233a;
+  --bs-muted:#74748a;--bs-border:#e7e6ef;--bs-purple:#735ee8;--bs-purple-2:#927bf5;
+  --bs-shadow:0 10px 28px rgba(64,54,115,.08);
+}
+html,body,#root{min-height:100%;background:var(--bs-bg)!important}
+body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!important}
+.banksetu-app-shell{display:flex!important;align-items:stretch!important;width:100%!important;min-height:100vh!important;background:var(--bs-bg)!important;padding:0!important;gap:0!important;overflow:visible!important}
+/* Desktop sidebar belongs to the same document scroll — no disconnected second scrollbar. */
+.banksetu-sidebar{position:sticky!important;top:0!important;align-self:flex-start!important;width:220px!important;height:auto!important;min-height:100vh!important;max-height:none!important;overflow:visible!important;border-radius:0!important;padding:22px 15px!important;box-sizing:border-box!important;box-shadow:8px 0 28px rgba(71,58,145,.10)!important}
+.banksetu-sidebar nav{gap:5px!important}
+.banksetu-sidebar .banksetu-nav-item{position:relative!important;width:100%!important;min-height:42px!important;padding:10px 12px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:rgba(255,255,255,.88)!important;box-shadow:none!important;font-size:12px!important;font-weight:650!important;transition:background .18s ease,color .18s ease,transform .18s ease!important}
+.banksetu-sidebar .banksetu-nav-item span{color:inherit!important}
+.banksetu-sidebar .banksetu-nav-item:hover{background:rgba(255,255,255,.11)!important;color:#fff!important;transform:translateX(2px)!important}
+/* Reference image: active item is a small white rounded selection, not a teal full-width glow. */
+.banksetu-sidebar .banksetu-nav-item.active{background:#fff!important;color:#6955df!important;box-shadow:0 8px 20px rgba(48,34,130,.18)!important;font-weight:800!important}
+.banksetu-sidebar .banksetu-nav-item.active::before{content:"";position:absolute;left:-15px;top:11px;width:3px;height:20px;border-radius:0 4px 4px 0;background:#fff;opacity:.9}
+.banksetu-main-workspace{flex:1!important;width:auto!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--bs-bg)!important;color:var(--bs-text)!important;box-sizing:border-box!important;overflow:visible!important}
+/* No purple footer/strip can show below the dashboard. */
+.banksetu-main-workspace::after{display:none!important}
+
+/* coherent feature-page canvases */
+.customer-entry-wrapper,.customers-page,.passbook-page,.aof-module,.reports-page,.settings-page,.admin-users-panel{box-sizing:border-box!important;color:var(--bs-text)!important}
+.customer-entry-wrapper,.customers-page,.passbook-page,.aof-module{max-width:none!important;background:#eef0f5!important;border:1px solid #e5e6ed!important;border-radius:16px!important;padding:22px!important}
+.customer-entry-wrapper .customer-form-card{background:#fff!important;border:1px solid var(--bs-border)!important;box-shadow:var(--bs-shadow)!important}
+.customer-entry-wrapper .customer-top-grid>div,.customer-entry-wrapper .customer-photo-card{background:#f9f9fc!important;border:1px solid var(--bs-border)!important;box-shadow:var(--bs-shadow)!important}
+.customer-entry-wrapper h1,.customer-entry-wrapper h2,.customer-entry-wrapper h3,.customer-entry-wrapper label,.customer-entry-wrapper strong,
+.customers-page h1,.customers-page h2,.customers-page h3,.customers-page label,.customers-page strong,
+.passbook-page h1,.passbook-page h2,.passbook-page h3,.passbook-page label,.passbook-page strong,
+.aof-module h1,.aof-module h2,.aof-module h3,.aof-module label,.aof-module strong{color:var(--bs-text)!important;text-shadow:none!important}
+.customer-entry-wrapper p,.customer-entry-wrapper small,.customers-page p,.customers-page small,.passbook-page p,.passbook-page small,.aof-module p,.aof-module small{color:var(--bs-muted)!important;text-shadow:none!important}
+.customer-entry-wrapper input,.customer-entry-wrapper select,.customer-entry-wrapper textarea,
+.customers-page input,.customers-page select,.customers-page textarea,
+.passbook-page input,.passbook-page select,.passbook-page textarea,
+.aof-module input,.aof-module select,.aof-module textarea{background:#fff!important;color:var(--bs-text)!important;border:1px solid #dcdce7!important;box-shadow:none!important}
+.customer-entry-wrapper input::placeholder,.customers-page input::placeholder,.passbook-page input::placeholder,.aof-module input::placeholder{color:#a3a3b2!important}
+
+/* Search + preview cards all use the same new UI language. */
+.customer-search-card,.passbook-search-card,.aof-module .search-panel,.preview-wrapper,.customer-preview,.passbook-shell,.edit-panel,.customer-empty,.passbook-empty,
+.customers-page .match-card,.passbook-page .match-card,.aof-module .match-card{background:#fff!important;color:var(--bs-text)!important;border:1px solid var(--bs-border)!important;box-shadow:var(--bs-shadow)!important}
+.search-label,.passbook-search-label,.aof-module .search-label{color:var(--bs-purple)!important}
+.search-input,.passbook-search-input,.aof-module .search-row input{background:#f8f8fc!important;color:var(--bs-text)!important;border:1px solid #dedde8!important}
+.search-button,.passbook-button.search-button,.aof-module .search-row button,.match-select-button{background:linear-gradient(135deg,var(--bs-purple),var(--bs-purple-2))!important;color:#fff!important;border:0!important;box-shadow:0 7px 16px rgba(117,98,234,.20)!important}
+.match-modal{background:#fff!important;color:var(--bs-text)!important;border:1px solid var(--bs-border)!important;box-shadow:0 28px 70px rgba(46,39,91,.22)!important}
+.match-modal-header{border-color:var(--bs-border)!important}.match-modal-header h3,.match-name,.match-details,.match-details b{color:var(--bs-text)!important}.match-modal-header p{color:var(--bs-muted)!important}.match-modal-close{background:#f4f3fa!important;color:#5f5f73!important;border-color:var(--bs-border)!important}
+/* Preserve actual printable passbook paper as white while keeping surrounding page gray. */
+.passbook-page .passbook-print-area,.passbook-page .pb-block{background:#fff!important;color:#111827!important}.passbook-page .pb-line,.passbook-page .pb-address-line{color:#111827!important}
+
+/* Mobile: visible purple hamburger, drawer above content, full-screen workspace. */
+@media(max-width:760px){
+  .banksetu-app-shell{display:block!important;min-height:100dvh!important;background:var(--bs-bg)!important}
+  .banksetu-main-workspace{width:100%!important;min-height:100dvh!important;padding:10px 9px 26px!important;background:var(--bs-bg)!important}
+  .banksetu-sidebar{position:fixed!important;top:0!important;left:0!important;width:min(82vw,270px)!important;height:100dvh!important;min-height:100dvh!important;overflow-y:auto!important;transform:translateX(-110%)!important;transition:transform .24s ease!important;border-radius:0 18px 18px 0!important;z-index:1500!important}
+  .banksetu-sidebar.open{transform:translateX(0)!important}
+  .mobile-menu-button{display:inline-flex!important;background:linear-gradient(135deg,#735ee8,#927bf5)!important;color:#fff!important;border:1px solid rgba(92,70,200,.28)!important;box-shadow:0 7px 18px rgba(94,72,205,.24)!important;font-weight:900!important;opacity:1!important;visibility:visible!important}
+  .mobile-menu-button:hover,.mobile-menu-button:focus{background:linear-gradient(135deg,#6752dd,#856dec)!important;color:#fff!important;outline:none!important}
+  .mobile-close-button{display:inline-flex!important;background:rgba(255,255,255,.16)!important;color:#fff!important;border:1px solid rgba(255,255,255,.25)!important}
+  .dashboard-top-bar{grid-template-columns:42px minmax(0,1fr) 42px!important;background:#fff!important}
+  .customer-entry-wrapper,.customers-page,.passbook-page,.aof-module{padding:12px!important;border-radius:12px!important}
+}
+@media(max-width:560px){
+ .customer-entry-wrapper,.customers-page,.passbook-page,.aof-module{padding:9px!important}
+ .customer-search-card,.passbook-search-card,.aof-module .search-panel{padding:13px!important}
+ .search-row,.passbook-search-row,.aof-module .search-row{flex-direction:column!important}
+ .search-button,.passbook-button.search-button,.aof-module .search-row button{width:100%!important;min-height:44px!important}
+ .customer-preview,.passbook-shell{overflow-x:auto!important}
+}
+
+/* V9 polish: reference-gradient actions, reports/settings contrast, live theme controls */
+.banksetu-main-workspace{background:var(--dashboard-bg,var(--ui-bg))!important}
+.dashboard-quick-grid>.dashboard-quick-card{border:0!important;color:#fff!important;box-shadow:0 9px 22px rgba(76,60,150,.16)!important;transition:transform .18s ease,box-shadow .18s ease!important;overflow:hidden!important;position:relative!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(1){background:linear-gradient(135deg,#ff6f9f,#f24f88)!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(2){background:linear-gradient(135deg,#a985f7,#755fe8)!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(3){background:linear-gradient(135deg,#53d7ae,#28b98d)!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(4){background:linear-gradient(135deg,#ffca5b,#f19d38)!important}
+.dashboard-quick-grid>.dashboard-quick-card:hover{transform:translateY(-2px)!important;box-shadow:0 13px 28px rgba(76,60,150,.22)!important}
+.dashboard-quick-grid>.dashboard-quick-card *{color:#fff!important}.dashboard-quick-grid>.dashboard-quick-card>div:first-child{background:rgba(255,255,255,.18)!important}
+.settings-admin-hero{border:0!important;background:linear-gradient(125deg,#6d5dfc 0%,#a74cf0 48%,#f24f88 100%)!important;box-shadow:0 14px 34px rgba(114,72,215,.22)!important;color:#fff!important}
+.settings-admin-hero *{color:#fff!important}.settings-admin-hero p{opacity:.88!important}
+.settings-page .admin-users-panel.admin-users-embedded{background:#fff!important;border:1px solid #e7e5f0!important;color:#34344c!important;box-shadow:0 10px 28px rgba(66,58,110,.09)!important}
+.settings-page .admin-users-header{border-bottom:1px solid #efedf5!important}.settings-page .admin-users-header h2{color:#34344c!important}.settings-page .admin-users-header p{color:#85869b!important}.settings-page .admin-users-kicker{color:#755fe8!important}
+.settings-page .admin-user-stats>div{border:0!important;box-shadow:0 8px 20px rgba(70,55,135,.10)!important}.settings-page .admin-user-stats>div:nth-child(1){background:linear-gradient(135deg,#ff7ca5,#f45f92)!important}.settings-page .admin-user-stats>div:nth-child(2){background:linear-gradient(135deg,#ad8df8,#8469e7)!important}.settings-page .admin-user-stats>div:nth-child(3){background:linear-gradient(135deg,#68dca9,#44c58e)!important}.settings-page .admin-user-stats>div:nth-child(4){background:linear-gradient(135deg,#ffd970,#f4bb43)!important}.settings-page .admin-user-stats strong,.settings-page .admin-user-stats span{color:#fff!important}
+.settings-page .admin-users-toolbar input{background:#f7f7fb!important;color:#34344c!important;border:1px solid #dedde8!important}.settings-page .admin-users-toolbar button{background:#f0edff!important;color:#6d5dfc!important;border-color:#ddd7ff!important}
+.settings-page .admin-user-card{background:#fbfbfd!important;border:1px solid #eceaf3!important}.settings-page .admin-user-info strong{color:#34344c!important}.settings-page .admin-user-info span{color:#6f7085!important}.settings-page .admin-user-info small{color:#9a9bad!important}.settings-page .admin-user-meta>span{background:#f1eff8!important;color:#626277!important}
+/* Reference-style active menu pill */
+.banksetu-sidebar nav button[style*="linear-gradient"]{background:rgba(255,255,255,.96)!important;color:#6652dc!important;border-radius:8px!important;box-shadow:0 7px 18px rgba(47,31,132,.16)!important}
+
+/* V10: functional menu gradients + quick action polish */
+.banksetu-sidebar{background:var(--menu-gradient,linear-gradient(180deg,#6d5dfc,#7657e8,#5643c8))!important;}
+.dashboard-quick-grid button{border:1px solid rgba(255,255,255,.30)!important;color:#fff!important;box-shadow:0 10px 24px rgba(68,55,145,.16)!important;transition:transform .18s ease,box-shadow .18s ease!important;}
+.dashboard-quick-grid button:hover{transform:translateY(-2px)!important;box-shadow:0 14px 30px rgba(68,55,145,.24)!important;}
+.dashboard-quick-grid button div:first-child{background:rgba(255,255,255,.18)!important;color:#fff!important;}
+.dashboard-quick-grid button span{color:rgba(255,255,255,.92)!important;}
+
+
+/* V12 fixes: selected menu theme also controls the mobile hamburger. */
+@media (max-width: 900px){
+  .mobile-menu-button{background:var(--menu-gradient,linear-gradient(135deg,#735ee8,#927bf5))!important;color:#fff!important;border:1px solid rgba(255,255,255,.34)!important;}
 }

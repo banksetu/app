@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, getAuth, signOut } from "firebase/auth";
+import { initializeApp, getApp, deleteApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
 import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "./firebase";
 
 type SignupProps = {
   onBackToLogin: () => void;
@@ -49,18 +50,21 @@ function Signup({ onBackToLogin }: SignupProps) {
       return;
     }
 
+    const registrationApp = initializeApp(getApp().options, `banksetu-registration-${Date.now()}`);
+    const registrationAuth = getAuth(registrationApp);
+    const registrationDb = getFirestore(registrationApp);
     try {
       setLoading(true);
 
       const userCredential = await createUserWithEmailAndPassword(
-        auth,
+        registrationAuth,
         email.trim(),
         password
       );
 
       const user = userCredential.user;
 
-      await setDoc(doc(db, "users", user.uid), {
+      await setDoc(doc(registrationDb, "users", user.uid), {
         name: name.trim(),
         mobile: mobile.trim(),
         email: email.trim(),
@@ -70,6 +74,7 @@ function Signup({ onBackToLogin }: SignupProps) {
         createdAt: new Date().toISOString(),
       });
 
+      await signOut(registrationAuth);
       setSuccess(
         "Registration successful. Your account is waiting for admin approval."
       );
@@ -94,6 +99,8 @@ function Signup({ onBackToLogin }: SignupProps) {
         setError(`Registration failed: ${err.code || "unknown-error"}`);
       }
     } finally {
+      await signOut(registrationAuth).catch(() => {});
+      await deleteApp(registrationApp);
       setLoading(false);
     }
   };

@@ -1,0 +1,12 @@
+BankSetu Spark Fix - requested changes
+
+1. Settings now contains admin User Management / Application Permission only.
+2. User Management shows Total, Pending, Approved and Denied counts.
+3. Approve, Deny, Block, Unblock and Delete use secured Firebase callable functions.
+4. Advanced Administrator Control moved to the Admin profile dropdown and remains admin-only.
+5. Existing Reset Password, Dashboard Color, System Status and Logout remain in profile menu.
+6. Dashboard Color now has additional presets plus a custom RGB/HEX color picker.
+7. Quick Passbook added to the main menu.
+8. denyUser Cloud Function added. Existing approve/block/unblock/delete functions retained.
+
+IMPORTANT: deploy Firebase Functions after pushing this version so Approve/Deny/Block/Unblock/Delete actions use the latest backend.

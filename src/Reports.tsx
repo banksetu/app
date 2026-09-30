@@ -309,7 +309,7 @@ function MobileRow({
       <span
         style={{
           ...styles.mobileValue,
-          ...(strong ? { fontWeight: 700, color: "#ffffff" } : {}),
+          ...(strong ? { fontWeight: 700, color: "#34344c" } : {}),
         }}
       >
         {value}
@@ -350,14 +350,14 @@ const styles: Record<string, CSSProperties> = {
 
   title: {
     margin: 0,
-    color: "#ffffff",
+    color: "#34344c",
     fontSize: "clamp(24px, 4vw, 34px)",
     fontWeight: 800,
   },
 
   subtitle: {
     margin: "7px 0 0",
-    color: "#8fa9b8",
+    color: "#85869b",
     fontSize: "13px",
   },
 
@@ -376,8 +376,8 @@ const styles: Record<string, CSSProperties> = {
     minWidth: "145px",
     padding: "12px 16px",
     borderRadius: "14px",
-    border: "1px solid rgba(56,217,177,0.20)",
-    background: "rgba(13,42,53,0.72)",
+    border: "1px solid rgba(117,98,234,.16)",
+    background: "linear-gradient(135deg,#8b78f3,#705de4)",
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start",
@@ -390,7 +390,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   counterText: {
-    color: "#8fa9b8",
+    color: "rgba(255,255,255,.82)",
     fontSize: "10px",
   },
 
@@ -399,10 +399,10 @@ const styles: Record<string, CSSProperties> = {
     boxSizing: "border-box",
     borderRadius: "18px",
     overflow: "hidden",
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: "1px solid #e7e5f0",
     background:
-      "linear-gradient(145deg, rgba(9,35,46,0.96), rgba(7,27,38,0.96))",
-    boxShadow: "0 18px 45px rgba(0,0,0,0.20)",
+      "linear-gradient(145deg,#ffffff,#faf9ff)",
+    boxShadow: "0 12px 34px rgba(74,65,122,.10)",
   },
 
   panelHeader: {
@@ -411,18 +411,18 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: "12px",
-    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    borderBottom: "1px solid #eceaf3",
   },
 
   panelTitle: {
     margin: 0,
-    color: "#ffffff",
+    color: "#34344c",
     fontSize: "17px",
   },
 
   panelText: {
     margin: "5px 0 0",
-    color: "#7895a5",
+    color: "#85869b",
     fontSize: "11px",
   },
 
@@ -452,31 +452,31 @@ const styles: Record<string, CSSProperties> = {
   th: {
     padding: "12px 14px",
     textAlign: "left",
-    color: "#7593a4",
+    color: "#77758c",
     fontSize: "9px",
     fontWeight: 800,
     letterSpacing: "0.7px",
-    borderBottom: "1px solid rgba(255,255,255,0.07)",
-    background: "rgba(255,255,255,0.018)",
+    borderBottom: "1px solid #eceaf3",
+    background: "#f7f5fc",
   },
 
   td: {
     padding: "14px",
     textAlign: "left",
     verticalAlign: "middle",
-    color: "#b9cbd5",
+    color: "#5f6074",
     fontSize: "11px",
-    borderBottom: "1px solid rgba(255,255,255,0.055)",
+    borderBottom: "1px solid #efedf5",
   },
 
   tdStrong: {
     padding: "14px",
     textAlign: "left",
     verticalAlign: "middle",
-    color: "#ffffff",
+    color: "#34344c",
     fontSize: "11px",
     fontWeight: 700,
-    borderBottom: "1px solid rgba(255,255,255,0.055)",
+    borderBottom: "1px solid #efedf5",
   },
 
   subValue: {
@@ -524,14 +524,14 @@ const styles: Record<string, CSSProperties> = {
 
   emptyTitle: {
     margin: "0 0 7px",
-    color: "#ffffff",
+    color: "#34344c",
     fontSize: "16px",
   },
 
   emptyText: {
     margin: 0,
     maxWidth: "420px",
-    color: "#7895a5",
+    color: "#85869b",
     fontSize: "11px",
     lineHeight: 1.6,
   },
@@ -559,7 +559,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "12px",
     padding: "14px",
     borderRadius: "13px",
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: "1px solid #e7e5f0",
     background: "rgba(255,255,255,0.025)",
   },
 
@@ -572,7 +572,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   mobileDate: {
-    color: "#7895a5",
+    color: "#85869b",
     fontSize: "9px",
     textAlign: "right",
   },
@@ -587,7 +587,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   mobileLabel: {
-    color: "#7895a5",
+    color: "#85869b",
     fontSize: "10px",
     fontWeight: 700,
   },

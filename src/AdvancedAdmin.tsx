@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 
 import {
+  
 
   EmailAuthProvider,
 
@@ -18,10 +19,10 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
-
+declare const __APP_VERSION__: string;
 const STORAGE_KEY = "bankSetuApiUrl";
 
-const CURRENT_APP_VERSION = "1.0.0";
+const CURRENT_APP_VERSION = __APP_VERSION__;
 const UPDATE_MANIFEST_URL = "/version.json";
 
 type UpdateManifest = {

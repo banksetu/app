@@ -1,0 +1,10 @@
+Bank Setu Final UI V11 - Global Theme Fix
+
+1. Menu Color popup made smaller and scrollable for 30 gradient presets.
+2. Quick Actions now actually render their Pink/Purple/Green/Orange gradient backgrounds.
+3. Dashboard and Menu theme selection is stored globally in Firestore appConfig/uiTheme.
+4. All approved/active users and admins read the same global theme after login.
+5. Only approved active admins can write the global UI theme through Firestore rules.
+6. Custom dashboard RGB color is also shared globally.
+
+IMPORTANT: deploy firestore.rules once before testing global theme persistence.

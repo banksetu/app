@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-import { getAuth } from "firebase/auth";
+import {
+  EmailAuthProvider,
+  getAuth,
+  reauthenticateWithCredential,
+  updatePassword,
+} from "firebase/auth";
 
 import {
 
@@ -27,8 +32,8 @@ import type {
 import CustomerEntry from "./CustomerEntry";
 
 import Settings from "./Settings";
-
 import AdvancedAdmin from "./AdvancedAdmin";
+
 
 import Passbook from "./Passbook";
 
@@ -43,6 +48,7 @@ import bankSetuLogo from "./assets/bank-setu-logo.png";
 type DashboardProps = {
 
   onLogout: () => void;
+  userRole: "admin" | "user";
 
 };
 
@@ -94,6 +100,122 @@ const PASSBOOK_BANK_OPTIONS = [
 
 ] as const;
 
+type DashboardThemeId =
+
+  | "soft-mist"
+
+  | "pearl-blue"
+
+  | "cool-grey"
+  | "ocean-blue"
+  | "emerald"
+  | "royal-purple"
+  | "warm-sunset"
+  | "midnight"
+  | "dark-original";
+
+const DASHBOARD_THEMES: Array<{
+
+  id: DashboardThemeId;
+
+  name: string;
+
+  preview: string;
+
+  background: string;
+
+}> = [
+
+  {
+
+    id: "soft-mist",
+
+    name: "Soft Mist",
+
+    preview: "#e7f0f1",
+
+    background:
+
+      "radial-gradient(circle at 15% 8%, rgba(55,219,194,0.14), transparent 30%), radial-gradient(circle at 88% 12%, rgba(40,169,232,0.12), transparent 34%), linear-gradient(145deg,#edf4f4 0%,#e3edef 52%,#dbe8eb 100%)",
+
+  },
+
+  {
+
+    id: "pearl-blue",
+
+    name: "Pearl Blue",
+
+    preview: "#dbe9ef",
+
+    background:
+
+      "radial-gradient(circle at 12% 10%, rgba(57,224,197,0.12), transparent 30%), linear-gradient(145deg,#e9f2f5 0%,#dce9ee 52%,#d2e3e9 100%)",
+
+  },
+
+  {
+
+    id: "cool-grey",
+
+    name: "Cool Grey",
+
+    preview: "#e6eaed",
+
+    background:
+
+      "radial-gradient(circle at 82% 10%, rgba(40,169,232,0.10), transparent 32%), linear-gradient(145deg,#f0f3f4 0%,#e4e9eb 50%,#dce3e6 100%)",
+
+  },
+
+  { id: "ocean-blue", name: "Ocean Blue", preview: "#176b87", background: "linear-gradient(145deg,#0b3141 0%,#176b87 55%,#0b465d 100%)" },
+  { id: "emerald", name: "Emerald", preview: "#176b55", background: "linear-gradient(145deg,#082c26 0%,#176b55 55%,#0b4438 100%)" },
+  { id: "royal-purple", name: "Royal Purple", preview: "#60459b", background: "linear-gradient(145deg,#24183d 0%,#60459b 55%,#35225c 100%)" },
+  { id: "warm-sunset", name: "Warm Sunset", preview: "#9a553e", background: "linear-gradient(145deg,#3d211b 0%,#9a553e 55%,#5e3027 100%)" },
+  { id: "midnight", name: "Midnight", preview: "#17243a", background: "linear-gradient(145deg,#080f1c 0%,#17243a 55%,#0d1728 100%)" },
+
+  {
+
+    id: "dark-original",
+
+    name: "Dark Original",
+
+    preview: "#071c28",
+
+    background:
+
+      "radial-gradient(circle at 12% 12%, rgba(0,205,170,0.08), transparent 30%), radial-gradient(circle at 85% 10%, rgba(0,120,255,0.08), transparent 35%), linear-gradient(145deg,#04131b 0%,#071c28 48%,#082634 100%)",
+
+  },
+
+];
+
+const MENU_THEMES = [
+  ["violet","Vibrant Violet","#6d5dfc","#8b5cf6","#5643c8"], ["royal","Royal Purple","#4f46e5","#7c3aed","#9333ea"],
+  ["berry","Berry Pop","#7c3aed","#c026d3","#ec4899"], ["magenta","Magenta Dream","#a21caf","#db2777","#f43f5e"],
+  ["rose","Rose Glow","#be123c","#e11d48","#fb7185"], ["sunset","Sunset","#c2410c","#db2777","#7c3aed"],
+  ["coral","Coral Punch","#ea580c","#f43f5e","#db2777"], ["orange","Orange Flame","#c2410c","#f97316","#f59e0b"],
+  ["gold","Golden Hour","#b45309","#f59e0b","#facc15"], ["lime","Lime Fresh","#3f6212","#65a30d","#84cc16"],
+  ["emerald","Emerald Glow","#065f46","#059669","#10b981"], ["mint","Mint Wave","#0f766e","#14b8a6","#5eead4"],
+  ["teal","Teal Lagoon","#115e59","#0d9488","#06b6d4"], ["ocean","Ocean Blue","#075985","#0284c7","#22d3ee"],
+  ["sky","Sky Rush","#0369a1","#0ea5e9","#6366f1"], ["blue","Electric Blue","#1d4ed8","#2563eb","#06b6d4"],
+  ["indigo","Indigo Night","#312e81","#4f46e5","#7c3aed"], ["plum","Plum Velvet","#581c87","#7e22ce","#c026d3"],
+  ["grape","Grape Soda","#4c1d95","#7c3aed","#d946ef"], ["aurora","Aurora","#0f766e","#4f46e5","#c026d3"],
+  ["tropical","Tropical","#059669","#06b6d4","#6366f1"], ["candy","Candy","#ec4899","#8b5cf6","#3b82f6"],
+  ["fire","Firestorm","#991b1b","#ea580c","#f59e0b"], ["forest","Deep Forest","#14532d","#047857","#0f766e"],
+  ["slate","Slate Blue","#334155","#475569","#4f46e5"], ["midnight","Midnight","#0f172a","#1e293b","#334155"],
+  ["cosmic","Cosmic","#111827","#4338ca","#a21caf"], ["neon","Neon Night","#172554","#6d28d9","#db2777"],
+  ["lavender","Lavender","#7c3aed","#a78bfa","#c084fc"], ["peacock","Peacock","#164e63","#0e7490","#7c3aed"]
+].map(([id,name,a,b,c]) => ({ id, name, preview:`linear-gradient(135deg,${a},${b},${c})`, background:`linear-gradient(180deg,${a} 0%,${b} 52%,${c} 100%)` })) as Array<{id:string;name:string;preview:string;background:string}>;
+
+type MenuThemeId = string;
+
+const isMenuThemeId = (value: unknown): value is MenuThemeId => MENU_THEMES.some((theme) => theme.id === value);
+
+const isDashboardThemeId = (value: unknown): value is DashboardThemeId =>
+
+  DASHBOARD_THEMES.some((theme) => theme.id === value);
+
 type PageName =
 
   | "dashboard"
@@ -104,15 +226,15 @@ type PageName =
 
   | "passbook"
 
+  | "quick-passbook"
+
   | "search"
 
   | "reports"
 
-  | "settings"
+  | "settings";
 
-  | "advanced-admin";
-
-function Dashboard({ onLogout }: DashboardProps) {
+function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const [activePage, setActivePage] =
 
@@ -129,6 +251,82 @@ function Dashboard({ onLogout }: DashboardProps) {
   const [systemStatusOpen, setSystemStatusOpen] =
 
     useState(false);
+
+  const [passwordModalOpen, setPasswordModalOpen] =
+
+    useState(false);
+
+  const [currentPassword, setCurrentPassword] =
+
+    useState("");
+
+  const [newPassword, setNewPassword] =
+
+    useState("");
+
+  const [confirmPassword, setConfirmPassword] =
+
+    useState("");
+
+  const [passwordLoading, setPasswordLoading] =
+
+    useState(false);
+
+  const [passwordError, setPasswordError] =
+
+    useState("");
+
+
+  const [themeModalOpen, setThemeModalOpen] =
+
+    useState(false);
+
+  const [menuThemeModalOpen, setMenuThemeModalOpen] = useState(false);
+  const [menuTheme, setMenuTheme] = useState<MenuThemeId>(() => {
+    const saved = localStorage.getItem("bankSetuMenuTheme");
+    return isMenuThemeId(saved) ? saved : "violet";
+  });
+  const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
+
+  const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
+
+  const [customDashboardColor, setCustomDashboardColor] = useState(() =>
+    localStorage.getItem("bankSetuCustomDashboardColor") || "#123b4a"
+  );
+
+  const [useCustomDashboardColor, setUseCustomDashboardColor] = useState(() =>
+    localStorage.getItem("bankSetuUseCustomDashboardColor") === "true"
+  );
+
+  const [dashboardTheme, setDashboardTheme] =
+
+    useState<DashboardThemeId>(() => {
+
+      const savedTheme = localStorage.getItem(
+
+        "bankSetuDashboardTheme"
+
+      );
+
+      return savedTheme === "soft-mist"
+
+        ? "dark-original"
+
+        : isDashboardThemeId(savedTheme)
+
+          ? savedTheme
+
+          : "dark-original";
+
+    });
+
+  const selectedDashboardTheme =
+
+    DASHBOARD_THEMES.find(
+
+      (theme) => theme.id === dashboardTheme
+
+    ) || DASHBOARD_THEMES[0];
 
   const logoInputRef =
 
@@ -396,6 +594,31 @@ function Dashboard({ onLogout }: DashboardProps) {
 
         }
 
+
+        const cloudTheme =
+
+          cloudData.dashboardTheme === "soft-mist"
+
+            ? "dark-original"
+
+            : isDashboardThemeId(cloudData.dashboardTheme)
+
+              ? cloudData.dashboardTheme
+
+              : dashboardTheme;
+
+        const cloudMenuTheme = isMenuThemeId(cloudData.menuTheme) ? cloudData.menuTheme : menuTheme;
+
+        localStorage.setItem("bankSetuMenuTheme", cloudMenuTheme);
+
+        localStorage.setItem(
+
+          "bankSetuDashboardTheme",
+
+          cloudTheme
+
+        );
+
         if (!cancelled) {
 
           setBankInfo(cloudInfo);
@@ -405,6 +628,9 @@ function Dashboard({ onLogout }: DashboardProps) {
             setBankLogo(cloudLogo);
 
           }
+
+          setDashboardTheme(cloudTheme);
+          setMenuTheme(cloudMenuTheme);
 
         }
 
@@ -710,6 +936,291 @@ function Dashboard({ onLogout }: DashboardProps) {
 
   };
 
+  // Global UI theme is shared by every approved Bank Setu account.
+  // Firestore path: appSettings/uiTheme
+  const saveGlobalUiTheme = async (patch: Record<string, unknown>) => {
+    const user = getAuth().currentUser;
+    if (!user || userRole !== "admin") return;
+
+    await setDoc(
+      doc(db, "appSettings", "uiTheme"),
+      {
+        dashboardTheme,
+        menuTheme,
+        ...patch,
+        updatedBy: user.uid,
+      },
+      { merge: true }
+    );
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadGlobalUiTheme = async () => {
+      try {
+        const snap = await getDoc(doc(db, "appSettings", "uiTheme"));
+        if (!snap.exists() || cancelled) return;
+
+        const data = snap.data();
+
+        if (
+          typeof data.customDashboardColor === "string" &&
+          data.useCustomDashboardColor === true
+        ) {
+          setCustomDashboardColor(data.customDashboardColor);
+          setUseCustomDashboardColor(true);
+          localStorage.setItem("bankSetuCustomDashboardColor", data.customDashboardColor);
+          localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
+        } else if (isDashboardThemeId(data.dashboardTheme)) {
+          setDashboardTheme(data.dashboardTheme);
+          setUseCustomDashboardColor(false);
+          localStorage.setItem("bankSetuDashboardTheme", data.dashboardTheme);
+          localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
+        }
+
+        if (isMenuThemeId(data.menuTheme)) {
+          setMenuTheme(data.menuTheme);
+          localStorage.setItem("bankSetuMenuTheme", data.menuTheme);
+        }
+      } catch (error) {
+        console.error("Global UI theme load failed:", error);
+      }
+    };
+
+    void loadGlobalUiTheme();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const changeDashboardTheme = async (themeId: DashboardThemeId) => {
+    setDashboardTheme(themeId);
+    setUseCustomDashboardColor(false);
+    localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
+    localStorage.setItem("bankSetuDashboardTheme", themeId);
+
+    try {
+      await saveGlobalUiTheme({
+        dashboardTheme: themeId,
+        useCustomDashboardColor: false,
+      });
+    } catch (error) {
+      console.error("Dashboard theme cloud save failed:", error);
+      alert("Dashboard theme could not be saved globally. Please try again.");
+    }
+
+    setThemeModalOpen(false);
+  };
+
+  const changeMenuTheme = async (themeId: MenuThemeId) => {
+    setMenuTheme(themeId);
+    localStorage.setItem("bankSetuMenuTheme", themeId);
+
+    try {
+      await saveGlobalUiTheme({ menuTheme: themeId });
+    } catch (error) {
+      console.error("Menu theme cloud save failed:", error);
+      alert("Menu theme could not be saved globally. Please try again.");
+    }
+
+    setMenuThemeModalOpen(false);
+  };
+
+  const closePasswordModal = () => {
+
+    if (passwordLoading) return;
+
+    setPasswordModalOpen(false);
+
+    setCurrentPassword("");
+
+    setNewPassword("");
+
+    setConfirmPassword("");
+
+    setPasswordError("");
+
+  };
+
+  const openPasswordModal = () => {
+
+    setAdminMenuOpen(false);
+
+    setPasswordError("");
+
+    setCurrentPassword("");
+
+    setNewPassword("");
+
+    setConfirmPassword("");
+
+    setPasswordModalOpen(true);
+
+  };
+
+  const changeAdminPassword = async () => {
+
+    setPasswordError("");
+
+    const user = getAuth().currentUser;
+
+    if (!user || !user.email) {
+
+      setPasswordError(
+
+        "Admin login session is not available. Please login again."
+
+      );
+
+      return;
+
+    }
+
+    if (!currentPassword) {
+
+      setPasswordError("Please enter your current password.");
+
+      return;
+
+    }
+
+    if (newPassword.length < 6) {
+
+      setPasswordError(
+
+        "New password must be at least 6 characters."
+
+      );
+
+      return;
+
+    }
+
+    if (newPassword !== confirmPassword) {
+
+      setPasswordError(
+
+        "New password and confirm password do not match."
+
+      );
+
+      return;
+
+    }
+
+    if (currentPassword === newPassword) {
+
+      setPasswordError(
+
+        "New password must be different from the current password."
+
+      );
+
+      return;
+
+    }
+
+    try {
+
+      setPasswordLoading(true);
+
+      const credential = EmailAuthProvider.credential(
+
+        user.email,
+
+        currentPassword
+
+      );
+
+      await reauthenticateWithCredential(
+
+        user,
+
+        credential
+
+      );
+
+      await updatePassword(user, newPassword);
+
+      setPasswordModalOpen(false);
+
+      setCurrentPassword("");
+
+      setNewPassword("");
+
+      setConfirmPassword("");
+
+      alert("Admin password changed successfully.");
+
+    } catch (error) {
+
+      console.error("Admin password change failed:", error);
+
+      const code =
+
+        typeof error === "object" &&
+
+        error !== null &&
+
+        "code" in error
+
+          ? String((error as { code?: unknown }).code || "")
+
+          : "";
+
+      if (
+
+        code === "auth/invalid-credential" ||
+
+        code === "auth/wrong-password"
+
+      ) {
+
+        setPasswordError("Current password is incorrect.");
+
+      } else if (code === "auth/weak-password") {
+
+        setPasswordError(
+
+          "New password is too weak. Please use at least 6 characters."
+
+        );
+
+      } else if (code === "auth/too-many-requests") {
+
+        setPasswordError(
+
+          "Too many attempts. Please wait a little and try again."
+
+        );
+
+      } else if (code === "auth/network-request-failed") {
+
+        setPasswordError(
+
+          "Network error. Please check your internet connection."
+
+        );
+
+      } else {
+
+        setPasswordError(
+
+          "Password could not be changed. Please try again."
+
+        );
+
+      }
+
+    } finally {
+
+      setPasswordLoading(false);
+
+    }
+
+  };
+
   const openPage = (page: PageName) => {
 
     setActivePage(page);
@@ -816,7 +1327,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
   return (
 
-    <main style={styles.page}>
+    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background } as CSSProperties}>
 
       {mobileMenuOpen && (
 
@@ -844,7 +1355,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
         }`}
 
-        style={styles.sidebar}
+        style={{ ...styles.sidebar, background: selectedMenuTheme.background, "--menu-gradient": selectedMenuTheme.background } as CSSProperties}
 
       >
 
@@ -985,6 +1496,13 @@ function Dashboard({ onLogout }: DashboardProps) {
           />
 
           <NavButton
+            icon="⚡"
+            label="Quick Passbook"
+            active={activePage === "quick-passbook"}
+            onClick={() => openPage("quick-passbook")}
+          />
+
+          <NavButton
 
             icon="🔎"
 
@@ -1024,7 +1542,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
           />
 
-          <NavButton
+          {userRole === "admin" && <NavButton
 
             icon="⚙️"
 
@@ -1042,7 +1560,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
             }
 
-          />
+          />}
 
         </nav>
 
@@ -1050,7 +1568,15 @@ function Dashboard({ onLogout }: DashboardProps) {
 
       {/* MAIN AREA */}
 
-      <section style={styles.mainContent}>
+      <section
+        className="banksetu-main-workspace"
+        style={{
+          ...styles.mainContent,
+          background: useCustomDashboardColor
+            ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #000 28%) 100%)`
+            : selectedDashboardTheme.background,
+        }}
+      >
 
         <header className="dashboard-top-bar" style={styles.topBar}>
 
@@ -1060,7 +1586,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
             className="mobile-menu-button"
 
-            style={styles.mobileMenuButton}
+            style={{ ...styles.mobileMenuButton, background: selectedMenuTheme.background, border: "1px solid rgba(255,255,255,0.34)", color: "#fff" }}
 
             onClick={() =>
 
@@ -1090,6 +1616,8 @@ function Dashboard({ onLogout }: DashboardProps) {
 
               }`}
 
+              tabIndex={bankLogo ? 0 : -1}
+
               style={styles.bankLogoZone}
 
             >
@@ -1108,61 +1636,40 @@ function Dashboard({ onLogout }: DashboardProps) {
 
                   />
 
-                  <button
-
-                    type="button"
-
-                    className="logo-edit-pencil"
-
-                    style={styles.logoEditButton}
-
-                    onClick={openLogoPicker}
-
-                    title="Edit Bank Logo"
-
-                  >
-
-                    ✎
-
-                  </button>
+                  {userRole === "admin" && (
+                    <button
+                      type="button"
+                      className="logo-edit-pencil"
+                      style={styles.logoEditButton}
+                      onClick={openLogoPicker}
+                      title="Edit Bank Logo"
+                    >
+                      ✎
+                    </button>
+                  )}
 
                 </>
 
               ) : (
 
-                <button
-
-                  type="button"
-
-                  style={styles.firstLogoUpload}
-
-                  onClick={openLogoPicker}
-
-                >
-
-                  <span style={styles.uploadLogoIcon}>
-
-                    🏦
-
-                  </span>
-
-                  <span>
-
-                    <strong>
-
-                      Upload Bank Logo
-
-                    </strong>
-
-                    <small style={styles.uploadHint}>
-
-                      Add your bank or CSP logo
-
-                    </small>
-
-                  </span>
-
-                </button>
+                userRole === "admin" ? (
+                  <button
+                    type="button"
+                    style={styles.firstLogoUpload}
+                    onClick={openLogoPicker}
+                  >
+                    <span style={styles.uploadLogoIcon}>🏦</span>
+                    <span>
+                      <strong>Upload Bank Logo</strong>
+                      <small style={styles.uploadHint}>Add your bank or CSP logo</small>
+                    </span>
+                  </button>
+                ) : (
+                  <div style={styles.firstLogoUpload}>
+                    <span style={styles.uploadLogoIcon}>🏦</span>
+                    <span><strong>Bank Logo</strong></span>
+                  </div>
+                )
 
               )}
 
@@ -1190,15 +1697,11 @@ function Dashboard({ onLogout }: DashboardProps) {
 
               }`}
 
+              tabIndex={hasBankInfo ? 0 : -1}
+
               style={styles.bankInfoStrip}
 
             >
-
-              <p style={styles.bankInfoLabel}>
-
-                BANK INFORMATION
-
-              </p>
 
               <h2 style={styles.bankInfoTitle}>
 
@@ -1256,44 +1759,27 @@ function Dashboard({ onLogout }: DashboardProps) {
 
               )}
 
-              {hasBankInfo ? (
-
-                <button
-
-                  type="button"
-
-                  className="bank-info-edit-pencil"
-
-                  style={styles.bankInfoEditPencil}
-
-                  onClick={openBankInfoEditor}
-
-                  title="Edit Bank / CSP Information"
-
-                  aria-label="Edit Bank / CSP Information"
-
-                >
-
-                  ✎
-
-                </button>
-
-              ) : (
-
-                <button
-
-                  type="button"
-
-                  style={styles.editInfoButton}
-
-                  onClick={openBankInfoEditor}
-
-                >
-
-                  ✎ Edit Information
-
-                </button>
-
+              {userRole === "admin" && (
+                hasBankInfo ? (
+                  <button
+                    type="button"
+                    className="bank-info-edit-pencil"
+                    style={styles.bankInfoEditPencil}
+                    onClick={openBankInfoEditor}
+                    title="Edit Bank / CSP Information"
+                    aria-label="Edit Bank / CSP Information"
+                  >
+                    ✎
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    style={styles.editInfoButton}
+                    onClick={openBankInfoEditor}
+                  >
+                    ✎ Edit Information
+                  </button>
+                )
               )}
 
             </div>
@@ -1324,7 +1810,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
               <div style={styles.adminAvatar}>
 
-                A
+                {userRole === "admin" ? "A" : "U"}
 
               </div>
 
@@ -1336,7 +1822,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
               >
 
-                Admin
+                {userRole === "admin" ? "Admin" : "User"}
 
               </span>
 
@@ -1368,23 +1854,24 @@ function Dashboard({ onLogout }: DashboardProps) {
 
                   style={styles.adminMenuItem}
 
-                  onClick={() => {
-
-                    alert(
-
-                      "Password reset will be connected later."
-
-                    );
-
-                    setAdminMenuOpen(false);
-
-                  }}
+                  onClick={openPasswordModal}
 
                 >
 
                   🔐 Reset Password
 
                 </button>
+
+
+                {userRole === "admin" && <button
+                  type="button" style={styles.adminMenuItem}
+                  onClick={() => { setAdminMenuOpen(false); setThemeModalOpen(true); }}
+                >🎨 Dashboard Color</button>}
+
+                {userRole === "admin" && <button
+                  type="button" style={styles.adminMenuItem}
+                  onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
+                >🌈 Menu Color</button>}
 
                 <button
 
@@ -1406,31 +1893,20 @@ function Dashboard({ onLogout }: DashboardProps) {
 
                 </button>
 
-                <button
 
-                  type="button"
 
-                  style={
-
-                    styles.advancedAdminItem
-
-                  }
-
-                  onClick={() =>
-
-                    openPage(
-
-                      "advanced-admin"
-
-                    )
-
-                  }
-
-                >
-
-                  🛡 Advanced Administrator Control
-
-                </button>
+                {userRole === "admin" && (
+                  <button
+                    type="button"
+                    style={styles.adminMenuItem}
+                    onClick={() => {
+                      setAdminMenuOpen(false);
+                      setAdvancedAdminOpen(true);
+                    }}
+                  >
+                    🛡️ Advanced Administrator Control
+                  </button>
+                )}
 
                 <button
 
@@ -1458,6 +1934,8 @@ function Dashboard({ onLogout }: DashboardProps) {
 
         </header>
 
+        <div className="dashboard-top-divider" style={styles.topDivider} />
+
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
@@ -1480,17 +1958,9 @@ function Dashboard({ onLogout }: DashboardProps) {
 
           )}
 
-          {activePage === "settings" && (
+          {activePage === "settings" && userRole === "admin" && (
 
-            <Settings />
-
-          )}
-
-          {activePage ===
-
-            "advanced-admin" && (
-
-            <AdvancedAdmin />
+            <Settings userRole={userRole} />
 
           )}
 
@@ -1502,8 +1972,12 @@ function Dashboard({ onLogout }: DashboardProps) {
 
           {activePage === "passbook" && (
 
-            <Passbook selectedBank={bankInfo.passbookBank} />
+            <Passbook />
 
+          )}
+
+          {activePage === "quick-passbook" && (
+            <Passbook />
           )}
 
           {activePage === "search" && (
@@ -1858,6 +2332,436 @@ function Dashboard({ onLogout }: DashboardProps) {
 
       )}
 
+      {/* DASHBOARD COLOR */}
+
+      {themeModalOpen && userRole === "admin" && (
+
+        <div
+
+          style={styles.modalOverlay}
+
+          onMouseDown={(event) => {
+
+            if (event.target === event.currentTarget) {
+
+              setThemeModalOpen(false);
+
+            }
+
+          }}
+
+        >
+
+          <div style={styles.themeModal}>
+
+            <div style={styles.modalHeader}>
+
+              <div>
+
+                <p style={styles.passwordEyebrow}>
+
+                  APPEARANCE
+
+                </p>
+
+                <h2 style={styles.modalTitle}>
+
+                  Dashboard Color
+
+                </h2>
+
+                <p style={styles.passwordHelpText}>
+
+                  Choose the workspace background. Cards stay dark for clear contrast.
+
+                </p>
+
+              </div>
+
+              <button
+
+                type="button"
+
+                style={styles.modalClose}
+
+                onClick={() => setThemeModalOpen(false)}
+
+                aria-label="Close dashboard color dialog"
+
+              >
+
+                ×
+
+              </button>
+
+            </div>
+
+            <div style={styles.themeGrid}>
+
+              {DASHBOARD_THEMES.map((theme) => (
+
+                <button
+
+                  key={theme.id}
+
+                  type="button"
+
+                  style={{
+
+                    ...styles.themeChoice,
+
+                    ...(dashboardTheme === theme.id
+
+                      ? styles.themeChoiceActive
+
+                      : {}),
+
+                  }}
+
+                  onClick={() => void changeDashboardTheme(theme.id)}
+
+                >
+
+                  <span
+
+                    style={{
+
+                      ...styles.themeSwatch,
+
+                      background: theme.preview,
+
+                    }}
+
+                  />
+
+                  <span>{theme.name}</span>
+
+                  {dashboardTheme === theme.id && (
+
+                    <strong style={styles.themeSelected}>✓</strong>
+
+                  )}
+
+                </button>
+
+              ))}
+
+            </div>
+
+            <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+              <p style={{ ...styles.passwordHelpText, marginBottom: 10 }}>Custom dynamic color</p>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="color"
+                  value={customDashboardColor}
+                  onChange={(event) => setCustomDashboardColor(event.target.value)}
+                  aria-label="Choose custom dashboard color"
+                  style={{ width: 56, height: 42, border: 0, padding: 0, background: "transparent", cursor: "pointer" }}
+                />
+                <input
+                  value={customDashboardColor}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCustomDashboardColor(value.startsWith("#") ? value : `#${value}`);
+                  }}
+                  placeholder="#123B4A"
+                  style={{ flex: "1 1 130px", minWidth: 130, height: 40, borderRadius: 9, border: "1px solid rgba(255,255,255,.12)", background: "#0b2531", color: "#fff", padding: "0 12px" }}
+                />
+                <button
+                  type="button"
+                  style={styles.themeChoice}
+                  onClick={() => {
+                    localStorage.setItem("bankSetuCustomDashboardColor", customDashboardColor);
+                    localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
+                    setUseCustomDashboardColor(true);
+                    void saveGlobalUiTheme({ customDashboardColor, useCustomDashboardColor: true });
+                    setThemeModalOpen(false);
+                  }}
+                >Apply RGB / Custom</button>
+                {useCustomDashboardColor && <button type="button" style={styles.themeChoice} onClick={() => {
+                  localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
+                  setUseCustomDashboardColor(false);
+                  void saveGlobalUiTheme({ dashboardTheme, useCustomDashboardColor: false });
+                }}>Use Preset</button>}
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {menuThemeModalOpen && userRole === "admin" && (
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
+          <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
+            <div style={styles.modalHeader}>
+              <div>
+                <p style={styles.passwordEyebrow}>APPEARANCE</p>
+                <h2 style={styles.modalTitle}>Menu Color</h2>
+                <p style={styles.passwordHelpText}>Choose a vibrant gradient for the sidebar menu. Text stays high-contrast automatically.</p>
+              </div>
+              <button type="button" style={styles.modalClose} onClick={() => setMenuThemeModalOpen(false)} aria-label="Close menu color dialog">×</button>
+            </div>
+            <div style={{ ...styles.themeGrid, overflowY: "auto", paddingRight: "6px", marginTop: "12px", gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
+              {MENU_THEMES.map((theme) => (
+                <button key={theme.id} type="button" style={{ ...styles.themeChoice, ...(menuTheme === theme.id ? styles.themeChoiceActive : {}) }} onClick={() => void changeMenuTheme(theme.id)}>
+                  <span style={{ ...styles.themeSwatch, background: theme.preview }} />
+                  <span>{theme.name}</span>
+                  {menuTheme === theme.id && <strong style={styles.themeSelected}>✓</strong>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {advancedAdminOpen && userRole === "admin" && (
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
+          <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+            <div style={styles.modalHeader}>
+              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>Advanced Administrator Control</h2></div>
+              <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
+            </div>
+            <AdvancedAdmin />
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN PASSWORD */}
+
+      {passwordModalOpen && (
+
+        <div
+
+          style={styles.modalOverlay}
+
+          onMouseDown={(event) => {
+
+            if (
+
+              event.target === event.currentTarget &&
+
+              !passwordLoading
+
+            ) {
+
+              closePasswordModal();
+
+            }
+
+          }}
+
+        >
+
+          <div style={styles.passwordModal}>
+
+            <div style={styles.modalHeader}>
+
+              <div>
+
+                <p style={styles.passwordEyebrow}>
+
+                  ADMIN SECURITY
+
+                </p>
+
+                <h2 style={styles.modalTitle}>
+
+                  Change Admin Password
+
+                </h2>
+
+                <p style={styles.passwordHelpText}>
+
+                  Verify your current password, then set a new password.
+
+                </p>
+
+              </div>
+
+              <button
+
+                type="button"
+
+                style={styles.modalClose}
+
+                onClick={closePasswordModal}
+
+                disabled={passwordLoading}
+
+                aria-label="Close password dialog"
+
+              >
+
+                ×
+
+              </button>
+
+            </div>
+
+            <div style={styles.passwordForm}>
+
+              <label style={styles.passwordField}>
+
+                <span style={styles.bankInfoFieldLabel}>
+
+                  Current Password
+
+                </span>
+
+                <input
+
+                  type="password"
+
+                  value={currentPassword}
+
+                  onChange={(event) =>
+
+                    setCurrentPassword(event.target.value)
+
+                  }
+
+                  style={styles.passwordInput}
+
+                  placeholder="Enter current password"
+
+                  autoComplete="current-password"
+
+                  autoFocus
+
+                />
+
+              </label>
+
+              <label style={styles.passwordField}>
+
+                <span style={styles.bankInfoFieldLabel}>
+
+                  New Password
+
+                </span>
+
+                <input
+
+                  type="password"
+
+                  value={newPassword}
+
+                  onChange={(event) =>
+
+                    setNewPassword(event.target.value)
+
+                  }
+
+                  style={styles.passwordInput}
+
+                  placeholder="Minimum 6 characters"
+
+                  autoComplete="new-password"
+
+                />
+
+              </label>
+
+              <label style={styles.passwordField}>
+
+                <span style={styles.bankInfoFieldLabel}>
+
+                  Confirm New Password
+
+                </span>
+
+                <input
+
+                  type="password"
+
+                  value={confirmPassword}
+
+                  onChange={(event) =>
+
+                    setConfirmPassword(event.target.value)
+
+                  }
+
+                  onKeyDown={(event) => {
+
+                    if (event.key === "Enter") {
+
+                      void changeAdminPassword();
+
+                    }
+
+                  }}
+
+                  style={styles.passwordInput}
+
+                  placeholder="Re-enter new password"
+
+                  autoComplete="new-password"
+
+                />
+
+              </label>
+
+              {passwordError && (
+
+                <div style={styles.passwordError}>
+
+                  {passwordError}
+
+                </div>
+
+              )}
+
+            </div>
+
+            <div style={styles.passwordActions}>
+
+              <button
+
+                type="button"
+
+                style={styles.passwordCancelButton}
+
+                onClick={closePasswordModal}
+
+                disabled={passwordLoading}
+
+              >
+
+                Cancel
+
+              </button>
+
+              <button
+
+                type="button"
+
+                style={styles.passwordSaveButton}
+
+                onClick={() => void changeAdminPassword()}
+
+                disabled={passwordLoading}
+
+              >
+
+                {passwordLoading
+
+                  ? "Changing..."
+
+                  : "Change Password"}
+
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
       {/* SYSTEM STATUS */}
 
       {systemStatusOpen && (
@@ -1988,9 +2892,35 @@ function Dashboard({ onLogout }: DashboardProps) {
 
             .bank-logo-zone.has-logo
 
+            .logo-edit-pencil,
+
+            .bank-logo-zone.has-logo:hover
+
             .logo-edit-pencil {
 
-              opacity: 0.85;
+              opacity: 0;
+
+              pointer-events: none;
+
+              transform: scale(0.9);
+
+            }
+
+            .bank-logo-zone:focus,
+
+            .bank-info-strip:focus {
+
+              outline: none;
+
+            }
+
+            .bank-logo-zone.has-logo:focus-within
+
+            .logo-edit-pencil {
+
+              opacity: 1;
+
+              pointer-events: auto;
 
               transform: scale(1);
 
@@ -2026,9 +2956,27 @@ function Dashboard({ onLogout }: DashboardProps) {
 
             .bank-info-strip.has-info
 
+            .bank-info-edit-pencil,
+
+            .bank-info-strip.has-info:hover
+
             .bank-info-edit-pencil {
 
-              opacity: 0.85;
+              opacity: 0;
+
+              pointer-events: none;
+
+              transform: scale(0.9);
+
+            }
+
+            .bank-info-strip.has-info:focus-within
+
+            .bank-info-edit-pencil {
+
+              opacity: 1;
+
+              pointer-events: auto;
 
               transform: scale(1);
 
@@ -2162,6 +3110,16 @@ function Dashboard({ onLogout }: DashboardProps) {
 
               min-height: auto !important;
 
+              padding: 8px !important;
+
+              border-radius: 15px !important;
+
+            }
+
+            .dashboard-top-divider {
+
+              margin: 10px 0 16px !important;
+
             }
 
             .mobile-menu-button {
@@ -2193,6 +3151,10 @@ function Dashboard({ onLogout }: DashboardProps) {
               grid-row: 1 !important;
 
               justify-self: end !important;
+
+              padding-left: 0 !important;
+
+              border-left: none !important;
 
             }
 
@@ -2284,11 +3246,81 @@ function Dashboard({ onLogout }: DashboardProps) {
 
             }
 
+            .dashboard-stats-grid {
+
+              grid-template-columns:
+
+                repeat(2, minmax(0, 1fr)) !important;
+
+              gap: 8px !important;
+
+              margin-bottom: 14px !important;
+
+            }
+
+            .dashboard-stat-card {
+
+              min-width: 0 !important;
+
+              padding: 11px !important;
+
+              border-radius: 13px !important;
+
+            }
+
+            .dashboard-stat-top {
+
+              margin-bottom: 9px !important;
+
+            }
+
+            .dashboard-stat-icon {
+
+              width: 31px !important;
+
+              height: 31px !important;
+
+              border-radius: 9px !important;
+
+              font-size: 14px !important;
+
+            }
+
+            .dashboard-stat-badge {
+
+              font-size: 6px !important;
+
+            }
+
+            .dashboard-stat-value {
+
+              font-size: 21px !important;
+
+              line-height: 1.05 !important;
+
+            }
+
+            .dashboard-stat-title {
+
+              margin-top: 4px !important;
+
+              font-size: 9px !important;
+
+              line-height: 1.2 !important;
+
+            }
+
             .dashboard-quick-grid {
 
               grid-template-columns:
 
                 1fr !important;
+
+            }
+
+            .dashboard-sync-banner {
+
+              margin-bottom: 10px !important;
 
             }
 
@@ -2308,7 +3340,7 @@ function Dashboard({ onLogout }: DashboardProps) {
 
    DASHBOARD HOME
 
-\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\========================= */
+\========================= */
 
 function DashboardHome({
 
@@ -2398,39 +3430,165 @@ function DashboardHome({
 
         }
 
-        const idToken = await user.getIdToken();
+        let result: {
 
-        const response = await fetch(apiUrl, {
+          success?: boolean;
 
-          method: "POST",
+          message?: string;
 
-          headers: {
+          stats?: Partial<DashboardStats>;
 
-            "Content-Type":
+        } | null = null;
 
-              "text/plain;charset=utf-8",
+        let lastError: Error | null = null;
 
-          },
+        for (let attempt = 0; attempt < 3; attempt += 1) {
 
-          body: JSON.stringify({
+          try {
 
-            action: "getDashboardStats",
+            const idToken = await user.getIdToken(
 
-            idToken,
+              attempt > 0
 
-          }),
+            );
 
-        });
+            const response = await fetch(apiUrl, {
 
-        const result = await response.json();
+              method: "POST",
 
-        if (!result?.success) {
+              headers: {
 
-          throw new Error(
+                "Content-Type":
 
-            result?.message ||
+                  "text/plain;charset=utf-8",
+
+              },
+
+              body: JSON.stringify({
+
+                action: "getDashboardStats",
+
+                idToken,
+
+              }),
+
+            });
+
+            const rawText = await response.text();
+
+            if (!response.ok) {
+
+              throw new Error(
+
+                `Dashboard service returned HTTP ${response.status}.`
+
+              );
+
+            }
+
+            const trimmed = rawText.trim();
+
+            if (
+
+              !trimmed ||
+
+              trimmed.startsWith("<") ||
+
+              trimmed.toLowerCase().startsWith("<!doctype")
+
+            ) {
+
+              throw new Error(
+
+                "Dashboard service returned a temporary web page instead of data."
+
+              );
+
+            }
+
+            try {
+
+              result = JSON.parse(trimmed) as {
+
+                success?: boolean;
+
+                message?: string;
+
+                stats?: Partial<DashboardStats>;
+
+              };
+
+            } catch {
+
+              throw new Error(
+
+                "Dashboard service returned an invalid data response."
+
+              );
+
+            }
+
+            if (!result?.success) {
+
+              throw new Error(
+
+                result?.message ||
+
+                  "Dashboard statistics could not be loaded."
+
+              );
+
+            }
+
+            lastError = null;
+
+            break;
+
+          } catch (requestError) {
+
+            lastError =
+
+              requestError instanceof Error
+
+                ? requestError
+
+                : new Error(
+
+                    "Dashboard statistics could not be loaded."
+
+                  );
+
+            if (attempt < 2) {
+
+              await new Promise((resolve) =>
+
+                window.setTimeout(
+
+                  resolve,
+
+                  attempt === 0 ? 700 : 1400
+
+                )
+
+              );
+
+            }
+
+          }
+
+        }
+
+        if (lastError || !result?.success) {
+
+          throw (
+
+            lastError ||
+
+            new Error(
 
               "Dashboard statistics could not be loaded."
+
+            )
 
           );
 
@@ -2564,7 +3722,33 @@ function DashboardHome({
 
     <>
 
-      <section style={styles.statsGrid}>
+      {statsError && (
+
+        <div
+
+          className="dashboard-sync-banner"
+
+          style={styles.syncErrorBanner}
+
+          role="status"
+
+        >
+
+          <span style={styles.syncErrorIcon}>⚠</span>
+
+          <div>
+
+            <strong style={styles.syncErrorTitle}>Dashboard sync issue</strong>
+
+            <span style={styles.syncErrorText}>{statsError}</span>
+
+          </div>
+
+        </div>
+
+      )}
+
+      <section className="dashboard-stats-grid" style={styles.statsGrid}>
 
         {stats.map(([icon, title, value]) => (
 
@@ -2572,19 +3756,21 @@ function DashboardHome({
 
             key={title}
 
-            style={styles.statCard}
+            className="dashboard-stat-card"
+
+          style={styles.statCard}
 
           >
 
-            <div style={styles.statTop}>
+            <div className="dashboard-stat-top" style={styles.statTop}>
 
-              <div style={styles.statIcon}>
+              <div className="dashboard-stat-icon" style={styles.statIcon}>
 
                 {icon}
 
               </div>
 
-              <span style={styles.statBadge}>
+              <span className="dashboard-stat-badge" style={styles.statBadge}>
 
                 {statsLoading ? "SYNC" : "LIVE"}
 
@@ -2592,13 +3778,13 @@ function DashboardHome({
 
             </div>
 
-            <div style={styles.statValue}>
+            <div className="dashboard-stat-value" style={styles.statValue}>
 
               {statsLoading ? "…" : value}
 
             </div>
 
-            <h3 style={styles.statTitle}>
+            <h3 className="dashboard-stat-title" style={styles.statTitle}>
 
               {title}
 
@@ -2610,41 +3796,7 @@ function DashboardHome({
 
       </section>
 
-      {statsError && (
-
-        <div
-
-          style={{
-
-            margin: "-8px 0 18px",
-
-            padding: "10px 13px",
-
-            borderRadius: "12px",
-
-            border:
-
-              "1px solid rgba(255,144,144,0.18)",
-
-            background:
-
-              "rgba(255,100,100,0.06)",
-
-            color: "#ffb0b0",
-
-            fontSize: "10px",
-
-          }}
-
-        >
-
-          Dashboard sync error: {statsError}
-
-        </div>
-
-      )}
-
-      <section style={styles.panel}>
+      <section className="dashboard-quick-panel" style={styles.panel}>
 
         <div style={styles.centerHeading}>
 
@@ -2675,6 +3827,7 @@ function DashboardHome({
             icon="➕"
 
             title="Add Customer"
+            gradient="linear-gradient(135deg,#ec4899 0%,#f43f5e 48%,#fb7185 100%)"
 
             text="Create a new customer record"
 
@@ -2691,6 +3844,7 @@ function DashboardHome({
             icon="📄"
 
             title="Upload PDF"
+            gradient="linear-gradient(135deg,#7c3aed 0%,#8b5cf6 48%,#c084fc 100%)"
 
             text="Import account opening PDF"
 
@@ -2707,6 +3861,7 @@ function DashboardHome({
             icon="🖨"
 
             title="Passbook Print"
+            gradient="linear-gradient(135deg,#059669 0%,#10b981 48%,#2dd4bf 100%)"
 
             text="Search and print passbook"
 
@@ -2723,6 +3878,7 @@ function DashboardHome({
             icon="🔎"
 
             title="Account Opening PDF"
+            gradient="linear-gradient(135deg,#f59e0b 0%,#f97316 52%,#ef4444 100%)"
 
             text="Generate account opening PDF"
 
@@ -2752,6 +3908,8 @@ function QuickAction({
 
   text,
 
+  gradient,
+
   onClick,
 
 }: {
@@ -2761,6 +3919,8 @@ function QuickAction({
   title: string;
 
   text: string;
+
+  gradient: string;
 
   onClick: () => void;
 
@@ -2772,7 +3932,9 @@ function QuickAction({
 
       type="button"
 
-      style={styles.quickCard}
+      className="dashboard-quick-card"
+
+      style={{ ...styles.quickCard, background: gradient }}
 
       onClick={onClick}
 
@@ -2816,7 +3978,7 @@ function QuickAction({
 
    NAV
 
-\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\========================= */
+\========================= */
 
 function NavButton({
 
@@ -2846,6 +4008,8 @@ function NavButton({
 
       type="button"
 
+      className={active ? "banksetu-nav-item active" : "banksetu-nav-item"}
+
       onClick={onClick}
 
       style={
@@ -2862,7 +4026,7 @@ function NavButton({
 
       <span>{icon}</span>
 
-      {label}
+      <span>{label}</span>
 
     </button>
 
@@ -2874,7 +4038,7 @@ function NavButton({
 
    COMING SOON
 
-\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\========================= */
+\========================= */
 
 function ComingSoon({
 
@@ -2922,7 +4086,7 @@ function ComingSoon({
 
    STATUS ROW
 
-\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\========================= */
+\========================= */
 
 function StatusRow({
 
@@ -2974,7 +4138,7 @@ function StatusRow({
 
    STYLES
 
-\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\========================= */
+\========================= */
 
 const styles: Record<
 
@@ -3042,7 +4206,8 @@ const styles: Record<
 
     borderRight:
 
-      "1px solid rgba(62,207,188,0.12)",
+      "1px solid rgba(255,255,255,0.18)",
+    boxShadow: "14px 0 38px rgba(15,23,42,0.18)",
 
   },
 
@@ -3172,7 +4337,7 @@ const styles: Record<
 
     background: "transparent",
 
-    color: "#b0c0cc",
+    color: "rgba(255,255,255,0.86)",
 
     cursor: "pointer",
 
@@ -3202,7 +4367,7 @@ const styles: Record<
 
       "linear-gradient(90deg,rgba(37,214,183,0.13),rgba(0,135,255,0.06))",
 
-    color: "#47e4c9",
+    color: "#ffffff",
 
     cursor: "pointer",
 
@@ -3216,7 +4381,13 @@ const styles: Record<
 
     minWidth: 0,
 
+    minHeight: "100vh",
+
     padding: "8px 32px 45px",
+
+    boxSizing: "border-box",
+
+    transition: "background 0.25s ease",
 
   },
 
@@ -3228,9 +4399,35 @@ const styles: Record<
 
     gap: "18px",
 
-    marginBottom: "14px",
+    minHeight: "84px",
 
-    minHeight: "76px",
+    padding: "10px 14px",
+
+    boxSizing: "border-box",
+
+    borderRadius: "18px",
+
+    border: "1px solid rgba(255,255,255,0.07)",
+
+    background:
+
+      "linear-gradient(135deg,rgba(9,35,47,0.96),rgba(8,42,53,0.9))",
+
+    boxShadow: "0 12px 34px rgba(0,0,0,0.18)",
+
+  },
+
+  topDivider: {
+
+    width: "100%",
+
+    height: "1px",
+
+    margin: "14px 0 20px",
+
+    background:
+
+      "linear-gradient(90deg,transparent,rgba(71,226,200,0.28),rgba(255,255,255,0.08),transparent)",
 
   },
 
@@ -3271,6 +4468,12 @@ const styles: Record<
   adminWrapper: {
 
     position: "relative",
+
+    flexShrink: 0,
+
+    paddingLeft: "16px",
+
+    borderLeft: "1px solid rgba(255,255,255,0.07)",
 
   },
 
@@ -3459,6 +4662,9 @@ const styles: Record<
     gap: "18px",
 
     margin: 0,
+
+    padding: "0 4px",
+
   },
 
   bankLogoZone: {
@@ -3622,6 +4828,7 @@ const styles: Record<
     alignItems: "flex-end",
 
     textAlign: "right",
+
   },
 
   bankInfoLabel: {
@@ -3639,6 +4846,7 @@ const styles: Record<
     letterSpacing: "1.4px",
 
     textAlign: "right",
+
   },
 
   bankInfoTitle: {
@@ -3652,6 +4860,7 @@ const styles: Record<
     fontSize: "16px",
 
     textAlign: "right",
+
   },
 
   bankInfoText: {
@@ -3667,6 +4876,7 @@ const styles: Record<
     lineHeight: 1.5,
 
     textAlign: "right",
+
   },
 
   editInfoButton: {
@@ -3692,6 +4902,7 @@ const styles: Record<
     cursor: "pointer",
 
     fontSize: "9px",
+
   },
 
   bankInfoDetails: {
@@ -3715,6 +4926,7 @@ const styles: Record<
     lineHeight: 1.5,
 
     textAlign: "right",
+
   },
 
   bankInfoEditPencil: {
@@ -3754,6 +4966,7 @@ const styles: Record<
     cursor: "pointer",
 
     fontSize: "16px",
+
   },
 
   bankInfoModal: {
@@ -3948,6 +5161,332 @@ const styles: Record<
 
   },
 
+  passwordModal: {
+
+    width: "100%",
+
+    maxWidth: "480px",
+
+    padding: "22px",
+
+    boxSizing: "border-box",
+
+    borderRadius: "20px",
+
+    border: "1px solid rgba(255,255,255,0.08)",
+
+    background: "#071c26",
+
+    boxShadow: "0 24px 70px rgba(0,0,0,0.5)",
+
+  },
+
+  passwordEyebrow: {
+
+    margin: 0,
+
+    color: "#45dbc3",
+
+    fontSize: "8px",
+
+    fontWeight: 800,
+
+    letterSpacing: "1.4px",
+
+  },
+
+  passwordHelpText: {
+
+    margin: "7px 0 0",
+
+    color: "#8fa7b4",
+
+    fontSize: "10px",
+
+    lineHeight: 1.5,
+
+  },
+
+  passwordForm: {
+
+    display: "flex",
+
+    flexDirection: "column",
+
+    gap: "13px",
+
+  },
+
+  passwordField: {
+
+    display: "flex",
+
+    flexDirection: "column",
+
+    gap: "6px",
+
+  },
+
+  passwordInput: {
+
+    width: "100%",
+
+    boxSizing: "border-box",
+
+    padding: "11px 12px",
+
+    borderRadius: "10px",
+
+    border: "1px solid rgba(255,255,255,0.09)",
+
+    outline: "none",
+
+    background: "rgba(255,255,255,0.045)",
+
+    color: "#fff",
+
+    fontSize: "12px",
+
+  },
+
+  passwordError: {
+
+    padding: "10px 11px",
+
+    borderRadius: "10px",
+
+    border: "1px solid rgba(255,112,112,0.18)",
+
+    background: "rgba(255,90,90,0.08)",
+
+    color: "#ffaaaa",
+
+    fontSize: "10px",
+
+    lineHeight: 1.45,
+
+  },
+
+  passwordActions: {
+
+    display: "flex",
+
+    justifyContent: "flex-end",
+
+    gap: "9px",
+
+    marginTop: "18px",
+
+  },
+
+  passwordCancelButton: {
+
+    padding: "10px 14px",
+
+    borderRadius: "10px",
+
+    border: "1px solid rgba(255,255,255,0.08)",
+
+    background: "rgba(255,255,255,0.04)",
+
+    color: "#b8c8d1",
+
+    cursor: "pointer",
+
+    fontSize: "10px",
+
+    fontWeight: 700,
+
+  },
+
+  passwordSaveButton: {
+
+    padding: "10px 14px",
+
+    borderRadius: "10px",
+
+    border: "1px solid rgba(65,225,196,0.22)",
+
+    background: "linear-gradient(135deg,#32d9bd,#249bd6)",
+
+    color: "#03232a",
+
+    cursor: "pointer",
+
+    fontSize: "10px",
+
+    fontWeight: 800,
+
+  },
+
+  themeModal: {
+
+    width: "100%",
+
+    maxWidth: "520px",
+
+    padding: "22px",
+
+    boxSizing: "border-box",
+
+    borderRadius: "20px",
+
+    border: "1px solid rgba(255,255,255,0.08)",
+
+    background: "#071c26",
+
+    boxShadow: "0 24px 70px rgba(0,0,0,0.5)",
+
+  },
+
+  themeGrid: {
+
+    display: "grid",
+
+    gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+
+    gap: "10px",
+
+    marginTop: "18px",
+
+  },
+
+  themeChoice: {
+
+    minWidth: 0,
+
+    display: "flex",
+
+    alignItems: "center",
+
+    gap: "10px",
+
+    padding: "11px",
+
+    borderRadius: "12px",
+
+    border: "1px solid rgba(255,255,255,0.08)",
+
+    background: "rgba(255,255,255,0.035)",
+
+    color: "#d9e6eb",
+
+    cursor: "pointer",
+
+    textAlign: "left",
+
+    fontSize: "11px",
+
+  },
+
+  themeChoiceActive: {
+
+    border: "1px solid rgba(71,226,200,0.42)",
+
+    background: "rgba(71,226,200,0.09)",
+
+    color: "#58e5cd",
+
+  },
+
+  themeSwatch: {
+
+    width: "34px",
+
+    height: "34px",
+
+    flexShrink: 0,
+
+    borderRadius: "10px",
+
+    border: "1px solid rgba(255,255,255,0.16)",
+
+    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)",
+
+  },
+
+  themeSelected: {
+
+    marginLeft: "auto",
+
+    fontSize: "14px",
+
+  },
+
+  syncErrorBanner: {
+
+    width: "100%",
+
+    boxSizing: "border-box",
+
+    display: "flex",
+
+    alignItems: "center",
+
+    gap: "10px",
+
+    margin: "0 0 14px",
+
+    padding: "10px 13px",
+
+    borderRadius: "12px",
+
+    border: "1px solid rgba(184,83,83,0.26)",
+
+    background: "linear-gradient(135deg,rgba(88,25,31,0.94),rgba(64,24,31,0.94))",
+
+    color: "#ffe3e3",
+
+    boxShadow: "0 8px 22px rgba(65,20,25,0.12)",
+
+  },
+
+  syncErrorIcon: {
+
+    width: "30px",
+
+    height: "30px",
+
+    flexShrink: 0,
+
+    display: "flex",
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    borderRadius: "9px",
+
+    background: "rgba(255,255,255,0.08)",
+
+    color: "#ffc5c5",
+
+    fontWeight: 900,
+
+  },
+
+  syncErrorTitle: {
+
+    display: "block",
+
+    fontSize: "10px",
+
+    marginBottom: "2px",
+
+  },
+
+  syncErrorText: {
+
+    display: "block",
+
+    color: "#f5caca",
+
+    fontSize: "9px",
+
+    lineHeight: 1.4,
+
+  },
+
   pageContent: {
 
     width: "100%",
@@ -3976,11 +5515,15 @@ const styles: Record<
 
     border:
 
-      "1px solid rgba(255,255,255,0.06)",
+      "1px solid rgba(71,226,200,0.14)",
 
     background:
 
-      "linear-gradient(145deg,#0a2430,#0b2a37)",
+      "linear-gradient(145deg,#0a2836,#0d3342)",
+
+    boxShadow:
+
+      "0 10px 28px rgba(0,0,0,0.16)",
 
   },
 
@@ -4054,11 +5597,15 @@ const styles: Record<
 
     background:
 
-      "linear-gradient(145deg,#09232f,#0b2935)",
+      "linear-gradient(145deg,#0a2836,#0d3342)",
 
     border:
 
-      "1px solid rgba(255,255,255,0.06)",
+      "1px solid rgba(71,226,200,0.12)",
+
+    boxShadow:
+
+      "0 10px 28px rgba(0,0,0,0.14)",
 
   },
 
@@ -4108,11 +5655,11 @@ const styles: Record<
 
     border:
 
-      "1px solid rgba(255,255,255,0.065)",
+      "1px solid rgba(71,226,200,0.12)",
 
     borderRadius: "14px",
 
-    background: "#0b2b38",
+    background: "#0b2d3a",
 
     color: "#fff",
 
@@ -4184,11 +5731,15 @@ const styles: Record<
 
     background:
 
-      "linear-gradient(145deg,#09232f,#0b2935)",
+      "linear-gradient(145deg,#0a2836,#0d3342)",
 
     border:
 
-      "1px solid rgba(255,255,255,0.06)",
+      "1px solid rgba(71,226,200,0.12)",
+
+    boxShadow:
+
+      "0 10px 28px rgba(0,0,0,0.14)",
 
   },
 

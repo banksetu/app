@@ -1,0 +1,5 @@
+Bank Setu Final UI V12 Fix
+- Quick Action cards now apply their supplied gradient backgrounds.
+- Mobile hamburger button follows the currently selected menu gradient.
+- Delete Customer confirmation modal restyled for the light/gradient UI with high-contrast text and inputs.
+- Firebase global-theme rules/deployment intentionally left for the next step, as requested.

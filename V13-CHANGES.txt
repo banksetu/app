@@ -1,0 +1,8 @@
+Bank Setu Final UI V13
+
+Fixes:
+1. Delete Customer modal Cancel button is visible again with light neutral background and dark text.
+2. Mobile hamburger now inherits the selected menu gradient because --menu-gradient is defined on the app shell, not only the sidebar.
+3. Quick Action buttons now receive dashboard-quick-card class, activating the intended four colorful gradient styles.
+
+Firebase persistent/global theme step intentionally not changed yet.

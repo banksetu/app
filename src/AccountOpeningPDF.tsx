@@ -52,6 +52,22 @@ type Customer = {
 
 
 
+type CustomerMatch = {
+  rowNumber: number;
+  enrolId?: string;
+  accountNo?: string;
+  name?: string;
+  fatherName?: string;
+  guardianName?: string;
+  mobile?: string;
+  contact?: string;
+  accountOpeningDate?: string;
+  uidaiNo?: string;
+  pan?: string;
+  aofNo?: string;
+};
+
+
 const EMPTY: Customer = {
 
   enrolId: "",
@@ -302,6 +318,10 @@ export default function AccountOpeningPDF() {
 
   const [message, setMessage] = useState("");
 
+  const [customerMatches, setCustomerMatches] = useState<CustomerMatch[]>([]);
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [selectedMatchLoading, setSelectedMatchLoading] = useState<number | null>(null);
+
 
 
   const apiRequest = async (body: Record<string, unknown>) => {
@@ -375,83 +395,101 @@ export default function AccountOpeningPDF() {
 
 
   const searchCustomer = async (event?: FormEvent) => {
-
     event?.preventDefault();
-
     const searchValue = query.trim();
 
-
-
     if (!searchValue) {
-
       setError(
-
         "Enter Customer ID, Account Number, Aadhaar Number, Mobile Number, AOF Number or Name."
-
       );
-
       return;
-
     }
-
-
 
     setLoading(true);
-
     setError("");
-
     setMessage("");
-
     setCustomer(null);
-
-
+    setCustomerMatches([]);
+    setShowMatchModal(false);
 
     try {
-
       const result = await apiRequest({
-
         action: "searchCustomer",
-
         query: searchValue,
-
       });
 
+      const matches: CustomerMatch[] = Array.isArray(result.matches)
+        ? result.matches
+        : [];
 
+      if (result.multipleMatches === true && matches.length > 1) {
+        setCustomerMatches(matches);
+        setShowMatchModal(true);
+        setMessage(
+          result.message ||
+            `${matches.length} matching customers found. Please select the required customer.`
+        );
+        return;
+      }
 
       const loaded: Customer = {
-
         ...EMPTY,
-
         ...(result.customer || {}),
-
       };
 
-
-
       setCustomer(loaded);
-
       setDob("");
-
       setReligion("MINORITY COM - MUSLIMS");
-
       setMessage("Account Opening Form generated successfully.");
-
     } catch (err) {
-
+      setCustomer(null);
+      setCustomerMatches([]);
+      setShowMatchModal(false);
       setError(
-
         err instanceof Error ? err.message : "Customer could not be loaded."
-
       );
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
+  const selectMatchedCustomer = async (match: CustomerMatch) => {
+
+    setSelectedMatchLoading(match.rowNumber);
+    setError("");
+
+    try {
+      const result = await apiRequest({
+        action: "getCustomerByRowNumber",
+        rowNumber: match.rowNumber,
+        includePhoto: true,
+      });
+
+      const loaded: Customer = {
+        ...EMPTY,
+        ...(result.customer || {}),
+      };
+
+      setCustomer(loaded);
+      setDob("");
+      setReligion("MINORITY COM - MUSLIMS");
+      setCustomerMatches([]);
+      setShowMatchModal(false);
+      setMessage("Selected customer loaded successfully. Account Opening Form is ready.");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Selected customer could not be loaded."
+      );
+    } finally {
+      setSelectedMatchLoading(null);
+    }
+  };
+
+  const closeMatchModal = () => {
+    setShowMatchModal(false);
+    setCustomerMatches([]);
+    setMessage("");
+  };
 
 
   const printForm = () => window.print();
@@ -623,6 +661,131 @@ export default function AccountOpeningPDF() {
         }
 
 
+
+
+
+        /* Multiple customer selection */
+        .match-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+          background: rgba(0, 12, 28, .78);
+          backdrop-filter: blur(5px);
+          -webkit-backdrop-filter: blur(5px);
+        }
+
+        .match-modal {
+          width: min(760px, 100%);
+          max-height: min(82vh, 760px);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          border-radius: 18px;
+          border: 1px solid rgba(101,233,255,.34);
+          background: #073653;
+          box-shadow: 0 24px 70px rgba(0,0,0,.45);
+        }
+
+        .match-modal-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 18px 20px 14px;
+          border-bottom: 1px solid rgba(120,230,255,.18);
+        }
+
+        .match-modal-header h3 {
+          margin: 0;
+          color: #fff;
+          font-size: 20px;
+          font-weight: 900;
+        }
+
+        .match-modal-header p {
+          margin: 6px 0 0;
+          color: rgba(225,249,255,.72);
+          font-size: 13px;
+          line-height: 1.45;
+        }
+
+        .match-modal-close {
+          flex: 0 0 auto;
+          width: 38px;
+          height: 38px;
+          border: 1px solid rgba(255,255,255,.16);
+          border-radius: 10px;
+          background: rgba(255,255,255,.08);
+          color: #fff;
+          font-size: 22px;
+          line-height: 1;
+          cursor: pointer;
+        }
+
+        .match-list {
+          overflow-y: auto;
+          padding: 14px;
+          display: grid;
+          gap: 12px;
+          overscroll-behavior: contain;
+        }
+
+        .match-card {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 14px;
+          align-items: center;
+          padding: 15px;
+          border-radius: 14px;
+          border: 1px solid rgba(120,230,255,.20);
+          background: rgba(0,20,40,.48);
+        }
+
+        .match-name {
+          margin-bottom: 8px;
+          color: #8ff7eb;
+          font-size: 17px;
+          font-weight: 900;
+          text-transform: uppercase;
+          overflow-wrap: anywhere;
+        }
+
+        .match-details {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 5px 16px;
+          color: rgba(235,251,255,.86);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+
+        .match-details span {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .match-details b { color: #fff; }
+
+        .match-select-button {
+          min-width: 96px;
+          min-height: 44px;
+          padding: 0 16px;
+          border: none;
+          border-radius: 11px;
+          background: linear-gradient(135deg, #6ef1dd, #5bcaff);
+          color: #043451;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .match-select-button:disabled {
+          opacity: .6;
+          cursor: wait;
+        }
 
         .notice {
 
@@ -1112,6 +1275,41 @@ export default function AccountOpeningPDF() {
 
           .search-row { flex-direction: column; }
 
+          .search-row input {
+            flex: 0 0 auto;
+            width: 100%;
+            min-width: 0;
+            height: 52px !important;
+            min-height: 52px !important;
+            padding: 0 14px;
+            font-size: 16px;
+            line-height: normal;
+            display: block;
+            appearance: none;
+            -webkit-appearance: none;
+          }
+
+          .search-row button {
+            width: 100%;
+            min-height: 48px;
+            height: 48px;
+          }
+
+          .match-modal-backdrop {
+            padding: 12px;
+            align-items: flex-end;
+          }
+
+          .match-modal {
+            width: 100%;
+            max-height: 88vh;
+            border-radius: 18px 18px 12px 12px;
+          }
+
+          .match-card { grid-template-columns: 1fr; }
+          .match-details { grid-template-columns: 1fr; }
+          .match-select-button { width: 100%; }
+
           .preview-wrap {
 
             width: calc(100vw - 24px);
@@ -1513,6 +1711,70 @@ export default function AccountOpeningPDF() {
 
       </form>
 
+      {showMatchModal && customerMatches.length > 1 && (
+        <div
+          className="match-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="multiple-customer-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeMatchModal();
+          }}
+        >
+          <div className="match-modal">
+            <div className="match-modal-header">
+              <div>
+                <h3 id="multiple-customer-title">
+                  {customerMatches.length} Customers Found
+                </h3>
+                <p>
+                  More than one customer matches "{query}". Select the correct customer below.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="match-modal-close"
+                onClick={closeMatchModal}
+                aria-label="Close customer selection"
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="match-list">
+              {customerMatches.map((match, index) => (
+                <div
+                  className="match-card"
+                  key={`${match.rowNumber}-${match.accountNo || match.enrolId || index}`}
+                >
+                  <div>
+                    <div className="match-name">
+                      {safe(match.name) || "NAME NOT AVAILABLE"}
+                    </div>
+                    <div className="match-details">
+                      <span><b>C/O:</b> {safe(match.fatherName) || safe(match.guardianName) || "-"}</span>
+                      <span><b>Mobile:</b> {safe(match.mobile) || safe(match.contact) || "-"}</span>
+                      <span><b>Account No.:</b> {safe(match.accountNo) || "-"}</span>
+                      <span><b>Customer ID:</b> {safe(match.enrolId) || "-"}</span>
+                      <span><b>AOF No.:</b> {safe(match.aofNo) || "-"}</span>
+                      <span><b>Opening Date:</b> {safe(match.accountOpeningDate) || "-"}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="match-select-button"
+                    disabled={selectedMatchLoading !== null}
+                    onClick={() => selectMatchedCustomer(match)}
+                  >
+                    {selectedMatchLoading === match.rowNumber ? "Loading..." : "Select"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {error ? <div className="notice error">{error}</div> : null}

@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut,
+  type User,
 } from "firebase/auth";
-
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 import Dashboard from "./Dashboard";
@@ -13,92 +14,184 @@ import Signup from "./Signup";
 
 import "./App.css";
 
+type BankSetuRole = "admin" | "user";
+type UserProfile = {
+  role?: string;
+  status?: string;
+  subscriptionStatus?: string;
+  email?: string;
+};
+
+const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
+function getAccessError(profile: UserProfile): string {
+  const status = normalize(profile.status);
+  const subscriptionStatus = normalize(profile.subscriptionStatus);
+
+  if (status === "blocked") {
+    return "Your Bank Setu account has been blocked by the administrator.";
+  }
+
+  if (status !== "approved") {
+    return "Your registration is pending administrator approval.";
+  }
+
+  if (subscriptionStatus !== "active") {
+    return "Your subscription is inactive. Please contact the administrator.";
+  }
+
+  return "";
+}
+
 function App() {
   const [screen, setScreen] = useState<"login" | "signup">("login");
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
-
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
-
   const [error, setError] = useState("");
-
+  const [successMessage, setSuccessMessage] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<BankSetuRole>("user");
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+  const loginAttemptRef = useRef(false);
+  const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
+
+  const clearProfileListener = () => {
+    if (profileUnsubscribeRef.current) {
+      profileUnsubscribeRef.current();
+      profileUnsubscribeRef.current = null;
+    }
+  };
+
+  const applyProfile = (profile: UserProfile) => {
+    const role: BankSetuRole = normalize(profile.role) === "admin" ? "admin" : "user";
+    setUserRole(role);
+    sessionStorage.setItem("bankSetuRole", role);
+    return role;
+  };
+
+  const rejectSession = async (message: string) => {
+    clearProfileListener();
+    sessionStorage.removeItem("bankSetuRole");
+    setUserRole("user");
+    setIsLoggedIn(false);
+    setLoginSuccess(false);
+    setError(message);
+
+    if (auth.currentUser) {
       try {
-        if (!user) {
-          setIsLoggedIn(false);
-          setCheckingSession(false);
-          return;
-        }
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error("Sign out after access rejection failed:", signOutError);
+      }
+    }
+  };
 
-        const userRef = doc(db, "users", user.uid);
-        const userSnap = await getDoc(userRef);
+  const watchUserProfile = (user: User) => {
+    clearProfileListener();
 
-        if (!userSnap.exists()) {
-          await signOut(auth);
-
-          setError(
-            "Your user profile was not found. Please contact the administrator."
+    const userRef = doc(db, "users", user.uid);
+    profileUnsubscribeRef.current = onSnapshot(
+      userRef,
+      async (snapshot) => {
+        if (!snapshot.exists()) {
+          await rejectSession(
+            "Your Bank Setu profile was not found. Please contact the administrator."
           );
-
-          setIsLoggedIn(false);
           setCheckingSession(false);
           return;
         }
 
-        const data = userSnap.data();
+        const profile = snapshot.data() as UserProfile;
+        applyProfile(profile);
 
-        if (data.status !== "approved") {
-          await signOut(auth);
-
-          setError(
-            "Your account is waiting for administrator approval."
-          );
-
-          setIsLoggedIn(false);
+        const accessError = getAccessError(profile);
+        if (accessError) {
+          await rejectSession(accessError);
           setCheckingSession(false);
           return;
         }
 
-        if (data.subscriptionStatus !== "active") {
-          await signOut(auth);
-
-          setError(
-            "Your Bank Setu subscription is not active."
-          );
-
-          setIsLoggedIn(false);
-          setCheckingSession(false);
-          return;
+        if (!loginAttemptRef.current) {
+          setError("");
+          setIsLoggedIn(true);
         }
 
-        setIsLoggedIn(true);
-      } catch (err) {
-        console.error("Session check error:", err);
-
-        setError("Unable to verify your account.");
-        setIsLoggedIn(false);
-      } finally {
+        setCheckingSession(false);
+      },
+      async (snapshotError) => {
+        console.error("Profile listener error:", snapshotError);
+        await rejectSession("Unable to verify your account permissions.");
         setCheckingSession(false);
       }
+    );
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        clearProfileListener();
+        setIsLoggedIn(false);
+        setCheckingSession(false);
+        return;
+      }
+
+      setCheckingSession(true);
+      watchUserProfile(user);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearProfileListener();
+    };
   }, []);
+
+  const handleForgotPassword = async () => {
+    setError("");
+    setSuccessMessage("");
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError("Please enter your email address first.");
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setSuccessMessage(
+        "Password reset link sent. Please check your email inbox or spam folder."
+      );
+    } catch (err: any) {
+      console.error("Password reset error:", err);
+
+      if (err.code === "auth/invalid-email") {
+        setError("Please enter a valid email address.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many requests. Please try again later.");
+      } else if (err.code === "auth/network-request-failed") {
+        setError("Internet connection problem. Please try again.");
+      } else {
+        setError("Unable to send the password reset email. Please try again.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setError("");
+    setSuccessMessage("");
+    loginAttemptRef.current = true;
 
     if (!email.trim() || !password.trim()) {
       setError("Please enter your email and password.");
+      loginAttemptRef.current = false;
       return;
     }
 
@@ -115,75 +208,59 @@ function App() {
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
-        await signOut(auth);
-
-        setError(
+        await rejectSession(
           "Your Bank Setu profile was not found. Please contact the administrator."
         );
-
         return;
       }
 
-      const userData = userSnap.data();
+      const userData = userSnap.data() as UserProfile;
+      applyProfile(userData);
 
-      if (userData.status !== "approved") {
-        await signOut(auth);
-
-        setError(
-          "Your registration is pending administrator approval."
-        );
-
+      const accessError = getAccessError(userData);
+      if (accessError) {
+        await rejectSession(accessError);
         return;
       }
 
-      if (userData.subscriptionStatus !== "active") {
-        await signOut(auth);
-
-        setError(
-          "Your subscription is inactive. Please contact the administrator."
-        );
-
-        return;
-      }
-
+      setLoginSuccess(true);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       setIsLoggedIn(true);
+      setLoginSuccess(false);
     } catch (err: any) {
       console.error("Login error:", err);
 
-      if (err.code === "auth/invalid-credential") {
+      if (err.code === "auth/user-disabled") {
+        setError("Your Bank Setu account has been blocked by the administrator.");
+      } else if (err.code === "auth/invalid-credential") {
         setError("Invalid email or password.");
       } else if (err.code === "auth/too-many-requests") {
-        setError(
-          "Too many login attempts. Please try again later."
-        );
+        setError("Too many login attempts. Please try again later.");
       } else if (err.code === "auth/network-request-failed") {
-        setError(
-          "Internet connection problem. Please try again."
-        );
+        setError("Internet connection problem. Please try again.");
       } else if (err.code === "permission-denied") {
-        setError(
-          "Bank Setu could not verify your account permissions."
-        );
+        setError("Bank Setu could not verify your account permissions.");
       } else {
-        setError(
-          `Login failed: ${err.code || "unknown-error"}`
-        );
+        setError(`Login failed: ${err.code || "unknown-error"}`);
       }
     } finally {
+      loginAttemptRef.current = false;
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
     try {
+      clearProfileListener();
       await signOut(auth);
-
+      sessionStorage.removeItem("bankSetuRole");
       setIsLoggedIn(false);
-
+      setUserRole("user");
       setEmail("");
       setPassword("");
       setError("");
-
+      setSuccessMessage("");
+      setLoginSuccess(false);
       setScreen("login");
     } catch (err) {
       console.error("Logout error:", err);
@@ -197,14 +274,29 @@ function App() {
           <span className="loader-bank">B</span>
           <span className="loader-setu">S</span>
         </div>
-
         <p>Loading Bank Setu...</p>
       </main>
     );
   }
 
+  if (loginSuccess) {
+    return (
+      <main className="login-success-page">
+        <div className="login-success-card">
+          <div className="login-success-check">✓</div>
+          <h2>Login Successful</h2>
+          <p>Opening your Bank Setu dashboard...</p>
+        </div>
+      </main>
+    );
+  }
+
   if (isLoggedIn) {
-    return <Dashboard onLogout={handleLogout} />;
+    return (
+      <div className={`banksetu-session banksetu-role-${userRole}`}>
+        <Dashboard onLogout={handleLogout} userRole={userRole} />
+      </div>
+    );
   }
 
   if (screen === "signup") {
@@ -213,6 +305,9 @@ function App() {
         onBackToLogin={() => {
           setScreen("login");
           setError("");
+          setSuccessMessage(
+            "New accounts can sign in after administrator approval."
+          );
         }}
       />
     );
@@ -239,37 +334,23 @@ function App() {
             <h1>
               BANK <span>SETU</span>
             </h1>
-
-            <p>Smart CSP Management Platform</p>
           </div>
 
           <div className="welcome">
-            <span className="welcome-chip">
-              SECURE ACCESS
-            </span>
-
             <h2>Welcome back</h2>
-
-            <p>
-              Sign in to manage your Bank Setu workspace.
-            </p>
           </div>
 
           <form onSubmit={handleLogin}>
             <div className="field">
               <label>Email address</label>
-
               <div className="input-box">
                 <div className="field-icon">✉</div>
-
                 <input
                   type="email"
                   placeholder="name@example.com"
                   autoComplete="username"
                   value={email}
-                  onChange={(e) =>
-                    setEmail(e.target.value)
-                  }
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>
@@ -277,44 +358,31 @@ function App() {
             <div className="field">
               <div className="field-label-row">
                 <label>Password</label>
-
                 <button
                   type="button"
                   className="forgot-link"
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading}
                 >
-                  Forgot password?
+                  {resetLoading ? "Sending..." : "Forgot password?"}
                 </button>
               </div>
 
               <div className="input-box">
                 <div className="field-icon">●</div>
-
                 <input
-                  type={
-                    showPassword
-                      ? "text"
-                      : "password"
-                  }
+                  type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   autoComplete="current-password"
                   value={password}
-                  onChange={(e) =>
-                    setPassword(e.target.value)
-                  }
+                  onChange={(e) => setPassword(e.target.value)}
                 />
-
                 <button
                   type="button"
                   className="password-toggle"
-                  onClick={() =>
-                    setShowPassword(
-                      !showPassword
-                    )
-                  }
+                  onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword
-                    ? "Hide"
-                    : "Show"}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
@@ -326,67 +394,49 @@ function App() {
               </div>
             )}
 
+            {successMessage && (
+              <div className="form-message success-message">
+                <span>✓</span>
+                {successMessage}
+              </div>
+            )}
+
             <div className="login-options">
               <label className="remember">
                 <input type="checkbox" />
-                <span>
-                  Keep me signed in
-                </span>
+                <span>Keep me signed in</span>
               </label>
-
-              <span className="encrypted">
-                ● Secure
-              </span>
+              <span className="encrypted">● Secure</span>
             </div>
 
-            <button
-              className="sign-in"
-              type="submit"
-              disabled={loading}
-            >
-              <span>
-                {loading
-                  ? "Signing in..."
-                  : "Sign In"}
-              </span>
+            <div className="auth-action-row">
+              <button className="sign-in" type="submit" disabled={loading}>
+                <span>{loading ? "Signing in..." : "Sign In"}</span>
+                {!loading && <span className="arrow">→</span>}
+              </button>
 
-              {!loading && (
-                <span className="arrow">
-                  →
-                </span>
-              )}
-            </button>
+              <button
+                type="button"
+                className="create-account-button"
+                onClick={() => {
+                  setScreen("signup");
+                  setError("");
+                  setSuccessMessage("");
+                }}
+              >
+                Create Account
+              </button>
+            </div>
           </form>
 
-          <div className="signup-section">
-            <div className="divider">
-              <span></span>
-              <p>New to Bank Setu?</p>
-              <span></span>
-            </div>
-
-            <button
-              type="button"
-              className="create-account-button"
-              onClick={() => {
-                setScreen("signup");
-                setError("");
-              }}
-            >
-              Create New Account
-            </button>
-
-            <p className="approval-note">
-              New registrations require administrator approval.
-            </p>
-          </div>
+          <p className="approval-note compact-approval-note">
+            New registrations require administrator approval.
+          </p>
 
           <div className="login-footer">
             <span className="status-dot"></span>
             Bank Setu Secure Access
-            <span className="footer-separator">
-              •
-            </span>
+            <span className="footer-separator">•</span>
             v1.0
           </div>
         </div>
