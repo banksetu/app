@@ -712,6 +712,18 @@ export const configureTenantData = onCall<ConfigureTenantData>(async (request) =
   if (!tenant.exists || tenant.data()?.status !== "active") {
     throw new HttpsError("not-found", "Active client workspace not found.");
   }
+  if (actor.role === "client_admin") {
+    const registration = (await db.collection("tenantSettings").doc(tenantId).get()).data() || {};
+    const bankInfo = registration.bankInfo || {};
+    if (
+      !String(registration.bankName || "").trim() ||
+      !String(registration.passbookBank || bankInfo.passbookBank || "").trim() ||
+      !String(registration.branchName || bankInfo.branchName || "").trim() ||
+      !String(registration.operatorName || bankInfo.operatorName || "").trim()
+    ) {
+      throw new HttpsError("failed-precondition", "Complete the client bank registration form before connecting Google Drive.");
+    }
+  }
   const setupRef = db.collection("appSettings").doc("googleSetup");
   const setupSnap = await setupRef.get();
   const configuredApiUrl = String(setupSnap.data()?.apiUrl || "").trim();
