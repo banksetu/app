@@ -172,6 +172,17 @@ function AdminUsers({ embedded = false }: Props) {
     );
   }, [search, users]);
 
+  const orderedVisibleUsers = useMemo(() => [...visibleUsers].sort((left, right) => {
+    const leftGroup = String(left.tenantId || "~legacy");
+    const rightGroup = String(right.tenantId || "~legacy");
+    if (leftGroup !== rightGroup) return leftGroup.localeCompare(rightGroup);
+    const roleOrder: Record<string, number> = { client_admin: 0, client_user: 1 };
+    const leftRole = String(left.role || "user").toLowerCase();
+    const rightRole = String(right.role || "user").toLowerCase();
+    return (roleOrder[leftRole] ?? 2) - (roleOrder[rightRole] ?? 2) ||
+      String(left.email || "").localeCompare(String(right.email || ""));
+  }), [visibleUsers]);
+
   const runAction = async (
     user: ManagedUser,
     action: ManageAction
@@ -270,8 +281,9 @@ function AdminUsers({ embedded = false }: Props) {
           <h2>User Management</h2>
 
           <p>
-            Approve, deny, block, unblock or permanently
-            delete Bank Setu users.
+            {currentRole === "client_admin"
+              ? "Create and manage the two users in your workspace. You can block or unblock them, but only the Master Admin can delete accounts."
+              : "Search and manage client workspaces, Client Admins, and their users."}
           </p>
         </div>
 
@@ -323,7 +335,7 @@ function AdminUsers({ embedded = false }: Props) {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search email, name, UID or status..."
+          placeholder={currentRole === "master_owner" ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
         />
 
         <button
@@ -357,7 +369,18 @@ function AdminUsers({ embedded = false }: Props) {
             No users found.
           </div>
         ) : (
-          visibleUsers.map((user) => {
+          orderedVisibleUsers.map((user, index) => {
+            const groupId = String(user.tenantId || "unassigned");
+            const previousGroupId = index > 0
+              ? String(orderedVisibleUsers[index - 1].tenantId || "unassigned")
+              : "";
+            const isNewClientGroup = currentRole === "master_owner" && groupId !== previousGroupId;
+            const clientAdmin = groupId === "unassigned" ? undefined : users.find((candidate) =>
+              candidate.tenantId === groupId && String(candidate.role || "").toLowerCase() === "client_admin"
+            );
+            const groupUsers = users.filter((candidate) =>
+              candidate.tenantId === user.tenantId && String(candidate.role || "").toLowerCase() === "client_user"
+            );
             const status = String(
               user.status || "pending"
             ).toLowerCase();
@@ -371,10 +394,22 @@ function AdminUsers({ embedded = false }: Props) {
               (currentRole !== "client_admin" || role === "client_user");
 
             return (
-              <article
-                className="admin-user-card"
-                key={user.uid}
-              >
+              <div key={user.uid}>
+              {isNewClientGroup && (
+                <div className="admin-user-group-heading">
+                  <div>
+                    <strong>{groupId === "unassigned" ? "Legacy / unassigned accounts" : (user.bankName || clientAdmin?.bankName || "Client workspace")}</strong>
+                    <small>{groupId === "unassigned" ? "Accounts without a tenant" : `Workspace: ${groupId}`}</small>
+                  </div>
+                  {clientAdmin && <div className="admin-user-group-owner">
+                    <span>Client Admin</span>
+                    <strong>{clientAdmin.name || clientAdmin.email}</strong>
+                    <small>{clientAdmin.email} · {String(clientAdmin.status || "unknown")}</small>
+                    <small>{groupUsers.length}/2 client users</small>
+                  </div>}
+                </div>
+              )}
+              <article className="admin-user-card">
                 <div className="admin-user-main">
                   <div className="admin-user-avatar">
                     {(user.email || "U")
@@ -506,6 +541,7 @@ function AdminUsers({ embedded = false }: Props) {
                   )}
                 </div>
               </article>
+              </div>
             );
           })
         )}
