@@ -134,6 +134,16 @@ function doPost(e) {
       return getRecentActivities(authUser, request.limit);
     }
 
+    if (action === "getBankFormatPreview") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return getBankFormatPreview(authUser, request.formatType);
+    }
+
+    if (action === "testTenantConnection") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return testTenantConnection(authUser);
+    }
+
 
     if (
       action === "saveCustomer"
@@ -368,6 +378,7 @@ function requireAuthorizedUser(
     tenantId,
     spreadsheetId,
     photoFolderId,
+    bankFormats: tenantSettings ? tenantSettings.bankFormats : {},
     idToken
   };
 }
@@ -540,8 +551,77 @@ function getFirestoreTenantSettings(tenantId, idToken) {
   const document = JSON.parse(response.getContentText() || "{}");
   return {
     spreadsheetId: firestoreString(document, "spreadsheetId"),
-    photoFolderId: firestoreString(document, "photoFolderId")
+    photoFolderId: firestoreString(document, "photoFolderId"),
+    bankFormats: firestoreBankFormats(document)
   };
+}
+
+
+function firestoreBankFormats(document) {
+  try {
+    const formats = document.fields.bankFormats.mapValue.fields || {};
+    const output = {};
+    Object.keys(formats).forEach(function (formatType) {
+      const fields = formats[formatType].mapValue.fields || {};
+      output[formatType] = {
+        fileId: fields.fileId && fields.fileId.stringValue || "",
+        fileName: fields.fileName && fields.fileName.stringValue || "",
+        mimeType: fields.mimeType && fields.mimeType.stringValue || ""
+      };
+    });
+    return output;
+  } catch (error) {
+    return {};
+  }
+}
+
+
+function getBankFormatPreview(authUser, formatType) {
+  const allowedTypes = ["passbook", "quickPassbook", "accountOpening"];
+  const normalizedType = cleanValue(formatType);
+  if (allowedTypes.indexOf(normalizedType) === -1) {
+    throw new Error("Choose a valid bank format sample.");
+  }
+  const sample = authUser.bankFormats && authUser.bankFormats[normalizedType];
+  const fileId = cleanValue(sample && sample.fileId);
+  if (!fileId) throw new Error("No sample has been uploaded for this bank format yet.");
+  const file = DriveApp.getFileById(fileId);
+  const parents = file.getParents();
+  let belongsToWorkspace = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === authUser.photoFolderId) {
+      belongsToWorkspace = true;
+      break;
+    }
+  }
+  if (!belongsToWorkspace) throw new Error("This sample is outside the current client workspace.");
+  if (file.getSize() > MAX_PHOTO_SIZE) throw new Error("This format sample exceeds the 5 MB preview limit.");
+  const blob = file.getBlob();
+  return jsonResponse({
+    success: true,
+    formatType: normalizedType,
+    fileName: file.getName(),
+    mimeType: blob.getContentType() || cleanValue(sample.mimeType),
+    data: Utilities.base64Encode(blob.getBytes())
+  });
+}
+
+
+function testTenantConnection(authUser) {
+  if (!authUser.tenantId || !authUser.spreadsheetId || !authUser.photoFolderId) {
+    throw new Error("This account does not have a complete client workspace connection.");
+  }
+  const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
+  const customerSheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (!customerSheet) throw new Error("The connected Google Sheet is missing its Sheet1 tab.");
+  const folder = DriveApp.getFolderById(authUser.photoFolderId);
+  return jsonResponse({
+    success: true,
+    tenantId: authUser.tenantId,
+    spreadsheetName: spreadsheet.getName(),
+    photoFolderName: folder.getName(),
+    customerTab: customerSheet.getName()
+  });
 }
 
 
