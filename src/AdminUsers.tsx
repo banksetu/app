@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
-  serverTimestamp,
-  updateDoc,
+  query,
+  where,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from "./firebase";
 import "./AdminUsers.css";
 
@@ -21,6 +23,9 @@ type ManagedUser = {
   email: string;
   name?: string;
   role?: string;
+  tenantId?: string;
+  clientId?: string;
+  bankName?: string;
   status?: UserStatus;
   subscriptionStatus?: string;
   disabled?: boolean;
@@ -38,9 +43,6 @@ type Props = {
   embedded?: boolean;
 };
 
-const DELETE_API =
-  "https://banksetu-admin-api.banksetu2026.workers.dev/delete-user";
-
 function AdminUsers({ embedded = false }: Props) {
   const [open, setOpen] = useState(embedded);
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -49,13 +51,29 @@ function AdminUsers({ embedded = false }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [currentRole, setCurrentRole] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
 
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
-      const snapshot = await getDocs(collection(db, "users"));
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Please sign in again.");
+      const profileSnapshot = await getDoc(doc(db, "users", currentUser.uid));
+      const currentProfile = profileSnapshot.data();
+      setCurrentRole(String(currentProfile?.role || ""));
+      const usersRef = collection(db, "users");
+      const usersQuery = currentProfile?.role === "client_admin"
+        ? currentProfile.tenantId
+          ? query(usersRef, where("tenantId", "==", currentProfile.tenantId))
+          : null
+        : usersRef;
+      if (!usersQuery) throw new Error("This client account has no workspace assignment.");
+      const snapshot = await getDocs(usersQuery);
 
       setUsers(
         snapshot.docs.map(
@@ -66,7 +84,8 @@ function AdminUsers({ embedded = false }: Props) {
             } as ManagedUser)
         )
       );
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error("Admin user list failed:", err);
 
       setError(
@@ -77,16 +96,43 @@ function AdminUsers({ embedded = false }: Props) {
     }
   }, []);
 
+  const createClientUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setBusyUid("create-client-user");
+    try {
+      const createUser = httpsCallable<
+        { name: string; email: string; password: string },
+        { success: boolean }
+      >(getFunctions(), "createClientUser");
+      await createUser({ name: newUserName, email: newUserEmail, password: newUserPassword });
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setMessage("Client user account created for this workspace.");
+      await loadUsers();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to create the client user.");
+    } finally {
+      setBusyUid("");
+    }
+  };
+
   useEffect(() => {
     if (open || embedded) {
-      void loadUsers();
+      const timer = window.setTimeout(() => void loadUsers(), 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [open, embedded, loadUsers]);
 
   const counts = useMemo(() => {
     const normalUsers = users.filter(
       (u) =>
-        String(u.role || "user").toLowerCase() !== "admin"
+        !["admin", "master_owner", "client_admin"].includes(
+          String(u.role || "user").toLowerCase()
+        )
     );
 
     const countStatus = (status: string) =>
@@ -116,6 +162,8 @@ function AdminUsers({ embedded = false }: Props) {
         user.uid,
         user.status,
         user.role,
+        user.tenantId,
+        user.bankName,
       ]
         .filter(Boolean)
         .some((value) =>
@@ -124,54 +172,16 @@ function AdminUsers({ embedded = false }: Props) {
     );
   }, [search, users]);
 
-  const permanentlyDeleteUser = async (
-    user: ManagedUser
-  ) => {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      throw new Error(
-        "Administrator session not found. Please log in again."
-      );
-    }
-
-    /*
-     * Force-refresh the Firebase ID token.
-     * This token proves to the Worker who is requesting
-     * the deletion.
-     */
-    const idToken = await currentUser.getIdToken(true);
-
-    const response = await fetch(DELETE_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        uid: user.uid,
-      }),
-    });
-
-    let data: any = {};
-
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error(
-        `Delete API returned an invalid response (${response.status}).`
-      );
-    }
-
-    if (!response.ok || !data?.success) {
-      throw new Error(
-        data?.message ||
-          `Unable to permanently delete user (${response.status}).`
-      );
-    }
-
-    return data;
-  };
+  const orderedVisibleUsers = useMemo(() => [...visibleUsers].sort((left, right) => {
+    const leftGroup = String(left.tenantId || "~legacy");
+    const rightGroup = String(right.tenantId || "~legacy");
+    if (leftGroup !== rightGroup) return leftGroup.localeCompare(rightGroup);
+    const roleOrder: Record<string, number> = { client_admin: 0, client_user: 1 };
+    const leftRole = String(left.role || "user").toLowerCase();
+    const rightRole = String(right.role || "user").toLowerCase();
+    return (roleOrder[leftRole] ?? 2) - (roleOrder[rightRole] ?? 2) ||
+      String(left.email || "").localeCompare(String(right.email || ""));
+  }), [visibleUsers]);
 
   const runAction = async (
     user: ManagedUser,
@@ -186,10 +196,11 @@ function AdminUsers({ embedded = false }: Props) {
       return;
     }
 
-    const isAdmin =
-      String(user.role || "").toLowerCase() === "admin";
-
-    if (isAdmin) {
+    const targetRole = String(user.role || "user").toLowerCase();
+    const canManageClientAdmin = targetRole === "client_admin" && currentRole === "master_owner";
+    const canManageRegularUser = !["admin", "master_owner"].includes(targetRole) &&
+      (targetRole !== "client_admin" || currentRole === "master_owner");
+    if (!canManageClientAdmin && !canManageRegularUser) {
       setError(
         "Administrator accounts cannot be changed from User Management."
       );
@@ -197,7 +208,9 @@ function AdminUsers({ embedded = false }: Props) {
     }
 
     const confirmText =
-      action === "delete"
+      action === "delete" && targetRole === "client_admin"
+        ? `Offboard ${user.email || "this client"} and remove access for this client and its users?\n\nTheir Google Sheet and Drive files will be preserved.`
+        : action === "delete"
         ? `Permanently delete ${user.email || "this user"}?\n\nThis will remove the Firebase Authentication account and Bank Setu user profile.`
         : `Do you want to ${action} ${
             user.email || "this user"
@@ -212,82 +225,25 @@ function AdminUsers({ embedded = false }: Props) {
       setError("");
       setMessage("");
 
-      /*
-       * DELETE:
-       * Cloudflare Worker securely deletes Firebase Auth
-       * account + Firestore profile.
-       */
-      if (action === "delete") {
-        const result = await permanentlyDeleteUser(user);
-
-        setMessage(
-          result?.message ||
-            `${user.email || "User"} permanently deleted successfully.`
-        );
-
-        await loadUsers();
-        return;
-      }
-
-      /*
-       * All other actions stay on Firestore.
-       */
-      const userRef = doc(db, "users", user.uid);
-
-      if (action === "approve") {
-        await updateDoc(userRef, {
-          status: "approved",
-          subscriptionStatus: "active",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} approved successfully.`
-        );
-      }
-
-      if (action === "deny") {
-        await updateDoc(userRef, {
-          status: "denied",
-          subscriptionStatus: "inactive",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} denied successfully.`
-        );
-      }
-
-      if (action === "block") {
-        await updateDoc(userRef, {
-          status: "blocked",
-          subscriptionStatus: "inactive",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} blocked successfully.`
-        );
-      }
-
-      if (action === "unblock") {
-        await updateDoc(userRef, {
-          status: "approved",
-          subscriptionStatus: "active",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} unblocked successfully.`
-        );
-      }
-
+      const functions = getFunctions();
+      const callableName = action === "delete" && targetRole === "client_admin"
+        ? "offboardClient"
+        : {
+        approve: "approveUser",
+        deny: "denyUser",
+        block: "blockUser",
+        unblock: "unblockUser",
+        delete: "deleteUser",
+      }[action];
+      const invokeAction = httpsCallable<{ uid: string }, { success: boolean; message?: string }>(
+        functions,
+        callableName
+      );
+      const response = await invokeAction({ uid: user.uid });
+      setMessage(response.data.message || `${user.email || "User"} ${action} successful.`);
       await loadUsers();
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
       console.error(
         `Admin ${action} user failed:`,
         err
@@ -325,8 +281,9 @@ function AdminUsers({ embedded = false }: Props) {
           <h2>User Management</h2>
 
           <p>
-            Approve, deny, block, unblock or permanently
-            delete Bank Setu users.
+            {currentRole === "client_admin"
+              ? "Create and manage the two users in your workspace. You can block or unblock them, but only the Master Admin can delete accounts."
+              : "Search and manage client workspaces, Client Admins, and their users."}
           </p>
         </div>
 
@@ -340,6 +297,17 @@ function AdminUsers({ embedded = false }: Props) {
           </button>
         )}
       </header>
+
+      {currentRole === "client_admin" && (
+        <form onSubmit={(event) => void createClientUser(event)} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, padding: "14px 0" }}>
+          <input required aria-label="Client user name" placeholder="User name" value={newUserName} onChange={(event) => setNewUserName(event.target.value)} />
+          <input required type="email" aria-label="Client user email" placeholder="User email" value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} />
+          <input required type="password" minLength={8} aria-label="Client user password" placeholder="Temporary password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} />
+          <button type="submit" disabled={busyUid === "create-client-user"}>
+            {busyUid === "create-client-user" ? "Creating…" : "Add Client User"}
+          </button>
+        </form>
+      )}
 
       <div className="admin-user-stats">
         <div>
@@ -367,7 +335,7 @@ function AdminUsers({ embedded = false }: Props) {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search email, name, UID or status..."
+          placeholder={currentRole === "master_owner" ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
         />
 
         <button
@@ -401,22 +369,47 @@ function AdminUsers({ embedded = false }: Props) {
             No users found.
           </div>
         ) : (
-          visibleUsers.map((user) => {
+          orderedVisibleUsers.map((user, index) => {
+            const groupId = String(user.tenantId || "unassigned");
+            const previousGroupId = index > 0
+              ? String(orderedVisibleUsers[index - 1].tenantId || "unassigned")
+              : "";
+            const isNewClientGroup = currentRole === "master_owner" && groupId !== previousGroupId;
+            const clientAdmin = groupId === "unassigned" ? undefined : users.find((candidate) =>
+              candidate.tenantId === groupId && String(candidate.role || "").toLowerCase() === "client_admin"
+            );
+            const groupUsers = users.filter((candidate) =>
+              candidate.tenantId === user.tenantId && String(candidate.role || "").toLowerCase() === "client_user"
+            );
             const status = String(
               user.status || "pending"
             ).toLowerCase();
 
             const isBusy = busyUid === user.uid;
 
-            const isAdmin =
-              String(user.role || "").toLowerCase() ===
-              "admin";
+            const role = String(user.role || "user").toLowerCase();
+            const isAdmin = ["admin", "master_owner", "client_admin"].includes(role);
+            const canManage = !["admin", "master_owner"].includes(role) &&
+              (role !== "client_admin" || currentRole === "master_owner") &&
+              (currentRole !== "client_admin" || role === "client_user");
 
             return (
-              <article
-                className="admin-user-card"
-                key={user.uid}
-              >
+              <div key={user.uid}>
+              {isNewClientGroup && (
+                <div className="admin-user-group-heading">
+                  <div>
+                    <strong>{groupId === "unassigned" ? "Legacy / unassigned accounts" : (user.bankName || clientAdmin?.bankName || "Client workspace")}</strong>
+                    <small>{groupId === "unassigned" ? "Accounts without a tenant" : `Workspace: ${groupId}`}</small>
+                  </div>
+                  {clientAdmin && <div className="admin-user-group-owner">
+                    <span>Client Admin</span>
+                    <strong>{clientAdmin.name || clientAdmin.email}</strong>
+                    <small>{clientAdmin.email} · {String(clientAdmin.status || "unknown")}</small>
+                    <small>{groupUsers.length}/2 client users</small>
+                  </div>}
+                </div>
+              )}
+              <article className="admin-user-card">
                 <div className="admin-user-main">
                   <div className="admin-user-avatar">
                     {(user.email || "U")
@@ -447,8 +440,12 @@ function AdminUsers({ embedded = false }: Props) {
                   </span>
 
                   <span>
-                    {isAdmin ? "Admin" : "User"}
+                    {role === "master_owner" ? "Master Admin" :
+                      role === "client_admin" ? "Client Admin" :
+                        role === "client_user" ? "Client User" :
+                          role === "admin" ? "Admin" : "User"}
                   </span>
+                  {user.tenantId && <span>{user.bankName || user.tenantId}</span>}
 
                   <span>
                     {user.subscriptionStatus ||
@@ -461,7 +458,7 @@ function AdminUsers({ embedded = false }: Props) {
                     status === "denied" ||
                     (status === "approved" &&
                       String(user.subscriptionStatus || "inactive").toLowerCase() !== "active")) &&
-                    !isAdmin && (
+                    canManage && !isAdmin && (
                       <button
                         className="approve"
                         disabled={isBusy}
@@ -477,7 +474,7 @@ function AdminUsers({ embedded = false }: Props) {
                     )}
 
                   {status === "pending" &&
-                    !isAdmin && (
+                    canManage && !isAdmin && (
                       <button
                         className="delete"
                         disabled={isBusy}
@@ -494,7 +491,7 @@ function AdminUsers({ embedded = false }: Props) {
 
                   {status !== "blocked" &&
                     status !== "pending" &&
-                    !isAdmin && (
+                    canManage && (role === "client_admin" || !isAdmin) && (
                       <button
                         className="block"
                         disabled={isBusy}
@@ -510,7 +507,7 @@ function AdminUsers({ embedded = false }: Props) {
                     )}
 
                   {status === "blocked" &&
-                    !isAdmin && (
+                    canManage && (role === "client_admin" || !isAdmin) && (
                       <button
                         className="unblock"
                         disabled={isBusy}
@@ -525,7 +522,8 @@ function AdminUsers({ embedded = false }: Props) {
                       </button>
                     )}
 
-                  {!isAdmin && (
+                  {canManage && (role === "client_admin" || !isAdmin) &&
+                    !(currentRole === "client_admin" && role === "client_user") && (
                     <button
                       className="delete"
                       disabled={isBusy}
@@ -543,6 +541,7 @@ function AdminUsers({ embedded = false }: Props) {
                   )}
                 </div>
               </article>
+              </div>
             );
           })
         )}

@@ -13,6 +13,8 @@ import {
 
   getDoc,
 
+  onSnapshot,
+
   serverTimestamp,
 
   setDoc,
@@ -20,6 +22,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "./firebase";
+import { getTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata, tenantStorageKey } from "./tenantApi";
 
 import type {
 
@@ -33,6 +36,8 @@ import CustomerEntry from "./CustomerEntry";
 
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
+import ClientGoogleSetup from "./ClientGoogleSetup";
+import BankFormats from "./BankFormats";
 
 
 import Passbook from "./Passbook";
@@ -49,6 +54,7 @@ type DashboardProps = {
 
   onLogout: () => void;
   userRole: "admin" | "user";
+  accountRole: string;
 
 };
 
@@ -227,6 +233,7 @@ type PageName =
   | "passbook"
 
   | "quick-passbook"
+  | "bank-formats"
 
   | "search"
 
@@ -234,7 +241,9 @@ type PageName =
 
   | "settings";
 
-function Dashboard({ onLogout, userRole }: DashboardProps) {
+function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
+
+  const canControlGlobalDashboard = accountRole === "master_owner";
 
   const [activePage, setActivePage] =
 
@@ -283,7 +292,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const [menuThemeModalOpen, setMenuThemeModalOpen] = useState(false);
   const [menuTheme, setMenuTheme] = useState<MenuThemeId>(() => {
-    const saved = localStorage.getItem("bankSetuMenuTheme");
+    const saved = localStorage.getItem(tenantStorageKey("bankSetuMenuTheme"));
     return isMenuThemeId(saved) ? saved : "violet";
   });
   const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
@@ -291,22 +300,18 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
   const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
 
   const [customDashboardColor, setCustomDashboardColor] = useState(() =>
-    localStorage.getItem("bankSetuCustomDashboardColor") || "#123b4a"
+    localStorage.getItem(tenantStorageKey("bankSetuCustomDashboardColor")) || "#123b4a"
   );
 
   const [useCustomDashboardColor, setUseCustomDashboardColor] = useState(() =>
-    localStorage.getItem("bankSetuUseCustomDashboardColor") === "true"
+    localStorage.getItem(tenantStorageKey("bankSetuUseCustomDashboardColor")) === "true"
   );
 
   const [dashboardTheme, setDashboardTheme] =
 
     useState<DashboardThemeId>(() => {
 
-      const savedTheme = localStorage.getItem(
-
-        "bankSetuDashboardTheme"
-
-      );
+      const savedTheme = localStorage.getItem(tenantStorageKey("bankSetuDashboardTheme"));
 
       return savedTheme === "soft-mist"
 
@@ -338,11 +343,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       return (
 
-        localStorage.getItem(
-
-          "bankSetuBankLogo"
-
-        ) || ""
+        localStorage.getItem(tenantStorageKey("bankSetuBankLogo")) || ""
 
       );
 
@@ -354,11 +355,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       try {
 
-        const saved = localStorage.getItem(
-
-          "bankSetuBankInfo"
-
-        );
+        const saved = localStorage.getItem(tenantStorageKey("bankSetuBankInfo"));
 
         if (!saved) return emptyBankInfo;
 
@@ -414,11 +411,13 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     await setDoc(
 
-      doc(db, "appSettings", user.uid),
+      doc(db, ...tenantSettingsPath(user.uid)),
 
       {
 
         ...patch,
+
+        ...tenantSettingsWriteMetadata(user.uid),
 
         updatedAt: serverTimestamp(),
 
@@ -452,11 +451,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       try {
 
-        const savedInfo = localStorage.getItem(
-
-          "bankSetuBankInfo"
-
-        );
+        const savedInfo = localStorage.getItem(tenantStorageKey("bankSetuBankInfo"));
 
         if (savedInfo) {
 
@@ -484,23 +479,11 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       const localLogo =
 
-        localStorage.getItem(
-
-          "bankSetuBankLogo"
-
-        ) || "";
+        localStorage.getItem(tenantStorageKey("bankSetuBankLogo")) || "";
 
       try {
 
-        const settingsRef = doc(
-
-          db,
-
-          "appSettings",
-
-          user.uid
-
-        );
+        const settingsRef = doc(db, ...tenantSettingsPath(user.uid));
 
         const settingsSnap =
 
@@ -584,40 +567,10 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
         if (cloudApiUrl) {
 
-          localStorage.setItem(
-
-            "bankSetuApiUrl",
-
-            cloudApiUrl
-
-          );
+          setTenantApiUrl(cloudApiUrl);
 
         }
 
-
-        const cloudTheme =
-
-          cloudData.dashboardTheme === "soft-mist"
-
-            ? "dark-original"
-
-            : isDashboardThemeId(cloudData.dashboardTheme)
-
-              ? cloudData.dashboardTheme
-
-              : dashboardTheme;
-
-        const cloudMenuTheme = isMenuThemeId(cloudData.menuTheme) ? cloudData.menuTheme : menuTheme;
-
-        localStorage.setItem("bankSetuMenuTheme", cloudMenuTheme);
-
-        localStorage.setItem(
-
-          "bankSetuDashboardTheme",
-
-          cloudTheme
-
-        );
 
         if (!cancelled) {
 
@@ -629,30 +582,15 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
           }
 
-          setDashboardTheme(cloudTheme);
-          setMenuTheme(cloudMenuTheme);
-
         }
 
         try {
 
-          localStorage.setItem(
-
-            "bankSetuBankInfo",
-
-            JSON.stringify(cloudInfo)
-
-          );
+          localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cloudInfo));
 
           if (cloudLogo) {
 
-            localStorage.setItem(
-
-              "bankSetuBankLogo",
-
-              cloudLogo
-
-            );
+            localStorage.setItem(tenantStorageKey("bankSetuBankLogo"), cloudLogo);
 
           }
 
@@ -906,13 +844,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       setBankInfo(cleaned);
 
-      localStorage.setItem(
-
-        "bankSetuBankInfo",
-
-        JSON.stringify(cleaned)
-
-      );
+      localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned));
 
       setBankInfoEditOpen(false);
 
@@ -936,11 +868,10 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   };
 
-  // Global UI theme is shared by every approved Bank Setu account.
-  // Firestore path: appSettings/uiTheme
+  // Master-controlled appearance is stored once and read by every tenant.
   const saveGlobalUiTheme = async (patch: Record<string, unknown>) => {
     const user = getAuth().currentUser;
-    if (!user || userRole !== "admin") return;
+    if (!user || !canControlGlobalDashboard) return;
 
     await setDoc(
       doc(db, "appSettings", "uiTheme"),
@@ -955,50 +886,33 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadGlobalUiTheme = async () => {
-      try {
-        const snap = await getDoc(doc(db, "appSettings", "uiTheme"));
-        if (!snap.exists() || cancelled) return;
-
-        const data = snap.data();
-
-        if (
-          typeof data.customDashboardColor === "string" &&
-          data.useCustomDashboardColor === true
-        ) {
-          setCustomDashboardColor(data.customDashboardColor);
-          setUseCustomDashboardColor(true);
-          localStorage.setItem("bankSetuCustomDashboardColor", data.customDashboardColor);
-          localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
-        } else if (isDashboardThemeId(data.dashboardTheme)) {
-          setDashboardTheme(data.dashboardTheme);
-          setUseCustomDashboardColor(false);
-          localStorage.setItem("bankSetuDashboardTheme", data.dashboardTheme);
-          localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
-        }
-
-        if (isMenuThemeId(data.menuTheme)) {
-          setMenuTheme(data.menuTheme);
-          localStorage.setItem("bankSetuMenuTheme", data.menuTheme);
-        }
-      } catch (error) {
-        console.error("Global UI theme load failed:", error);
+    if (!getAuth().currentUser) return;
+    return onSnapshot(doc(db, "appSettings", "uiTheme"), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (typeof data.customDashboardColor === "string" && data.useCustomDashboardColor === true) {
+        setCustomDashboardColor(data.customDashboardColor);
+        setUseCustomDashboardColor(true);
+        localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), data.customDashboardColor);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
+      } else if (isDashboardThemeId(data.dashboardTheme)) {
+        setDashboardTheme(data.dashboardTheme);
+        setUseCustomDashboardColor(false);
+        localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), data.dashboardTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
       }
-    };
-
-    void loadGlobalUiTheme();
-    return () => {
-      cancelled = true;
-    };
+      if (isMenuThemeId(data.menuTheme)) {
+        setMenuTheme(data.menuTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
+      }
+    }, (error) => console.error("Global UI theme listener failed:", error));
   }, []);
 
   const changeDashboardTheme = async (themeId: DashboardThemeId) => {
     setDashboardTheme(themeId);
     setUseCustomDashboardColor(false);
-    localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
-    localStorage.setItem("bankSetuDashboardTheme", themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
+    localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), themeId);
 
     try {
       await saveGlobalUiTheme({
@@ -1015,7 +929,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const changeMenuTheme = async (themeId: MenuThemeId) => {
     setMenuTheme(themeId);
-    localStorage.setItem("bankSetuMenuTheme", themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), themeId);
 
     try {
       await saveGlobalUiTheme({ menuTheme: themeId });
@@ -1277,13 +1191,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
         setBankLogo(result);
 
-        localStorage.setItem(
-
-          "bankSetuBankLogo",
-
-          result
-
-        );
+        localStorage.setItem(tenantStorageKey("bankSetuBankLogo"), result);
 
       } catch (error) {
 
@@ -1319,11 +1227,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const apiConfigured =
 
-    !!localStorage.getItem(
-
-      "bankSetuApiUrl"
-
-    );
+    !!getTenantApiUrl();
 
   return (
 
@@ -1501,6 +1405,13 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
             active={activePage === "quick-passbook"}
             onClick={() => openPage("quick-passbook")}
           />
+
+          {(["client_admin", "client_user"].includes(accountRole)) && <NavButton
+            icon="🏦"
+            label="Bank Formats"
+            active={activePage === "bank-formats"}
+            onClick={() => openPage("bank-formats")}
+          />}
 
           <NavButton
 
@@ -1863,12 +1774,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                 </button>
 
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setThemeModalOpen(true); }}
                 >🎨 Dashboard Color</button>}
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
@@ -1936,6 +1847,8 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
+        <ClientGoogleSetup enabled={accountRole === "client_admin"} />
+
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
@@ -1972,12 +1885,16 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
           {activePage === "passbook" && (
 
-            <Passbook />
+            <Passbook formatType="passbook" />
 
           )}
 
           {activePage === "quick-passbook" && (
-            <Passbook />
+            <Passbook formatType="quickPassbook" />
+          )}
+
+          {activePage === "bank-formats" && (
+            <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} />
           )}
 
           {activePage === "search" && (
@@ -2334,7 +2251,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       {/* DASHBOARD COLOR */}
 
-      {themeModalOpen && userRole === "admin" && (
+      {themeModalOpen && canControlGlobalDashboard && (
 
         <div
 
@@ -2471,15 +2388,15 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                   type="button"
                   style={styles.themeChoice}
                   onClick={() => {
-                    localStorage.setItem("bankSetuCustomDashboardColor", customDashboardColor);
-                    localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
+                    localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), customDashboardColor);
+                    localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
                     setUseCustomDashboardColor(true);
                     void saveGlobalUiTheme({ customDashboardColor, useCustomDashboardColor: true });
                     setThemeModalOpen(false);
                   }}
                 >Apply RGB / Custom</button>
                 {useCustomDashboardColor && <button type="button" style={styles.themeChoice} onClick={() => {
-                  localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
+                  localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
                   setUseCustomDashboardColor(false);
                   void saveGlobalUiTheme({ dashboardTheme, useCustomDashboardColor: false });
                 }}>Use Preset</button>}
@@ -2492,7 +2409,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       )}
 
-      {menuThemeModalOpen && userRole === "admin" && (
+      {menuThemeModalOpen && canControlGlobalDashboard && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
           <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
             <div style={styles.modalHeader}>
@@ -2523,7 +2440,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>Advanced Administrator Control</h2></div>
               <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
             </div>
-            <AdvancedAdmin />
+            <AdvancedAdmin allowConnectionSettings={accountRole === "admin"} isMasterOwner={accountRole === "master_owner"} />
           </div>
         </div>
       )}
@@ -3398,13 +3315,7 @@ function DashboardHome({
 
       try {
 
-        const apiUrl =
-
-          localStorage
-
-            .getItem("bankSetuApiUrl")
-
-            ?.trim() || "";
+        const apiUrl = getTenantApiUrl();
 
         if (!apiUrl) {
 
