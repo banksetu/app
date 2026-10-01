@@ -1,5 +1,6 @@
 import {
 
+  useCallback,
   useState,
 
 
@@ -9,6 +10,7 @@ import {
 
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
+import BankFormatPrint from "./BankFormatPrint";
 
 
 
@@ -332,7 +334,9 @@ function makePrintAddress(customer: Customer) {
 
 
 
-export default function Passbook() {
+export default function Passbook({ formatType = "passbook" }: { formatType?: "passbook" | "quickPassbook" }) {
+  const [bankFormatActive, setBankFormatActive] = useState(false);
+  const onBankFormatConfigured = useCallback((active: boolean) => setBankFormatActive(active), []);
 
   const [query, setQuery] = useState("");
 
@@ -485,6 +489,7 @@ export default function Passbook() {
 
   const searchCustomer = async (event?: FormEvent) => {
     event?.preventDefault();
+    setBankFormatActive(false);
 
     const searchValue = query.trim();
     if (!searchValue) {
@@ -673,6 +678,8 @@ export default function Passbook() {
 
 
   const clearPassbook = () => {
+
+    setBankFormatActive(false);
 
     setQuery("");
 
@@ -940,7 +947,7 @@ export default function Passbook() {
 
   return (
 
-    <div className="passbook-page">
+    <div className={`passbook-page${bankFormatActive ? " bank-format-active" : ""}`}>
 
       <style>{`
 
@@ -961,6 +968,8 @@ export default function Passbook() {
           color: #eaffff;
 
         }
+
+        .passbook-page.bank-format-active .passbook-shell { display: none !important; }
 
 
 
@@ -2153,6 +2162,13 @@ export default function Passbook() {
         </p>
 
       </div>
+
+      {previewCustomer && <BankFormatPrint
+        formatType={formatType}
+        customer={previewCustomer}
+        onConfigured={onBankFormatConfigured}
+        onPrint={() => void printPassbook()}
+      />}
 
 
 
