@@ -84,6 +84,10 @@ async function rollbackProvisionedAccount(uid: string, tenantId?: string): Promi
 
 export const createClient = onCall<CreateClientData>(async (request) => {
   const actor = await requireProvisioningRole(request.auth?.uid, ["master_owner"]);
+  const googleSetup = (await db.collection("appSettings").doc("googleSetup").get()).data() || {};
+  if (!googleSetup.oauthClientId || !googleSetup.apiUrl || !googleSetup.executorEmail) {
+    throw new HttpsError("failed-precondition", "Complete the one-time Bank Setu Google setup before creating client accounts.");
+  }
   const { name, email, password } = validateProvisioningInput(request.data || {});
   const bankName = String(request.data?.bankName || "").trim();
   if (!bankName || bankName.length > 120) {
@@ -112,7 +116,7 @@ export const createClient = onCall<CreateClientData>(async (request) => {
     batch.set(db.collection("tenantSettings").doc(tenantId), {
       tenantId,
       bankName,
-      apiUrl: "",
+      apiUrl: String(googleSetup.apiUrl),
       spreadsheetId: "",
       photoFolderId: "",
       bankInfo: {},
@@ -540,14 +544,72 @@ interface ConfigureTenantData {
   spreadsheetId: string;
   photoFolderId: string;
   apiUrl: string;
+  googleEmail?: string;
+  accessToken?: string;
+}
+
+async function verifyGoogleWorkspaceOwnership(
+  accessToken: string,
+  spreadsheetId: string,
+  photoFolderId: string,
+  expectedExecutorEmail: string,
+  suppliedEmail: string
+): Promise<string> {
+  if (accessToken.length < 20 || accessToken.length > 8192) {
+    throw new HttpsError("invalid-argument", "Reconnect Google Drive and try again.");
+  }
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const getGoogleJson = async <T,>(url: string): Promise<T> => {
+    const response = await fetch(url, { headers });
+    const result = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
+    if (!response.ok) {
+      console.warn("Google workspace verification failed with status:", response.status);
+      throw new HttpsError("failed-precondition", "Google could not verify the workspace. Reconnect your Google account and retry.");
+    }
+    return result;
+  };
+  const encodedFields = encodeURIComponent("id,mimeType,owners(emailAddress),parents,trashed");
+  const [profile, sheet, folder] = await Promise.all([
+    getGoogleJson<{ email?: string }>("https://www.googleapis.com/oauth2/v2/userinfo"),
+    getGoogleJson<{ id?: string; mimeType?: string; owners?: Array<{ emailAddress?: string }>; parents?: string[]; trashed?: boolean }>(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}?fields=${encodedFields}`
+    ),
+    getGoogleJson<{ id?: string; mimeType?: string; owners?: Array<{ emailAddress?: string }>; trashed?: boolean }>(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(photoFolderId)}?fields=${encodedFields}`
+    ),
+  ]);
+  const email = String(profile.email || "").trim().toLowerCase();
+  const spreadsheetOwner = String(sheet.owners?.[0]?.emailAddress || "").trim().toLowerCase();
+  const folderOwner = String(folder.owners?.[0]?.emailAddress || "").trim().toLowerCase();
+  if (!email || email !== suppliedEmail.toLowerCase() || spreadsheetOwner !== email || folderOwner !== email) {
+    throw new HttpsError("permission-denied", "The Google Sheet and Drive folder must belong to the Google account you connected.");
+  }
+  if (sheet.id !== spreadsheetId || sheet.mimeType !== "application/vnd.google-apps.spreadsheet" || sheet.trashed || !sheet.parents?.includes(photoFolderId)) {
+    throw new HttpsError("invalid-argument", "The Google Sheet must be inside the new Bank Setu workspace folder.");
+  }
+  if (folder.id !== photoFolderId || folder.mimeType !== "application/vnd.google-apps.folder" || folder.trashed) {
+    throw new HttpsError("invalid-argument", "The Bank Setu Drive folder is not valid.");
+  }
+  const permissionList = await getGoogleJson<{ permissions?: Array<{ emailAddress?: string; role?: string }> }>(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(photoFolderId)}/permissions?fields=permissions(emailAddress,role)`
+  );
+  const executorPermission = permissionList.permissions?.find((permission) =>
+    String(permission.emailAddress || "").toLowerCase() === expectedExecutorEmail.toLowerCase()
+  );
+  if (!executorPermission || !["writer", "owner"].includes(String(executorPermission.role))) {
+    throw new HttpsError("failed-precondition", "The workspace folder has not been shared with the Bank Setu Apps Script account.");
+  }
+  return email;
 }
 
 export const configureTenantData = onCall<ConfigureTenantData>(async (request) => {
-  const actor = await requireProvisioningRole(request.auth?.uid, ["master_owner"]);
+  const actor = await requireProvisioningRole(request.auth?.uid, ["master_owner", "client_admin"]);
   const tenantId = String(request.data?.tenantId || "").trim();
   const spreadsheetId = String(request.data?.spreadsheetId || "").trim();
   const photoFolderId = String(request.data?.photoFolderId || "").trim();
-  const apiUrl = String(request.data?.apiUrl || "").trim();
+  const suppliedApiUrl = String(request.data?.apiUrl || "").trim();
+  const googleEmail = String(request.data?.googleEmail || "").trim().toLowerCase();
+  const accessToken = String(request.data?.accessToken || "").trim();
   if (!tenantId || tenantId.length > 128) {
     throw new HttpsError("invalid-argument", "Choose a valid client workspace.");
   }
@@ -557,22 +619,101 @@ export const configureTenantData = onCall<ConfigureTenantData>(async (request) =
   if (!/^[A-Za-z0-9_-]{20,}$/.test(photoFolderId)) {
     throw new HttpsError("invalid-argument", "Enter the Google Drive folder ID.");
   }
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(apiUrl)) {
-    throw new HttpsError("invalid-argument", "Enter a valid Apps Script Web App URL ending in /exec.");
+  if (googleEmail && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(googleEmail) || googleEmail.length > 254)) {
+    throw new HttpsError("invalid-argument", "Google account email is invalid.");
+  }
+  if (actor.role === "client_admin" && actor.tenantId !== tenantId) {
+    throw new HttpsError("permission-denied", "You can only connect your own client workspace.");
   }
   const tenantRef = db.collection("tenants").doc(tenantId);
   const tenant = await tenantRef.get();
   if (!tenant.exists || tenant.data()?.status !== "active") {
     throw new HttpsError("not-found", "Active client workspace not found.");
   }
+  const setupRef = db.collection("appSettings").doc("googleSetup");
+  const setupSnap = await setupRef.get();
+  const configuredApiUrl = String(setupSnap.data()?.apiUrl || "").trim();
+  const apiUrl = actor.role === "master_owner" ? suppliedApiUrl : configuredApiUrl;
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(apiUrl)) {
+    throw new HttpsError("failed-precondition", "Bank Setu Google setup is not complete yet.");
+  }
+  const setupData = setupSnap.data() || {};
+  if (actor.role === "client_admin" && !setupData.executorEmail) {
+    throw new HttpsError("failed-precondition", "Bank Setu Google setup is not complete yet.");
+  }
+  const verifiedGoogleEmail = actor.role === "client_admin"
+    ? await verifyGoogleWorkspaceOwnership(
+      accessToken,
+      spreadsheetId,
+      photoFolderId,
+      String(setupData.executorEmail || ""),
+      googleEmail
+    )
+    : googleEmail;
   await db.collection("tenantSettings").doc(tenantId).set({
     tenantId,
     bankName: tenant.data()?.bankName || "",
     apiUrl,
     spreadsheetId,
     photoFolderId,
+    ...(verifiedGoogleEmail ? { googleEmail: verifiedGoogleEmail } : {}),
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: actor.uid,
   }, { merge: true });
   return { success: true, tenantId };
+});
+
+interface GoogleSetupConfig {
+  oauthClientId: string;
+  apiUrl: string;
+  executorEmail: string;
+}
+
+function validateGoogleSetupConfig(input: GoogleSetupConfig): GoogleSetupConfig {
+  const oauthClientId = String(input.oauthClientId || "").trim();
+  const apiUrl = String(input.apiUrl || "").trim();
+  const executorEmail = String(input.executorEmail || "").trim().toLowerCase();
+  if (!/^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i.test(oauthClientId)) {
+    throw new HttpsError("invalid-argument", "Enter a valid Google OAuth Web Client ID.");
+  }
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(apiUrl)) {
+    throw new HttpsError("invalid-argument", "Enter a valid Apps Script Web App URL ending in /exec.");
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(executorEmail) || executorEmail.length > 254) {
+    throw new HttpsError("invalid-argument", "Enter the Google account that owns the Apps Script deployment.");
+  }
+  return { oauthClientId, apiUrl, executorEmail };
+}
+
+export const saveGoogleSetupConfig = onCall<GoogleSetupConfig>(async (request) => {
+  const actor = await requireProvisioningRole(request.auth?.uid, ["master_owner"]);
+  const config = validateGoogleSetupConfig(request.data || {});
+  await db.collection("appSettings").doc("googleSetup").set({
+    ...config,
+    updatedBy: actor.uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { success: true };
+});
+
+export const getGoogleSetupConfig = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Please login first.");
+  const actor = await requireProvisioningRole(request.auth.uid, ["master_owner", "client_admin"]);
+  const [configSnapshot, tenantSettingsSnapshot] = await Promise.all([
+    db.collection("appSettings").doc("googleSetup").get(),
+    actor.tenantId
+      ? db.collection("tenantSettings").doc(actor.tenantId).get()
+      : Promise.resolve(null),
+  ]);
+  const config = configSnapshot.data() || {};
+  return {
+    oauthClientId: String(config.oauthClientId || ""),
+    apiUrl: String(config.apiUrl || ""),
+    executorEmail: String(config.executorEmail || ""),
+    tenantId: actor.tenantId || "",
+    bankName: String(tenantSettingsSnapshot?.data()?.bankName || ""),
+    spreadsheetId: String(tenantSettingsSnapshot?.data()?.spreadsheetId || ""),
+    photoFolderId: String(tenantSettingsSnapshot?.data()?.photoFolderId || ""),
+    googleEmail: String(tenantSettingsSnapshot?.data()?.googleEmail || ""),
+  };
 });
