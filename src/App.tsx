@@ -7,6 +7,7 @@ import {
   type User,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 import { auth, db } from "./firebase";
 import Dashboard from "./Dashboard";
@@ -23,6 +24,7 @@ type UserProfile = {
 };
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
 
 function getAccessError(profile: UserProfile): string {
   const status = normalize(profile.status);
@@ -58,6 +60,7 @@ function App() {
   const [accountRole, setAccountRole] = useState("user");
 
   const loginAttemptRef = useRef(false);
+  const ownerBootstrapAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
 
   const clearProfileListener = () => {
@@ -109,6 +112,28 @@ function App() {
     profileUnsubscribeRef.current = onSnapshot(
       userRef,
       async (snapshot) => {
+        const existingProfile = snapshot.exists() ? snapshot.data() as UserProfile : null;
+        const mayBootstrapOwner = normalize(user.email) === MASTER_OWNER_EMAIL &&
+          user.emailVerified &&
+          !ownerBootstrapAttemptRef.current &&
+          (!existingProfile || normalize(existingProfile.role) === "admin");
+        if (mayBootstrapOwner) {
+          ownerBootstrapAttemptRef.current = true;
+          setError("Setting up the verified Bank Setu Master Admin account…");
+          try {
+            await httpsCallable(getFunctions(), "bootstrapMasterOwner")({});
+            return;
+          } catch (bootstrapError: unknown) {
+            const code = String((bootstrapError as { code?: string }).code || "");
+            if (!(existingProfile && code.endsWith("already-exists"))) {
+              await rejectSession(bootstrapError instanceof Error
+                ? bootstrapError.message
+                : "Unable to set up the Master Admin account.");
+              setCheckingSession(false);
+              return;
+            }
+          }
+        }
         if (!snapshot.exists()) {
           await rejectSession(
             "Your Bank Setu profile was not found. Please contact the administrator."
@@ -117,7 +142,7 @@ function App() {
           return;
         }
 
-        const profile = snapshot.data() as UserProfile;
+        const profile = existingProfile as UserProfile;
         applyProfile(profile);
 
         const accessError = getAccessError(profile);
@@ -145,6 +170,7 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
+        ownerBootstrapAttemptRef.current = false;
         clearProfileListener();
         sessionStorage.removeItem("bankSetuRole");
         sessionStorage.removeItem("bankSetuTenantId");
