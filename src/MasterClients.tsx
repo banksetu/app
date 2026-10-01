@@ -24,6 +24,9 @@ export default function MasterClients({ enabled }: Props) {
   const [spreadsheetId, setSpreadsheetId] = useState("");
   const [photoFolderId, setPhotoFolderId] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [executorEmail, setExecutorEmail] = useState("");
+  const [commonApiUrl, setCommonApiUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -48,6 +51,15 @@ export default function MasterClients({ enabled }: Props) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
+    void httpsCallable(getFunctions(), "getGoogleSetupConfig")({}).then((result) => {
+      if (!active) return;
+      const config = result.data as { oauthClientId?: string; executorEmail?: string; apiUrl?: string };
+      setOauthClientId(String(config.oauthClientId || ""));
+      setExecutorEmail(String(config.executorEmail || ""));
+      setCommonApiUrl(String(config.apiUrl || ""));
+    }).catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : "Unable to load Google setup configuration.");
+    });
     void fetchClients().then((items) => {
       if (!active) return;
       setClients(items);
@@ -114,6 +126,25 @@ export default function MasterClients({ enabled }: Props) {
     }
   };
 
+  const saveGoogleConfig = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await httpsCallable(getFunctions(), "saveGoogleSetupConfig")({
+        oauthClientId,
+        executorEmail,
+        apiUrl: commonApiUrl,
+      });
+      setMessage("Bank Setu Google setup saved. Client Admins can now connect their own Google Drive.");
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to save Google setup configuration.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!enabled) return null;
 
   const fieldStyle: CSSProperties = {
@@ -131,8 +162,21 @@ export default function MasterClients({ enabled }: Props) {
     <section style={{ marginTop: 16, padding: 18, borderRadius: 16, background: "rgba(8,31,40,.92)", color: "#eef7f7" }}>
       <h2 style={{ margin: 0, fontSize: 19 }}>Client Workspaces</h2>
       <p style={{ color: "#b8c9cd", fontSize: 13, lineHeight: 1.5 }}>
-        Create a client login, then connect that client's Sheet and Drive folder. Share both with the Google account that owns the Apps Script deployment.
+        Set Bank Setu's shared Google connection once. After that, each Client Admin creates their own Sheet and Drive folder with one click during first login.
       </p>
+
+      <div style={{ marginTop: 18, padding: 14, border: "1px solid rgba(99,226,196,.28)", borderRadius: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>One-time Bank Setu Google setup</h3>
+        <p style={{ color: "#b8c9cd", fontSize: 13, lineHeight: 1.5 }}>
+          Enter the Bank Setu OAuth Web Client ID, the shared Apps Script Web App URL, and the Google account that owns that Apps Script deployment. Client files will still be created in each Client Admin's own Drive.
+        </p>
+        <form onSubmit={saveGoogleConfig} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 4 }}>
+          <label style={labelStyle}>Google OAuth Web Client ID<input required style={fieldStyle} value={oauthClientId} onChange={(event) => setOauthClientId(event.target.value)} placeholder="...apps.googleusercontent.com" /></label>
+          <label style={labelStyle}>Apps Script deployment owner email<input required type="email" style={fieldStyle} value={executorEmail} onChange={(event) => setExecutorEmail(event.target.value)} placeholder="Google account used to deploy Apps Script" /></label>
+          <label style={labelStyle}>Shared Apps Script Web App URL<input required type="url" style={fieldStyle} value={commonApiUrl} onChange={(event) => setCommonApiUrl(event.target.value)} placeholder="https://script.google.com/macros/s/.../exec" /></label>
+          <button disabled={busy} style={buttonStyle}>{busy ? "Saving…" : "Save One-time Setup"}</button>
+        </form>
+      </div>
 
       <form onSubmit={createClient} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 4 }}>
         <label style={labelStyle}>Client contact name<input required style={fieldStyle} value={name} onChange={(event) => setName(event.target.value)} /></label>
