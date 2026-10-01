@@ -34,6 +34,7 @@ import CustomerEntry from "./CustomerEntry";
 
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
+import ClientGoogleSetup from "./ClientGoogleSetup";
 
 
 import Passbook from "./Passbook";
@@ -1899,6 +1900,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         </header>
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
+
+        <ClientGoogleSetup enabled={accountRole === "client_admin"} />
 
         {/* PAGE CONTENT */}
 
