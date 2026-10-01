@@ -8,7 +8,8 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 
 - Removed public signup from the login flow and denied client-side creation of user profile documents. Account creation now uses callable Functions.
 - Added `master_owner`, `client_admin`, and `client_user` roles while retaining legacy `admin` and `user` behavior. New client workspaces are provisioned by `createClient`; each starts with two client-user seats. `createClientUser` reserves the remaining seat transactionally. Callable lifecycle operations enforce tenant scope and protect privileged accounts.
-- Added tenant-specific Firestore settings, access rules, and a Master Owner screen to create clients and enter each tenant's Sheet ID, Drive folder ID, and Apps Script Web App URL. Client admins cannot change server-side connection IDs.
+- Added tenant-specific Firestore settings, access rules, and a Master Owner screen to create clients. The Master Owner saves Bank Setu's OAuth client ID, shared Apps Script URL, and Apps Script deployment account once; Client Admins then create their own Sheet and Drive folder through a first-login wizard.
+- The Google setup wizard creates the workspace files in the Client Admin's Google Drive, grants the Apps Script deployment account access only to that workspace folder, and submits the short-lived Google access token to a callable Function for ownership and permission verification. The token is not stored. The Function saves the verified file IDs under that tenant.
 - Scoped browser API URL, bank identity/logo, and theme preferences by tenant (or legacy user). Operational customer screens now use the scoped API URL.
 - Updated Apps Script to verify Firebase ID tokens, resolve the user's tenant from Firestore, and select that tenant's configured spreadsheet and photo folder. Tenant accounts fail closed when these IDs are missing. Legacy `admin`/`user` accounts without a tenant keep the existing shared Sheet and folder for compatibility.
 - Replaced client-side account lifecycle writes and the unverified Cloudflare deletion call with callable Functions.
@@ -29,15 +30,16 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 
 1. Review this PR and deploy Firestore rules and Functions to the intended Firebase project.
 2. Bootstrap the first trusted owner by setting the intended Firebase Auth user's `users/{uid}` profile to `role: "master_owner"`, `status: "approved"`, and `subscriptionStatus: "active"`. No owner UID was present in the repository, so none was guessed or seeded.
-3. For every client, create a Google Sheet and Drive photo folder, share both with the Google account that owns the Apps Script deployment, deploy the tenant-aware Apps Script, then enter those IDs and its `/exec` URL in Master Clients.
-4. Deploy the Apps Script version after reviewing its Google scopes and execution identity. Test that two tenants cannot read or write each other's Sheet or photos.
+3. Deploy the tenant-aware Apps Script once and save its shared `/exec` URL plus deployment-owner Google email in Master Clients. Configure the OAuth Web Client ID and allowed JavaScript origin in Google Cloud; enable the Drive and Sheets APIs.
+4. After deployment, run first login with a non-production Client Admin and verify the Sheet and folder are owned by that Google account, the Apps Script owner sees only that workspace folder, and two tenants cannot read or write each other's files.
 5. Existing production records remain in the old shared spreadsheet. Assign ownership and migrate records deliberately before moving legacy users or removing the old spreadsheet/folder. No data migration or production deployment was performed.
 6. Verify customer CRUD, photos, audit entries, user seat limits, approval/blocking, passbook print, and PDF output in a non-production project.
 
 ## Known limits
 
 - This repository does not include the Cloudflare Worker source, so the former deletion implementation could not be audited; the UI no longer calls it.
-- The current Sheet/Drive connection uses the Apps Script deployment identity and manual sharing. It does not implement per-tenant Google OAuth consent or token storage.
-- The first-login self-service Google setup wizard, bank sample upload/preview templates, and master-controlled global dashboard settings are not implemented yet.
+- Apps Script continues to run under its deployment account for data operations. The Client Admin owns the files and explicitly shares only the workspace folder with that account; direct per-user OAuth is used only during setup, and no refresh token is stored.
+- Google Cloud OAuth client creation, API enablement, authorized-origin setup, Apps Script deployment, owner bootstrap, live OAuth consent, and production rollout require the actual project/account and were not performed from this repository.
+- Bank sample upload/preview templates and master-controlled global dashboard settings are still not implemented.
 - `BankSetuAudit` is an append-only application log, not a tamper-proof compliance ledger. Existing customer records and historical activity are not backfilled.
 - Passbook and Account Opening PDF remain on their existing layouts. Per-bank templates need reviewed samples and explicit field/layout requirements.
