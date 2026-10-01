@@ -852,3 +852,78 @@ export const saveBankFormatTemplate = onCall<SaveBankFormatData>(async (request)
   });
   return { success: true, formatType, fileId };
 });
+
+interface BankFieldPlacement {
+  field: string;
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+  uppercase: boolean;
+  align: "left" | "center" | "right";
+}
+
+interface SaveBankFormatMappingData {
+  formatType: string;
+  pageWidthMm: number;
+  pageHeightMm: number;
+  fieldMap: BankFieldPlacement[];
+}
+
+const BANK_TEMPLATE_FIELDS = new Set([
+  "name", "fatherName", "accountNo", "customerId", "aofNo", "gender",
+  "mobile", "aadhaar", "pan", "address", "branchName", "ifsc",
+  "accountOpeningDate", "nominee", "postOffice", "pinCode", "status", "customerPhoto",
+]);
+
+export const saveBankFormatMapping = onCall<SaveBankFormatMappingData>(async (request) => {
+  const actor = await requireProvisioningRole(request.auth?.uid, ["client_admin"]);
+  const formatType = String(request.data?.formatType || "").trim();
+  const pageWidthMm = Number(request.data?.pageWidthMm);
+  const pageHeightMm = Number(request.data?.pageHeightMm);
+  const fieldMap = Array.isArray(request.data?.fieldMap) ? request.data.fieldMap : [];
+  if (!actor.tenantId || !["passbook", "quickPassbook", "accountOpening"].includes(formatType)) {
+    throw new HttpsError("invalid-argument", "Choose a valid client bank format.");
+  }
+  if (
+    !Number.isFinite(pageWidthMm) || pageWidthMm < 50 || pageWidthMm > 500 ||
+    !Number.isFinite(pageHeightMm) || pageHeightMm < 50 || pageHeightMm > 500 ||
+    fieldMap.length > 50
+  ) {
+    throw new HttpsError("invalid-argument", "Enter valid page dimensions and field positions.");
+  }
+  const normalized = fieldMap.map((item) => {
+    const field = String(item?.field || "");
+    const align = String(item?.align || "left");
+    const x = Number(item?.x);
+    const y = Number(item?.y);
+    const width = Number(item?.width);
+    const fontSize = Number(item?.fontSize);
+    if (
+      !BANK_TEMPLATE_FIELDS.has(field) || !["left", "center", "right"].includes(align) ||
+      !Number.isFinite(x) || x < 0 || x > 100 ||
+      !Number.isFinite(y) || y < 0 || y > 100 ||
+      !Number.isFinite(width) || width < 1 || width > 100 ||
+      !Number.isFinite(fontSize) || fontSize < 5 || fontSize > 48
+    ) {
+      throw new HttpsError("invalid-argument", "A mapped field has an invalid key or position.");
+    }
+    return {
+      field, x, y, width, fontSize, uppercase: item.uppercase === true,
+      align: align as BankFieldPlacement["align"],
+    };
+  });
+  const settingsRef = db.collection("tenantSettings").doc(actor.tenantId);
+  const settings = (await settingsRef.get()).data() || {};
+  if (!settings.bankFormats?.[formatType]?.fileId) {
+    throw new HttpsError("failed-precondition", "Upload a bank sample before mapping fields.");
+  }
+  await settingsRef.update({
+    [`bankFormats.${formatType}.pageWidthMm`]: pageWidthMm,
+    [`bankFormats.${formatType}.pageHeightMm`]: pageHeightMm,
+    [`bankFormats.${formatType}.fieldMap`]: normalized,
+    [`bankFormats.${formatType}.mappingUpdatedAt`]: FieldValue.serverTimestamp(),
+    [`bankFormats.${formatType}.mappingUpdatedBy`]: actor.uid,
+  });
+  return { success: true, formatType, fieldCount: normalized.length };
+});
