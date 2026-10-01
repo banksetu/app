@@ -10,7 +10,6 @@ import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 import Dashboard from "./Dashboard";
-import Signup from "./Signup";
 
 import "./App.css";
 
@@ -44,7 +43,6 @@ function getAccessError(profile: UserProfile): string {
 }
 
 function App() {
-  const [screen, setScreen] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -261,7 +259,6 @@ function App() {
       setError("");
       setSuccessMessage("");
       setLoginSuccess(false);
-      setScreen("login");
     } catch (err) {
       console.error("Logout error:", err);
     }
@@ -296,20 +293,6 @@ function App() {
       <div className={`banksetu-session banksetu-role-${userRole}`}>
         <Dashboard onLogout={handleLogout} userRole={userRole} />
       </div>
-    );
-  }
-
-  if (screen === "signup") {
-    return (
-      <Signup
-        onBackToLogin={() => {
-          setScreen("login");
-          setError("");
-          setSuccessMessage(
-            "New accounts can sign in after administrator approval."
-          );
-        }}
-      />
     );
   }
 
@@ -415,22 +398,11 @@ function App() {
                 {!loading && <span className="arrow">→</span>}
               </button>
 
-              <button
-                type="button"
-                className="create-account-button"
-                onClick={() => {
-                  setScreen("signup");
-                  setError("");
-                  setSuccessMessage("");
-                }}
-              >
-                Create Account
-              </button>
             </div>
           </form>
 
           <p className="approval-note compact-approval-note">
-            New registrations require administrator approval.
+            New accounts are created by the Bank Setu administrator.
           </p>
 
           <div className="login-footer">
