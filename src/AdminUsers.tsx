@@ -25,6 +25,7 @@ type ManagedUser = {
   role?: string;
   tenantId?: string;
   clientId?: string;
+  bankName?: string;
   status?: UserStatus;
   subscriptionStatus?: string;
   disabled?: boolean;
@@ -161,6 +162,8 @@ function AdminUsers({ embedded = false }: Props) {
         user.uid,
         user.status,
         user.role,
+        user.tenantId,
+        user.bankName,
       ]
         .filter(Boolean)
         .some((value) =>
@@ -182,11 +185,11 @@ function AdminUsers({ embedded = false }: Props) {
       return;
     }
 
-    const isAdmin = ["admin", "master_owner", "client_admin"].includes(
-      String(user.role || "").toLowerCase()
-    );
-
-    if (isAdmin) {
+    const targetRole = String(user.role || "user").toLowerCase();
+    const canManageClientAdmin = targetRole === "client_admin" && currentRole === "master_owner";
+    const canManageRegularUser = !["admin", "master_owner"].includes(targetRole) &&
+      (targetRole !== "client_admin" || currentRole === "master_owner");
+    if (!canManageClientAdmin && !canManageRegularUser) {
       setError(
         "Administrator accounts cannot be changed from User Management."
       );
@@ -194,7 +197,9 @@ function AdminUsers({ embedded = false }: Props) {
     }
 
     const confirmText =
-      action === "delete"
+      action === "delete" && targetRole === "client_admin"
+        ? `Offboard ${user.email || "this client"} and remove access for this client and its users?\n\nTheir Google Sheet and Drive files will be preserved.`
+        : action === "delete"
         ? `Permanently delete ${user.email || "this user"}?\n\nThis will remove the Firebase Authentication account and Bank Setu user profile.`
         : `Do you want to ${action} ${
             user.email || "this user"
@@ -210,7 +215,9 @@ function AdminUsers({ embedded = false }: Props) {
       setMessage("");
 
       const functions = getFunctions();
-      const callableName = {
+      const callableName = action === "delete" && targetRole === "client_admin"
+        ? "offboardClient"
+        : {
         approve: "approveUser",
         deny: "denyUser",
         block: "blockUser",
@@ -357,9 +364,11 @@ function AdminUsers({ embedded = false }: Props) {
 
             const isBusy = busyUid === user.uid;
 
-            const isAdmin =
-              String(user.role || "").toLowerCase() ===
-              "admin";
+            const role = String(user.role || "user").toLowerCase();
+            const isAdmin = ["admin", "master_owner", "client_admin"].includes(role);
+            const canManage = !["admin", "master_owner"].includes(role) &&
+              (role !== "client_admin" || currentRole === "master_owner") &&
+              (currentRole !== "client_admin" || role === "client_user");
 
             return (
               <article
@@ -396,8 +405,12 @@ function AdminUsers({ embedded = false }: Props) {
                   </span>
 
                   <span>
-                    {isAdmin ? "Admin" : "User"}
+                    {role === "master_owner" ? "Master Admin" :
+                      role === "client_admin" ? "Client Admin" :
+                        role === "client_user" ? "Client User" :
+                          role === "admin" ? "Admin" : "User"}
                   </span>
+                  {user.tenantId && <span>{user.bankName || user.tenantId}</span>}
 
                   <span>
                     {user.subscriptionStatus ||
@@ -410,7 +423,7 @@ function AdminUsers({ embedded = false }: Props) {
                     status === "denied" ||
                     (status === "approved" &&
                       String(user.subscriptionStatus || "inactive").toLowerCase() !== "active")) &&
-                    !isAdmin && (
+                    canManage && !isAdmin && (
                       <button
                         className="approve"
                         disabled={isBusy}
@@ -426,7 +439,7 @@ function AdminUsers({ embedded = false }: Props) {
                     )}
 
                   {status === "pending" &&
-                    !isAdmin && (
+                    canManage && !isAdmin && (
                       <button
                         className="delete"
                         disabled={isBusy}
@@ -443,7 +456,7 @@ function AdminUsers({ embedded = false }: Props) {
 
                   {status !== "blocked" &&
                     status !== "pending" &&
-                    !isAdmin && (
+                    canManage && (role === "client_admin" || !isAdmin) && (
                       <button
                         className="block"
                         disabled={isBusy}
@@ -459,7 +472,7 @@ function AdminUsers({ embedded = false }: Props) {
                     )}
 
                   {status === "blocked" &&
-                    !isAdmin && (
+                    canManage && (role === "client_admin" || !isAdmin) && (
                       <button
                         className="unblock"
                         disabled={isBusy}
@@ -474,7 +487,7 @@ function AdminUsers({ embedded = false }: Props) {
                       </button>
                     )}
 
-                  {!isAdmin && (
+                  {canManage && (role === "client_admin" || !isAdmin) && (
                     <button
                       className="delete"
                       disabled={isBusy}

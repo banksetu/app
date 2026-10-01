@@ -12,6 +12,8 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 - Scoped browser API URL, bank identity/logo, and theme preferences by tenant (or legacy user). Operational customer screens now use the scoped API URL.
 - Updated Apps Script to verify Firebase ID tokens, resolve the user's tenant from Firestore, and select that tenant's configured spreadsheet and photo folder. Tenant accounts fail closed when these IDs are missing. Legacy `admin`/`user` accounts without a tenant keep the existing shared Sheet and folder for compatibility.
 - Replaced client-side account lifecycle writes and the unverified Cloudflare deletion call with callable Functions.
+- Added Master Owner client offboarding: it disables and removes the Client Admin and tenant users while marking the tenant offboarded. The tenant's Sheet, Drive folder, and settings are preserved. The UI confirms that business data is not deleted.
+- Added client workspace identity to the management list and retained search by client name, email, role, and tenant ID.
 - Added a `BankSetuAudit` tab per spreadsheet for customer create/update/delete and passbook delivery/print activity. Reports reads recent events from the authenticated tenant's spreadsheet and displays the actor and email.
 - Kept current Passbook and Account Opening PDF layouts intact. They still have bank-specific/fixed layout assumptions; a configurable template editor was not introduced because there is no reviewed per-bank sample set or template contract in the repository. These output layouts need per-bank review before rollout.
 
@@ -26,7 +28,7 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 ## Required setup before production use
 
 1. Review this PR and deploy Firestore rules and Functions to the intended Firebase project.
-2. Bootstrap the first trusted owner by setting the intended Firebase Auth user's `users/{uid}` profile to `role: "master_owner"`, `status: "approved"`, and `active: true`. No owner UID was present in the repository, so none was guessed or seeded.
+2. Bootstrap the first trusted owner by setting the intended Firebase Auth user's `users/{uid}` profile to `role: "master_owner"`, `status: "approved"`, and `subscriptionStatus: "active"`. No owner UID was present in the repository, so none was guessed or seeded.
 3. For every client, create a Google Sheet and Drive photo folder, share both with the Google account that owns the Apps Script deployment, deploy the tenant-aware Apps Script, then enter those IDs and its `/exec` URL in Master Clients.
 4. Deploy the Apps Script version after reviewing its Google scopes and execution identity. Test that two tenants cannot read or write each other's Sheet or photos.
 5. Existing production records remain in the old shared spreadsheet. Assign ownership and migrate records deliberately before moving legacy users or removing the old spreadsheet/folder. No data migration or production deployment was performed.
@@ -36,5 +38,6 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 
 - This repository does not include the Cloudflare Worker source, so the former deletion implementation could not be audited; the UI no longer calls it.
 - The current Sheet/Drive connection uses the Apps Script deployment identity and manual sharing. It does not implement per-tenant Google OAuth consent or token storage.
+- The first-login self-service Google setup wizard, bank sample upload/preview templates, and master-controlled global dashboard settings are not implemented yet.
 - `BankSetuAudit` is an append-only application log, not a tamper-proof compliance ledger. Existing customer records and historical activity are not backfilled.
 - Passbook and Account Opening PDF remain on their existing layouts. Per-bank templates need reviewed samples and explicit field/layout requirements.

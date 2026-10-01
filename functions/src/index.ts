@@ -202,6 +202,104 @@ export const createClientUser = onCall<CreateClientUserData>(async (request) => 
   }
 });
 
+interface OffboardClientData {
+  uid: string;
+}
+
+/**
+ * Retire a client workspace without deleting its Google Sheet or Drive data.
+ * Profiles are disabled before Authentication accounts are removed, so a
+ * partial failure still leaves the tenant inaccessible and can be retried.
+ */
+export const offboardClient = onCall<OffboardClientData>(async (request) => {
+  const actor = await requireProvisioningRole(request.auth?.uid, ["master_owner"]);
+  const clientAdminUid = String(request.data?.uid || "").trim();
+  if (!clientAdminUid || clientAdminUid === actor.uid) {
+    throw new HttpsError("invalid-argument", "Choose a valid client administrator.");
+  }
+
+  const clientAdminRef = db.collection("users").doc(clientAdminUid);
+  const clientAdminSnapshot = await clientAdminRef.get();
+  const clientAdmin = clientAdminSnapshot.data();
+  if (!clientAdminSnapshot.exists || clientAdmin?.role !== "client_admin") {
+    throw new HttpsError("not-found", "Client administrator was not found.");
+  }
+  const tenantId = String(clientAdmin.tenantId || "").trim();
+  if (!tenantId) {
+    throw new HttpsError("failed-precondition", "Client administrator has no tenant assignment.");
+  }
+
+  const tenantRef = db.collection("tenants").doc(tenantId);
+  const tenantSnapshot = await tenantRef.get();
+  if (!tenantSnapshot.exists || tenantSnapshot.data()?.ownerUid !== clientAdminUid) {
+    throw new HttpsError("failed-precondition", "Client workspace ownership does not match this account.");
+  }
+
+  const tenantUsers = await db.collection("users").where("tenantId", "==", tenantId).get();
+  const accounts = tenantUsers.docs.map((snapshot) => ({
+    ref: snapshot.ref,
+    uid: snapshot.id,
+    role: String(snapshot.data().role || ""),
+  }));
+  if (accounts.some((account) => !["client_admin", "client_user"].includes(account.role))) {
+    throw new HttpsError("failed-precondition", "Workspace contains an unexpected account role; review it before offboarding.");
+  }
+  if (!accounts.some((account) => account.uid === clientAdminUid && account.role === "client_admin")) {
+    throw new HttpsError("failed-precondition", "Client administrator is not assigned to this workspace.");
+  }
+
+  const now = FieldValue.serverTimestamp();
+  const blockBatch = db.batch();
+  blockBatch.update(tenantRef, {
+    status: "offboarded",
+    clientUserCount: 0,
+    offboardedAt: now,
+    offboardedBy: actor.uid,
+    previousOwnerUid: clientAdminUid,
+    ownerUid: FieldValue.delete(),
+  });
+  for (const account of accounts) {
+    blockBatch.update(account.ref, {
+      status: "blocked",
+      subscriptionStatus: "inactive",
+      offboardedAt: now,
+      offboardedBy: actor.uid,
+    });
+  }
+  await blockBatch.commit();
+
+  try {
+    await Promise.all(accounts.map((account) => auth.updateUser(account.uid, { disabled: true })));
+  } catch (error: unknown) {
+    console.error("Client offboarding account disable failed:", error);
+    throw new HttpsError("internal", "Workspace access has been blocked, but account cleanup must be retried.");
+  }
+
+  for (const account of accounts) {
+    try {
+      await auth.deleteUser(account.uid);
+    } catch (error: unknown) {
+      const firebaseError = error as { code?: string };
+      if (firebaseError.code !== "auth/user-not-found") {
+        console.error("Client offboarding account delete failed:", error);
+        throw new HttpsError("internal", "Workspace access has been blocked, but account cleanup must be retried.");
+      }
+    }
+  }
+
+  const deleteBatch = db.batch();
+  for (const account of accounts) deleteBatch.delete(account.ref);
+  await deleteBatch.commit();
+
+  return {
+    success: true,
+    tenantId,
+    accountsRemoved: accounts.length,
+    dataPreserved: true,
+    message: "Client access was removed. Google Sheet and Drive data were preserved.",
+  };
+});
+
 async function requireAdmin(uid: string | undefined): Promise<void> {
   if (!uid) {
     throw new HttpsError("unauthenticated", "Please login first.");
