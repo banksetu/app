@@ -13,6 +13,8 @@ import {
 
   getDoc,
 
+  onSnapshot,
+
   serverTimestamp,
 
   setDoc,
@@ -35,6 +37,7 @@ import CustomerEntry from "./CustomerEntry";
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
 import ClientGoogleSetup from "./ClientGoogleSetup";
+import BankFormats from "./BankFormats";
 
 
 import Passbook from "./Passbook";
@@ -230,6 +233,7 @@ type PageName =
   | "passbook"
 
   | "quick-passbook"
+  | "bank-formats"
 
   | "search"
 
@@ -238,6 +242,8 @@ type PageName =
   | "settings";
 
 function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
+
+  const canControlGlobalDashboard = accountRole === "master_owner";
 
   const [activePage, setActivePage] =
 
@@ -566,30 +572,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         }
 
 
-        const cloudTheme =
-
-          cloudData.dashboardTheme === "soft-mist"
-
-            ? "dark-original"
-
-            : isDashboardThemeId(cloudData.dashboardTheme)
-
-              ? cloudData.dashboardTheme
-
-              : dashboardTheme;
-
-        const cloudMenuTheme = isMenuThemeId(cloudData.menuTheme) ? cloudData.menuTheme : menuTheme;
-
-        localStorage.setItem("bankSetuMenuTheme", cloudMenuTheme);
-
-        localStorage.setItem(
-
-          "bankSetuDashboardTheme",
-
-          cloudTheme
-
-        );
-
         if (!cancelled) {
 
           setBankInfo(cloudInfo);
@@ -599,9 +581,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             setBankLogo(cloudLogo);
 
           }
-
-          setDashboardTheme(cloudTheme);
-          setMenuTheme(cloudMenuTheme);
 
         }
 
@@ -889,27 +868,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   };
 
-  // Client branding is stored on its tenant document. Legacy admin branding
-  // stays on the existing global theme document for backward compatibility.
+  // Master-controlled appearance is stored once and read by every tenant.
   const saveGlobalUiTheme = async (patch: Record<string, unknown>) => {
     const user = getAuth().currentUser;
-    if (!user || userRole !== "admin") return;
-
-    const tenantId = sessionStorage.getItem("bankSetuTenantId")?.trim();
-    if (tenantId) {
-      await setDoc(
-        doc(db, "tenantSettings", tenantId),
-        {
-          dashboardTheme,
-          menuTheme,
-          ...patch,
-          ...tenantSettingsWriteMetadata(user.uid),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      return;
-    }
+    if (!user || !canControlGlobalDashboard) return;
 
     await setDoc(
       doc(db, "appSettings", "uiTheme"),
@@ -924,49 +886,26 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadGlobalUiTheme = async () => {
-      try {
-        const user = getAuth().currentUser;
-        if (!user) return;
-        const tenantId = sessionStorage.getItem("bankSetuTenantId")?.trim();
-        const themeRef = tenantId
-          ? doc(db, "tenantSettings", tenantId)
-          : doc(db, "appSettings", "uiTheme");
-        const snap = await getDoc(themeRef);
-        if (!snap.exists() || cancelled) return;
-
-        const data = snap.data();
-
-        if (
-          typeof data.customDashboardColor === "string" &&
-          data.useCustomDashboardColor === true
-        ) {
-          setCustomDashboardColor(data.customDashboardColor);
-          setUseCustomDashboardColor(true);
-          localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), data.customDashboardColor);
-          localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
-        } else if (isDashboardThemeId(data.dashboardTheme)) {
-          setDashboardTheme(data.dashboardTheme);
-          setUseCustomDashboardColor(false);
-          localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), data.dashboardTheme);
-          localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
-        }
-
-        if (isMenuThemeId(data.menuTheme)) {
-          setMenuTheme(data.menuTheme);
-          localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
-        }
-      } catch (error) {
-        console.error("Global UI theme load failed:", error);
+    if (!getAuth().currentUser) return;
+    return onSnapshot(doc(db, "appSettings", "uiTheme"), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (typeof data.customDashboardColor === "string" && data.useCustomDashboardColor === true) {
+        setCustomDashboardColor(data.customDashboardColor);
+        setUseCustomDashboardColor(true);
+        localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), data.customDashboardColor);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
+      } else if (isDashboardThemeId(data.dashboardTheme)) {
+        setDashboardTheme(data.dashboardTheme);
+        setUseCustomDashboardColor(false);
+        localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), data.dashboardTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
       }
-    };
-
-    void loadGlobalUiTheme();
-    return () => {
-      cancelled = true;
-    };
+      if (isMenuThemeId(data.menuTheme)) {
+        setMenuTheme(data.menuTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
+      }
+    }, (error) => console.error("Global UI theme listener failed:", error));
   }, []);
 
   const changeDashboardTheme = async (themeId: DashboardThemeId) => {
@@ -1467,6 +1406,13 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             onClick={() => openPage("quick-passbook")}
           />
 
+          {(["client_admin", "client_user"].includes(accountRole)) && <NavButton
+            icon="🏦"
+            label="Bank Formats"
+            active={activePage === "bank-formats"}
+            onClick={() => openPage("bank-formats")}
+          />}
+
           <NavButton
 
             icon="🔎"
@@ -1828,12 +1774,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
                 </button>
 
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setThemeModalOpen(true); }}
                 >🎨 Dashboard Color</button>}
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
@@ -1945,6 +1891,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           {activePage === "quick-passbook" && (
             <Passbook />
+          )}
+
+          {activePage === "bank-formats" && (
+            <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} />
           )}
 
           {activePage === "search" && (
@@ -2301,7 +2251,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
       {/* DASHBOARD COLOR */}
 
-      {themeModalOpen && userRole === "admin" && (
+      {themeModalOpen && canControlGlobalDashboard && (
 
         <div
 
@@ -2459,7 +2409,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
       )}
 
-      {menuThemeModalOpen && userRole === "admin" && (
+      {menuThemeModalOpen && canControlGlobalDashboard && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
           <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
             <div style={styles.modalHeader}>
