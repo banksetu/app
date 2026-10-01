@@ -1885,12 +1885,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           {activePage === "passbook" && (
 
-            <Passbook />
+            <Passbook formatType="passbook" />
 
           )}
 
           {activePage === "quick-passbook" && (
-            <Passbook />
+            <Passbook formatType="quickPassbook" />
           )}
 
           {activePage === "bank-formats" && (
