@@ -19,8 +19,9 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
+import MasterClients from "./MasterClients";
+import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
 declare const __APP_VERSION__: string;
-const STORAGE_KEY = "bankSetuApiUrl";
 
 const CURRENT_APP_VERSION = __APP_VERSION__;
 const UPDATE_MANIFEST_URL = "/version.json";
@@ -31,7 +32,9 @@ type UpdateManifest = {
   notes?: string;
 };
 
-function Settings() {
+type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean };
+
+function Settings({ allowConnectionSettings = false, isMasterOwner = false }: AdvancedAdminProps) {
 
   const [apiUrl, setApiUrl] = useState("");
 
@@ -75,8 +78,7 @@ function Settings() {
 
     const loadApiConnection = async () => {
       const user = auth.currentUser;
-      const localUrl =
-        localStorage.getItem(STORAGE_KEY) || "";
+      const localUrl = getTenantApiUrl();
 
       if (!user) {
         if (!cancelled) {
@@ -87,11 +89,7 @@ function Settings() {
       }
 
       try {
-        const settingsRef = doc(
-          db,
-          "appSettings",
-          user.uid
-        );
+        const settingsRef = doc(db, ...tenantSettingsPath(user.uid));
 
         const settingsSnap =
           await getDoc(settingsRef);
@@ -115,10 +113,7 @@ function Settings() {
         }
 
         if (finalUrl) {
-          localStorage.setItem(
-            STORAGE_KEY,
-            finalUrl
-          );
+          setTenantApiUrl(finalUrl);
         }
 
         if (!cloudUrl && localUrl.trim()) {
@@ -126,6 +121,7 @@ function Settings() {
             settingsRef,
             {
               apiUrl: localUrl.trim(),
+              ...tenantSettingsWriteMetadata(user.uid),
               updatedAt:
                 serverTimestamp(),
             },
@@ -326,18 +322,16 @@ function Settings() {
 
     try {
       await setDoc(
-        doc(db, "appSettings", user.uid),
+        doc(db, ...tenantSettingsPath(user.uid)),
         {
           apiUrl: cleanUrl,
+          ...tenantSettingsWriteMetadata(user.uid),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      localStorage.setItem(
-        STORAGE_KEY,
-        cleanUrl
-      );
+      setTenantApiUrl(cleanUrl);
 
       setSavedUrl(cleanUrl);
       setApiUrl(cleanUrl);
@@ -506,17 +500,16 @@ function Settings() {
 
     try {
       await setDoc(
-        doc(db, "appSettings", user.uid),
+        doc(db, ...tenantSettingsPath(user.uid)),
         {
           apiUrl: "",
+          ...tenantSettingsWriteMetadata(user.uid),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      localStorage.removeItem(
-        STORAGE_KEY
-      );
+      removeTenantApiUrl();
 
       setSavedUrl("");
       setApiUrl("");
@@ -879,7 +872,7 @@ function Settings() {
 
       )}
 
-      <section style={styles.card}>
+      {allowConnectionSettings && <section style={styles.card}>
 
         <div style={styles.cardHeader}>
 
@@ -1141,7 +1134,9 @@ function Settings() {
 
         )}
 
-      </section>
+      </section>}
+
+      <MasterClients enabled={isMasterOwner} />
 
       <section
       style={{
