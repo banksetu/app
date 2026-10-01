@@ -487,7 +487,8 @@ function AdminUsers({ embedded = false }: Props) {
                       </button>
                     )}
 
-                  {canManage && (role === "client_admin" || !isAdmin) && (
+                  {canManage && (role === "client_admin" || !isAdmin) &&
+                    !(currentRole === "client_admin" && role === "client_user") && (
                     <button
                       className="delete"
                       disabled={isBusy}
