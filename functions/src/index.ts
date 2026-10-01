@@ -485,6 +485,10 @@ export const deleteUser = onCall<UserActionData>(
     if (!userDoc.exists) throw new HttpsError("not-found", "User record not found.");
     const targetData = userDoc.data() || {};
     await requireCanManageUser(request.auth?.uid, targetData);
+    const actorSnapshot = await db.collection("users").doc(request.auth!.uid).get();
+    if (actorSnapshot.data()?.role === "client_admin" && targetData.role === "client_user") {
+      throw new HttpsError("permission-denied", "Client Admins can manage client users but cannot delete them.");
+    }
     if (["client_admin", "master_owner"].includes(String(targetData.role))) {
       throw new HttpsError("failed-precondition", "Client administrator accounts require tenant-safe offboarding.");
     }
