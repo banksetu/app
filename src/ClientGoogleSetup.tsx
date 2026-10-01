@@ -3,6 +3,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth } from "./firebase";
 import { setTenantApiUrl } from "./tenantApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
+import type { FormEvent } from "react";
 
 type SetupConfig = {
   oauthClientId: string;
@@ -13,6 +14,20 @@ type SetupConfig = {
   spreadsheetId: string;
   photoFolderId: string;
   googleEmail: string;
+  bankInfo: BankRegistration;
+};
+
+type BankRegistration = {
+  bankName: string;
+  passbookBank: string;
+  branchName: string;
+  cspCode: string;
+  operatorName: string;
+  address: string;
+};
+
+const EMPTY_REGISTRATION: BankRegistration = {
+  bankName: "", passbookBank: "", branchName: "", cspCode: "", operatorName: "", address: "",
 };
 
 async function googleApi<T>(url: string, accessToken: string, init: RequestInit = {}): Promise<T> {
@@ -35,16 +50,20 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [registration, setRegistration] = useState<BankRegistration>(EMPTY_REGISTRATION);
+  const [registrationSaved, setRegistrationSaved] = useState(false);
+  const [savingRegistration, setSavingRegistration] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    Promise.all([
-      httpsCallable(getFunctions(), "getGoogleSetupConfig")({}),
-      loadGoogleIdentity(),
-    ]).then(([result]) => {
+    httpsCallable(getFunctions(), "getGoogleSetupConfig")({}).then((result) => {
       if (!active) return;
-      setConfig(result.data as SetupConfig);
+      const loaded = result.data as SetupConfig;
+      setConfig(loaded);
+      const details = { ...EMPTY_REGISTRATION, ...(loaded.bankInfo || {}), bankName: loaded.bankName || "" };
+      setRegistration(details);
+      setRegistrationSaved(Boolean(details.bankName && details.passbookBank && details.branchName && details.operatorName));
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "Unable to load Google setup.");
     }).finally(() => {
@@ -54,7 +73,30 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   }, [enabled]);
 
   if (!enabled || loading) return null;
-  if (config?.spreadsheetId && config.photoFolderId && !success) return null;
+  if (config?.spreadsheetId && config.photoFolderId && registrationSaved && !success) return null;
+
+  const saveRegistration = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSavingRegistration(true);
+    setError("");
+    try {
+      await httpsCallable(getFunctions(), "saveClientRegistration")({
+        bankName: registration.bankName,
+        passbookBank: registration.passbookBank,
+        branchName: registration.branchName,
+        cspCode: registration.cspCode,
+        operatorName: registration.operatorName,
+        address: registration.address,
+      });
+      setRegistrationSaved(true);
+      setConfig((current) => current ? { ...current, bankName: registration.bankName, bankInfo: registration } : current);
+      setSuccess("Bank details saved. Next, connect your Google account to create your private workspace.");
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Bank details could not be saved.");
+    } finally {
+      setSavingRegistration(false);
+    }
+  };
 
   const connect = async () => {
     setConnecting(true);
@@ -67,6 +109,8 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
       if (!config?.oauthClientId || !config.executorEmail || !config.apiUrl || !config.tenantId) {
         throw new Error("Bank Setu setup is incomplete. Please contact the Master Admin.");
       }
+      if (!registrationSaved) throw new Error("Save your bank details before connecting Google Drive.");
+      await loadGoogleIdentity();
       accessToken = await requestGoogleToken(config.oauthClientId);
       const profile = await googleApi<{ email?: string }>("https://www.googleapis.com/oauth2/v2/userinfo", accessToken);
       if (!profile.email) throw new Error("Google did not return the connected account email.");
@@ -124,15 +168,26 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
 
   return (
     <section style={cardStyle}>
-      <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>FIRST-TIME SETUP</p>
-      <h2 style={{ margin: "8px 0", fontSize: 20 }}>Connect your Google Drive</h2>
-      <p style={copyStyle}>Bank Setu will create your Sheet and workspace folder in the Google account you choose. The app gets access only to that workspace folder so it can save and find your customer records.</p>
-      <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !config?.oauthClientId}>
-        {connecting ? "Connecting Google Drive…" : "Connect my Google account"}
-      </button>
-      {!config?.oauthClientId && <p style={errorStyle}>Master Admin must finish Bank Setu's one-time Google setup first.</p>}
+      <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>FIRST-TIME CLIENT REGISTRATION</p>
+      <h2 style={{ margin: "8px 0", fontSize: 20 }}>Set up your bank workspace</h2>
+      <p style={copyStyle}>Enter your bank and branch details. Then connect your own Google account. Bank Setu creates a new Sheet in your Drive with the standard Bank Setu columns; your data stays in your workspace.</p>
+      {!registrationSaved && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
+        <label style={registrationLabel}>Bank / CSP name<input required maxLength={120} style={registrationInput} value={registration.bankName} onChange={(event) => setRegistration((current) => ({ ...current, bankName: event.target.value }))} /></label>
+        <label style={registrationLabel}>Bank for Passbook format<input required maxLength={120} style={registrationInput} value={registration.passbookBank} onChange={(event) => setRegistration((current) => ({ ...current, passbookBank: event.target.value }))} /></label>
+        <label style={registrationLabel}>Branch name<input required maxLength={120} style={registrationInput} value={registration.branchName} onChange={(event) => setRegistration((current) => ({ ...current, branchName: event.target.value }))} /></label>
+        <label style={registrationLabel}>CSP code (optional)<input maxLength={80} style={registrationInput} value={registration.cspCode} onChange={(event) => setRegistration((current) => ({ ...current, cspCode: event.target.value }))} /></label>
+        <label style={registrationLabel}>Operator name<input required maxLength={120} style={registrationInput} value={registration.operatorName} onChange={(event) => setRegistration((current) => ({ ...current, operatorName: event.target.value }))} /></label>
+        <label style={{ ...registrationLabel, gridColumn: "1 / -1" }}>Branch / CSP address<textarea maxLength={500} style={{ ...registrationInput, minHeight: 70 }} value={registration.address} onChange={(event) => setRegistration((current) => ({ ...current, address: event.target.value }))} /></label>
+        <button type="submit" style={buttonStyle} disabled={savingRegistration}>{savingRegistration ? "Saving bank details…" : "Save bank details"}</button>
+      </form>}
+      {registrationSaved && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your Google account.</p>}
+      {(!config?.spreadsheetId || !config.photoFolderId) && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !config?.oauthClientId || !registrationSaved}>
+        {connecting ? "Creating your Drive and Sheet…" : "Connect Google and create my workspace"}
+      </button>}
+      {config?.spreadsheetId && config.photoFolderId && <p style={copyStyle}>Your Google workspace is connected. Save the bank details above to complete registration.</p>}
+      {!config?.oauthClientId && <p style={errorStyle}>Bank Setu setup is pending. The Master Admin must finish one-time Google OAuth configuration.</p>}
       {error && <p role="alert" style={errorStyle}>{error}</p>}
-      {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}<br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></p>}
+      {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}{config?.spreadsheetId && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
     </section>
   );
 }
@@ -147,3 +202,6 @@ const buttonStyle = {
   background: "#63e2c4", fontWeight: 700, cursor: "pointer",
 };
 const errorStyle = { color: "#ffaaaa", fontSize: 13, lineHeight: 1.5 };
+const registrationForm = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, margin: "18px 0" };
+const registrationLabel = { display: "grid", gap: 6, color: "#d8e8ea", fontSize: 12, fontWeight: 700 };
+const registrationInput = { width: "100%", minHeight: 40, padding: "9px 10px", border: "1px solid rgba(160,190,200,.32)", borderRadius: 8, background: "#0b2630", color: "#f2fbfc", font: "inherit" };
