@@ -855,6 +855,7 @@ export const saveBankFormatTemplate = onCall<SaveBankFormatData>(async (request)
 
 interface BankFieldPlacement {
   field: string;
+  page?: number;
   x: number;
   y: number;
   width: number;
@@ -899,17 +900,19 @@ export const saveBankFormatMapping = onCall<SaveBankFormatMappingData>(async (re
     const y = Number(item?.y);
     const width = Number(item?.width);
     const fontSize = Number(item?.fontSize);
+    const page = Number(item?.page || 1);
     if (
       !BANK_TEMPLATE_FIELDS.has(field) || !["left", "center", "right"].includes(align) ||
       !Number.isFinite(x) || x < 0 || x > 100 ||
       !Number.isFinite(y) || y < 0 || y > 100 ||
       !Number.isFinite(width) || width < 1 || width > 100 ||
-      !Number.isFinite(fontSize) || fontSize < 5 || fontSize > 48
+      !Number.isFinite(fontSize) || fontSize < 5 || fontSize > 48 ||
+      !Number.isInteger(page) || page < 1 || page > 10
     ) {
       throw new HttpsError("invalid-argument", "A mapped field has an invalid key or position.");
     }
     return {
-      field, x, y, width, fontSize, uppercase: item.uppercase === true,
+      field, page, x, y, width, fontSize, uppercase: item.uppercase === true,
       align: align as BankFieldPlacement["align"],
     };
   });
