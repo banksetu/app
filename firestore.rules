@@ -99,7 +99,7 @@ service cloud.firestore {
         && request.resource.data.tenantId == tenantId
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.keys().hasOnly([
-          'tenantId', 'bankName', 'apiUrl', 'spreadsheetId', 'bankInfo',
+          'tenantId', 'bankName', 'apiUrl', 'spreadsheetId', 'googleEmail', 'bankInfo',
           'photoFolderId', 'bankLogo', 'passbookBank', 'branchName', 'cspCode', 'operatorName',
           'address', 'dashboardTheme', 'menuTheme', 'customDashboardColor',
           'useCustomDashboardColor', 'updatedAt', 'updatedBy'
@@ -108,6 +108,7 @@ service cloud.firestore {
         && request.resource.data.bankName is string
         && request.resource.data.apiUrl is string
         && request.resource.data.spreadsheetId is string
+        && (!('googleEmail' in request.resource.data) || request.resource.data.googleEmail is string)
         && request.resource.data.photoFolderId is string
         && request.resource.data.bankInfo is map
         && request.resource.data.bankLogo is string
