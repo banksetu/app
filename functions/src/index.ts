@@ -27,6 +27,15 @@ interface CreateClientUserData {
 
 type ProvisioningRole = "master_owner" | "client_admin";
 const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
+// Keep column order aligned with HEADERS in apps-script/Code.gs. This schema
+// initializes each Client Admin's new Sheet; no master spreadsheet is shared.
+const CUSTOMER_SHEET_HEADERS = [
+  "ENDROL ID", "ACCOUNT NO", "NAME", "C/O NAME", "STATUSTUS", "GENDER",
+  "CONTACT", "A/C OPENING DATE", "ADDRESS", "NOMENIEE", "POST OFFICE",
+  "PASS BOOK", "UIADI NO.", "dbt status", "PURPOSE OF ADVANCE",
+  "FULL ADDRESS", "PIN CODE", "PAN", "AOF NO", "PHOTO URL", "PDF URL",
+  "CREATED AT", "UPDATED AT", "UPDATED BY",
+];
 
 async function requireProvisioningRole(
   uid: string | undefined,
@@ -640,6 +649,41 @@ async function verifyGoogleWorkspaceOwnership(
   return email;
 }
 
+async function initializeClientSheetHeaders(spreadsheetId: string, accessToken: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const range = encodeURIComponent("Sheet1!A1:X1");
+  const read = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}`,
+    { headers }
+  );
+  const existing = await read.json().catch(() => ({})) as { values?: string[][]; error?: { message?: string } };
+  if (!read.ok) {
+    console.warn("Client Sheet header verification failed with status:", read.status);
+    throw new HttpsError("failed-precondition", "Google could not prepare your Sheet. Reconnect Google Drive and try again.");
+  }
+  const firstRow = existing.values?.[0] || [];
+  if (firstRow.length > 0 && firstRow.some((cell) => String(cell || "").trim() !== "")) {
+    const alreadyInitialized = CUSTOMER_SHEET_HEADERS.every((header, index) => firstRow[index] === header);
+    if (!alreadyInitialized) {
+      throw new HttpsError("failed-precondition", "This Sheet already has different column headers. Create a fresh Bank Setu workspace Sheet to avoid overwriting data.");
+    }
+    return;
+  }
+
+  const write = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}?valueInputOption=RAW`,
+    {
+      method: "PUT",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [CUSTOMER_SHEET_HEADERS] }),
+    }
+  );
+  if (!write.ok) {
+    console.warn("Client Sheet header creation failed with status:", write.status);
+    throw new HttpsError("failed-precondition", "Google could not add the Bank Setu columns to your Sheet. Reconnect and retry setup.");
+  }
+}
+
 export const configureTenantData = onCall<ConfigureTenantData>(async (request) => {
   const actor = await requireProvisioningRole(request.auth?.uid, ["master_owner", "client_admin"]);
   const tenantId = String(request.data?.tenantId || "").trim();
@@ -688,6 +732,9 @@ export const configureTenantData = onCall<ConfigureTenantData>(async (request) =
       googleEmail
     )
     : googleEmail;
+  if (actor.role === "client_admin") {
+    await initializeClientSheetHeaders(spreadsheetId, accessToken);
+  }
   await db.collection("tenantSettings").doc(tenantId).set({
     tenantId,
     bankName: tenant.data()?.bankName || "",
@@ -744,6 +791,8 @@ export const getGoogleSetupConfig = onCall(async (request) => {
       : Promise.resolve(null),
   ]);
   const config = configSnapshot.data() || {};
+  const tenantSettings = tenantSettingsSnapshot?.data() || {};
+  const storedBankInfo = tenantSettings.bankInfo || {};
   const savedFormats = tenantSettingsSnapshot?.data()?.bankFormats || {};
   const bankFormats = Object.fromEntries(Object.entries(savedFormats).map(([format, value]) => {
     const item = value as { fileId?: unknown; fileName?: unknown; mimeType?: unknown; updatedAt?: { toDate?: () => Date } };
@@ -760,11 +809,60 @@ export const getGoogleSetupConfig = onCall(async (request) => {
     executorEmail: String(config.executorEmail || ""),
     tenantId: actor.tenantId || "",
     bankName: String(tenantSettingsSnapshot?.data()?.bankName || ""),
+    bankInfo: {
+      passbookBank: String(tenantSettings.passbookBank || storedBankInfo.passbookBank || ""),
+      branchName: String(tenantSettings.branchName || storedBankInfo.branchName || ""),
+      cspCode: String(tenantSettings.cspCode || storedBankInfo.cspCode || ""),
+      operatorName: String(tenantSettings.operatorName || storedBankInfo.operatorName || ""),
+      address: String(tenantSettings.address || storedBankInfo.address || ""),
+    },
     spreadsheetId: String(tenantSettingsSnapshot?.data()?.spreadsheetId || ""),
     photoFolderId: String(tenantSettingsSnapshot?.data()?.photoFolderId || ""),
     googleEmail: String(tenantSettingsSnapshot?.data()?.googleEmail || ""),
     bankFormats,
   };
+});
+
+interface SaveClientRegistrationData {
+  bankName: string;
+  passbookBank: string;
+  branchName: string;
+  cspCode?: string;
+  operatorName: string;
+  address?: string;
+}
+
+export const saveClientRegistration = onCall<SaveClientRegistrationData>(async (request) => {
+  const actor = await requireProvisioningRole(request.auth?.uid, ["client_admin"]);
+  if (!actor.tenantId) throw new HttpsError("failed-precondition", "This account has no client workspace.");
+  const registration = {
+    bankName: String(request.data?.bankName || "").trim(),
+    passbookBank: String(request.data?.passbookBank || "").trim(),
+    branchName: String(request.data?.branchName || "").trim(),
+    cspCode: String(request.data?.cspCode || "").trim(),
+    operatorName: String(request.data?.operatorName || "").trim(),
+    address: String(request.data?.address || "").trim(),
+  };
+  if (!registration.bankName || registration.bankName.length > 120 ||
+      !registration.passbookBank || registration.passbookBank.length > 120 ||
+      !registration.branchName || registration.branchName.length > 120 ||
+      !registration.operatorName || registration.operatorName.length > 120 ||
+      registration.cspCode.length > 80 || registration.address.length > 500) {
+    throw new HttpsError("invalid-argument", "Complete the required bank, branch, and operator details.");
+  }
+  const tenantRef = db.collection("tenantSettings").doc(actor.tenantId);
+  const tenantSnapshot = await db.collection("tenants").doc(actor.tenantId).get();
+  if (!tenantSnapshot.exists || tenantSnapshot.data()?.status !== "active") {
+    throw new HttpsError("failed-precondition", "This client workspace is not active.");
+  }
+  await tenantRef.set({
+    tenantId: actor.tenantId,
+    ...registration,
+    bankInfo: registration,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: actor.uid,
+  }, { merge: true });
+  return { success: true };
 });
 
 interface SaveBankFormatData {
