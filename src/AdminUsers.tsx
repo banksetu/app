@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
-  serverTimestamp,
-  updateDoc,
+  query,
+  where,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from "./firebase";
 import "./AdminUsers.css";
 
@@ -21,6 +23,8 @@ type ManagedUser = {
   email: string;
   name?: string;
   role?: string;
+  tenantId?: string;
+  clientId?: string;
   status?: UserStatus;
   subscriptionStatus?: string;
   disabled?: boolean;
@@ -38,9 +42,6 @@ type Props = {
   embedded?: boolean;
 };
 
-const DELETE_API =
-  "https://banksetu-admin-api.banksetu2026.workers.dev/delete-user";
-
 function AdminUsers({ embedded = false }: Props) {
   const [open, setOpen] = useState(embedded);
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -49,13 +50,29 @@ function AdminUsers({ embedded = false }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [currentRole, setCurrentRole] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
 
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
-      const snapshot = await getDocs(collection(db, "users"));
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Please sign in again.");
+      const profileSnapshot = await getDoc(doc(db, "users", currentUser.uid));
+      const currentProfile = profileSnapshot.data();
+      setCurrentRole(String(currentProfile?.role || ""));
+      const usersRef = collection(db, "users");
+      const usersQuery = currentProfile?.role === "client_admin"
+        ? currentProfile.tenantId
+          ? query(usersRef, where("tenantId", "==", currentProfile.tenantId))
+          : null
+        : usersRef;
+      if (!usersQuery) throw new Error("This client account has no workspace assignment.");
+      const snapshot = await getDocs(usersQuery);
 
       setUsers(
         snapshot.docs.map(
@@ -66,7 +83,8 @@ function AdminUsers({ embedded = false }: Props) {
             } as ManagedUser)
         )
       );
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error("Admin user list failed:", err);
 
       setError(
@@ -77,16 +95,43 @@ function AdminUsers({ embedded = false }: Props) {
     }
   }, []);
 
+  const createClientUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setBusyUid("create-client-user");
+    try {
+      const createUser = httpsCallable<
+        { name: string; email: string; password: string },
+        { success: boolean }
+      >(getFunctions(), "createClientUser");
+      await createUser({ name: newUserName, email: newUserEmail, password: newUserPassword });
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setMessage("Client user account created for this workspace.");
+      await loadUsers();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to create the client user.");
+    } finally {
+      setBusyUid("");
+    }
+  };
+
   useEffect(() => {
     if (open || embedded) {
-      void loadUsers();
+      const timer = window.setTimeout(() => void loadUsers(), 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [open, embedded, loadUsers]);
 
   const counts = useMemo(() => {
     const normalUsers = users.filter(
       (u) =>
-        String(u.role || "user").toLowerCase() !== "admin"
+        !["admin", "master_owner", "client_admin"].includes(
+          String(u.role || "user").toLowerCase()
+        )
     );
 
     const countStatus = (status: string) =>
@@ -124,55 +169,6 @@ function AdminUsers({ embedded = false }: Props) {
     );
   }, [search, users]);
 
-  const permanentlyDeleteUser = async (
-    user: ManagedUser
-  ) => {
-    const currentUser = auth.currentUser;
-
-    if (!currentUser) {
-      throw new Error(
-        "Administrator session not found. Please log in again."
-      );
-    }
-
-    /*
-     * Force-refresh the Firebase ID token.
-     * This token proves to the Worker who is requesting
-     * the deletion.
-     */
-    const idToken = await currentUser.getIdToken(true);
-
-    const response = await fetch(DELETE_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        uid: user.uid,
-      }),
-    });
-
-    let data: any = {};
-
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error(
-        `Delete API returned an invalid response (${response.status}).`
-      );
-    }
-
-    if (!response.ok || !data?.success) {
-      throw new Error(
-        data?.message ||
-          `Unable to permanently delete user (${response.status}).`
-      );
-    }
-
-    return data;
-  };
-
   const runAction = async (
     user: ManagedUser,
     action: ManageAction
@@ -186,8 +182,9 @@ function AdminUsers({ embedded = false }: Props) {
       return;
     }
 
-    const isAdmin =
-      String(user.role || "").toLowerCase() === "admin";
+    const isAdmin = ["admin", "master_owner", "client_admin"].includes(
+      String(user.role || "").toLowerCase()
+    );
 
     if (isAdmin) {
       setError(
@@ -212,82 +209,23 @@ function AdminUsers({ embedded = false }: Props) {
       setError("");
       setMessage("");
 
-      /*
-       * DELETE:
-       * Cloudflare Worker securely deletes Firebase Auth
-       * account + Firestore profile.
-       */
-      if (action === "delete") {
-        const result = await permanentlyDeleteUser(user);
-
-        setMessage(
-          result?.message ||
-            `${user.email || "User"} permanently deleted successfully.`
-        );
-
-        await loadUsers();
-        return;
-      }
-
-      /*
-       * All other actions stay on Firestore.
-       */
-      const userRef = doc(db, "users", user.uid);
-
-      if (action === "approve") {
-        await updateDoc(userRef, {
-          status: "approved",
-          subscriptionStatus: "active",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} approved successfully.`
-        );
-      }
-
-      if (action === "deny") {
-        await updateDoc(userRef, {
-          status: "denied",
-          subscriptionStatus: "inactive",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} denied successfully.`
-        );
-      }
-
-      if (action === "block") {
-        await updateDoc(userRef, {
-          status: "blocked",
-          subscriptionStatus: "inactive",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} blocked successfully.`
-        );
-      }
-
-      if (action === "unblock") {
-        await updateDoc(userRef, {
-          status: "approved",
-          subscriptionStatus: "active",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} unblocked successfully.`
-        );
-      }
-
+      const functions = getFunctions();
+      const callableName = {
+        approve: "approveUser",
+        deny: "denyUser",
+        block: "blockUser",
+        unblock: "unblockUser",
+        delete: "deleteUser",
+      }[action];
+      const invokeAction = httpsCallable<{ uid: string }, { success: boolean; message?: string }>(
+        functions,
+        callableName
+      );
+      const response = await invokeAction({ uid: user.uid });
+      setMessage(response.data.message || `${user.email || "User"} ${action} successful.`);
       await loadUsers();
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
       console.error(
         `Admin ${action} user failed:`,
         err
@@ -340,6 +278,17 @@ function AdminUsers({ embedded = false }: Props) {
           </button>
         )}
       </header>
+
+      {currentRole === "client_admin" && (
+        <form onSubmit={(event) => void createClientUser(event)} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, padding: "14px 0" }}>
+          <input required aria-label="Client user name" placeholder="User name" value={newUserName} onChange={(event) => setNewUserName(event.target.value)} />
+          <input required type="email" aria-label="Client user email" placeholder="User email" value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} />
+          <input required type="password" minLength={8} aria-label="Client user password" placeholder="Temporary password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} />
+          <button type="submit" disabled={busyUid === "create-client-user"}>
+            {busyUid === "create-client-user" ? "Creating…" : "Add Client User"}
+          </button>
+        </form>
+      )}
 
       <div className="admin-user-stats">
         <div>

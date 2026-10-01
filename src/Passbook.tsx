@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 
 
@@ -388,13 +389,7 @@ export default function Passbook() {
 
   ) => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem("bankSetuApiUrl")
-
-        ?.trim() || "";
+      const apiUrl = getTenantApiUrl();
 
 
 

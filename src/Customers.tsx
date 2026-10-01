@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 /* =========================================================
 
@@ -204,13 +205,7 @@ export default function Customers() {
 
   ) => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem("bankSetuApiUrl")
-
-        ?.trim() || "";
+      const apiUrl = getTenantApiUrl();
 
     if (!apiUrl) {
 

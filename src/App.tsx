@@ -19,6 +19,7 @@ type UserProfile = {
   status?: string;
   subscriptionStatus?: string;
   email?: string;
+  tenantId?: string;
 };
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
@@ -54,6 +55,7 @@ function App() {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<BankSetuRole>("user");
+  const [accountRole, setAccountRole] = useState("user");
 
   const loginAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
@@ -66,16 +68,27 @@ function App() {
   };
 
   const applyProfile = (profile: UserProfile) => {
-    const role: BankSetuRole = normalize(profile.role) === "admin" ? "admin" : "user";
+    const normalizedRole = normalize(profile.role);
+    setAccountRole(normalizedRole || "user");
+    const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole)
+      ? "admin"
+      : "user";
     setUserRole(role);
     sessionStorage.setItem("bankSetuRole", role);
+    if (typeof profile.tenantId === "string" && profile.tenantId.trim()) {
+      sessionStorage.setItem("bankSetuTenantId", profile.tenantId.trim());
+    } else {
+      sessionStorage.removeItem("bankSetuTenantId");
+    }
     return role;
   };
 
   const rejectSession = async (message: string) => {
     clearProfileListener();
     sessionStorage.removeItem("bankSetuRole");
+    sessionStorage.removeItem("bankSetuTenantId");
     setUserRole("user");
+    setAccountRole("user");
     setIsLoggedIn(false);
     setLoginSuccess(false);
     setError(message);
@@ -133,7 +146,11 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
         clearProfileListener();
+        sessionStorage.removeItem("bankSetuRole");
+        sessionStorage.removeItem("bankSetuTenantId");
         setIsLoggedIn(false);
+        setUserRole("user");
+        setAccountRole("user");
         setCheckingSession(false);
         return;
       }
@@ -164,7 +181,8 @@ function App() {
       setSuccessMessage(
         "Password reset link sent. Please check your email inbox or spam folder."
       );
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string };
       console.error("Password reset error:", err);
 
       if (err.code === "auth/invalid-email") {
@@ -225,7 +243,8 @@ function App() {
       await new Promise((resolve) => setTimeout(resolve, 1200));
       setIsLoggedIn(true);
       setLoginSuccess(false);
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string };
       console.error("Login error:", err);
 
       if (err.code === "auth/user-disabled") {
@@ -252,8 +271,10 @@ function App() {
       clearProfileListener();
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
+      sessionStorage.removeItem("bankSetuTenantId");
       setIsLoggedIn(false);
       setUserRole("user");
+      setAccountRole("user");
       setEmail("");
       setPassword("");
       setError("");
@@ -291,7 +312,7 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} />
+        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
       </div>
     );
   }

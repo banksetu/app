@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 
 
@@ -326,7 +327,7 @@ export default function AccountOpeningPDF() {
 
   const apiRequest = async (body: Record<string, unknown>) => {
 
-    const apiUrl = localStorage.getItem("bankSetuApiUrl")?.trim() || "";
+    const apiUrl = getTenantApiUrl();
 
     if (!apiUrl) throw new Error("Google Sheet API URL is not configured.");
 

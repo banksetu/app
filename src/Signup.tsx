@@ -84,7 +84,8 @@ function Signup({ onBackToLogin }: SignupProps) {
       setEmail("");
       setPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string };
       console.error("Signup error:", err);
 
       if (err.code === "auth/email-already-in-use") {

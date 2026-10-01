@@ -1,7 +1,12 @@
-const SPREADSHEET_ID =
+const LEGACY_SPREADSHEET_ID =
   "1x0T_sjjLt0CThkB10gkbyzk1T92G3Jnp2l13goSlWpA";
 
 const SHEET_NAME = "Sheet1";
+const AUDIT_SHEET_NAME = "BankSetuAudit";
+const AUDIT_HEADERS = [
+  "EVENT ID", "TIMESTAMP", "TENANT ID", "ACTOR UID", "ACTOR EMAIL",
+  "ACTOR NAME", "ACTION", "CUSTOMER ID", "ACCOUNT NO", "CUSTOMER NAME", "DETAILS"
+];
 
 const CUSTOMER_PHOTO_FOLDER_ID =
   "1W58RbBsPpoVnnnd84iMudFaZKBBXzJO4";
@@ -124,6 +129,11 @@ function doPost(e) {
       });
     }
 
+    if (action === "getRecentActivities") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return getRecentActivities(authUser, request.limit);
+    }
+
 
     if (
       action === "saveCustomer"
@@ -177,14 +187,15 @@ function doPost(e) {
     if (
       action === "checkDuplicate"
     ) {
-      requireAuthorizedUser(
+      const authUser = requireAuthorizedUser(
         idToken,
         false
       );
 
       return checkDuplicate(
         request.customer || {},
-        request.excludeRowNumber
+        request.excludeRowNumber,
+        authUser
       );
     }
 
@@ -306,15 +317,43 @@ function requireAuthorizedUser(
   }
 
 
+  if (![
+    "admin",
+    "master_owner",
+    "client_admin",
+    "client_user",
+    "user"
+  ].includes(role)) {
+    throw new Error("Your Bank Setu account role is not supported.");
+  }
+
   if (
     adminRequired &&
-    role !== "admin"
+    !["admin", "master_owner", "client_admin"].includes(role)
   ) {
     throw new Error(
       "Administrator permission is required."
     );
   }
 
+
+  const tenantId = cleanValue(profile.tenantId);
+  if (!tenantId && !["admin", "user"].includes(role)) {
+    throw new Error("This account is not assigned to an operational workspace.");
+  }
+  const tenantSettings = tenantId
+    ? getFirestoreTenantSettings(tenantId, idToken)
+    : null;
+  const spreadsheetId = tenantId
+    ? cleanValue(tenantSettings && tenantSettings.spreadsheetId)
+    : LEGACY_SPREADSHEET_ID;
+  const photoFolderId = tenantId
+    ? cleanValue(tenantSettings && tenantSettings.photoFolderId)
+    : CUSTOMER_PHOTO_FOLDER_ID;
+
+  if (tenantId && (!spreadsheetId || !photoFolderId)) {
+    throw new Error("This client workspace data connection is not configured yet.");
+  }
 
   return {
     uid,
@@ -325,7 +364,11 @@ function requireAuthorizedUser(
       ),
     role,
     status,
-    subscriptionStatus
+    subscriptionStatus,
+    tenantId,
+    spreadsheetId,
+    photoFolderId,
+    idToken
   };
 }
 
@@ -460,11 +503,44 @@ function getFirestoreUserProfile(
         "subscriptionStatus"
       ),
 
+    name:
+      firestoreString(
+        document,
+        "name"
+      ),
+
     email:
       firestoreString(
         document,
         "email"
+      ),
+    tenantId:
+      firestoreString(
+        document,
+        "tenantId"
       )
+  };
+}
+
+
+function getFirestoreTenantSettings(tenantId, idToken) {
+  const url =
+    "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(FIREBASE_PROJECT_ID) +
+    "/databases/(default)/documents/tenantSettings/" +
+    encodeURIComponent(tenantId);
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    headers: { Authorization: "Bearer " + idToken },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error("Your client workspace settings could not be verified.");
+  }
+  const document = JSON.parse(response.getContentText() || "{}");
+  return {
+    spreadsheetId: firestoreString(document, "spreadsheetId"),
+    photoFolderId: firestoreString(document, "photoFolderId")
   };
 }
 
@@ -582,7 +658,8 @@ function saveCustomer(
           enrolId,
           uidaiNo
         },
-        null
+        null,
+        authUser
       );
 
 
@@ -610,7 +687,8 @@ function saveCustomer(
       uploadedPhoto =
         savePhotoByCustomerId(
           customer.photoDataUrl,
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -624,7 +702,8 @@ function saveCustomer(
     if (!uploadedPhoto) {
       uploadedPhoto =
         findPhotoByCustomerId(
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -649,7 +728,7 @@ function saveCustomer(
 
 
     const sheet =
-      getSheet();
+      getSheet(authUser);
 
 
     sheet.appendRow(
@@ -659,6 +738,8 @@ function saveCustomer(
         now
       )
     );
+
+    recordActivity(authUser, "CREATE", customerForSheet, "Customer record created.");
 
 
     return jsonResponse({
@@ -697,7 +778,7 @@ function updateCustomer(
     );
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
 
   if (
@@ -776,13 +857,14 @@ function updateCustomer(
 
   try {
     const duplicate =
-      findDuplicates(
+        findDuplicates(
         {
           accountNo,
           enrolId,
           uidaiNo
         },
-        row
+        row,
+        authUser
       );
 
 
@@ -814,7 +896,8 @@ function updateCustomer(
       photo =
         savePhotoByCustomerId(
           customer.photoDataUrl,
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -840,7 +923,8 @@ function updateCustomer(
       photo =
         renamePhotoCustomerId(
           oldEnrolId,
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -853,7 +937,8 @@ function updateCustomer(
     if (!photo) {
       photo =
         findPhotoByCustomerId(
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -920,6 +1005,8 @@ function updateCustomer(
         )
       ]);
 
+    recordActivity(authUser, "UPDATE", updatedCustomer, "Customer record updated.");
+
 
     return jsonResponse({
       success: true,
@@ -961,7 +1048,7 @@ function searchCustomer(
 
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
   const lastRow =
     sheet.getLastRow();
@@ -1069,7 +1156,8 @@ function searchCustomer(
 
       const drivePhoto =
         findPhotoByCustomerId(
-          customerId
+          customerId,
+          authUser.photoFolderId
         );
 
 
@@ -1127,7 +1215,8 @@ function searchCustomer(
 
 function savePhotoByCustomerId(
   dataUrl,
-  customerId
+  customerId,
+  photoFolderId
 ) {
   const safeCustomerId =
     safeFileName(
@@ -1176,9 +1265,7 @@ function savePhotoByCustomerId(
     jpg/png/webp photo हटाएँ.
   */
 
-  deletePhotosByCustomerId(
-    customerId
-  );
+  deletePhotosByCustomerId(customerId, photoFolderId);
 
 
   const fileName =
@@ -1197,7 +1284,7 @@ function savePhotoByCustomerId(
 
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      photoFolderId
     );
 
 
@@ -1218,7 +1305,8 @@ function savePhotoByCustomerId(
 ========================================================= */
 
 function findPhotoByCustomerId(
-  customerId
+  customerId,
+  photoFolderId
 ) {
   const safeId =
     safeFileName(
@@ -1233,7 +1321,7 @@ function findPhotoByCustomerId(
 
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      photoFolderId
     );
 
 
@@ -1286,11 +1374,13 @@ function findPhotoByCustomerId(
 
 function renamePhotoCustomerId(
   oldCustomerId,
-  newCustomerId
+  newCustomerId,
+  photoFolderId
 ) {
   const oldPhoto =
     findPhotoByCustomerId(
-      oldCustomerId
+      oldCustomerId,
+      photoFolderId
     );
 
 
@@ -1304,9 +1394,7 @@ function renamePhotoCustomerId(
     मौजूद है तो उसे पहले trash करेंगे.
   */
 
-  deletePhotosByCustomerId(
-    newCustomerId
-  );
+  deletePhotosByCustomerId(newCustomerId, photoFolderId);
 
 
   const file =
@@ -1348,7 +1436,8 @@ function renamePhotoCustomerId(
 ========================================================= */
 
 function deletePhotosByCustomerId(
-  customerId
+  customerId,
+  photoFolderId
 ) {
   const safeId =
     safeFileName(
@@ -1363,7 +1452,7 @@ function deletePhotosByCustomerId(
 
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      photoFolderId
     );
 
 
@@ -1530,7 +1619,7 @@ function deleteCustomer(
 ) {
   if (
     !admin ||
-    admin.role !== "admin"
+    !["admin", "master_owner", "client_admin"].includes(admin.role)
   ) {
     return jsonResponse({
       success: false,
@@ -1546,7 +1635,7 @@ function deleteCustomer(
     );
 
   const sheet =
-    getSheet();
+    getSheet(admin);
 
 
   if (
@@ -1593,14 +1682,18 @@ function deleteCustomer(
     row
   );
 
+  recordActivity(admin, "DELETE", {
+    enrolId: customerId,
+    accountNo: existing[1],
+    name: customerName,
+  }, "Customer record deleted.");
+
 
   /*
     Customer ID based photo delete.
   */
 
-  deletePhotosByCustomerId(
-    customerId
-  );
+  deletePhotosByCustomerId(customerId, admin.photoFolderId);
 
 
   /*
@@ -1645,7 +1738,7 @@ function markPassbookDelivered(
     );
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
 
   if (
@@ -1689,6 +1782,13 @@ function markPassbookDelivered(
     .setValue(
       authUser.email
     );
+
+  const deliveredCustomer = sheet.getRange(row, 1, 1, HEADERS.length).getDisplayValues()[0];
+  recordActivity(authUser, "PASSBOOK_DELIVERED", {
+    enrolId: deliveredCustomer[0],
+    accountNo: deliveredCustomer[1],
+    name: deliveredCustomer[2],
+  }, "Passbook marked as delivered.");
 
 
   return jsonResponse({
@@ -1741,14 +1841,16 @@ function getPassbookDisplay(
 
 function checkDuplicate(
   customer,
-  excludeRowNumber
+  excludeRowNumber,
+  authUser
 ) {
   const duplicate =
     findDuplicates(
       customer,
       Number(
         excludeRowNumber
-      ) || null
+      ) || null,
+      authUser
     );
 
 
@@ -1778,7 +1880,8 @@ function checkDuplicate(
 
 function findDuplicates(
   customer,
-  excludeRowNumber
+  excludeRowNumber,
+  authUser
 ) {
   const result = {
     accountNo:
@@ -1791,7 +1894,7 @@ function findDuplicates(
 
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
 
   const lastRow =
@@ -2325,10 +2428,14 @@ function safeTrashDriveFile(
    GENERAL HELPERS
 ========================================================= */
 
-function getSheet() {
+function getSheet(authUser) {
+  const spreadsheetId = cleanValue(authUser && authUser.spreadsheetId);
+  if (!spreadsheetId) {
+    throw new Error("This client workspace has no configured spreadsheet.");
+  }
   const spreadsheet =
     SpreadsheetApp.openById(
-      SPREADSHEET_ID
+      spreadsheetId
     );
 
 
@@ -2344,8 +2451,67 @@ function getSheet() {
     );
   }
 
+  ensureAuditSheet(spreadsheet);
 
   return sheet;
+}
+
+
+function ensureAuditSheet(spreadsheet) {
+  let sheet = spreadsheet.getSheetByName(AUDIT_SHEET_NAME);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(AUDIT_SHEET_NAME);
+    sheet.getRange(1, 1, 1, AUDIT_HEADERS.length).setValues([AUDIT_HEADERS]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+
+function recordActivity(authUser, action, customer, details) {
+  const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
+  const sheet = ensureAuditSheet(spreadsheet);
+  sheet.appendRow([
+    Utilities.getUuid(),
+    new Date().toISOString(),
+    authUser.tenantId || "legacy",
+    authUser.uid,
+    authUser.email,
+    authUser.name || authUser.email,
+    action,
+    cleanValue(customer && customer.enrolId),
+    cleanValue(customer && customer.accountNo),
+    cleanValue(customer && customer.name),
+    details,
+  ]);
+}
+
+
+function getRecentActivities(authUser, requestedLimit) {
+  const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
+  const sheet = ensureAuditSheet(spreadsheet);
+  const limit = Math.min(Math.max(Number(requestedLimit) || 10, 1), 50);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({ success: true, activities: [] });
+  const firstRow = Math.max(2, lastRow - limit + 1);
+  const rows = sheet.getRange(firstRow, 1, lastRow - firstRow + 1, AUDIT_HEADERS.length)
+    .getDisplayValues()
+    .reverse()
+    .map((row) => ({
+      id: row[0],
+      dateTime: row[1],
+      tenantId: row[2],
+      actorUid: row[3],
+      email: row[4],
+      user: row[5] || row[4],
+      action: row[6],
+      activity: row[6],
+      customerId: row[7],
+      accountNo: row[8],
+      customerName: row[9],
+      details: row[10],
+    }));
+  return jsonResponse({ success: true, activities: rows });
 }
 
 
