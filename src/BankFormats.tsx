@@ -3,9 +3,11 @@ import { doc, getDoc } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from "./firebase";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
+import BankFormatLayoutEditor from "./BankFormatLayoutEditor";
+import type { BankFieldPlacement } from "./bankFormatUtils";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
-type FormatItem = { fileId: string; fileName: string; mimeType: string; updatedAt?: string };
+type FormatItem = { fileId: string; fileName: string; mimeType: string; updatedAt?: string; fieldMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 type Workspace = {
   tenantId: string;
   bankName: string;
@@ -29,6 +31,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
   const [message, setMessage] = useState("");
   const [connectionCheck, setConnectionCheck] = useState("");
   const [oauthClientId, setOauthClientId] = useState("");
+  const [editingFormat, setEditingFormat] = useState<FormatType | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -63,7 +66,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
 
   if (!enabled) return null;
 
-  const preview = async (formatType: FormatType) => {
+  const loadPreview = async (formatType: FormatType) => {
     if (!workspace) return;
     setBusy(`preview:${formatType}`);
     setError("");
@@ -84,11 +87,35 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
         ...current,
         [formatType]: { url: `data:${result.mimeType};base64,${result.data}`, mimeType: result.mimeType },
       }));
+      return `data:${result.mimeType};base64,${result.data}`;
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Unable to preview this sample.");
     } finally {
       setBusy("");
     }
+  };
+
+  const preview = async (formatType: FormatType) => { await loadPreview(formatType); };
+
+  const editLayout = async (formatType: FormatType) => {
+    if (!previews[formatType]) {
+      const url = await loadPreview(formatType);
+      if (url) setEditingFormat(formatType);
+    } else {
+      setEditingFormat(formatType);
+    }
+  };
+
+  const saveMapping = async (formatType: FormatType, fieldMap: BankFieldPlacement[], pageWidthMm: number, pageHeightMm: number) => {
+    const result = await httpsCallable(getFunctions(), "saveBankFormatMapping")({ formatType, fieldMap, pageWidthMm, pageHeightMm });
+    const response = result.data as { success?: boolean };
+    if (!response.success) throw new Error("The bank format field layout could not be saved.");
+    setWorkspace((current) => current ? {
+      ...current,
+      formats: { ...current.formats, [formatType]: { ...current.formats[formatType], fieldMap, pageWidthMm, pageHeightMm } },
+    } : current);
+    setEditingFormat(null);
+    setMessage("Field positions saved. The mapped format will be used when printing this document.");
   };
 
   const upload = async (formatType: FormatType, file?: File) => {
@@ -215,6 +242,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
                 </label>
               )}
               {sample && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => void preview(item.id)}>{busy === `preview:${item.id}` ? "Loading preview…" : "Preview sample"}</button>}
+              {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => void editLayout(item.id)}>{workspace?.formats[item.id]?.fieldMap?.length ? "Edit field layout" : "Map fields for printing"}</button>}
               {filePreview && (filePreview.mimeType === "application/pdf"
                 ? <iframe title={`${item.title} preview`} src={filePreview.url} style={previewFrame} />
                 : <img alt={`${item.title} preview`} src={filePreview.url} style={previewImage} />)}
@@ -225,6 +253,15 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       {error && <p role="alert" style={{ color: "#a22" }}>{error}</p>}
       {message && <p role="status" style={{ color: "#176b54" }}>{message}</p>}
       {!workspace?.googleEmail && canManage && <p style={errorHint}>Connect your Google Drive first to store templates in your own account.</p>}
+      {editingFormat && previews[editingFormat] && workspace && <BankFormatLayoutEditor
+        sampleUrl={previews[editingFormat].url}
+        mimeType={previews[editingFormat].mimeType}
+        initialMap={workspace.formats[editingFormat]?.fieldMap || []}
+        initialWidth={workspace.formats[editingFormat]?.pageWidthMm || (editingFormat === "accountOpening" ? 210 : 205)}
+        initialHeight={workspace.formats[editingFormat]?.pageHeightMm || (editingFormat === "accountOpening" ? 297 : 175)}
+        onSave={(fieldMap, pageWidthMm, pageHeightMm) => saveMapping(editingFormat, fieldMap, pageWidthMm, pageHeightMm)}
+        onClose={() => setEditingFormat(null)}
+      />}
     </section>
   );
 }
