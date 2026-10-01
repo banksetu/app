@@ -66,7 +66,7 @@ service cloud.firestore {
     }
     match /appSettings/uiTheme {
       allow get: if approvedUser();
-      allow create, update: if admin()
+      allow create, update: if isMasterOwner()
         && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
         && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
         && request.resource.data.dashboardTheme is string
@@ -100,7 +100,7 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.keys().hasOnly([
           'tenantId', 'bankName', 'apiUrl', 'spreadsheetId', 'googleEmail', 'bankInfo',
-          'photoFolderId', 'bankLogo', 'passbookBank', 'branchName', 'cspCode', 'operatorName',
+          'photoFolderId', 'bankLogo', 'bankFormats', 'passbookBank', 'branchName', 'cspCode', 'operatorName',
           'address', 'dashboardTheme', 'menuTheme', 'customDashboardColor',
           'useCustomDashboardColor', 'updatedAt', 'updatedBy'
         ])
