@@ -12,6 +12,7 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 - Added tenant-specific Firestore settings, access rules, and a Master Owner screen to create clients. The Master Owner saves Bank Setu's OAuth client ID, shared Apps Script URL, and Apps Script deployment account once; Client Admins then create their own Sheet and Drive folder through a first-login wizard.
 - The Google setup wizard creates the workspace files in the Client Admin's Google Drive, grants the Apps Script deployment account access only to that workspace folder, and submits the short-lived Google access token to a callable Function for ownership and permission verification. The token is not stored. The Function saves the verified file IDs under that tenant.
 - Added three bank sample slots: Passbook, Quick Passbook, and Account Opening PDF. Client Admins upload PDF/image samples directly into their own tenant Drive folder; Functions verify owner, type, folder, and size before recording metadata. Authorized tenant users can preview samples through the tenant-aware Apps Script endpoint.
+- Added a Client Admin field mapper for text and customer photo placement, paper size, alignment, and font size. Saved mappings are verified by a callable Function and used in the Passbook, Quick Passbook, and Account Opening print flows over the uploaded sample.
 - Master Admin dashboard color and menu choices are stored once in shared UI settings and delivered to every signed-in tenant in real time. Client Admins cannot override those global appearance settings.
 - Master User Management groups client users under their Client Admin/workspace and displays the two-user count. Search supports client/admin/user names, email, role, and tenant ID.
 - Added a read-only workspace health check that confirms Apps Script can open the tenant's spreadsheet, customer tab, and Drive folder without changing customer data.
@@ -20,7 +21,7 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 - Replaced client-side account lifecycle writes and the unverified Cloudflare deletion call with callable Functions.
 - Added Master Owner client offboarding: it disables and removes the Client Admin and tenant users while marking the tenant offboarded. The tenant's Sheet, Drive folder, and settings are preserved. The UI confirms that business data is not deleted.
 - Added a `BankSetuAudit` tab per spreadsheet for customer create/update/delete and passbook delivery/print activity. Reports reads recent events from the authenticated tenant's spreadsheet and displays the actor and email.
-- Kept current Passbook and Account Opening PDF layouts intact. They still have bank-specific/fixed layout assumptions; a configurable template editor was not introduced because there is no reviewed per-bank sample set or template contract in the repository. These output layouts need per-bank review before rollout.
+- Kept the original fixed Passbook and Account Opening layouts as a fallback for tenants without a mapped sample. Per-bank mapped output needs print calibration with the actual bank sample and printer before rollout.
 
 ## Verification performed
 
@@ -44,6 +45,6 @@ Base: `main` at `5067f17712c05ed312653f7957b17ee529900e0b`
 - This repository does not include the Cloudflare Worker source, so the former deletion implementation could not be audited; the UI no longer calls it.
 - Apps Script continues to run under its deployment account for data operations. The Client Admin owns the files and explicitly shares only the workspace folder with that account; direct per-user OAuth is used only during setup, and no refresh token is stored.
 - Google Cloud OAuth client creation, API enablement, authorized-origin setup, Apps Script deployment, owner bootstrap, live OAuth consent, and production rollout require the actual project/account and were not performed from this repository.
-- Bank sample upload/preview is implemented, but field mapping and rendering customer data onto each uploaded sample are not implemented yet. Existing Passbook and Account Opening PDF outputs still use fixed layouts.
+- Bank sample upload, preview, field mapping, and mapped printing are implemented for customer fields and photo. PDF samples currently map and print their first page; multi-page field mapping and passbook transaction-row placement still need implementation and sample review. Tenants without a saved mapping use the prior fixed output.
 - The global dashboard controller currently propagates dashboard and menu appearance settings; other master-controlled dashboard options can be added as requirements are finalized.
 - `BankSetuAudit` is an append-only application log, not a tamper-proof compliance ledger. Existing customer records and historical activity are not backfilled.
