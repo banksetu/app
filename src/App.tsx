@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -63,14 +63,14 @@ function App() {
   const ownerBootstrapAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
 
-  const clearProfileListener = () => {
+  const clearProfileListener = useCallback(() => {
     if (profileUnsubscribeRef.current) {
       profileUnsubscribeRef.current();
       profileUnsubscribeRef.current = null;
     }
-  };
+  }, []);
 
-  const applyProfile = (profile: UserProfile) => {
+  const applyProfile = useCallback((profile: UserProfile) => {
     const normalizedRole = normalize(profile.role);
     setAccountRole(normalizedRole || "user");
     const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole)
@@ -84,9 +84,9 @@ function App() {
       sessionStorage.removeItem("bankSetuTenantId");
     }
     return role;
-  };
+  }, []);
 
-  const rejectSession = async (message: string) => {
+  const rejectSession = useCallback(async (message: string) => {
     clearProfileListener();
     sessionStorage.removeItem("bankSetuRole");
     sessionStorage.removeItem("bankSetuTenantId");
@@ -103,9 +103,9 @@ function App() {
         console.error("Sign out after access rejection failed:", signOutError);
       }
     }
-  };
+  }, [clearProfileListener]);
 
-  const watchUserProfile = (user: User) => {
+  const watchUserProfile = useCallback((user: User) => {
     clearProfileListener();
 
     const userRef = doc(db, "users", user.uid);
@@ -165,7 +165,7 @@ function App() {
         setCheckingSession(false);
       }
     );
-  };
+  }, [applyProfile, clearProfileListener, rejectSession]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -189,7 +189,7 @@ function App() {
       unsubscribe();
       clearProfileListener();
     };
-  }, []);
+  }, [clearProfileListener, watchUserProfile]);
 
   const handleForgotPassword = async () => {
     setError("");
