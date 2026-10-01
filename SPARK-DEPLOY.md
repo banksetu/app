@@ -16,7 +16,17 @@ This package is based on the uploaded repository snapshot. Back up your current 
 3. Run `npm install` then `npm run build` in `/workspaces/app`. Build was successful in the analysis workspace.
 4. Deploy Firestore rules first: `firebase deploy --only firestore:rules` from `/workspaces/app`. Test an existing admin login and user list.
 5. Deploy the frontend: `firebase deploy --only hosting:banksetu-app`. This should publish to the configured Hosting site under project `banksetu-69e2f`. Confirm the actual URL shown by Firebase CLI. Firebase project ID is separate from the Hosting URL.
-6. Test a new registration, pending login rejection, approval, approved login, block, unblock and deny. Use a test account, not a real customer account. Confirm the existing customer workflows.
+6. With a separate test account, verify the user list and approve, deny, block and unblock actions, then confirm a blocked account cannot use customer data. Do not test these actions on the owner or a real client account. Confirm the existing customer workflows.
+
+## Apps Script configuration before updating its deployment
+
+The public source does not contain Drive/Sheet identifiers or a Firebase API key. Before deploying `apps-script/Code.gs`, add these Script Properties under Apps Script **Project Settings** using the values from the existing private deployment:
+
+- `BANKSETU_LEGACY_SPREADSHEET_ID`
+- `BANKSETU_LEGACY_PHOTO_FOLDER_ID`
+- `BANKSETU_FIREBASE_API_KEY`
+
+Do not put these values in source code, GitHub, a chat message, or the browser. Tenant workspaces read their own Sheet and Drive folder IDs from their tenant settings; these properties are for the legacy Bank Setu workspace only.
 
 ## Limits and security
 - `Delete` is intentionally absent from the browser UI. Removing another person's Firebase Authentication account requires a trusted Admin SDK backend. On Spark, use Firebase Console Authentication > Users to manually remove that account; then remove its Firestore user document in Console. Do not delete the Firestore document alone and assume Auth was removed.
