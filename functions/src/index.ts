@@ -26,6 +26,7 @@ interface CreateClientUserData {
 }
 
 type ProvisioningRole = "master_owner" | "client_admin";
+const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
 
 async function requireProvisioningRole(
   uid: string | undefined,
@@ -150,6 +151,39 @@ export const createClient = onCall<CreateClientData>(async (request) => {
     console.error("Client provisioning failed:", error);
     throw new HttpsError("internal", "Unable to create the client account.");
   }
+});
+
+/** One-time recovery-safe owner bootstrap for the verified Bank Setu owner email. */
+export const bootstrapMasterOwner = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  const email = String(request.auth?.token.email || "").trim().toLowerCase();
+  const emailVerified = request.auth?.token.email_verified === true;
+  if (!uid || email !== MASTER_OWNER_EMAIL || !emailVerified) {
+    throw new HttpsError("permission-denied", "Only the verified Bank Setu owner account can bootstrap the first Master Admin.");
+  }
+  const profileRef = db.collection("users").doc(uid);
+  await db.runTransaction(async (transaction) => {
+    const ownerQuery = db.collection("users").where("role", "==", "master_owner").limit(1);
+    const [owners, profile] = await Promise.all([
+      transaction.get(ownerQuery),
+      transaction.get(profileRef),
+    ]);
+    if (!owners.empty) throw new HttpsError("already-exists", "A Master Admin account is already configured.");
+    if (profile.exists && profile.data()?.role && profile.data()?.role !== "admin") {
+      throw new HttpsError("failed-precondition", "This Bank Setu account already has a different application role.");
+    }
+    const name = String(request.auth?.token.name || profile.data()?.name || "Bank Setu Owner").trim();
+    transaction.set(profileRef, {
+      name,
+      email,
+      role: "master_owner",
+      status: "approved",
+      subscriptionStatus: "active",
+      masterOwnerBootstrappedAt: FieldValue.serverTimestamp(),
+      ...(profile.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    }, { merge: true });
+  });
+  return { success: true, role: "master_owner" };
 });
 
 export const createClientUser = onCall<CreateClientUserData>(async (request) => {
@@ -710,6 +744,16 @@ export const getGoogleSetupConfig = onCall(async (request) => {
       : Promise.resolve(null),
   ]);
   const config = configSnapshot.data() || {};
+  const savedFormats = tenantSettingsSnapshot?.data()?.bankFormats || {};
+  const bankFormats = Object.fromEntries(Object.entries(savedFormats).map(([format, value]) => {
+    const item = value as { fileId?: unknown; fileName?: unknown; mimeType?: unknown; updatedAt?: { toDate?: () => Date } };
+    return [format, {
+      fileId: String(item.fileId || ""),
+      fileName: String(item.fileName || ""),
+      mimeType: String(item.mimeType || ""),
+      updatedAt: item.updatedAt?.toDate?.().toISOString() || "",
+    }];
+  }));
   return {
     oauthClientId: String(config.oauthClientId || ""),
     apiUrl: String(config.apiUrl || ""),
@@ -719,5 +763,92 @@ export const getGoogleSetupConfig = onCall(async (request) => {
     spreadsheetId: String(tenantSettingsSnapshot?.data()?.spreadsheetId || ""),
     photoFolderId: String(tenantSettingsSnapshot?.data()?.photoFolderId || ""),
     googleEmail: String(tenantSettingsSnapshot?.data()?.googleEmail || ""),
+    bankFormats,
   };
+});
+
+interface SaveBankFormatData {
+  formatType: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  accessToken: string;
+}
+
+export const saveBankFormatTemplate = onCall<SaveBankFormatData>(async (request) => {
+  const actor = await requireProvisioningRole(request.auth?.uid, ["client_admin"]);
+  const formatType = String(request.data?.formatType || "").trim();
+  const fileId = String(request.data?.fileId || "").trim();
+  const fileName = String(request.data?.fileName || "").trim();
+  const mimeType = String(request.data?.mimeType || "").trim().toLowerCase();
+  const accessToken = String(request.data?.accessToken || "").trim();
+  if (!actor.tenantId) throw new HttpsError("failed-precondition", "Client account has no workspace assignment.");
+  if (!["passbook", "quickPassbook", "accountOpening"].includes(formatType)) {
+    throw new HttpsError("invalid-argument", "Choose a supported bank format type.");
+  }
+  if (!/^[A-Za-z0-9_-]{20,}$/.test(fileId) || !fileName || fileName.length > 200) {
+    throw new HttpsError("invalid-argument", "Uploaded template file is invalid.");
+  }
+  if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+    throw new HttpsError("invalid-argument", "Upload a PDF, JPG, PNG, or WebP sample.");
+  }
+  const settingsRef = db.collection("tenantSettings").doc(actor.tenantId);
+  const [settingsSnapshot, setupSnapshot] = await Promise.all([
+    settingsRef.get(),
+    db.collection("appSettings").doc("googleSetup").get(),
+  ]);
+  const settings = settingsSnapshot.data() || {};
+  const setup = setupSnapshot.data() || {};
+  const connectedEmail = String(settings.googleEmail || "").toLowerCase();
+  const executorEmail = String(setup.executorEmail || "").toLowerCase();
+  if (!settings.spreadsheetId || !settings.photoFolderId || !connectedEmail || !executorEmail) {
+    throw new HttpsError("failed-precondition", "Connect this workspace's Google Drive first.");
+  }
+  const verification = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,owners(emailAddress),parents,size,trashed`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const googleFile = await verification.json().catch(() => ({})) as {
+    id?: string; name?: string; mimeType?: string; owners?: Array<{ emailAddress?: string }>;
+    parents?: string[]; size?: string; trashed?: boolean; error?: { message?: string };
+  };
+  if (!verification.ok) {
+    console.warn("Bank format Drive verification failed with status:", verification.status);
+    throw new HttpsError("failed-precondition", "Google could not verify this format file. Reconnect and upload again.");
+  }
+  const uploadedSize = Number(googleFile.size);
+  if (
+    googleFile.id !== fileId ||
+    googleFile.trashed ||
+    String(googleFile.owners?.[0]?.emailAddress || "").toLowerCase() !== connectedEmail ||
+    !googleFile.parents?.includes(String(settings.photoFolderId)) ||
+    String(googleFile.mimeType || "").toLowerCase() !== mimeType ||
+    !Number.isFinite(uploadedSize) || uploadedSize < 1 || uploadedSize > 5 * 1024 * 1024
+  ) {
+    throw new HttpsError("permission-denied", "The template must be a PDF or image owned by your connected Google account inside this workspace folder, up to 5 MB.");
+  }
+  const folderPermissionsResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(String(settings.photoFolderId))}/permissions?fields=permissions(emailAddress,role)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!folderPermissionsResponse.ok) {
+    throw new HttpsError("failed-precondition", "Google could not verify the workspace sharing. Reconnect and retry.");
+  }
+  const folderPermissions = await folderPermissionsResponse.json() as { permissions?: Array<{ emailAddress?: string; role?: string }> };
+  const executorAccess = folderPermissions.permissions?.find((permission) =>
+    String(permission.emailAddress || "").toLowerCase() === executorEmail
+  );
+  if (!executorAccess || !["writer", "owner"].includes(String(executorAccess.role))) {
+    throw new HttpsError("failed-precondition", "Restore the Bank Setu Apps Script account's access to this workspace folder, then retry.");
+  }
+  await settingsRef.update({
+    [`bankFormats.${formatType}`]: {
+      fileId,
+      fileName: String(googleFile.name || fileName).slice(0, 200),
+      mimeType,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor.uid,
+    },
+  });
+  return { success: true, formatType, fileId };
 });
