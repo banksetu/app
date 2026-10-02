@@ -364,8 +364,8 @@ function App() {
     }
   };
 
-  const publicPath = window.location.pathname.replace(/\\/+$/, "") || "/";
-  if (publicPath === "/about" || publicPath === "/privacy-policy") {
+  const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
+  if (publicPath === "about" || publicPath === "privacy-policy") {
     return <PublicPages />;
   }
 
