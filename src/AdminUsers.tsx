@@ -28,6 +28,7 @@ type ManagedUser = {
   bankName?: string;
   status?: UserStatus;
   subscriptionStatus?: string;
+  tenantStatus?: string;
   disabled?: boolean;
   createdAt?: string | null;
 };
@@ -80,15 +81,25 @@ function AdminUsers({ embedded = false }: Props) {
         : usersRef;
       if (!usersQuery) throw new Error("This client account has no workspace assignment.");
       const snapshot = await getDocs(usersQuery);
+      const masterRole = String(currentProfile?.role || "").toLowerCase();
+      const isVerifiedLegacyOwner = masterRole === "admin" &&
+        currentUser.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+        currentUser.emailVerified;
+      const tenantStatuses = new Map<string, string>();
+      if (masterRole === "master_owner" || isVerifiedLegacyOwner) {
+        const tenants = await getDocs(collection(db, "tenants"));
+        tenants.docs.forEach((tenant) => tenantStatuses.set(tenant.id, String(tenant.data().status || "unknown")));
+      }
 
       setUsers(
-        snapshot.docs.map(
-          (item) =>
-            ({
-              uid: item.id,
-              ...item.data(),
-            } as ManagedUser)
-        )
+        snapshot.docs.map((item) => {
+          const data = item.data();
+          return {
+            uid: item.id,
+            ...data,
+            ...(data.tenantId ? { tenantStatus: tenantStatuses.get(String(data.tenantId)) || "not-found" } : {}),
+          } as ManagedUser;
+        })
       );
     } catch (error: unknown) {
       const err = error as { message?: string };
@@ -457,6 +468,7 @@ function AdminUsers({ embedded = false }: Props) {
                           role === "admin" ? "Admin" : "User"}
                   </span>
                   {user.tenantId && <span>{user.bankName || user.tenantId}</span>}
+                  {role === "client_admin" && user.tenantStatus && <span>Workspace: {user.tenantStatus}</span>}
 
                   <span>
                     {user.subscriptionStatus ||
@@ -527,6 +539,21 @@ function AdminUsers({ embedded = false }: Props) {
                         Unblock
                       </button>
                     )}
+
+                  {isMasterAdmin && role === "client_admin" &&
+                    user.tenantStatus !== "active" &&
+                    user.tenantStatus !== "offboarding" &&
+                    user.tenantStatus !== "offboarded" &&
+                    user.tenantStatus !== "not-found" &&
+                    status !== "blocked" && (
+                    <button
+                      className="unblock"
+                      disabled={isBusy}
+                      onClick={() => void runAction(user, "unblock")}
+                    >
+                      {isBusy ? "Restoring…" : "Restore Workspace"}
+                    </button>
+                  )}
 
                   {isMasterAdmin && role === "client_admin" && (
                     <button
