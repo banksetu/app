@@ -41,13 +41,14 @@ import ClientGoogleSetup from "./ClientGoogleSetup";
 import BankFormats from "./BankFormats";
 
 
-import Passbook from "./Passbook";
+import SelectedBankDocument from "./SelectedBankDocument";
+import { isAssamBank } from "./bankDocumentPolicy";
 
 import Customers from "./Customers";
 
 import Reports from "./Reports";
 
-import AccountOpeningPDF from "./AccountOpeningPDF";
+
 
 import bankSetuLogo from "./assets/bank-setu-logo.png";
 
@@ -1408,7 +1409,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             onClick={() => openPage("quick-passbook")}
           />
 
-          {(["client_admin", "client_user"].includes(accountRole)) && <NavButton
+          {(["client_admin", "client_user"].includes(accountRole) && !!bankInfo.passbookBank && !isAssamBank(bankInfo.passbookBank)) && <NavButton
             icon="🏦"
             label="Bank Formats"
             active={activePage === "bank-formats"}
@@ -1875,7 +1876,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
             "customer-entry" && (
 
-            <CustomerEntry />
+            <CustomerEntry bankName={bankInfo.passbookBank} />
 
           )}
 
@@ -1893,37 +1894,19 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           {activePage === "passbook" && (
 
-            <Passbook formatType="passbook" />
+            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} />
 
           )}
 
           {activePage === "quick-passbook" && (
-            <Passbook formatType="quickPassbook" bankInfo={bankInfo} />
+            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
           )}
 
           {activePage === "bank-formats" && (
-            <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} />
+            <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} bankName={bankInfo.passbookBank} />
           )}
 
-          {activePage === "search" && (
-
-          bankInfo.passbookBank === "Assam Gramin Bank" ? (
-
-            <AccountOpeningPDF />
-
-          ) : (
-
-            <ComingSoon
-
-              title="Account Opening PDF Sample"
-
-              text="This PDF template is currently available only for Assam Gramin Bank. Please select Assam Gramin Bank in Bank Information."
-
-            />
-
-          )
-
-        )}
+          {activePage === "search" && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
 
           {activePage === "reports" && (
 
@@ -3976,54 +3959,6 @@ function NavButton({
 /* =========================
 
    COMING SOON
-
-\========================= */
-
-function ComingSoon({
-
-  title,
-
-  text,
-
-}: {
-
-  title: string;
-
-  text: string;
-
-}) {
-
-  return (
-
-    <section style={styles.comingSoon}>
-
-      <div style={styles.comingSoonIcon}>
-
-        🛠
-
-      </div>
-
-      <h2>
-
-        {title}
-
-      </h2>
-
-      <p>
-
-        {text}
-
-      </p>
-
-    </section>
-
-  );
-
-}
-
-/* =========================
-
-   STATUS ROW
 
 \========================= */
 

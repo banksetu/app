@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { firestoreDocumentName } from "./worker.js";
+import worker, { firestoreDocumentName, bankFormatSelectionError } from "./worker.js";
 
 
 test("builds Firestore commit resource names without REST URL prefixes", () => {
@@ -40,7 +40,7 @@ test("rejects an unconfigured website origin", async () => {
 });
 
 test("requires Firebase sign-in before account and tenant setup actions", async () => {
-  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data"]) {
+  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping"]) {
     const response = await worker.fetch(new Request(`https://worker.example${path}`, {
       method: "POST",
       headers: { origin: "https://banksetu-app.web.app", "content-type": "application/json" },
@@ -48,5 +48,14 @@ test("requires Firebase sign-in before account and tenant setup actions", async 
     }), env);
     assert.equal(response.status, 401, path);
     assert.match((await response.json()).error, /Sign in is required/, path);
+  }
+});
+
+test("bank samples require the currently selected bank and never replace built-in Assam formats", () => {
+  assert.match(bankFormatSelectionError("", "Union Bank of India"), /Select and save/);
+  assert.match(bankFormatSelectionError("Union Bank of India", "State Bank of India"), /Select and save/);
+  assert.equal(bankFormatSelectionError(" Union Bank of India ", "union  bank of india"), "");
+  for (const bank of ["Assam Gramin Bank", "Assam Gramin Vikas Bank", "AGVB"]) {
+    assert.match(bankFormatSelectionError(bank, bank), /built-in/);
   }
 });

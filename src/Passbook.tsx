@@ -1,6 +1,5 @@
 import {
 
-  useCallback,
   useState,
 
 
@@ -10,7 +9,7 @@ import {
 
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
-import BankFormatPrint from "./BankFormatPrint";
+
 import AssamQuickPassbook, { isAssamBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 
 
@@ -177,7 +176,7 @@ const emptyCustomer: Customer = {
 
 
 
-const BRANCH = {
+const DEFAULT_BRANCH = {
 
   name: "BADARPUR",
 
@@ -336,9 +335,22 @@ function makePrintAddress(customer: Customer) {
 
 
 export default function Passbook({ formatType = "passbook", bankInfo }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo }) {
+  const workspaceBranch = bankInfo?.branchName?.trim();
+  const referenceBranch = !workspaceBranch || workspaceBranch.toUpperCase() === "BADARPUR";
+  const branchAddress = bankInfo?.address?.trim().split(/\n+/) || [];
+  const BRANCH = {
+    ...DEFAULT_BRANCH,
+    name: workspaceBranch?.toUpperCase() || DEFAULT_BRANCH.name,
+    addressLine1: branchAddress[0]?.toUpperCase() || (referenceBranch ? DEFAULT_BRANCH.addressLine1 : ""),
+    addressLine2: branchAddress.slice(1).join(" ").toUpperCase() || (referenceBranch ? DEFAULT_BRANCH.addressLine2 : ""),
+    pin: referenceBranch ? DEFAULT_BRANCH.pin : "",
+    ifsc: bankInfo?.ifsc || (referenceBranch ? DEFAULT_BRANCH.ifsc : ""),
+    micr: bankInfo?.micr || (referenceBranch ? DEFAULT_BRANCH.micr : ""),
+    branchCode: bankInfo?.branchCode || (referenceBranch ? DEFAULT_BRANCH.branchCode : ""),
+    email: bankInfo?.branchEmail || "",
+  };
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
-  const [bankFormatActive, setBankFormatActive] = useState(false);
-  const onBankFormatConfigured = useCallback((active: boolean) => setBankFormatActive(active), []);
+
 
   const [query, setQuery] = useState("");
 
@@ -491,7 +503,6 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
   const searchCustomer = async (event?: FormEvent) => {
     event?.preventDefault();
-    setBankFormatActive(false);
 
     const searchValue = query.trim();
     if (!searchValue) {
@@ -681,7 +692,6 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
   const clearPassbook = () => {
 
-    setBankFormatActive(false);
 
     setQuery("");
 
@@ -949,7 +959,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
   return (
 
-    <div className={`passbook-page${bankFormatActive ? " bank-format-active" : ""}`}>
+    <div className="passbook-page">
 
       <style>{`
 
@@ -2165,12 +2175,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
       </div>
 
-      {previewCustomer && !isAssamQuick && <BankFormatPrint
-        formatType={formatType}
-        customer={previewCustomer}
-        onConfigured={onBankFormatConfigured}
-        onPrint={() => void printPassbook()}
-      />}
+
 
 
 

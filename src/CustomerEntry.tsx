@@ -35,7 +35,7 @@ import {
 
   GlobalWorkerOptions,
 
-} from "pdfjs-dist";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 
 
 
@@ -43,17 +43,20 @@ import type {
 
   PDFDocumentProxy,
 
-} from "pdfjs-dist";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 
 
 
 import pdfWorker from
 
-  "pdfjs-dist/build/pdf.worker.min.mjs?url";
+  "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 
 
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { extractBankCustomer } from "./bankPdf";
 
 
 
@@ -403,7 +406,7 @@ function createEmptyForm(): CustomerForm {
 
 
 
-function CustomerEntry() {
+function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
   const [form, setForm] =
 
@@ -1293,13 +1296,8 @@ function CustomerEntry() {
 
 
 
-      const extracted =
-
-        parseCustomerPdf(
-
-          text
-
-        );
+      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf) };
+      if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
 
 
 
@@ -1411,7 +1409,7 @@ function CustomerEntry() {
 
           accountOpeningDate:
 
-            previous.accountOpeningDate ||
+            extracted.accountOpeningDate || previous.accountOpeningDate ||
 
             getTodayLocalDate(),
 
@@ -1757,11 +1755,26 @@ function CustomerEntry() {
 
 
 
+      let region = PDF_PHOTO_REGION;
+      let photoPage = 1;
+      if (!isAssamBank(bankName)) {
+        const tenantId = sessionStorage.getItem("bankSetuTenantId") || "";
+        if (!tenantId) return "";
+        const settings = (await getDoc(doc(db, "tenantSettings", tenantId))).data();
+        const sample = settings?.bankFormats?.accountOpening;
+        if (!templateMatchesBank(sample, bankName)) return "";
+        const photo = sample.fieldMap?.find((field: { field: string }) => field.field === "customerPhoto");
+        if (!photo) return "";
+        photoPage = photo.page || 1;
+        if (photoPage > pdf.numPages) return "";
+        region = {x:photo.x/100,y:photo.y/100,width:photo.width/100,height:photo.width*0.8/100};
+      }
+
       const page =
 
         await pdf.getPage(
 
-          1
+          photoPage
 
         );
 
@@ -1937,7 +1950,7 @@ function CustomerEntry() {
 
           pageCanvas.width *
 
-            PDF_PHOTO_REGION.x
+            region.x
 
         );
 
@@ -1949,7 +1962,7 @@ function CustomerEntry() {
 
           pageCanvas.height *
 
-            PDF_PHOTO_REGION.y
+            region.y
 
         );
 
@@ -1961,7 +1974,7 @@ function CustomerEntry() {
 
           pageCanvas.width *
 
-            PDF_PHOTO_REGION.width
+            region.width
 
         );
 
@@ -1973,7 +1986,7 @@ function CustomerEntry() {
 
           pageCanvas.height *
 
-            PDF_PHOTO_REGION.height
+            region.height
 
         );
 

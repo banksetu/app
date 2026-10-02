@@ -5,9 +5,11 @@ import { callBankSetuWorker } from "./workerApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import BankFormatLayoutEditor from "./BankFormatLayoutEditor";
 import type { BankFieldPlacement } from "./bankFormatUtils";
+import { bankKey, isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { detectBankPdfLayout } from "./bankPdf";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
-type FormatItem = { fileId: string; fileName: string; mimeType: string; updatedAt?: string; fieldMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
+type FormatItem = { bankKey?: string; fileId: string; fileName: string; mimeType: string; updatedAt?: string; fieldMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 type Workspace = {
   tenantId: string;
   bankName: string;
@@ -23,7 +25,7 @@ const formats: Array<{ id: FormatType; title: string; description: string }> = [
   { id: "accountOpening", title: "Account Opening PDF sample", description: "Upload the bank's account opening PDF sample." },
 ];
 
-export default function BankFormats({ enabled, canManage }: { enabled: boolean; canManage: boolean }) {
+export default function BankFormats({ enabled, canManage, bankName }: { enabled: boolean; canManage: boolean; bankName: string }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [previews, setPreviews] = useState<Partial<Record<FormatType, { url: string; mimeType: string }>>>({});
   const [busy, setBusy] = useState("");
@@ -34,7 +36,8 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
   const [editingFormat, setEditingFormat] = useState<FormatType | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
+    setWorkspace(null); setPreviews({}); setEditingFormat(null); setError(""); setMessage("");
+    if (!enabled || !bankName.trim() || isAssamBank(bankName)) return;
     let active = true;
     const load = async () => {
       const tenantId = sessionStorage.getItem("bankSetuTenantId")?.trim() || "";
@@ -50,11 +53,11 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       if (!active) return;
       setWorkspace({
         tenantId,
-        bankName: String(data.bankName || ""),
+        bankName,
         googleEmail: String(data.googleEmail || ""),
         photoFolderId: String(data.photoFolderId || ""),
         apiUrl: String(data.apiUrl || ""),
-        formats: (data.bankFormats || {}) as Partial<Record<FormatType, FormatItem>>,
+        formats: Object.fromEntries(Object.entries(data.bankFormats || {}).filter(([, sample]) => templateMatchesBank(sample as FormatItem, bankName))) as Partial<Record<FormatType, FormatItem>>,
       });
       setOauthClientId(String(config?.oauthClientId || ""));
     };
@@ -62,9 +65,11 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       if (active) setError(reason instanceof Error ? reason.message : "Unable to load bank format samples.");
     });
     return () => { active = false; };
-  }, [enabled, canManage]);
+  }, [enabled, canManage, bankName]);
 
   if (!enabled) return null;
+  if (!bankName.trim()) return <section style={panel}><h2>First select a bank</h2><p>Choose Bank for passbook printing in Bank Information.</p></section>;
+  if (isAssamBank(bankName)) return <section style={panel}><h2>Assam Gramin Bank formats are ready</h2><p>Passbook, Quick Passbook and Account Opening use the built-in bank formats with your own workspace data. No samples are needed.</p></section>;
 
   const loadPreview = async (formatType: FormatType) => {
     if (!workspace) return;
@@ -107,7 +112,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
   };
 
   const saveMapping = async (formatType: FormatType, fieldMap: BankFieldPlacement[], pageWidthMm: number, pageHeightMm: number) => {
-    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, fieldMap, pageWidthMm, pageHeightMm });
+    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, selectedBank: bankName, fieldMap, pageWidthMm, pageHeightMm });
     if (!response.success) throw new Error("The bank format field layout could not be saved.");
     setWorkspace((current) => current ? {
       ...current,
@@ -160,6 +165,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       if (!uploadResponse.ok || !uploaded.id) throw new Error(uploaded.error?.message || "Google Drive could not save this sample.");
       uploadedFileId = uploaded.id;
       await callBankSetuWorker("/save-bank-format-template", {
+        selectedBank: bankName,
         formatType,
         fileId: uploaded.id,
         fileName: uploaded.name || file.name,
@@ -170,9 +176,26 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       setPreviews((current) => ({ ...current, [formatType]: { url, mimeType: file.type } }));
       setWorkspace((current) => current ? {
         ...current,
-        formats: { ...current.formats, [formatType]: { fileId: uploaded.id!, fileName: uploaded.name || file.name, mimeType: uploaded.mimeType || file.type } },
+        formats: { ...current.formats, [formatType]: { bankKey: bankKey(bankName), fileId: uploaded.id!, fileName: uploaded.name || file.name, mimeType: uploaded.mimeType || file.type } },
       } : current);
-      setMessage(`${formats.find((item) => item.id === formatType)?.title} uploaded to your Google Drive.`);
+      // The file is saved already: a recognition problem must not delete it.
+      uploadedFileId = "";
+      let detected;
+      try { detected = await detectBankPdfLayout(file); }
+      catch { setMessage("Sample saved. Open Edit field layout to place fields on this PDF."); return; }
+      if (detected.fieldMap.length) {
+        try {
+          await saveMapping(formatType, detected.fieldMap, detected.pageWidthMm, detected.pageHeightMm);
+          setMessage(`Sample saved. ${detected.fieldMap.length} field positions detected automatically. Preview and adjust them if needed.`);
+        } catch {
+          setMessage("Sample saved. Open Edit field layout to review and save the detected field positions.");
+          setWorkspace(current => current ? {...current, formats:{...current.formats,[formatType]:{...current.formats[formatType],...detected}}} : current);
+          setEditingFormat(formatType);
+        }
+      } else {
+        setMessage("Sample saved. This PDF has no recognizable fields. Place the customer fields once on its preview.");
+        setEditingFormat(formatType);
+      }
     } catch (reason: unknown) {
       if (accessToken && uploadedFileId) {
         await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(uploadedFileId)}`, {
@@ -214,7 +237,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
     <section style={panel}>
       <p style={eyebrow}>BANK FORMATS</p>
       <h1 style={{ margin: "6px 0", fontSize: 22 }}>{workspace?.bankName || "Client bank"} formats</h1>
-      <p style={copy}>Upload and preview samples stored in this workspace's Google Drive. Supported sample types: PDF, JPG, PNG, WebP, up to 5 MB.</p>
+      <p style={copy}>Upload and preview samples stored in this workspace's Google Drive. Upload three blank PDF samples, up to 5 MB each. Fillable fields and recognizable text labels are detected automatically. Scanned samples need field positions set once.</p>
       {workspace?.googleEmail && <p style={{ ...copy, marginTop: 4 }}>Connected Drive: {workspace.googleEmail}</p>}
       <button style={secondaryButton} disabled={Boolean(busy) || !workspace?.apiUrl} onClick={() => void testConnection()}>
         {busy === "connection-test" ? "Testing…" : "Test workspace connection"}

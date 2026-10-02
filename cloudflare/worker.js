@@ -1,3 +1,11 @@
+export function bankFormatSelectionError(selectedBank, requestedBank) {
+  const key = value => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const selected = key(selectedBank);
+  if (!selected || selected !== key(requestedBank)) return "Select and save your bank in Bank Information before uploading its formats.";
+  if (/^(assam gramin(?: vikas)? bank|agvb|agb)$/.test(selected)) return "Assam Gramin Bank uses the built-in formats; no samples are required.";
+  return "";
+}
+
 const encoder = new TextEncoder();
 let cachedAccessToken;
 let cachedTokenExpiry = 0;
@@ -442,6 +450,9 @@ async function handleMasterOperation(request, env, actor, route) {
     if (!["passbook", "quickPassbook", "accountOpening"].includes(formatType)) return json({ error: "Choose a supported bank format." }, 400);
     const settingsResult = await firestoreRequest(env, `/tenantSettings/${encodeURIComponent(tenantId)}`);
     const settings = decodeFields(settingsResult.fields || {});
+    const selectedBank = String(settings.passbookBank || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const selectionError = bankFormatSelectionError(settings.passbookBank, body.selectedBank);
+    if (selectionError) return json({ error: selectionError }, 400);
     const formats = settings.bankFormats || {};
     if (route === "/save-bank-format-template") {
       const fileId = String(body.fileId || "");
@@ -454,14 +465,14 @@ async function handleMasterOperation(request, env, actor, route) {
       const file = await fileResponse.json().catch(() => ({}));
       const connectedEmail = String(settings.googleEmail || "").toLowerCase();
       if (!fileResponse.ok || file.id !== fileId || file.trashed || String(file.owners?.[0]?.emailAddress || "").toLowerCase() !== connectedEmail || !file.parents?.includes(String(settings.photoFolderId)) || String(file.mimeType || "").toLowerCase() !== mimeType || Number(file.size) > 5 * 1024 * 1024) return json({ error: "The sample must be owned by your connected Google account and stored in this workspace folder." }, 403);
-      formats[formatType] = { ...(formats[formatType] || {}), fileId, fileName: String(file.name || fileName).slice(0, 200), mimeType, updatedAt: new Date().toISOString(), updatedBy: actor.uid };
+      formats[formatType] = { bankKey: selectedBank, fileId, fileName: String(file.name || fileName).slice(0, 200), mimeType, updatedAt: new Date().toISOString(), updatedBy: actor.uid };
     } else {
       const width = Number(body.pageWidthMm); const height = Number(body.pageHeightMm);
       const fields = new Set(["name", "fatherName", "accountNo", "customerId", "aofNo", "gender", "mobile", "aadhaar", "pan", "address", "branchName", "ifsc", "accountOpeningDate", "nominee", "postOffice", "pinCode", "status", "customerPhoto"]);
       const fieldMap = Array.isArray(body.fieldMap) ? body.fieldMap : [];
-      if (!formats[formatType]?.fileId || width < 50 || width > 500 || height < 50 || height > 500 || fieldMap.length > 50) return json({ error: "Upload a sample and enter valid page dimensions first." }, 400);
+      if (!formats[formatType]?.fileId || formats[formatType]?.bankKey !== selectedBank || !Number.isFinite(width) || !Number.isFinite(height) || width < 50 || width > 500 || height < 50 || height > 500 || fieldMap.length > 50) return json({ error: "Upload a sample and enter valid page dimensions first." }, 400);
       const normalized = fieldMap.map((item) => ({ field: String(item.field || ""), page: Number(item.page || 1), x: Number(item.x), y: Number(item.y), width: Number(item.width), fontSize: Number(item.fontSize), uppercase: item.uppercase === true, align: String(item.align || "left") }));
-      if (normalized.some((item) => !fields.has(item.field) || !["left", "center", "right"].includes(item.align) || item.x < 0 || item.x > 100 || item.y < 0 || item.y > 100 || item.width < 1 || item.width > 100 || item.fontSize < 5 || item.fontSize > 48 || !Number.isInteger(item.page) || item.page < 1 || item.page > 10)) return json({ error: "A mapped field has an invalid key or position." }, 400);
+      if (normalized.some((item) => ![item.x,item.y,item.width,item.fontSize,item.page].every(Number.isFinite) || !fields.has(item.field) || !["left", "center", "right"].includes(item.align) || item.x < 0 || item.x > 100 || item.y < 0 || item.y > 100 || item.width < 1 || item.width > 100 || item.fontSize < 5 || item.fontSize > 48 || !Number.isInteger(item.page) || item.page < 1 || item.page > 10)) return json({ error: "A mapped field has an invalid key or position." }, 400);
       formats[formatType] = { ...formats[formatType], pageWidthMm: width, pageHeightMm: height, fieldMap: normalized, mappingUpdatedAt: new Date().toISOString(), mappingUpdatedBy: actor.uid };
     }
     await putDocument(env, `/tenantSettings/${encodeURIComponent(tenantId)}`, { bankFormats: formats });

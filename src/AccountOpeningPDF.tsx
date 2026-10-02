@@ -1,8 +1,8 @@
-import { useCallback, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
-import BankFormatPrint from "./BankFormatPrint";
+
 
 
 
@@ -305,8 +305,7 @@ function EditableField({
 
 
 export default function AccountOpeningPDF() {
-  const [bankFormatActive, setBankFormatActive] = useState(false);
-  const onBankFormatConfigured = useCallback((active: boolean) => setBankFormatActive(active), []);
+
 
   const [query, setQuery] = useState("");
 
@@ -400,7 +399,6 @@ export default function AccountOpeningPDF() {
 
   const searchCustomer = async (event?: FormEvent) => {
     event?.preventDefault();
-    setBankFormatActive(false);
     const searchValue = query.trim();
 
     if (!searchValue) {
@@ -513,7 +511,7 @@ export default function AccountOpeningPDF() {
 
   return (
 
-    <div className={`aof-module${bankFormatActive ? " bank-format-active" : ""}`}>
+    <div className="aof-module">
 
       <style>{`
 
@@ -1794,12 +1792,7 @@ export default function AccountOpeningPDF() {
 
         <>
 
-          <BankFormatPrint
-            formatType="accountOpening"
-            customer={{ ...c, fullAddress: address, uidaiNo: maskedAadhaar }}
-            onConfigured={onBankFormatConfigured}
-            onPrint={printForm}
-          />
+
 
           <div className="preview-wrap">
 
