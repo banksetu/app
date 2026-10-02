@@ -12,7 +12,7 @@ export function isAssamBank(value: string = "") {
 type RecordData = {
   enrolId: string; accountNo: string; name: string; contact: string;
   accountOpeningDate: string; fullAddress: string; address: string;
-  postOffice: string; pinCode: string; pan: string; uidaiNo?: string;
+  postOffice: string; pinCode: string; pan: string; uidaiNo?: string; aadhaar?: string; aadhaarNo?: string; aadharNo?: string;
   photoPreview?: string; photoUrl?: string; jointHolder?: string; issueDate?: string;
 };
 
@@ -25,7 +25,7 @@ const hints = [
   "Never share your ATM card details, CVV, PIN, Mobile Banking login ID, password, OTP, or any confidential banking information with anyone.",
   "For withdrawal of cash through withdrawal slips, production of the passbook is mandatory.",
 ];
-const upper = (value?: string) => (value || "").trim().toUpperCase();
+const upper = (value?: string) => String(value ?? "").trim().toUpperCase();
 function date(value?: string) {
   if (!value) return "";
   const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -50,8 +50,15 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .assam-quick-document { position:relative; width:205mm; height:175mm; background:white;
         color:#242424; margin:0 auto; box-sizing:border-box; box-shadow:0 4px 24px #0002;
         font-family:"Courier New",monospace; font-size:2.9mm; line-height:4.3mm;
-        text-align:left; letter-spacing:normal; }
-      .assam-quick-document * { box-sizing:border-box; }
+        text-align:left!important; letter-spacing:normal; }
+      .passbook-page .assam-quick-document * { box-sizing:border-box; text-align:left!important; }
+      .passbook-page .assam-quick-document .assam-quick-hints h2,
+      .passbook-page .assam-quick-document .assam-quick-title,
+      .passbook-page .assam-quick-document .assam-quick-title *,
+      .passbook-page .assam-quick-document .assam-quick-manager { text-align:center!important; }
+      .passbook-page .assam-quick-document .assam-quick-title strong { color:#0782b2!important; }
+      .assam-quick-version { margin:0 0 10px; color:#545467; font:12px Arial,sans-serif; text-align:left; }
+      @media print { .assam-quick-version { display:none!important; } }
       .assam-quick-hints { text-align:left; font:3.25mm/3.8mm "Times New Roman",serif; }
       .assam-quick-hints h2 { margin:0 0 13mm; text-align:center; text-decoration:underline;
         font:bold 4mm "Times New Roman",serif; color:#242424; }
@@ -78,12 +85,13 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
         .assam-quick-edit { display:none!important; }
       }
     `}</style>
+    <p className="assam-quick-version">Assam Quick Passbook · Aadhaar header · Layout v3</p>
     <article className="assam-quick-document" aria-label="Assam Gramin Bank quick passbook">
       <div className="assam-quick-hints" style={at(38, 7, 146)}>
         <h2>USEFUL HINTS</h2>
         <ol>{hints.map(hint => <li key={hint}>{hint}</li>)}</ol>
       </div>
-      <div className="assam-quick-aadhaar" style={{...at(130, 5, 60), fontSize:"4mm"}}>{upper(c.uidaiNo)}</div>
+      <div className="assam-quick-aadhaar" style={{...at(130, 5, 60), fontSize:"4mm"}}>{upper(c.uidaiNo || c.aadhaar || c.aadhaarNo || c.aadharNo)}</div>
       <div style={{...at(126, 13, 30), fontSize:"2.6mm"}}>Page 1.0</div>
       <div className="assam-quick-fold" />
       <svg style={{...at(54,92,12), height:"15mm"}} viewBox="0 0 64 88" role="img" aria-label="Assam Gramin Bank emblem">
