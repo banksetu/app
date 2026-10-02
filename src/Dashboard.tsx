@@ -11,15 +11,18 @@ import {
 
   doc,
 
-  getDoc,
 
-  serverTimestamp,
+  onSnapshot,
+
 
   setDoc,
 
 } from "firebase/firestore";
 
 import { db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
+import { prepareBankLogo, restoreWorkspaceBankSettings } from "./workspaceBankSettings";
+import { getTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantStorageKey } from "./tenantApi";
 
 import type {
 
@@ -33,15 +36,19 @@ import CustomerEntry from "./CustomerEntry";
 
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
+import MasterClients from "./MasterClients";
+import ClientGoogleSetup from "./ClientGoogleSetup";
+import BankFormats from "./BankFormats";
 
 
-import Passbook from "./Passbook";
+import SelectedBankDocument from "./SelectedBankDocument";
+import { isAssamBank } from "./bankDocumentPolicy";
 
 import Customers from "./Customers";
 
 import Reports from "./Reports";
 
-import AccountOpeningPDF from "./AccountOpeningPDF";
+
 
 import bankSetuLogo from "./assets/bank-setu-logo.png";
 
@@ -49,6 +56,7 @@ type DashboardProps = {
 
   onLogout: () => void;
   userRole: "admin" | "user";
+  accountRole: string;
 
 };
 
@@ -227,6 +235,7 @@ type PageName =
   | "passbook"
 
   | "quick-passbook"
+  | "bank-formats"
 
   | "search"
 
@@ -234,7 +243,9 @@ type PageName =
 
   | "settings";
 
-function Dashboard({ onLogout, userRole }: DashboardProps) {
+function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
+
+  const canControlGlobalDashboard = accountRole === "master_owner";
 
   const [activePage, setActivePage] =
 
@@ -283,30 +294,27 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const [menuThemeModalOpen, setMenuThemeModalOpen] = useState(false);
   const [menuTheme, setMenuTheme] = useState<MenuThemeId>(() => {
-    const saved = localStorage.getItem("bankSetuMenuTheme");
+    const saved = localStorage.getItem(tenantStorageKey("bankSetuMenuTheme"));
     return isMenuThemeId(saved) ? saved : "violet";
   });
   const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
 
   const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
+  const [clientCreateOpen, setClientCreateOpen] = useState(false);
 
   const [customDashboardColor, setCustomDashboardColor] = useState(() =>
-    localStorage.getItem("bankSetuCustomDashboardColor") || "#123b4a"
+    localStorage.getItem(tenantStorageKey("bankSetuCustomDashboardColor")) || "#123b4a"
   );
 
   const [useCustomDashboardColor, setUseCustomDashboardColor] = useState(() =>
-    localStorage.getItem("bankSetuUseCustomDashboardColor") === "true"
+    localStorage.getItem(tenantStorageKey("bankSetuUseCustomDashboardColor")) === "true"
   );
 
   const [dashboardTheme, setDashboardTheme] =
 
     useState<DashboardThemeId>(() => {
 
-      const savedTheme = localStorage.getItem(
-
-        "bankSetuDashboardTheme"
-
-      );
+      const savedTheme = localStorage.getItem(tenantStorageKey("bankSetuDashboardTheme"));
 
       return savedTheme === "soft-mist"
 
@@ -332,59 +340,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     useRef<HTMLInputElement | null>(null);
 
-  const [bankLogo, setBankLogo] =
-
-    useState<string>(() => {
-
-      return (
-
-        localStorage.getItem(
-
-          "bankSetuBankLogo"
-
-        ) || ""
-
-      );
-
-    });
-
-  const [bankInfo, setBankInfo] =
-
-    useState<BankInfo>(() => {
-
-      try {
-
-        const saved = localStorage.getItem(
-
-          "bankSetuBankInfo"
-
-        );
-
-        if (!saved) return emptyBankInfo;
-
-        return {
-
-          ...emptyBankInfo,
-
-          ...JSON.parse(saved),
-
-        };
-
-      } catch (error) {
-
-        console.error(
-
-          "Bank information load failed:",
-
-          error
-
-        );
-
-        return emptyBankInfo;
-
-      }
-
-    });
+  const [bankLogo, setBankLogo] = useState("");
+  const [bankInfo, setBankInfo] = useState<BankInfo>(emptyBankInfo);
+  const [bankSettingsReady, setBankSettingsReady] = useState(false);
+  const [bankSettingsError, setBankSettingsError] = useState("");
+  const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
+  const canManageBankSettings = accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin";
 
   const [bankInfoDraft, setBankInfoDraft] =
 
@@ -394,439 +355,35 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     useState(false);
 
-  const saveCloudSettings = async (
-
-    patch: Record<string, unknown>
-
-  ) => {
-
-    const user = getAuth().currentUser;
-
-    if (!user) {
-
-      throw new Error(
-
-        "Firebase login session is not available. Please login again."
-
-      );
-
-    }
-
-    await setDoc(
-
-      doc(db, "appSettings", user.uid),
-
-      {
-
-        ...patch,
-
-        updatedAt: serverTimestamp(),
-
-      },
-
-      { merge: true }
-
-    );
-
-  };
-
   useEffect(() => {
-
-    let cancelled = false;
-
-    const loadCloudSettings = async () => {
-
-      const user = getAuth().currentUser;
-
-      if (!user) {
-
-        return;
-
-      }
-
-      let localInfo: BankInfo = {
-
-        ...emptyBankInfo,
-
-      };
-
+    const user = getAuth().currentUser;
+    if (!user) return;
+    setBankSettingsReady(false); setBankSettingsError("");
+    let receivedServer = false;
+    const timeout = window.setTimeout(() => {
+      if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
+    }, 12000);
+    const unsubscribe = onSnapshot(doc(db, ...tenantSettingsPath(user.uid)), { includeMetadataChanges:true }, snapshot => {
+      if (snapshot.metadata.fromCache && !receivedServer) return;
+      receivedServer = true; window.clearTimeout(timeout);
+      const cloudData = snapshot.exists() ? snapshot.data() : {};
+      const saved = restoreWorkspaceBankSettings(cloudData);
+      if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
+      setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
+      setBankSettingsReady(true); setBankSettingsError("");
+      // This is only a workspace-scoped cache. It never overrides Firebase.
       try {
-
-        const savedInfo = localStorage.getItem(
-
-          "bankSetuBankInfo"
-
-        );
-
-        if (savedInfo) {
-
-          localInfo = {
-
-            ...emptyBankInfo,
-
-            ...JSON.parse(savedInfo),
-
-          };
-
-        }
-
-      } catch (error) {
-
-        console.error(
-
-          "Local bank information migration read failed:",
-
-          error
-
-        );
-
-      }
-
-      const localLogo =
-
-        localStorage.getItem(
-
-          "bankSetuBankLogo"
-
-        ) || "";
-
-      try {
-
-        const settingsRef = doc(
-
-          db,
-
-          "appSettings",
-
-          user.uid
-
-        );
-
-        const settingsSnap =
-
-          await getDoc(settingsRef);
-
-        const cloudData =
-
-          settingsSnap.exists()
-
-            ? settingsSnap.data()
-
-            : {};
-
-        const cloudInfo: BankInfo = {
-
-          bankName:
-
-            typeof cloudData.bankName === "string"
-
-              ? cloudData.bankName
-
-              : localInfo.bankName,
-
-          passbookBank:
-
-            typeof cloudData.passbookBank === "string"
-
-              ? cloudData.passbookBank
-
-              : localInfo.passbookBank,
-
-          branchName:
-
-            typeof cloudData.branchName === "string"
-
-              ? cloudData.branchName
-
-              : localInfo.branchName,
-
-          cspCode:
-
-            typeof cloudData.cspCode === "string"
-
-              ? cloudData.cspCode
-
-              : localInfo.cspCode,
-
-          operatorName:
-
-            typeof cloudData.operatorName === "string"
-
-              ? cloudData.operatorName
-
-              : localInfo.operatorName,
-
-          address:
-
-            typeof cloudData.address === "string"
-
-              ? cloudData.address
-
-              : localInfo.address,
-
-        };
-
-        const cloudLogo =
-
-          typeof cloudData.bankLogo === "string"
-
-            ? cloudData.bankLogo
-
-            : localLogo;
-
-        const cloudApiUrl =
-
-          typeof cloudData.apiUrl === "string"
-
-            ? cloudData.apiUrl.trim()
-
-            : "";
-
-        if (cloudApiUrl) {
-
-          localStorage.setItem(
-
-            "bankSetuApiUrl",
-
-            cloudApiUrl
-
-          );
-
-        }
-
-
-        const cloudTheme =
-
-          cloudData.dashboardTheme === "soft-mist"
-
-            ? "dark-original"
-
-            : isDashboardThemeId(cloudData.dashboardTheme)
-
-              ? cloudData.dashboardTheme
-
-              : dashboardTheme;
-
-        const cloudMenuTheme = isMenuThemeId(cloudData.menuTheme) ? cloudData.menuTheme : menuTheme;
-
-        localStorage.setItem("bankSetuMenuTheme", cloudMenuTheme);
-
-        localStorage.setItem(
-
-          "bankSetuDashboardTheme",
-
-          cloudTheme
-
-        );
-
-        if (!cancelled) {
-
-          setBankInfo(cloudInfo);
-
-          if (cloudLogo) {
-
-            setBankLogo(cloudLogo);
-
-          }
-
-          setDashboardTheme(cloudTheme);
-          setMenuTheme(cloudMenuTheme);
-
-        }
-
-        try {
-
-          localStorage.setItem(
-
-            "bankSetuBankInfo",
-
-            JSON.stringify(cloudInfo)
-
-          );
-
-          if (cloudLogo) {
-
-            localStorage.setItem(
-
-              "bankSetuBankLogo",
-
-              cloudLogo
-
-            );
-
-          }
-
-        } catch (error) {
-
-          console.error(
-
-            "Cloud settings local cache failed:",
-
-            error
-
-          );
-
-        }
-
-        const migrationPatch: Record<
-
-          string,
-
-          unknown
-
-        > = {};
-
-        if (
-
-          typeof cloudData.bankName !== "string" &&
-
-          localInfo.bankName
-
-        ) {
-
-          migrationPatch.bankName =
-
-            localInfo.bankName;
-
-        }
-
-        if (
-
-          typeof cloudData.passbookBank !== "string" &&
-
-          localInfo.passbookBank
-
-        ) {
-
-          migrationPatch.passbookBank =
-
-            localInfo.passbookBank;
-
-        }
-
-        if (
-
-          typeof cloudData.branchName !== "string" &&
-
-          localInfo.branchName
-
-        ) {
-
-          migrationPatch.branchName =
-
-            localInfo.branchName;
-
-        }
-
-        if (
-
-          typeof cloudData.cspCode !== "string" &&
-
-          localInfo.cspCode
-
-        ) {
-
-          migrationPatch.cspCode =
-
-            localInfo.cspCode;
-
-        }
-
-        if (
-
-          typeof cloudData.operatorName !== "string" &&
-
-          localInfo.operatorName
-
-        ) {
-
-          migrationPatch.operatorName =
-
-            localInfo.operatorName;
-
-        }
-
-        if (
-
-          typeof cloudData.address !== "string" &&
-
-          localInfo.address
-
-        ) {
-
-          migrationPatch.address =
-
-            localInfo.address;
-
-        }
-
-        if (
-
-          typeof cloudData.bankLogo !== "string" &&
-
-          localLogo
-
-        ) {
-
-          migrationPatch.bankLogo =
-
-            localLogo;
-
-        }
-
-        if (
-
-          Object.keys(
-
-            migrationPatch
-
-          ).length > 0
-
-        ) {
-
-          await setDoc(
-
-            settingsRef,
-
-            {
-
-              ...migrationPatch,
-
-              updatedAt:
-
-                serverTimestamp(),
-
-            },
-
-            { merge: true }
-
-          );
-
-        }
-
-      } catch (error) {
-
-        console.error(
-
-          "Bank cloud settings load failed:",
-
-          error
-
-        );
-
-      }
-
-    };
-
-    void loadCloudSettings();
-
-    return () => {
-
-      cancelled = true;
-
-    };
-
-  }, []);
+        localStorage.setItem(tenantStorageKey("bankSetuBankInfo"),JSON.stringify(saved.bankInfo));
+        if(saved.bankLogo) localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),saved.bankLogo);
+        else localStorage.removeItem(tenantStorageKey("bankSetuBankLogo"));
+      } catch { /* Saving Firebase settings does not depend on browser storage. */ }
+    }, error => {
+      window.clearTimeout(timeout); setBankSettingsReady(false);
+      setBankSettingsError("Saved bank settings could not be loaded from Firebase. Please retry.");
+      console.error("Workspace bank settings listener failed:", error);
+    });
+    return () => { window.clearTimeout(timeout); unsubscribe(); };
+  }, [bankSettingsRetry]);
 
   const hasBankInfo =
 
@@ -837,6 +394,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
     );
 
   const openBankInfoEditor = () => {
+    if (!canManageBankSettings || !bankSettingsReady) return;
 
     setBankInfoDraft({ ...bankInfo });
 
@@ -898,21 +456,11 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     try {
 
-      await saveCloudSettings({
-
-        ...cleaned,
-
-      });
+      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned });
 
       setBankInfo(cleaned);
 
-      localStorage.setItem(
-
-        "bankSetuBankInfo",
-
-        JSON.stringify(cleaned)
-
-      );
+      try { localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned)); } catch { /* Firebase save already succeeded. */ }
 
       setBankInfoEditOpen(false);
 
@@ -936,11 +484,10 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   };
 
-  // Global UI theme is shared by every approved Bank Setu account.
-  // Firestore path: appSettings/uiTheme
+  // Master-controlled appearance is stored once and read by every tenant.
   const saveGlobalUiTheme = async (patch: Record<string, unknown>) => {
     const user = getAuth().currentUser;
-    if (!user || userRole !== "admin") return;
+    if (!user || !canControlGlobalDashboard) return;
 
     await setDoc(
       doc(db, "appSettings", "uiTheme"),
@@ -955,50 +502,33 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadGlobalUiTheme = async () => {
-      try {
-        const snap = await getDoc(doc(db, "appSettings", "uiTheme"));
-        if (!snap.exists() || cancelled) return;
-
-        const data = snap.data();
-
-        if (
-          typeof data.customDashboardColor === "string" &&
-          data.useCustomDashboardColor === true
-        ) {
-          setCustomDashboardColor(data.customDashboardColor);
-          setUseCustomDashboardColor(true);
-          localStorage.setItem("bankSetuCustomDashboardColor", data.customDashboardColor);
-          localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
-        } else if (isDashboardThemeId(data.dashboardTheme)) {
-          setDashboardTheme(data.dashboardTheme);
-          setUseCustomDashboardColor(false);
-          localStorage.setItem("bankSetuDashboardTheme", data.dashboardTheme);
-          localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
-        }
-
-        if (isMenuThemeId(data.menuTheme)) {
-          setMenuTheme(data.menuTheme);
-          localStorage.setItem("bankSetuMenuTheme", data.menuTheme);
-        }
-      } catch (error) {
-        console.error("Global UI theme load failed:", error);
+    if (!getAuth().currentUser) return;
+    return onSnapshot(doc(db, "appSettings", "uiTheme"), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (typeof data.customDashboardColor === "string" && data.useCustomDashboardColor === true) {
+        setCustomDashboardColor(data.customDashboardColor);
+        setUseCustomDashboardColor(true);
+        localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), data.customDashboardColor);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
+      } else if (isDashboardThemeId(data.dashboardTheme)) {
+        setDashboardTheme(data.dashboardTheme);
+        setUseCustomDashboardColor(false);
+        localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), data.dashboardTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
       }
-    };
-
-    void loadGlobalUiTheme();
-    return () => {
-      cancelled = true;
-    };
+      if (isMenuThemeId(data.menuTheme)) {
+        setMenuTheme(data.menuTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
+      }
+    }, (error) => console.error("Global UI theme listener failed:", error));
   }, []);
 
   const changeDashboardTheme = async (themeId: DashboardThemeId) => {
     setDashboardTheme(themeId);
     setUseCustomDashboardColor(false);
-    localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
-    localStorage.setItem("bankSetuDashboardTheme", themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
+    localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), themeId);
 
     try {
       await saveGlobalUiTheme({
@@ -1015,7 +545,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const changeMenuTheme = async (themeId: MenuThemeId) => {
     setMenuTheme(themeId);
-    localStorage.setItem("bankSetuMenuTheme", themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), themeId);
 
     try {
       await saveGlobalUiTheme({ menuTheme: themeId });
@@ -1231,87 +761,21 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   };
 
-  const handleLogoUpload = (
-
-    event: ChangeEvent<HTMLInputElement>
-
-  ) => {
-
-    const file =
-
-      event.target.files?.[0];
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-
-      alert(
-
-        "Please select an image file."
-
-      );
-
-      return;
-
+  const handleLogoUpload = async (event:ChangeEvent<HTMLInputElement>) => {
+    const file=event.target.files?.[0]; event.target.value="";
+    if(!file || !canManageBankSettings || !bankSettingsReady) return;
+    try {
+      const bankLogo=await prepareBankLogo(file);
+      await callBankSetuWorker("/save-workspace-bank-settings", {bankLogo});
+      setBankLogo(bankLogo);
+      try { localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),bankLogo); } catch { /* Firebase save already succeeded. */ }
+    } catch(error) {
+      alert(error instanceof Error ? error.message : "The bank logo could not be saved to Firebase.");
     }
-
-    const reader = new FileReader();
-
-    reader.onload = async () => {
-
-      const result = reader.result;
-
-      if (typeof result !== "string") {
-
-        return;
-
-      }
-
-      try {
-
-        await saveCloudSettings({
-
-          bankLogo: result,
-
-        });
-
-        setBankLogo(result);
-
-        localStorage.setItem(
-
-          "bankSetuBankLogo",
-
-          result
-
-        );
-
-      } catch (error) {
-
-        console.error(
-
-          "Logo cloud save failed:",
-
-          error
-
-        );
-
-        alert(
-
-          "Bank logo could not be saved to Firebase Cloud. Please try again."
-
-        );
-
-      }
-
-    };
-
-    reader.readAsDataURL(file);
-
-    event.target.value = "";
-
   };
 
   const openLogoPicker = () => {
+    if (!canManageBankSettings || !bankSettingsReady) return;
 
     logoInputRef.current?.click();
 
@@ -1319,11 +783,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const apiConfigured =
 
-    !!localStorage.getItem(
-
-      "bankSetuApiUrl"
-
-    );
+    !!getTenantApiUrl();
 
   return (
 
@@ -1501,6 +961,13 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
             active={activePage === "quick-passbook"}
             onClick={() => openPage("quick-passbook")}
           />
+
+          {(["client_admin", "client_user"].includes(accountRole) && !!bankInfo.passbookBank && !isAssamBank(bankInfo.passbookBank)) && <NavButton
+            icon="🏦"
+            label="Bank Formats"
+            active={activePage === "bank-formats"}
+            onClick={() => openPage("bank-formats")}
+          />}
 
           <NavButton
 
@@ -1863,12 +1330,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                 </button>
 
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setThemeModalOpen(true); }}
                 >🎨 Dashboard Color</button>}
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
@@ -1895,6 +1362,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
 
 
+                {userRole === "admin" && accountRole !== "client_admin" && (
+                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientCreateOpen(true); }}>
+                    ＋ Create Client Admin
+                  </button>
+                )}
+
                 {userRole === "admin" && (
                   <button
                     type="button"
@@ -1904,7 +1377,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                       setAdvancedAdminOpen(true);
                     }}
                   >
-                    🛡️ Advanced Administrator Control
+                    {accountRole === "client_admin" ? "⚙️ Workspace Settings" : "🛡️ Advanced Administrator Control"}
                   </button>
                 )}
 
@@ -1936,9 +1409,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
+        <ClientGoogleSetup enabled={accountRole === "client_admin"} />
+
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
+          {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && (
 
@@ -1954,7 +1430,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
             "customer-entry" && (
 
-            <CustomerEntry />
+            bankSettingsReady ? <CustomerEntry bankName={bankInfo.passbookBank} /> : null
 
           )}
 
@@ -1970,35 +1446,21 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
           )}
 
-          {activePage === "passbook" && (
+          {bankSettingsReady && activePage === "passbook" && (
 
-            <Passbook />
+            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} />
 
           )}
 
-          {activePage === "quick-passbook" && (
-            <Passbook />
+          {bankSettingsReady && activePage === "quick-passbook" && (
+            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
           )}
 
-          {activePage === "search" && (
+          {bankSettingsReady && activePage === "bank-formats" && (
+            <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} bankName={bankInfo.passbookBank} />
+          )}
 
-          bankInfo.passbookBank === "Assam Gramin Bank" ? (
-
-            <AccountOpeningPDF />
-
-          ) : (
-
-            <ComingSoon
-
-              title="Account Opening PDF Sample"
-
-              text="This PDF template is currently available only for Assam Gramin Bank. Please select Assam Gramin Bank in Bank Information."
-
-            />
-
-          )
-
-        )}
+          {bankSettingsReady && activePage === "search" && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
 
           {activePage === "reports" && (
 
@@ -2334,7 +1796,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       {/* DASHBOARD COLOR */}
 
-      {themeModalOpen && userRole === "admin" && (
+      {themeModalOpen && canControlGlobalDashboard && (
 
         <div
 
@@ -2471,15 +1933,15 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                   type="button"
                   style={styles.themeChoice}
                   onClick={() => {
-                    localStorage.setItem("bankSetuCustomDashboardColor", customDashboardColor);
-                    localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
+                    localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), customDashboardColor);
+                    localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
                     setUseCustomDashboardColor(true);
                     void saveGlobalUiTheme({ customDashboardColor, useCustomDashboardColor: true });
                     setThemeModalOpen(false);
                   }}
                 >Apply RGB / Custom</button>
                 {useCustomDashboardColor && <button type="button" style={styles.themeChoice} onClick={() => {
-                  localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
+                  localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
                   setUseCustomDashboardColor(false);
                   void saveGlobalUiTheme({ dashboardTheme, useCustomDashboardColor: false });
                 }}>Use Preset</button>}
@@ -2492,7 +1954,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       )}
 
-      {menuThemeModalOpen && userRole === "admin" && (
+      {menuThemeModalOpen && canControlGlobalDashboard && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
           <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
             <div style={styles.modalHeader}>
@@ -2516,14 +1978,34 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
         </div>
       )}
 
+      {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setClientCreateOpen(false); }}>
+          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Create Client Admin</h2>
+              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => setClientCreateOpen(false)}>×</button>
+            </div>
+            <MasterClients enabled />
+          </div>
+        </div>
+      )}
+
       {advancedAdminOpen && userRole === "admin" && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
           <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
-              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>Advanced Administrator Control</h2></div>
+              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
               <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
             </div>
-            <AdvancedAdmin />
+            <AdvancedAdmin
+              allowConnectionSettings={accountRole === "master_owner" || accountRole === "admin"}
+              isMasterOwner={accountRole === "master_owner" || (
+                accountRole === "admin" &&
+                getAuth().currentUser?.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+                getAuth().currentUser?.emailVerified === true
+              )}
+              isClientAdmin={accountRole === "client_admin"}
+            />
           </div>
         </div>
       )}
@@ -3398,13 +2880,7 @@ function DashboardHome({
 
       try {
 
-        const apiUrl =
-
-          localStorage
-
-            .getItem("bankSetuApiUrl")
-
-            ?.trim() || "";
+        const apiUrl = getTenantApiUrl();
 
         if (!apiUrl) {
 
@@ -4037,54 +3513,6 @@ function NavButton({
 /* =========================
 
    COMING SOON
-
-\========================= */
-
-function ComingSoon({
-
-  title,
-
-  text,
-
-}: {
-
-  title: string;
-
-  text: string;
-
-}) {
-
-  return (
-
-    <section style={styles.comingSoon}>
-
-      <div style={styles.comingSoonIcon}>
-
-        🛠
-
-      </div>
-
-      <h2>
-
-        {title}
-
-      </h2>
-
-      <p>
-
-        {text}
-
-      </p>
-
-    </section>
-
-  );
-
-}
-
-/* =========================
-
-   STATUS ROW
 
 \========================= */
 

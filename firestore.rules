@@ -2,12 +2,44 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isMasterOwner() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'master_owner'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active';
+    }
+    function isLegacyAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'admin'
+        && request.auth.token.email == 'banksetu2026@gmail.com'
+        && request.auth.token.email_verified == true
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active';
+    }
+    function isClientAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'client_admin'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active'
+        && profile().tenantId is string;
+    }
+    function isClientUser() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'client_user'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active'
+        && profile().tenantId is string;
+    }
+    function myTenantId() { return profile().tenantId; }
+    function sameTenant(tenantId) {
+      return signedIn() && (isMasterOwner() || isLegacyAdmin()
+        || ((isClientAdmin() || isClientUser()) && myTenantId() == tenantId));
+    }
     function admin() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved'
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus == 'active';
+      return isLegacyAdmin() || isMasterOwner();
     }
     function approvedUser() {
       return signedIn()
@@ -16,20 +48,17 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus == 'active';
     }
     match /users/{userId} {
-      allow get: if signedIn() && (request.auth.uid == userId || admin());
-      allow list: if admin();
-      allow create: if signedIn() && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['name', 'mobile', 'email', 'role', 'status', 'subscriptionStatus', 'createdAt'])
-        && request.resource.data.keys().hasAll(['name', 'mobile', 'email', 'role', 'status', 'subscriptionStatus', 'createdAt'])
-        && request.resource.data.name is string
-        && request.resource.data.mobile is string
-        && request.resource.data.createdAt is string
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role == 'user'
-        && request.resource.data.status == 'pending'
-        && request.resource.data.subscriptionStatus == 'inactive';
-      allow update: if admin() && request.auth.uid != userId
-        && resource.data.role == 'user'
+      allow get: if signedIn() && (request.auth.uid == userId || admin()
+        || (isClientAdmin() && resource.data.tenantId == myTenantId()));
+      allow list: if admin() || (isClientAdmin() && resource.data.tenantId == myTenantId());
+      // Account provisioning is performed by trusted server code. Public
+      // clients must not be able to assign themselves an application role.
+      allow create: if false;
+      allow update: if request.auth.uid != userId
+        && (admin() || (isClientAdmin()
+          && resource.data.tenantId == myTenantId()
+          && resource.data.role == 'client_user'))
+        && resource.data.role != 'master_owner'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'subscriptionStatus', 'updatedAt', 'updatedBy'])
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.updatedAt == request.time
@@ -39,7 +68,7 @@ service cloud.firestore {
     }
     match /appSettings/uiTheme {
       allow get: if approvedUser();
-      allow create, update: if admin()
+      allow create, update: if isMasterOwner()
         && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
         && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
         && request.resource.data.dashboardTheme is string
@@ -55,6 +84,63 @@ service cloud.firestore {
         && (admin() || (exists(/databases/$(database)/documents/users/$(userId))
           && get(/databases/$(database)/documents/users/$(userId)).data.status == 'approved'
           && get(/databases/$(database)/documents/users/$(userId)).data.subscriptionStatus == 'active'));
+    }
+
+    match /tenants/{tenantId} {
+      allow get: if sameTenant(tenantId);
+      allow list: if isMasterOwner() || isLegacyAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /tenantSettings/{tenantId} {
+      allow get: if sameTenant(tenantId);
+      allow list: if false;
+      allow create: if false;
+      allow update: if (isMasterOwner()
+        && sameTenant(tenantId)
+        && request.resource.data.tenantId == tenantId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'tenantId', 'bankName', 'apiUrl', 'spreadsheetId', 'googleEmail', 'bankInfo',
+          'photoFolderId', 'bankLogo', 'bankFormats', 'passbookBank', 'branchName', 'cspCode', 'operatorName',
+          'address', 'dashboardTheme', 'menuTheme', 'customDashboardColor',
+          'useCustomDashboardColor', 'updatedAt', 'updatedBy'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.bankName is string
+        && request.resource.data.apiUrl is string
+        && request.resource.data.spreadsheetId is string
+        && (!('googleEmail' in request.resource.data) || request.resource.data.googleEmail is string)
+        && request.resource.data.photoFolderId is string
+        && request.resource.data.bankInfo is map
+        && request.resource.data.bankLogo is string
+        && (!('bankName' in request.resource.data) || request.resource.data.bankName is string)
+        && (!('passbookBank' in request.resource.data) || request.resource.data.passbookBank is string)
+        && (!('branchName' in request.resource.data) || request.resource.data.branchName is string)
+        && (!('cspCode' in request.resource.data) || request.resource.data.cspCode is string)
+        && (!('operatorName' in request.resource.data) || request.resource.data.operatorName is string)
+        && (!('address' in request.resource.data) || request.resource.data.address is string)
+        && (!('dashboardTheme' in request.resource.data) || request.resource.data.dashboardTheme is string)
+        && (!('menuTheme' in request.resource.data) || request.resource.data.menuTheme is string)
+        && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+        && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
+        || (isClientAdmin()
+          && resource.data.tenantId == tenantId
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'bankName', 'bankInfo', 'bankLogo', 'passbookBank', 'branchName',
+            'cspCode', 'operatorName', 'address', 'dashboardTheme', 'menuTheme',
+            'customDashboardColor', 'useCustomDashboardColor', 'updatedAt', 'updatedBy'
+          ])
+          && request.resource.data.bankInfo is map
+          && request.resource.data.bankLogo is string
+          && (!('dashboardTheme' in request.resource.data) || request.resource.data.dashboardTheme is string)
+          && (!('menuTheme' in request.resource.data) || request.resource.data.menuTheme is string)
+          && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+          && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool));
+      allow delete: if false;
     }
   }
 }

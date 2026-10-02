@@ -8,6 +8,9 @@ import {
 } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
+
+import AssamQuickPassbook, { isAssamBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 
 
 
@@ -173,7 +176,7 @@ const emptyCustomer: Customer = {
 
 
 
-const BRANCH = {
+const DEFAULT_BRANCH = {
 
   name: "BADARPUR",
 
@@ -331,7 +334,23 @@ function makePrintAddress(customer: Customer) {
 
 
 
-export default function Passbook() {
+export default function Passbook({ formatType = "passbook", bankInfo }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo }) {
+  const workspaceBranch = bankInfo?.branchName?.trim();
+  const referenceBranch = !workspaceBranch || workspaceBranch.toUpperCase() === "BADARPUR";
+  const branchAddress = bankInfo?.address?.trim().split(/\n+/) || [];
+  const BRANCH = {
+    ...DEFAULT_BRANCH,
+    name: workspaceBranch?.toUpperCase() || DEFAULT_BRANCH.name,
+    addressLine1: branchAddress[0]?.toUpperCase() || (referenceBranch ? DEFAULT_BRANCH.addressLine1 : ""),
+    addressLine2: branchAddress.slice(1).join(" ").toUpperCase() || (referenceBranch ? DEFAULT_BRANCH.addressLine2 : ""),
+    pin: referenceBranch ? DEFAULT_BRANCH.pin : "",
+    ifsc: bankInfo?.ifsc || (referenceBranch ? DEFAULT_BRANCH.ifsc : ""),
+    micr: bankInfo?.micr || (referenceBranch ? DEFAULT_BRANCH.micr : ""),
+    branchCode: bankInfo?.branchCode || (referenceBranch ? DEFAULT_BRANCH.branchCode : ""),
+    email: bankInfo?.branchEmail || "",
+  };
+  const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
+
 
   const [query, setQuery] = useState("");
 
@@ -388,13 +407,7 @@ export default function Passbook() {
 
   ) => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem("bankSetuApiUrl")
-
-        ?.trim() || "";
+      const apiUrl = getTenantApiUrl();
 
 
 
@@ -513,7 +526,7 @@ export default function Passbook() {
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: false,
+        includePhoto: isAssamQuick,
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -562,7 +575,7 @@ export default function Passbook() {
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: false,
+        includePhoto: isAssamQuick,
       });
 
       const loaded: Customer = {
@@ -678,6 +691,7 @@ export default function Passbook() {
 
 
   const clearPassbook = () => {
+
 
     setQuery("");
 
@@ -966,6 +980,8 @@ export default function Passbook() {
           color: #eaffff;
 
         }
+
+        .passbook-page.bank-format-active .passbook-shell { display: none !important; }
 
 
 
@@ -2149,7 +2165,7 @@ export default function Passbook() {
 
       <div className="passbook-heading">
 
-        <h1>Passbook Print</h1>
+        <h1>{formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print"}</h1>
 
         <p>
 
@@ -2158,6 +2174,8 @@ export default function Passbook() {
         </p>
 
       </div>
+
+
 
 
 
@@ -2353,7 +2371,8 @@ export default function Passbook() {
 
 
 
-          <div className="passbook-shell">
+          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : (
+<div className="passbook-shell">
 
             {/* HOVER EDIT */}
 
@@ -2606,8 +2625,7 @@ export default function Passbook() {
             </div>
 
           </div>
-
-
+)}
 
           {/* TEMP EDIT */}
 
@@ -2915,7 +2933,7 @@ export default function Passbook() {
 
 
 
-            <button
+            {!isAssamQuick && (<button
 
               type="button"
 
@@ -2935,7 +2953,7 @@ export default function Passbook() {
 
                 : "Direct Printer Send"}
 
-            </button>
+            </button>)}
 
 
 

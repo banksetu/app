@@ -1,0 +1,5 @@
+{
+  "release": "2026-10-02-final-ui",
+  "sourceCommit": "a0f2f265380edcc3d2f006f692b1d4386c135748",
+  "description": "Current Bank Setu UI with workspace bank settings persistence and selected-bank document formats"
+}

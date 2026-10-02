@@ -1,0 +1,31 @@
+name: Workspace regression checks
+on:
+  push:
+    branches: [codex/spark-client-workspace-20261001]
+    paths:
+      - src/**
+      - cloudflare/**
+      - apps-script/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/workspace-regression.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run test:worker
+      - run: node --test scripts/workspace-regression.test.mjs
+      - run: npm run check:schema
+      - run: npm run build

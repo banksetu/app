@@ -1,16 +1,25 @@
-const SPREADSHEET_ID =
-  "1x0T_sjjLt0CThkB10gkbyzk1T92G3Jnp2l13goSlWpA";
+// Keep deployment-specific identifiers and Firebase configuration out of the
+// public repository. Set these values in Apps Script > Project Settings >
+// Script properties for the deployment that owns the legacy workspace.
+function getBankSetuScriptProperty(name) {
+  return cleanValue(PropertiesService.getScriptProperties().getProperty(name));
+}
+
+const LEGACY_SPREADSHEET_ID = getBankSetuScriptProperty("BANKSETU_LEGACY_SPREADSHEET_ID");
 
 const SHEET_NAME = "Sheet1";
+const AUDIT_SHEET_NAME = "BankSetuAudit";
+const AUDIT_HEADERS = [
+  "EVENT ID", "TIMESTAMP", "TENANT ID", "ACTOR UID", "ACTOR EMAIL",
+  "ACTOR NAME", "ACTION", "CUSTOMER ID", "ACCOUNT NO", "CUSTOMER NAME", "DETAILS"
+];
 
-const CUSTOMER_PHOTO_FOLDER_ID =
-  "1W58RbBsPpoVnnnd84iMudFaZKBBXzJO4";
+const CUSTOMER_PHOTO_FOLDER_ID = getBankSetuScriptProperty("BANKSETU_LEGACY_PHOTO_FOLDER_ID");
 
 const FIREBASE_PROJECT_ID =
   "banksetu-69e2f";
 
-const FIREBASE_API_KEY =
-  "AIzaSyDjm01ZjY9sHVtMLI9J2OG7HqR-w9lVnLo";
+const FIREBASE_API_KEY = getBankSetuScriptProperty("BANKSETU_FIREBASE_API_KEY");
 
 const MAX_PHOTO_SIZE =
   5 * 1024 * 1024;
@@ -61,7 +70,8 @@ function doGet(e) {
         success: true,
         protected: true,
         message:
-          "Bank Setu API is running"
+          "Bank Setu API is running",
+        tenantIsolationVersion: "v2"
       });
     }
 
@@ -124,6 +134,26 @@ function doPost(e) {
       });
     }
 
+    if (action === "getRecentActivities") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return getRecentActivities(authUser, request.limit);
+    }
+
+    if (action === "getDashboardStats") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return getDashboardStats(authUser);
+    }
+
+    if (action === "getBankFormatPreview") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return getBankFormatPreview(authUser, request.formatType);
+    }
+
+    if (action === "testTenantConnection") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return testTenantConnection(authUser);
+    }
+
 
     if (
       action === "saveCustomer"
@@ -177,14 +207,15 @@ function doPost(e) {
     if (
       action === "checkDuplicate"
     ) {
-      requireAuthorizedUser(
+      const authUser = requireAuthorizedUser(
         idToken,
         false
       );
 
       return checkDuplicate(
         request.customer || {},
-        request.excludeRowNumber
+        request.excludeRowNumber,
+        authUser
       );
     }
 
@@ -306,15 +337,71 @@ function requireAuthorizedUser(
   }
 
 
+  if (![
+    "admin",
+    "master_owner",
+    "client_admin",
+    "client_user",
+    "user"
+  ].includes(role)) {
+    throw new Error("Your Bank Setu account role is not supported.");
+  }
+
   if (
     adminRequired &&
-    role !== "admin"
+    !["admin", "master_owner", "client_admin"].includes(role)
   ) {
     throw new Error(
       "Administrator permission is required."
     );
   }
 
+
+  const tenantId = cleanValue(profile.tenantId);
+  // The legacy Master Sheet is restricted to legacy/master administrators.
+  // A non-tenant user must fail closed; never fall back to Master data.
+  if (
+    !tenantId && role === "admin" &&
+    (cleanValue(authAccount.email).toLowerCase() !== "banksetu2026@gmail.com" ||
+      authAccount.emailVerified !== true)
+  ) {
+    throw new Error("This legacy administrator is not the verified Master Admin account.");
+  }
+  if (!tenantId && !["admin", "master_owner"].includes(role)) {
+    throw new Error("This account is not assigned to an operational workspace.");
+  }
+  if (tenantId && !["client_admin", "client_user"].includes(role)) {
+    throw new Error("Only a client account assigned to this workspace may access its data.");
+  }
+  const tenantSettings = tenantId
+    ? getFirestoreTenantSettings(tenantId, idToken)
+    : null;
+  if (tenantId) {
+    const tenant = getFirestoreTenant(tenantId, idToken);
+    if (tenant.status !== "active") {
+      throw new Error("This client workspace is blocked or unavailable.");
+    }
+    if (!tenantSettings || !tenant.ownerUid || tenantSettings.workspaceOwnerUid !== tenant.ownerUid) {
+      throw new Error("This workspace has not verified its private Google Sheet. Connect its own Google account first.");
+    }
+  }
+  const spreadsheetId = tenantId
+    ? cleanValue(tenantSettings && tenantSettings.spreadsheetId)
+    : LEGACY_SPREADSHEET_ID;
+  const photoFolderId = tenantId
+    ? cleanValue(tenantSettings && tenantSettings.photoFolderId)
+    : CUSTOMER_PHOTO_FOLDER_ID;
+
+  if (!tenantId && (!spreadsheetId || !photoFolderId)) {
+    throw new Error("The legacy workspace is not configured. Ask the Bank Setu owner to finish the Apps Script configuration.");
+  }
+
+  if (tenantId && (!spreadsheetId || !photoFolderId)) {
+    throw new Error("This client workspace data connection is not configured yet.");
+  }
+  if (tenantId && LEGACY_SPREADSHEET_ID && spreadsheetId === LEGACY_SPREADSHEET_ID) {
+    throw new Error("Client workspaces cannot use the Master Admin spreadsheet.");
+  }
 
   return {
     uid,
@@ -325,7 +412,12 @@ function requireAuthorizedUser(
       ),
     role,
     status,
-    subscriptionStatus
+    subscriptionStatus,
+    tenantId,
+    spreadsheetId,
+    photoFolderId,
+    bankFormats: tenantSettings ? tenantSettings.bankFormats : {},
+    idToken
   };
 }
 
@@ -337,6 +429,9 @@ function requireAuthorizedUser(
 function verifyFirebaseIdToken(
   idToken
 ) {
+  if (!FIREBASE_API_KEY) {
+    throw new Error("Firebase authentication is not configured for this Apps Script deployment.");
+  }
   const url =
     "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" +
     encodeURIComponent(
@@ -460,12 +555,137 @@ function getFirestoreUserProfile(
         "subscriptionStatus"
       ),
 
+    name:
+      firestoreString(
+        document,
+        "name"
+      ),
+
     email:
       firestoreString(
         document,
         "email"
+      ),
+    tenantId:
+      firestoreString(
+        document,
+        "tenantId"
       )
   };
+}
+
+
+function getFirestoreTenantSettings(tenantId, idToken) {
+  const url =
+    "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(FIREBASE_PROJECT_ID) +
+    "/databases/(default)/documents/tenantSettings/" +
+    encodeURIComponent(tenantId);
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    headers: { Authorization: "Bearer " + idToken },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error("Your client workspace settings could not be verified.");
+  }
+  const document = JSON.parse(response.getContentText() || "{}");
+  return {
+    spreadsheetId: firestoreString(document, "spreadsheetId"),
+    photoFolderId: firestoreString(document, "photoFolderId"),
+    workspaceOwnerUid: firestoreString(document, "workspaceOwnerUid"),
+    bankFormats: firestoreBankFormats(document)
+  };
+}
+
+
+function getFirestoreTenant(tenantId, idToken) {
+  const url =
+    "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(FIREBASE_PROJECT_ID) +
+    "/databases/(default)/documents/tenants/" +
+    encodeURIComponent(tenantId);
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    headers: { Authorization: "Bearer " + idToken },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error("Your client workspace could not be verified.");
+  }
+  const document = JSON.parse(response.getContentText() || "{}");
+  return {
+    status: firestoreString(document, "status").toLowerCase(),
+    ownerUid: firestoreString(document, "ownerUid")
+  };
+}
+
+
+function firestoreBankFormats(document) {
+  try {
+    const formats = document.fields.bankFormats.mapValue.fields || {};
+    const output = {};
+    Object.keys(formats).forEach(function (formatType) {
+      const fields = formats[formatType].mapValue.fields || {};
+      output[formatType] = {
+        fileId: fields.fileId && fields.fileId.stringValue || "",
+        fileName: fields.fileName && fields.fileName.stringValue || "",
+        mimeType: fields.mimeType && fields.mimeType.stringValue || ""
+      };
+    });
+    return output;
+  } catch (error) {
+    return {};
+  }
+}
+
+
+function getBankFormatPreview(authUser, formatType) {
+  const allowedTypes = ["passbook", "quickPassbook", "accountOpening"];
+  const normalizedType = cleanValue(formatType);
+  if (allowedTypes.indexOf(normalizedType) === -1) {
+    throw new Error("Choose a valid bank format sample.");
+  }
+  const sample = authUser.bankFormats && authUser.bankFormats[normalizedType];
+  const fileId = cleanValue(sample && sample.fileId);
+  if (!fileId) throw new Error("No sample has been uploaded for this bank format yet.");
+  const file = DriveApp.getFileById(fileId);
+  const parents = file.getParents();
+  let belongsToWorkspace = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === authUser.photoFolderId) {
+      belongsToWorkspace = true;
+      break;
+    }
+  }
+  if (!belongsToWorkspace) throw new Error("This sample is outside the current client workspace.");
+  if (file.getSize() > MAX_PHOTO_SIZE) throw new Error("This format sample exceeds the 5 MB preview limit.");
+  const blob = file.getBlob();
+  return jsonResponse({
+    success: true,
+    formatType: normalizedType,
+    fileName: file.getName(),
+    mimeType: blob.getContentType() || cleanValue(sample.mimeType),
+    data: Utilities.base64Encode(blob.getBytes())
+  });
+}
+
+
+function testTenantConnection(authUser) {
+  if (!authUser.tenantId || !authUser.spreadsheetId || !authUser.photoFolderId) {
+    throw new Error("This account does not have a complete client workspace connection.");
+  }
+  const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
+  const customerSheet = spreadsheet.getSheetByName(SHEET_NAME);
+  if (!customerSheet) throw new Error("The connected Google Sheet is missing its Sheet1 tab.");
+  const folder = DriveApp.getFolderById(authUser.photoFolderId);
+  return jsonResponse({
+    success: true,
+    tenantId: authUser.tenantId,
+    spreadsheetName: spreadsheet.getName(),
+    photoFolderName: folder.getName(),
+    customerTab: customerSheet.getName()
+  });
 }
 
 
@@ -582,7 +802,8 @@ function saveCustomer(
           enrolId,
           uidaiNo
         },
-        null
+        null,
+        authUser
       );
 
 
@@ -610,7 +831,8 @@ function saveCustomer(
       uploadedPhoto =
         savePhotoByCustomerId(
           customer.photoDataUrl,
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -624,7 +846,8 @@ function saveCustomer(
     if (!uploadedPhoto) {
       uploadedPhoto =
         findPhotoByCustomerId(
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -649,7 +872,7 @@ function saveCustomer(
 
 
     const sheet =
-      getSheet();
+      getSheet(authUser);
 
 
     sheet.appendRow(
@@ -659,6 +882,8 @@ function saveCustomer(
         now
       )
     );
+
+    recordActivity(authUser, "CREATE", customerForSheet, "Customer record created.");
 
 
     return jsonResponse({
@@ -697,7 +922,7 @@ function updateCustomer(
     );
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
 
   if (
@@ -776,13 +1001,14 @@ function updateCustomer(
 
   try {
     const duplicate =
-      findDuplicates(
+        findDuplicates(
         {
           accountNo,
           enrolId,
           uidaiNo
         },
-        row
+        row,
+        authUser
       );
 
 
@@ -814,7 +1040,8 @@ function updateCustomer(
       photo =
         savePhotoByCustomerId(
           customer.photoDataUrl,
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -840,7 +1067,8 @@ function updateCustomer(
       photo =
         renamePhotoCustomerId(
           oldEnrolId,
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -853,7 +1081,8 @@ function updateCustomer(
     if (!photo) {
       photo =
         findPhotoByCustomerId(
-          enrolId
+          enrolId,
+          authUser.photoFolderId
         );
     }
 
@@ -920,6 +1149,8 @@ function updateCustomer(
         )
       ]);
 
+    recordActivity(authUser, "UPDATE", updatedCustomer, "Customer record updated.");
+
 
     return jsonResponse({
       success: true,
@@ -961,7 +1192,7 @@ function searchCustomer(
 
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
   const lastRow =
     sheet.getLastRow();
@@ -1069,7 +1300,8 @@ function searchCustomer(
 
       const drivePhoto =
         findPhotoByCustomerId(
-          customerId
+          customerId,
+          authUser.photoFolderId
         );
 
 
@@ -1127,7 +1359,8 @@ function searchCustomer(
 
 function savePhotoByCustomerId(
   dataUrl,
-  customerId
+  customerId,
+  photoFolderId
 ) {
   const safeCustomerId =
     safeFileName(
@@ -1176,9 +1409,7 @@ function savePhotoByCustomerId(
     jpg/png/webp photo हटाएँ.
   */
 
-  deletePhotosByCustomerId(
-    customerId
-  );
+  deletePhotosByCustomerId(customerId, photoFolderId);
 
 
   const fileName =
@@ -1197,7 +1428,7 @@ function savePhotoByCustomerId(
 
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      photoFolderId
     );
 
 
@@ -1218,7 +1449,8 @@ function savePhotoByCustomerId(
 ========================================================= */
 
 function findPhotoByCustomerId(
-  customerId
+  customerId,
+  photoFolderId
 ) {
   const safeId =
     safeFileName(
@@ -1233,7 +1465,7 @@ function findPhotoByCustomerId(
 
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      photoFolderId
     );
 
 
@@ -1286,11 +1518,13 @@ function findPhotoByCustomerId(
 
 function renamePhotoCustomerId(
   oldCustomerId,
-  newCustomerId
+  newCustomerId,
+  photoFolderId
 ) {
   const oldPhoto =
     findPhotoByCustomerId(
-      oldCustomerId
+      oldCustomerId,
+      photoFolderId
     );
 
 
@@ -1304,9 +1538,7 @@ function renamePhotoCustomerId(
     मौजूद है तो उसे पहले trash करेंगे.
   */
 
-  deletePhotosByCustomerId(
-    newCustomerId
-  );
+  deletePhotosByCustomerId(newCustomerId, photoFolderId);
 
 
   const file =
@@ -1348,7 +1580,8 @@ function renamePhotoCustomerId(
 ========================================================= */
 
 function deletePhotosByCustomerId(
-  customerId
+  customerId,
+  photoFolderId
 ) {
   const safeId =
     safeFileName(
@@ -1363,7 +1596,7 @@ function deletePhotosByCustomerId(
 
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      photoFolderId
     );
 
 
@@ -1530,7 +1763,7 @@ function deleteCustomer(
 ) {
   if (
     !admin ||
-    admin.role !== "admin"
+    !["admin", "master_owner", "client_admin"].includes(admin.role)
   ) {
     return jsonResponse({
       success: false,
@@ -1546,7 +1779,7 @@ function deleteCustomer(
     );
 
   const sheet =
-    getSheet();
+    getSheet(admin);
 
 
   if (
@@ -1593,14 +1826,18 @@ function deleteCustomer(
     row
   );
 
+  recordActivity(admin, "DELETE", {
+    enrolId: customerId,
+    accountNo: existing[1],
+    name: customerName,
+  }, "Customer record deleted.");
+
 
   /*
     Customer ID based photo delete.
   */
 
-  deletePhotosByCustomerId(
-    customerId
-  );
+  deletePhotosByCustomerId(customerId, admin.photoFolderId);
 
 
   /*
@@ -1645,7 +1882,7 @@ function markPassbookDelivered(
     );
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
 
   if (
@@ -1689,6 +1926,13 @@ function markPassbookDelivered(
     .setValue(
       authUser.email
     );
+
+  const deliveredCustomer = sheet.getRange(row, 1, 1, HEADERS.length).getDisplayValues()[0];
+  recordActivity(authUser, "PASSBOOK_DELIVERED", {
+    enrolId: deliveredCustomer[0],
+    accountNo: deliveredCustomer[1],
+    name: deliveredCustomer[2],
+  }, "Passbook marked as delivered.");
 
 
   return jsonResponse({
@@ -1741,14 +1985,16 @@ function getPassbookDisplay(
 
 function checkDuplicate(
   customer,
-  excludeRowNumber
+  excludeRowNumber,
+  authUser
 ) {
   const duplicate =
     findDuplicates(
       customer,
       Number(
         excludeRowNumber
-      ) || null
+      ) || null,
+      authUser
     );
 
 
@@ -1778,7 +2024,8 @@ function checkDuplicate(
 
 function findDuplicates(
   customer,
-  excludeRowNumber
+  excludeRowNumber,
+  authUser
 ) {
   const result = {
     accountNo:
@@ -1791,7 +2038,7 @@ function findDuplicates(
 
 
   const sheet =
-    getSheet();
+    getSheet(authUser);
 
 
   const lastRow =
@@ -2325,10 +2572,14 @@ function safeTrashDriveFile(
    GENERAL HELPERS
 ========================================================= */
 
-function getSheet() {
+function getSheet(authUser) {
+  const spreadsheetId = cleanValue(authUser && authUser.spreadsheetId);
+  if (!spreadsheetId) {
+    throw new Error("This client workspace has no configured spreadsheet.");
+  }
   const spreadsheet =
     SpreadsheetApp.openById(
-      SPREADSHEET_ID
+      spreadsheetId
     );
 
 
@@ -2344,8 +2595,102 @@ function getSheet() {
     );
   }
 
+  ensureAuditSheet(spreadsheet);
 
   return sheet;
+}
+
+
+function ensureAuditSheet(spreadsheet) {
+  let sheet = spreadsheet.getSheetByName(AUDIT_SHEET_NAME);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(AUDIT_SHEET_NAME);
+    sheet.getRange(1, 1, 1, AUDIT_HEADERS.length).setValues([AUDIT_HEADERS]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+
+function recordActivity(authUser, action, customer, details) {
+  const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
+  const sheet = ensureAuditSheet(spreadsheet);
+  sheet.appendRow([
+    Utilities.getUuid(),
+    new Date().toISOString(),
+    authUser.tenantId || "legacy",
+    authUser.uid,
+    authUser.email,
+    authUser.name || authUser.email,
+    action,
+    cleanValue(customer && customer.enrolId),
+    cleanValue(customer && customer.accountNo),
+    cleanValue(customer && customer.name),
+    details,
+  ]);
+}
+
+
+function getRecentActivities(authUser, requestedLimit) {
+  const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
+  const sheet = ensureAuditSheet(spreadsheet);
+  const limit = Math.min(Math.max(Number(requestedLimit) || 10, 1), 50);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse({ success: true, activities: [] });
+  const firstRow = Math.max(2, lastRow - limit + 1);
+  const rows = sheet.getRange(firstRow, 1, lastRow - firstRow + 1, AUDIT_HEADERS.length)
+    .getDisplayValues()
+    .reverse()
+    .map((row) => ({
+      id: row[0],
+      dateTime: row[1],
+      tenantId: row[2],
+      actorUid: row[3],
+      email: row[4],
+      user: row[5] || row[4],
+      action: row[6],
+      activity: row[6],
+      customerId: row[7],
+      accountNo: row[8],
+      customerName: row[9],
+      details: row[10],
+    }));
+  return jsonResponse({ success: true, activities: rows });
+}
+
+
+function getDashboardStats(authUser) {
+  // getSheet() resolves the spreadsheet from the verified user's tenant. A
+  // tenant with no configured Sheet fails closed in requireAuthorizedUser().
+  const sheet = getSheet(authUser);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return jsonResponse({
+      success: true,
+      stats: { totalCustomers: 0, kycPending: 0, passbookPending: 0, inactiveAccounts: 0 }
+    });
+  }
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getDisplayValues();
+  let totalCustomers = 0;
+  let kycPending = 0;
+  let passbookPending = 0;
+  let inactiveAccounts = 0;
+  rows.forEach((row) => {
+    // Ignore blank trailing rows and count only actual customer records.
+    if (!row.slice(0, 3).some((value) => cleanValue(value))) return;
+    totalCustomers += 1;
+    const accountStatus = cleanValue(row[4]).toLowerCase();
+    const passbookStatus = cleanValue(row[11]).toLowerCase();
+    if (accountStatus === "pending") kycPending += 1;
+    if (!passbookStatus || passbookStatus === "pending") passbookPending += 1;
+    if (accountStatus === "inactive") inactiveAccounts += 1;
+  });
+
+  return jsonResponse({
+    success: true,
+    stats: { totalCustomers, kycPending, passbookPending, inactiveAccounts }
+  });
 }
 
 
@@ -2505,7 +2850,7 @@ function authorizeBankSetu() {
 function authorizeBankSetuDrive() {
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      getBankSetuScriptProperty("BANKSETU_LEGACY_PHOTO_FOLDER_ID")
     );
 
   Logger.log(
@@ -2517,7 +2862,7 @@ function authorizeBankSetuDrive() {
 function authorizeBankSetuDriveWrite() {
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      getBankSetuScriptProperty("BANKSETU_LEGACY_PHOTO_FOLDER_ID")
     );
 
   const testFile =
@@ -2538,7 +2883,7 @@ function authorizeBankSetuDriveWrite() {
 function migrateOldPhotoNames() {
   const folder =
     DriveApp.getFolderById(
-      CUSTOMER_PHOTO_FOLDER_ID
+      getBankSetuScriptProperty("BANKSETU_LEGACY_PHOTO_FOLDER_ID")
     );
 
   const files =

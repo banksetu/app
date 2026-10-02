@@ -24,9 +24,9 @@ function Settings({ userRole }: SettingsProps) {
         <p style={{ margin: 0, color: "#45dfc5", fontSize: 11, fontWeight: 800 }}>
           ADMIN SETTINGS
         </p>
-        <h2 style={{ margin: "7px 0 5px", color: "#fff" }}>User Management & Application Permission</h2>
+        <h2 style={{ margin: "7px 0 5px", color: "#fff" }}>Accounts & Access</h2>
         <p style={{ margin: 0, color: "#9db2bd", fontSize: 12, lineHeight: 1.6 }}>
-          Review registrations, see user totals and approve, deny, block, unblock or delete user accounts.
+          View your administrators, client workspaces and users. Manage their access from one place.
         </p>
       </div>
       <AdminUsers embedded />

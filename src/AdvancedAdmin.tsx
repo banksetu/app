@@ -19,8 +19,9 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
+import ClientGoogleSetup from "./ClientGoogleSetup";
+import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
 declare const __APP_VERSION__: string;
-const STORAGE_KEY = "bankSetuApiUrl";
 
 const CURRENT_APP_VERSION = __APP_VERSION__;
 const UPDATE_MANIFEST_URL = "/version.json";
@@ -31,7 +32,13 @@ type UpdateManifest = {
   notes?: string;
 };
 
-function Settings() {
+type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
+
+function Settings(props: AdvancedAdminProps) {
+  return <ConnectionSettings {...props} />;
+}
+
+function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = false }: AdvancedAdminProps) {
 
   const [apiUrl, setApiUrl] = useState("");
 
@@ -50,6 +57,7 @@ function Settings() {
   const [password, setPassword] = useState("");
 
   const [showAuthBox, setShowAuthBox] = useState(false);
+  const [authMode, setAuthMode] = useState<"unlock" | "lock">("unlock");
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -75,8 +83,7 @@ function Settings() {
 
     const loadApiConnection = async () => {
       const user = auth.currentUser;
-      const localUrl =
-        localStorage.getItem(STORAGE_KEY) || "";
+      const localUrl = getTenantApiUrl();
 
       if (!user) {
         if (!cancelled) {
@@ -87,11 +94,7 @@ function Settings() {
       }
 
       try {
-        const settingsRef = doc(
-          db,
-          "appSettings",
-          user.uid
-        );
+        const settingsRef = doc(db, ...tenantSettingsPath(user.uid));
 
         const settingsSnap =
           await getDoc(settingsRef);
@@ -115,10 +118,7 @@ function Settings() {
         }
 
         if (finalUrl) {
-          localStorage.setItem(
-            STORAGE_KEY,
-            finalUrl
-          );
+          setTenantApiUrl(finalUrl);
         }
 
         if (!cloudUrl && localUrl.trim()) {
@@ -126,6 +126,7 @@ function Settings() {
             settingsRef,
             {
               apiUrl: localUrl.trim(),
+              ...tenantSettingsWriteMetadata(user.uid),
               updatedAt:
                 serverTimestamp(),
             },
@@ -216,6 +217,12 @@ function Settings() {
 
       );
 
+      if (authMode === "lock") {
+        lockControl();
+        setShowAuthBox(false);
+        return;
+      }
+
       setUnlocked(true);
 
       setShowAuthBox(false);
@@ -265,6 +272,7 @@ function Settings() {
   };
 
   const lockControl = () => {
+    setAuthMode("unlock");
 
     setUnlocked(false);
 
@@ -326,18 +334,16 @@ function Settings() {
 
     try {
       await setDoc(
-        doc(db, "appSettings", user.uid),
+        doc(db, ...tenantSettingsPath(user.uid)),
         {
           apiUrl: cleanUrl,
+          ...tenantSettingsWriteMetadata(user.uid),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      localStorage.setItem(
-        STORAGE_KEY,
-        cleanUrl
-      );
+      setTenantApiUrl(cleanUrl);
 
       setSavedUrl(cleanUrl);
       setApiUrl(cleanUrl);
@@ -506,17 +512,16 @@ function Settings() {
 
     try {
       await setDoc(
-        doc(db, "appSettings", user.uid),
+        doc(db, ...tenantSettingsPath(user.uid)),
         {
           apiUrl: "",
+          ...tenantSettingsWriteMetadata(user.uid),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      localStorage.removeItem(
-        STORAGE_KEY
-      );
+      removeTenantApiUrl();
 
       setSavedUrl("");
       setApiUrl("");
@@ -673,11 +678,13 @@ function Settings() {
 
         </h1>
 
-        <p style={styles.subtitle}>
+      <p style={styles.subtitle}>
 
           Protected database and system connection settings
 
-        </p>
+      </p>
+
+      {isClientAdmin && <ClientGoogleSetup enabled placement="manage" />}
 
       </div>
 
@@ -745,11 +752,7 @@ function Settings() {
 
             style={styles.unlockButton}
 
-            onClick={() =>
-
-              setShowAuthBox(true)
-
-            }
+            onClick={() => { setAuthMode("unlock"); setPassword(""); setShowAuthBox(true); }}
 
           >
 
@@ -767,7 +770,7 @@ function Settings() {
 
             style={styles.lockButton}
 
-            onClick={lockControl}
+            onClick={() => { setAuthMode("lock"); setPassword(""); setShowAuthBox(true); }}
 
           >
 
@@ -779,7 +782,7 @@ function Settings() {
 
       </section>
 
-      {showAuthBox && !unlocked && (
+      {showAuthBox && (
 
         <section style={styles.authCard}>
 
@@ -849,7 +852,7 @@ function Settings() {
 
                 ? "Verifying..."
 
-                : "Verify & Unlock"}
+                : authMode === "lock" ? "Verify & Lock" : "Verify & Unlock"}
 
             </button>
 
@@ -879,7 +882,14 @@ function Settings() {
 
       )}
 
-      <section style={styles.card}>
+      {allowConnectionSettings && <section style={styles.card}>
+        <p style={styles.sectionLabel}>FIREBASE</p>
+        <h2 style={styles.cardTitle}>Account &amp; access connection</h2>
+        <p style={styles.securityText}>Firebase handles administrator sign-in and workspace permissions.</p>
+        <div style={styles.savedBox}><span style={styles.savedLabel}>{auth.currentUser ? "CONNECTED" : "SIGN-IN REQUIRED"}</span><span style={styles.savedUrl}>{auth.app.options.projectId}</span></div>
+      </section>}
+
+      {allowConnectionSettings && <section style={styles.card}>
 
         <div style={styles.cardHeader}>
 
@@ -1141,7 +1151,8 @@ function Settings() {
 
         )}
 
-      </section>
+      </section>}
+
 
       <section
       style={{

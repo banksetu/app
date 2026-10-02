@@ -1,0 +1,125 @@
+name: Deploy Bank Setu Firebase Hosting
+
+on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/**
+      - public/**
+      - scripts/check-sheet-schema.mjs
+      - index.html
+      - package.json
+      - package-lock.json
+      - vite.config.*
+      - tsconfig*.json
+      - firebase.json
+      - .firebaserc
+      - .github/workflows/deploy-firebase-hosting.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: banksetu-firebase-hosting-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the selected commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check client sheet column layout
+        run: npm run check:schema
+
+      - name: Build production frontend
+        run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+
+      - name: Add deployment identification
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          writeFileSync('dist/deployment.json', JSON.stringify({
+            commit: process.env.GITHUB_SHA,
+            builtAt: new Date().toISOString(),
+            workerUrl: 'https://banksetu-client-api.banksetu2026.workers.dev',
+          }, null, 2) + '\n');
+          NODE
+
+      - name: Check Firebase deployment credential
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const value = process.env.FIREBASE_DEPLOY_ACCOUNT;
+          if (!value) {
+            console.error('::error::Add repository Actions secret FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F with the deployment service-account JSON, then re-run this failed job.');
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## Frontend build passed; Firebase authorization is needed\nAdd FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F under Settings > Secrets and variables > Actions. Its value must be the full JSON for a deployment service account in banksetu-69e2f. Required roles for this live Hosting deployment: Firebase Hosting Admin and API Keys Viewer. Then re-run this failed job.\n');
+            process.exit(1);
+          }
+          let account;
+          try { account = JSON.parse(value); } catch {
+            console.error('::error::The Firebase deployment secret must contain valid service-account JSON.');
+            process.exit(1);
+          }
+          if (account.type !== 'service_account' || account.project_id !== 'banksetu-69e2f' || !account.client_email || !account.private_key) {
+            console.error('::error::Use a complete service-account JSON key for project banksetu-69e2f.');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Deploy Firebase Hosting live
+        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+          projectId: banksetu-69e2f
+          target: banksetu-app
+          channelId: live
+          firebaseToolsVersion: '15.31.0'
+          disableComment: true
+
+      - name: Verify live frontend commit
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const origin = 'https://banksetu-app.web.app';
+          let verified = false;
+          for (let attempt = 1; attempt <= 4; attempt++) {
+            try {
+              const response = await fetch(`${origin}/deployment.json?revision=${process.env.GITHUB_SHA}`, { signal: AbortSignal.timeout(15000), cache: 'no-store' });
+              if (response.ok && (await response.json()).commit === process.env.GITHUB_SHA) {
+                verified = true;
+                break;
+              }
+            } catch { /* Retry a transient Hosting response. */ }
+            if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+          if (!verified) throw new Error('The expected commit is not yet served at the live Hosting URL. Check the Hosting deployment before testing the app.');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Firebase Hosting deployment verified',
+            `Commit: ${process.env.GITHUB_SHA}`,
+            `Live app: ${origin}`,
+            'The production build contains the Cloudflare Worker URL.',
+            'Apps Script and Firestore rules are not deployed by this workflow. Authenticated client-isolation and Google setup tests remain required.',
+            '',
+          ].join('\n'));
+          NODE
