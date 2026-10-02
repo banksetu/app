@@ -11,6 +11,7 @@ import {
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
 import BankFormatPrint from "./BankFormatPrint";
+import AssamQuickPassbook, { isAssamBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 
 
 
@@ -334,7 +335,8 @@ function makePrintAddress(customer: Customer) {
 
 
 
-export default function Passbook({ formatType = "passbook" }: { formatType?: "passbook" | "quickPassbook" }) {
+export default function Passbook({ formatType = "passbook", bankInfo }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo }) {
+  const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
   const [bankFormatActive, setBankFormatActive] = useState(false);
   const onBankFormatConfigured = useCallback((active: boolean) => setBankFormatActive(active), []);
 
@@ -513,7 +515,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: false,
+        includePhoto: isAssamQuick,
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -562,7 +564,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: false,
+        includePhoto: isAssamQuick,
       });
 
       const loaded: Customer = {
@@ -2153,7 +2155,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
 
       <div className="passbook-heading">
 
-        <h1>Passbook Print</h1>
+        <h1>{formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print"}</h1>
 
         <p>
 
@@ -2163,7 +2165,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
 
       </div>
 
-      {previewCustomer && <BankFormatPrint
+      {previewCustomer && !isAssamQuick && <BankFormatPrint
         formatType={formatType}
         customer={previewCustomer}
         onConfigured={onBankFormatConfigured}
@@ -2364,7 +2366,8 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
 
 
 
-          <div className="passbook-shell">
+          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : (
+<div className="passbook-shell">
 
             {/* HOVER EDIT */}
 
@@ -2617,8 +2620,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
             </div>
 
           </div>
-
-
+)}
 
           {/* TEMP EDIT */}
 
@@ -2926,7 +2928,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
 
 
 
-            <button
+            {!isAssamQuick && (<button
 
               type="button"
 
@@ -2946,7 +2948,7 @@ export default function Passbook({ formatType = "passbook" }: { formatType?: "pa
 
                 : "Direct Printer Send"}
 
-            </button>
+            </button>)}
 
 
 
