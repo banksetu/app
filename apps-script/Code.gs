@@ -138,6 +138,11 @@ function doPost(e) {
       return getRecentActivities(authUser, request.limit);
     }
 
+    if (action === "getDashboardStats") {
+      const authUser = requireAuthorizedUser(idToken, false);
+      return getDashboardStats(authUser);
+    }
+
     if (action === "getBankFormatPreview") {
       const authUser = requireAuthorizedUser(idToken, false);
       return getBankFormatPreview(authUser, request.formatType);
@@ -2615,6 +2620,41 @@ function getRecentActivities(authUser, requestedLimit) {
       details: row[10],
     }));
   return jsonResponse({ success: true, activities: rows });
+}
+
+
+function getDashboardStats(authUser) {
+  // getSheet() resolves the spreadsheet from the verified user's tenant. A
+  // tenant with no configured Sheet fails closed in requireAuthorizedUser().
+  const sheet = getSheet(authUser);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return jsonResponse({
+      success: true,
+      stats: { totalCustomers: 0, kycPending: 0, passbookPending: 0, inactiveAccounts: 0 }
+    });
+  }
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getDisplayValues();
+  let totalCustomers = 0;
+  let kycPending = 0;
+  let passbookPending = 0;
+  let inactiveAccounts = 0;
+  rows.forEach((row) => {
+    // Ignore blank trailing rows and count only actual customer records.
+    if (!row.slice(0, 3).some((value) => cleanValue(value))) return;
+    totalCustomers += 1;
+    const accountStatus = cleanValue(row[4]).toLowerCase();
+    const passbookStatus = cleanValue(row[11]).toLowerCase();
+    if (accountStatus === "pending") kycPending += 1;
+    if (!passbookStatus || passbookStatus === "pending") passbookPending += 1;
+    if (accountStatus === "inactive") inactiveAccounts += 1;
+  });
+
+  return jsonResponse({
+    success: true,
+    stats: { totalCustomers, kycPending, passbookPending, inactiveAccounts }
+  });
 }
 
 
