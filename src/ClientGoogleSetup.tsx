@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { auth } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
-import { setTenantApiUrl } from "./tenantApi";
+import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import type { FormEvent } from "react";
 
@@ -14,6 +14,8 @@ type SetupConfig = {
   spreadsheetId: string;
   photoFolderId: string;
   googleEmail: string;
+  dataApiReady: boolean;
+  hasWorkspace: boolean;
   bankInfo: BankRegistration;
 };
 
@@ -72,7 +74,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   }, [enabled]);
 
   if (!enabled || loading) return null;
-  if (config?.spreadsheetId && config.photoFolderId && registrationSaved && !success) return null;
+  if (config?.spreadsheetId && config.photoFolderId && config.dataApiReady && registrationSaved && !success) return null;
 
   const saveRegistration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -145,9 +147,16 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error("Bank Setu login expired. Sign in again and retry setup.");
       await callBankSetuWorker("/configure-tenant-data", { tenantId: config.tenantId, spreadsheetId, photoFolderId: folderId, googleEmail: profile.email, accessToken });
-      setTenantApiUrl(config.apiUrl);
-      setConfig({ ...config, spreadsheetId, photoFolderId: folderId, googleEmail: profile.email });
-      setSuccess("Your Google Drive workspace is ready. The Bank Setu app received access only to this workspace folder.");
+      const readiness = await callBankSetuWorker<SetupConfig>("/get-google-setup", {});
+      const ready = readiness.dataApiReady === true && Boolean(readiness.spreadsheetId && readiness.photoFolderId);
+      setConfig({ ...readiness, hasWorkspace: true, spreadsheetId, photoFolderId: folderId, googleEmail: profile.email });
+      setTenantWorkspaceReady(ready);
+      if (ready) {
+        setTenantApiUrl(config.apiUrl);
+        setSuccess("Your Google Drive workspace is ready. The Bank Setu app received access only to this workspace folder.");
+      } else {
+        setSuccess("Google Drive and your private Sheet are connected. Customer data stays locked until the isolated Apps Script version is deployed.");
+      }
     } catch (reason: unknown) {
       // Best effort cleanup avoids leaving half-created workspaces if setup fails.
       if (accessToken) {
@@ -179,13 +188,14 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
         <button type="submit" style={buttonStyle} disabled={savingRegistration}>{savingRegistration ? "Saving bank details…" : "Save bank details"}</button>
       </form>}
       {registrationSaved && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your Google account.</p>}
-      {(!config?.spreadsheetId || !config.photoFolderId) && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !config?.oauthClientId || !registrationSaved}>
+      {!config?.hasWorkspace && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !config?.oauthClientId || !registrationSaved}>
         {connecting ? "Creating your Drive and Sheet…" : "Connect Google and create my workspace"}
       </button>}
-      {config?.spreadsheetId && config.photoFolderId && <p style={copyStyle}>Your Google workspace is connected. Save the bank details above to complete registration.</p>}
+      {config?.hasWorkspace && !config.dataApiReady && <p role="status" style={copyStyle}>Your private Google workspace is connected. Customer data stays locked until its tenant-isolated data API is deployed.</p>}
+      {config?.hasWorkspace && config.dataApiReady && <p style={copyStyle}>Your Google workspace is connected. Save the bank details above to complete registration.</p>}
       {!config?.oauthClientId && <p style={errorStyle}>Bank Setu setup is pending. The Master Admin must finish one-time Google OAuth configuration.</p>}
       {error && <p role="alert" style={errorStyle}>{error}</p>}
-      {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}{config?.spreadsheetId && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
+      {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}{config?.dataApiReady && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
     </section>
   );
 }

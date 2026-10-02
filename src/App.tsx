@@ -11,6 +11,7 @@ import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
+import { removeTenantApiUrl, setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
 
@@ -92,6 +93,7 @@ function App() {
   const applyProfile = useCallback((profile: UserProfile) => {
     const normalizedRole = normalize(profile.role);
     setAccountRole(normalizedRole || "user");
+    sessionStorage.setItem("bankSetuAccountRole", normalizedRole || "user");
     const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole)
       ? "admin"
       : "user";
@@ -105,10 +107,33 @@ function App() {
     return role;
   }, []);
 
+  const prepareClientWorkspace = useCallback(async (profile: UserProfile) => {
+    const role = normalize(profile.role);
+    if (!["client_admin", "client_user"].includes(role)) {
+      setTenantWorkspaceReady(false);
+      return;
+    }
+    setTenantWorkspaceReady(false);
+    removeTenantApiUrl();
+    try {
+      const setup = await callBankSetuWorker<{
+        apiUrl?: string; spreadsheetId?: string; photoFolderId?: string; dataApiReady?: boolean;
+      }>("/get-google-setup", {});
+      if (setup.dataApiReady && setup.apiUrl && setup.spreadsheetId && setup.photoFolderId) {
+        setTenantApiUrl(setup.apiUrl);
+        setTenantWorkspaceReady(true);
+      }
+    } catch (workspaceError) {
+      console.error("Client workspace check failed; customer APIs remain disabled:", workspaceError);
+    }
+  }, []);
+
   const rejectSession = useCallback(async (message: string) => {
     clearProfileListener();
     sessionStorage.removeItem("bankSetuRole");
     sessionStorage.removeItem("bankSetuTenantId");
+    sessionStorage.removeItem("bankSetuAccountRole");
+    setTenantWorkspaceReady(false);
     setUserRole("user");
     setAccountRole("user");
     setIsLoggedIn(false);
@@ -171,6 +196,8 @@ function App() {
           return;
         }
 
+        await prepareClientWorkspace(profile);
+
         if (!loginAttemptRef.current) {
           setError("");
           setIsLoggedIn(true);
@@ -184,7 +211,7 @@ function App() {
         setCheckingSession(false);
       }
     );
-  }, [applyProfile, clearProfileListener, rejectSession]);
+  }, [applyProfile, clearProfileListener, prepareClientWorkspace, rejectSession]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -193,6 +220,8 @@ function App() {
         clearProfileListener();
         sessionStorage.removeItem("bankSetuRole");
         sessionStorage.removeItem("bankSetuTenantId");
+        sessionStorage.removeItem("bankSetuAccountRole");
+        setTenantWorkspaceReady(false);
         setIsLoggedIn(false);
         setUserRole("user");
         setAccountRole("user");
@@ -284,6 +313,8 @@ function App() {
         return;
       }
 
+      await prepareClientWorkspace(userData);
+
       setLoginSuccess(true);
       await new Promise((resolve) => setTimeout(resolve, 1200));
       setIsLoggedIn(true);
@@ -317,6 +348,8 @@ function App() {
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
       sessionStorage.removeItem("bankSetuTenantId");
+      sessionStorage.removeItem("bankSetuAccountRole");
+      setTenantWorkspaceReady(false);
       setIsLoggedIn(false);
       setUserRole("user");
       setAccountRole("user");

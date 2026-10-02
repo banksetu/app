@@ -10,11 +10,20 @@ export function tenantStorageKey(baseKey: string): string {
 }
 
 export function getTenantApiUrl(): string {
+  const role = sessionStorage.getItem("bankSetuAccountRole")?.trim().toLowerCase();
+  if (["client_admin", "client_user"].includes(role || "") && sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") {
+    return "";
+  }
   return localStorage.getItem(tenantStorageKey("bankSetuApiUrl"))?.trim() || "";
 }
 
 export function setTenantApiUrl(value: string): void {
   localStorage.setItem(tenantStorageKey("bankSetuApiUrl"), value.trim());
+}
+
+export function setTenantWorkspaceReady(ready: boolean): void {
+  if (ready) sessionStorage.setItem("bankSetuWorkspaceReady", "true");
+  else sessionStorage.removeItem("bankSetuWorkspaceReady");
 }
 
 export function removeTenantApiUrl(): void {

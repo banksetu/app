@@ -70,7 +70,8 @@ function doGet(e) {
         success: true,
         protected: true,
         message:
-          "Bank Setu API is running"
+          "Bank Setu API is running",
+        tenantIsolationVersion: "v2"
       });
     }
 
@@ -375,6 +376,15 @@ function requireAuthorizedUser(
   const tenantSettings = tenantId
     ? getFirestoreTenantSettings(tenantId, idToken)
     : null;
+  if (tenantId) {
+    const tenant = getFirestoreTenant(tenantId, idToken);
+    if (tenant.status !== "active") {
+      throw new Error("This client workspace is blocked or unavailable.");
+    }
+    if (!tenantSettings || !tenant.ownerUid || tenantSettings.workspaceOwnerUid !== tenant.ownerUid) {
+      throw new Error("This workspace has not verified its private Google Sheet. Connect its own Google account first.");
+    }
+  }
   const spreadsheetId = tenantId
     ? cleanValue(tenantSettings && tenantSettings.spreadsheetId)
     : LEGACY_SPREADSHEET_ID;
@@ -388,6 +398,9 @@ function requireAuthorizedUser(
 
   if (tenantId && (!spreadsheetId || !photoFolderId)) {
     throw new Error("This client workspace data connection is not configured yet.");
+  }
+  if (tenantId && LEGACY_SPREADSHEET_ID && spreadsheetId === LEGACY_SPREADSHEET_ID) {
+    throw new Error("Client workspaces cannot use the Master Admin spreadsheet.");
   }
 
   return {
@@ -580,7 +593,30 @@ function getFirestoreTenantSettings(tenantId, idToken) {
   return {
     spreadsheetId: firestoreString(document, "spreadsheetId"),
     photoFolderId: firestoreString(document, "photoFolderId"),
+    workspaceOwnerUid: firestoreString(document, "workspaceOwnerUid"),
     bankFormats: firestoreBankFormats(document)
+  };
+}
+
+
+function getFirestoreTenant(tenantId, idToken) {
+  const url =
+    "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(FIREBASE_PROJECT_ID) +
+    "/databases/(default)/documents/tenants/" +
+    encodeURIComponent(tenantId);
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    headers: { Authorization: "Bearer " + idToken },
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error("Your client workspace could not be verified.");
+  }
+  const document = JSON.parse(response.getContentText() || "{}");
+  return {
+    status: firestoreString(document, "status").toLowerCase(),
+    ownerUid: firestoreString(document, "ownerUid")
   };
 }
 

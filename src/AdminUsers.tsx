@@ -219,9 +219,9 @@ function AdminUsers({ embedded = false }: Props) {
       return;
     }
 
-    const confirmText = `Do you want to ${action} ${
-            user.email || "this user"
-          }?`;
+    const confirmText = action === "delete" && targetRole === "client_admin"
+      ? `Remove ${user.email || "this Client Admin"} and deactivate every login in this client workspace? Their Google Drive folder and Sheet will remain in the owner's Drive.`
+      : `Do you want to ${action} ${user.email || "this user"}?`;
 
     if (!window.confirm(confirmText)) {
       return;
@@ -463,7 +463,7 @@ function AdminUsers({ embedded = false }: Props) {
                 </div>
 
                 <div className="admin-user-actions">
-                  {canManage && !isAdmin && (
+                  {((canManage && !isAdmin) || (role === "client_admin" && isMasterAdmin && status === "pending")) && (
                       <button
                         className="approve"
                         disabled={isBusy}
@@ -478,7 +478,7 @@ function AdminUsers({ embedded = false }: Props) {
                       </button>
                     )}
 
-                  {canManage && !isAdmin && status !== "denied" && (
+                  {((canManage && !isAdmin) || (role === "client_admin" && isMasterAdmin && status === "pending")) && status !== "denied" && (
                       <button
                         className="delete"
                         disabled={isBusy}
@@ -526,8 +526,17 @@ function AdminUsers({ embedded = false }: Props) {
                       </button>
                     )}
 
-                  {(currentRole === "master_owner" || currentRole === "admin") &&
-                    role !== "master_owner" && role !== "admin" && role !== "client_admin" && (
+                  {isMasterAdmin && role === "client_admin" && (
+                    <button
+                      className="delete"
+                      disabled={isBusy}
+                      onClick={() => void runAction(user, "delete")}
+                    >
+                      Delete Client
+                    </button>
+                  )}
+
+                  {isMasterAdmin && role !== "master_owner" && role !== "admin" && role !== "client_admin" && (
                       <button
                         className="delete"
                         disabled={isBusy}

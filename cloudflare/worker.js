@@ -140,6 +140,18 @@ async function verifyActor(request, env) {
       (String(account.email || "").trim().toLowerCase() !== "banksetu2026@gmail.com" || account.emailVerified !== true)) {
     return { error: json({ error: "This legacy administrator is not the verified Master Admin account." }, 403) };
   }
+  const role = String(profile.role || "").toLowerCase();
+  if (["client_admin", "client_user"].includes(role)) {
+    const tenantId = String(profile.tenantId || "").trim();
+    if (!tenantId) return { error: json({ error: "This account has no client workspace." }, 403) };
+    const tenant = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch((error) => {
+      if (error.status === 404) return null;
+      throw error;
+    });
+    if (!tenant || decodeFields(tenant.fields || {}).status !== "active") {
+      return { error: json({ error: "This client workspace is blocked or unavailable." }, 403) };
+    }
+  }
   return {
     uid: account.localId,
     profile,
@@ -183,18 +195,37 @@ async function getGoogleSetupConfig(env, actor) {
   const config = decodeFields(configResult?.fields || {});
   const role = String(actor.profile.role || "").toLowerCase();
   let settings = {};
-  if (role === "client_admin" && actor.profile.tenantId) {
+  let workspaceOwnerUid = "";
+  if (["client_admin", "client_user"].includes(role) && actor.profile.tenantId) {
     const tenantResult = await firestoreRequest(env, `/tenantSettings/${encodeURIComponent(actor.profile.tenantId)}`).catch((error) => {
       if (error.status === 404) return null;
       throw error;
     });
     settings = decodeFields(tenantResult?.fields || {});
+    const tenantDoc = await firestoreRequest(env, `/tenants/${encodeURIComponent(actor.profile.tenantId)}`).catch((error) => {
+      if (error.status === 404) return null;
+      throw error;
+    });
+    workspaceOwnerUid = String(decodeFields(tenantDoc?.fields || {}).ownerUid || "");
   }
   const info = settings.bankInfo || {};
+  const workspaceVerified = Boolean(workspaceOwnerUid && settings.workspaceOwnerUid === workspaceOwnerUid);
+  const apiUrl = String(config.apiUrl || settings.apiUrl || env.BANKSETU_APPS_SCRIPT_URL || "");
+  const oauthClientId = String(config.oauthClientId || env.BANKSETU_GOOGLE_OAUTH_CLIENT_ID || "");
+  const executorEmail = String(config.executorEmail || env.BANKSETU_APPS_SCRIPT_EXECUTOR_EMAIL || "");
+  let dataApiReady = false;
+  if (apiUrl) {
+    try {
+      const statusResponse = await fetch(`${apiUrl}?action=status`, { signal: AbortSignal.timeout(8000) });
+      const status = await statusResponse.json();
+      dataApiReady = statusResponse.ok && status.success === true && status.tenantIsolationVersion === "v2";
+    } catch { /* Customer data stays locked until the isolated script version responds. */ }
+  }
   return json({
-    oauthClientId: String(config.oauthClientId || ""),
-    apiUrl: String(config.apiUrl || ""),
-    executorEmail: String(config.executorEmail || ""),
+    oauthClientId,
+    apiUrl,
+    executorEmail,
+    dataApiReady,
     tenantId: String(actor.profile.tenantId || ""),
     bankName: String(settings.bankName || ""),
     bankInfo: {
@@ -204,8 +235,9 @@ async function getGoogleSetupConfig(env, actor) {
       operatorName: String(settings.operatorName || info.operatorName || ""),
       address: String(settings.address || info.address || ""),
     },
-    spreadsheetId: String(settings.spreadsheetId || ""),
-    photoFolderId: String(settings.photoFolderId || ""),
+    spreadsheetId: workspaceVerified && dataApiReady ? String(settings.spreadsheetId || "") : "",
+    photoFolderId: workspaceVerified && dataApiReady ? String(settings.photoFolderId || "") : "",
+    hasWorkspace: workspaceVerified && Boolean(settings.spreadsheetId && settings.photoFolderId),
     googleEmail: String(settings.googleEmail || ""),
     bankFormats: settings.bankFormats || {},
   });
@@ -252,7 +284,7 @@ async function handleMasterOperation(request, env, actor, route) {
   }
 
   if (route === "/get-google-setup") {
-    if (!["master_owner", "admin", "client_admin"].includes(role)) return json({ error: "Administrator access is required." }, 403);
+    if (!["master_owner", "admin", "client_admin", "client_user"].includes(role)) return json({ error: "Administrator access is required." }, 403);
     return getGoogleSetupConfig(env, actor);
   }
 
@@ -283,6 +315,9 @@ async function handleMasterOperation(request, env, actor, route) {
     }
     const setup = await firestoreRequest(env, "/appSettings/googleSetup").catch(() => null);
     const setupData = decodeFields(setup?.fields || {});
+    setupData.oauthClientId ||= env.BANKSETU_GOOGLE_OAUTH_CLIENT_ID;
+    setupData.apiUrl ||= env.BANKSETU_APPS_SCRIPT_URL;
+    setupData.executorEmail ||= env.BANKSETU_APPS_SCRIPT_EXECUTOR_EMAIL;
     if (!setupData.oauthClientId || !setupData.apiUrl || !setupData.executorEmail) return json({ error: "Complete the one-time Google setup first." }, 409);
     let newUid;
     try { newUid = await createFirebaseAccount(env, email, password, name); }
@@ -318,24 +353,24 @@ async function handleMasterOperation(request, env, actor, route) {
   }
 
   if (route === "/configure-tenant-data") {
-    if (!isMasterActor(actor) && role !== "client_admin") return json({ error: "Administrator access is required." }, 403);
+    if (role !== "client_admin") return json({ error: "Only the Client Admin can connect their own Google workspace." }, 403);
     const body = await request.json().catch(() => ({}));
     const tenantId = String(body.tenantId || "").trim();
     const spreadsheetId = String(body.spreadsheetId || "").trim();
     const photoFolderId = String(body.photoFolderId || "").trim();
     const accessToken = String(body.accessToken || "").trim();
     if (!/^[A-Za-z0-9_-]{20,}$/.test(tenantId) || !/^[A-Za-z0-9_-]{20,}$/.test(spreadsheetId) || !/^[A-Za-z0-9_-]{20,}$/.test(photoFolderId)) return json({ error: "Enter valid Sheet, folder and client workspace IDs." }, 400);
-    if (role === "client_admin" && actor.profile.tenantId !== tenantId) return json({ error: "You can only connect your own client workspace." }, 403);
+    if (actor.profile.tenantId !== tenantId) return json({ error: "You can only connect your own client workspace." }, 403);
     const tenant = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch((error) => error.status === 404 ? null : Promise.reject(error));
     const tenantData = decodeFields(tenant?.fields || {});
     if (!tenant || tenantData.status !== "active") return json({ error: "Active client workspace not found." }, 404);
+    if (tenantData.ownerUid !== actor.uid) return json({ error: "Only this workspace's Client Admin can connect its Google Drive." }, 403);
     const setupResponse = await firestoreRequest(env, "/appSettings/googleSetup").catch(() => null);
     const setup = decodeFields(setupResponse?.fields || {});
-    let apiUrl = String(setup.apiUrl || "");
+    const apiUrl = String(setup.apiUrl || env.BANKSETU_APPS_SCRIPT_URL || "");
     let googleEmail = String(body.googleEmail || "").trim().toLowerCase();
-    if (isMasterActor(actor)) apiUrl = String(body.apiUrl || apiUrl).trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(apiUrl)) return json({ error: "Finish the Bank Setu Google setup first." }, 409);
-    if (role === "client_admin") {
+    {
       const config = await getGoogleSetupConfig(env, actor).then((response) => response.json());
       const bankInfo = config.bankInfo || {};
       if (!config.bankName || !bankInfo.passbookBank || !bankInfo.branchName || !bankInfo.operatorName) return json({ error: "Complete the client bank registration form before connecting Google Drive." }, 409);
@@ -372,6 +407,7 @@ async function handleMasterOperation(request, env, actor, route) {
     }
     await putDocument(env, `/tenantSettings/${encodeURIComponent(tenantId)}`, {
       tenantId, bankName: String(tenantData.bankName || ""), apiUrl, spreadsheetId, photoFolderId,
+      workspaceOwnerUid: actor.uid,
       ...(googleEmail ? { googleEmail } : {}), updatedAt: new Date().toISOString(), updatedBy: actor.uid,
     });
     return json({ success: true, tenantId });
@@ -512,6 +548,101 @@ async function authDelete(env, localId) {
   }
 }
 
+async function listWorkspaceUsers(env, tenantId) {
+  const result = await firestoreRequest(env, ":runQuery", {
+    method: "POST",
+    body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: "users" }],
+      where: { fieldFilter: { field: { fieldPath: "tenantId" }, op: "EQUAL", value: { stringValue: tenantId } } },
+    } }),
+  });
+  return result.filter((row) => row.document).map((row) => ({
+    uid: row.document.name.split("/").pop(),
+    ...decodeFields(row.document.fields || {}),
+  }));
+}
+
+async function updateTenantStatus(env, tenantId, status, actorUid) {
+  await putDocument(env, `/tenants/${encodeURIComponent(tenantId)}`, {
+    status, updatedAt: new Date().toISOString(), updatedBy: actorUid,
+  });
+}
+
+async function cascadeClientAdminAction(env, actor, target, action) {
+  const tenantId = String(target.tenantId || "").trim();
+  if (!tenantId) return;
+  const tenant = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch((error) => {
+    if (error.status === 404) return null;
+    throw error;
+  });
+  if (!tenant) return;
+  const suspend = ["deny", "block"].includes(action);
+  if (suspend) await updateTenantStatus(env, tenantId, "blocked", actor.uid);
+  const users = await listWorkspaceUsers(env, tenantId);
+  for (const user of users) {
+    if (user.uid === target.uid || String(user.role || "").toLowerCase() !== "client_user") continue;
+    if (suspend && user.status === "approved" && user.subscriptionStatus === "active") {
+      await authUpdate(env, user.uid, { disableUser: true });
+      await patchUser(env, user.uid, {
+        status: "blocked", subscriptionStatus: "inactive", workspaceSuspended: true,
+        updatedBy: actor.uid, updatedAt: new Date().toISOString(),
+      });
+    } else if (!suspend && user.workspaceSuspended === true) {
+      await authUpdate(env, user.uid, { disableUser: false });
+      await patchUser(env, user.uid, {
+        status: "approved", subscriptionStatus: "active", workspaceSuspended: false,
+        updatedBy: actor.uid, updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+  await updateTenantStatus(env, tenantId, suspend ? "blocked" : "active", actor.uid);
+}
+
+async function deleteClientWorkspace(env, actor, uid) {
+  if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can remove a client workspace." }, 403);
+  if (!uid || uid.length > 128 || uid === actor.uid) return json({ error: "Select a valid Client Admin account." }, 400);
+  const profile = await getProfile(env, uid);
+  if (!profile || String(profile.role || "").toLowerCase() !== "client_admin" || !profile.tenantId) {
+    return json({ error: "Select a Client Admin with an assigned workspace." }, 404);
+  }
+  const tenantId = String(profile.tenantId);
+  const tenantDocument = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch((error) => {
+    if (error.status === 404) return null;
+    throw error;
+  });
+  if (!tenantDocument || decodeFields(tenantDocument.fields || {}).ownerUid !== uid) {
+    return json({ error: "The Client Admin does not own the selected workspace." }, 409);
+  }
+
+  // Lock first. If any later revocation fails, the workspace remains closed for retry.
+  await updateTenantStatus(env, tenantId, "offboarding", actor.uid);
+  await putDocument(env, `/tenantSettings/${encodeURIComponent(tenantId)}`, {
+    accessRevoked: true, offboardedAt: new Date().toISOString(), offboardedBy: actor.uid,
+  });
+  const users = await listWorkspaceUsers(env, tenantId);
+  const managed = users.filter((user) => ["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
+  if (!managed.some((user) => user.uid === uid)) managed.push({ uid, ...profile });
+  for (const user of managed) {
+    await authUpdate(env, user.uid, { disableUser: true });
+    await patchUser(env, user.uid, {
+      status: "blocked", subscriptionStatus: "inactive", updatedBy: actor.uid, updatedAt: new Date().toISOString(),
+    });
+  }
+  for (const user of managed) {
+    await authDelete(env, user.uid);
+    await firestoreRequest(env, `/users/${encodeURIComponent(user.uid)}`, { method: "DELETE" }).catch((error) => {
+      if (error.status !== 404) throw error;
+    });
+  }
+  await updateTenantStatus(env, tenantId, "offboarded", actor.uid);
+  return json({ success: true, message: "Client workspace access removed. The client's Google Drive files were kept." });
+}
+
+async function handleDeleteClientWorkspace(request, env, actor) {
+  const body = await request.json().catch(() => ({}));
+  return deleteClientWorkspace(env, actor, String(body.uid || "").trim());
+}
+
 function canManage(actor, target) {
   const actorRole = String(actor.role || "").toLowerCase();
   const targetRole = String(target.role || "user").toLowerCase();
@@ -536,7 +667,7 @@ async function handleAccountAction(request, env, actor, deleting) {
   if (!canManage(actor.profile, target)) return json({ error: "You cannot manage this account." }, 403);
   const targetRole = String(target.role || "user").toLowerCase();
   if (deleting && targetRole === "client_admin") {
-    return json({ error: "Client Admin removal needs workspace offboarding. This account was not deleted." }, 409);
+    return deleteClientWorkspace(env, actor, uid);
   }
   if (deleting) {
     await patchUser(env, uid, { status: "blocked", subscriptionStatus: "inactive" });
@@ -554,6 +685,9 @@ async function handleAccountAction(request, env, actor, deleting) {
   };
   const next = map[action];
   if (!next) return json({ error: "Unknown account action." }, 400);
+  if (targetRole === "client_admin" && ["approve", "deny", "block", "unblock"].includes(action)) {
+    await cascadeClientAdminAction(env, actor, { ...target, uid }, action);
+  }
   await authUpdate(env, uid, { disableUser: next.disabled });
   await patchUser(env, uid, {
     status: next.status,
