@@ -19,9 +19,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout source history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Find the latest frontend source commit
+        run: |
+          frontend_commit=$(git log -1 --format='%H' "$GITHUB_SHA" -- src public scripts/check-sheet-schema.mjs index.html package.json package-lock.json vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json firebase.json .firebaserc)
+          if [ -z "$frontend_commit" ]; then
+            echo '::error::Could not identify the last frontend source commit.'
+            exit 1
+          fi
+          echo "FRONTEND_COMMIT=$frontend_commit" >> "$GITHUB_ENV"
+
       - name: Check live Hosting commit, Worker health, and Apps Script isolation version
-        env:
-          EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -33,8 +45,8 @@ jobs:
             return response.json();
           }
 
-          const hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.EXPECTED_COMMIT}`);
-          assert.equal(hosting.commit, process.env.EXPECTED_COMMIT, 'Live Hosting does not serve this commit');
+          const hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}`);
+          assert.equal(hosting.commit, process.env.FRONTEND_COMMIT, 'Live Hosting does not serve the latest frontend source commit');
 
           const worker = await getJson('Cloudflare Worker', 'https://banksetu-client-api.banksetu2026.workers.dev/health');
           assert.equal(worker.success, true);
@@ -46,7 +58,7 @@ jobs:
 
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
             '## Production smoke checks passed',
-            `Verified frontend commit: ${process.env.EXPECTED_COMMIT}`,
+            `Verified frontend commit: ${process.env.FRONTEND_COMMIT}`,
             'Firebase Hosting: live commit verified',
             'Cloudflare Worker: health endpoint verified',
             'Apps Script: tenant isolation v2 verified',
