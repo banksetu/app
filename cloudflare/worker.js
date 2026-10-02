@@ -141,6 +141,7 @@ async function verifyActor(request, env) {
     return { error: json({ error: "This legacy administrator is not the verified Master Admin account." }, 403) };
   }
   const role = String(profile.role || "").toLowerCase();
+  let workspaceStatus = "";
   if (["client_admin", "client_user"].includes(role)) {
     const tenantId = String(profile.tenantId || "").trim();
     if (!tenantId) return { error: json({ error: "This account has no client workspace." }, 403) };
@@ -148,13 +149,18 @@ async function verifyActor(request, env) {
       if (error.status === 404) return null;
       throw error;
     });
-    if (!tenant || decodeFields(tenant.fields || {}).status !== "active") {
+    workspaceStatus = String(decodeFields(tenant?.fields || {}).status || "unavailable");
+    // Let blocked clients read setup status so the UI can explain how to restore
+    // access. All write and customer-data routes remain blocked.
+    const readOnlySetupCheck = new URL(request.url).pathname === "/get-google-setup";
+    if (!tenant || (workspaceStatus !== "active" && !readOnlySetupCheck)) {
       return { error: json({ error: "This client workspace is blocked or unavailable." }, 403) };
     }
   }
   return {
     uid: account.localId,
     profile,
+    workspaceStatus,
     email: String(account.email || ""),
     emailVerified: account.emailVerified === true,
   };
@@ -196,6 +202,7 @@ async function getGoogleSetupConfig(env, actor) {
   const role = String(actor.profile.role || "").toLowerCase();
   let settings = {};
   let workspaceOwnerUid = "";
+  let workspaceStatus = "";
   if (["client_admin", "client_user"].includes(role) && actor.profile.tenantId) {
     const tenantResult = await firestoreRequest(env, `/tenantSettings/${encodeURIComponent(actor.profile.tenantId)}`).catch((error) => {
       if (error.status === 404) return null;
@@ -206,7 +213,9 @@ async function getGoogleSetupConfig(env, actor) {
       if (error.status === 404) return null;
       throw error;
     });
-    workspaceOwnerUid = String(decodeFields(tenantDoc?.fields || {}).ownerUid || "");
+    const tenantData = decodeFields(tenantDoc?.fields || {});
+    workspaceOwnerUid = String(tenantData.ownerUid || "");
+    workspaceStatus = String(tenantData.status || "unavailable");
   }
   const info = settings.bankInfo || {};
   const workspaceVerified = Boolean(workspaceOwnerUid && settings.workspaceOwnerUid === workspaceOwnerUid);
@@ -227,6 +236,7 @@ async function getGoogleSetupConfig(env, actor) {
     executorEmail,
     dataApiReady,
     tenantId: String(actor.profile.tenantId || ""),
+    workspaceStatus: actor.workspaceStatus || workspaceStatus || "active",
     bankName: String(settings.bankName || ""),
     bankInfo: {
       passbookBank: String(settings.passbookBank || info.passbookBank || ""),
