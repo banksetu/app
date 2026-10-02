@@ -1,0 +1,55 @@
+name: Verify Bank Setu production services
+
+on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/**
+      - cloudflare/**
+      - apps-script/Code.gs
+      - .github/workflows/verify-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check live Hosting commit, Worker health, and Apps Script isolation version
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+
+          async function getJson(label, url) {
+            const response = await fetch(url, { redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(30000) });
+            if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+            return response.json();
+          }
+
+          const hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.EXPECTED_COMMIT}`);
+          assert.equal(hosting.commit, process.env.EXPECTED_COMMIT, 'Live Hosting does not serve this commit');
+
+          const worker = await getJson('Cloudflare Worker', 'https://banksetu-client-api.banksetu2026.workers.dev/health');
+          assert.equal(worker.success, true);
+          assert.equal(worker.protected, true);
+
+          const script = await getJson('Apps Script', 'https://script.google.com/macros/s/AKfycbxq3oN4nwfOQfiPs3NgaeBzxoWU2-JPFSZ4o-J5WLZrCF7wyflJwdPjyJ_QjFRHFBIT/exec?action=status');
+          assert.equal(script.success, true);
+          assert.equal(script.tenantIsolationVersion, 'v2', 'Apps Script is not deployed with tenant isolation v2');
+
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Production smoke checks passed',
+            `Verified frontend commit: ${process.env.EXPECTED_COMMIT}`,
+            'Firebase Hosting: live commit verified',
+            'Cloudflare Worker: health endpoint verified',
+            'Apps Script: tenant isolation v2 verified',
+            '',
+          ].join('\n'));
+          NODE
