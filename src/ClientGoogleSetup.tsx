@@ -58,6 +58,7 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
   const [registrationSaved, setRegistrationSaved] = useState(false);
   const [savingRegistration, setSavingRegistration] = useState(false);
   const [workspaceStatus, setWorkspaceStatus] = useState("active");
+  const [shareConsent, setShareConsent] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -196,7 +197,7 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
     <section style={cardStyle}>
       <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
       <h2 style={{ margin: "8px 0", fontSize: 20 }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
-      <p style={copyStyle}>Enter your bank and branch details. Then connect your own Google account. Bank Setu creates a new Sheet in your Drive with the standard Bank Setu columns; your data stays in your workspace.</p>
+      <p style={copyStyle}>Enter your bank and branch details, then connect your own Google account. Bank Setu creates a Sheet with the standard columns in your Drive. To sync workspace data, the folder is shared with the Bank Setu Apps Script account shown below.</p>
       {(placement === "manage" || !registrationSaved) && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
         <label style={registrationLabel}>Bank / CSP name<input required maxLength={120} style={registrationInput} value={registration.bankName} onChange={(event) => setRegistration((current) => ({ ...current, bankName: event.target.value }))} /></label>
         <label style={registrationLabel}>Bank for Passbook format<input required maxLength={120} style={registrationInput} value={registration.passbookBank} onChange={(event) => setRegistration((current) => ({ ...current, passbookBank: event.target.value }))} /></label>
@@ -208,7 +209,11 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
       </form>}
       {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your Google account.</p>}
       {config?.hasWorkspace && <p style={{ ...copyStyle, color: "#8de3c8" }}>Connected Google account: {config.googleEmail || "Workspace connected"}. Reconnect uses this same Drive folder and Sheet.</p>}
-      {(!config?.hasWorkspace || placement === "manage") && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !googleReady || !config?.oauthClientId || !registrationSaved || workspaceStatus !== "active"}>
+      {registrationSaved && (!config?.hasWorkspace || placement === "manage") && <label style={{ ...copyStyle, display: "flex", gap: 10, alignItems: "flex-start", margin: "12px 0", padding: 12, borderRadius: 9, background: "rgba(99,226,196,.08)" }}>
+        <input type="checkbox" checked={shareConsent} onChange={(event) => setShareConsent(event.target.checked)} style={{ marginTop: 4 }} />
+        <span>I understand that this workspace folder is shared with <strong>{config?.executorEmail || "the Bank Setu Apps Script account"}</strong> with writer access to save and sync my workspace data. I can remove this access in Google Drive, which will stop Bank Setu sync.</span>
+      </label>}
+      {(!config?.hasWorkspace || placement === "manage") && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !googleReady || !config?.oauthClientId || !registrationSaved || !shareConsent || workspaceStatus !== "active"}>
         {connecting ? "Connecting Google workspace…" : !googleReady ? "Loading Google sign-in…" : config?.hasWorkspace ? "Reconnect existing Google workspace" : "Connect Google and create my workspace"}
       </button>}
       {workspaceStatus !== "active" && <p role="alert" style={errorStyle}>This workspace is {workspaceStatus}. Ask the Master Admin to restore it before connecting Google or entering customer data.</p>}
