@@ -20,6 +20,7 @@ import {
 
 import { auth, db } from "./firebase";
 import MasterClients from "./MasterClients";
+import ClientGoogleSetup from "./ClientGoogleSetup";
 import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
 declare const __APP_VERSION__: string;
 
@@ -32,9 +33,9 @@ type UpdateManifest = {
   notes?: string;
 };
 
-type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean };
+type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
 
-function Settings({ allowConnectionSettings = false, isMasterOwner = false }: AdvancedAdminProps) {
+function Settings({ allowConnectionSettings = false, isMasterOwner = false, isClientAdmin = false }: AdvancedAdminProps) {
 
   const [apiUrl, setApiUrl] = useState("");
 
@@ -666,11 +667,13 @@ function Settings({ allowConnectionSettings = false, isMasterOwner = false }: Ad
 
         </h1>
 
-        <p style={styles.subtitle}>
+      <p style={styles.subtitle}>
 
           Protected database and system connection settings
 
-        </p>
+      </p>
+
+      {isClientAdmin && <ClientGoogleSetup enabled placement="manage" />}
 
       </div>
 
