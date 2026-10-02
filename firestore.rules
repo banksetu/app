@@ -121,7 +121,7 @@ service cloud.firestore {
         && (!('dashboardTheme' in request.resource.data) || request.resource.data.dashboardTheme is string)
         && (!('menuTheme' in request.resource.data) || request.resource.data.menuTheme is string)
         && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
-        && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool)
+        && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
         || (isClientAdmin()
           && resource.data.tenantId == tenantId
           && request.resource.data.tenantId == tenantId
