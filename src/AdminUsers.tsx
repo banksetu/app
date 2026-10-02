@@ -5,12 +5,10 @@ import {
   getDoc,
   getDocs,
   query,
-  serverTimestamp,
-  updateDoc,
   where,
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
 import "./AdminUsers.css";
 
 type UserStatus =
@@ -104,11 +102,11 @@ function AdminUsers({ embedded = false }: Props) {
     setMessage("");
     setBusyUid("create-client-user");
     try {
-      const createUser = httpsCallable<
-        { name: string; email: string; password: string },
-        { success: boolean }
-      >(getFunctions(), "createClientUser");
-      await createUser({ name: newUserName, email: newUserEmail, password: newUserPassword });
+      await callBankSetuWorker<{ success: boolean }>("/create-client-user", {
+        name: newUserName,
+        email: newUserEmail,
+        password: newUserPassword,
+      });
       setNewUserName("");
       setNewUserEmail("");
       setNewUserPassword("");
@@ -209,11 +207,6 @@ function AdminUsers({ embedded = false }: Props) {
       return;
     }
 
-    if (action === "delete") {
-      setError("Permanent deletion needs the trusted account-management service, which is not available on the current Spark deployment. The account has not been deleted.");
-      return;
-    }
-
     const confirmText = `Do you want to ${action} ${
             user.email || "this user"
           }?`;
@@ -226,19 +219,17 @@ function AdminUsers({ embedded = false }: Props) {
       setBusyUid(user.uid);
       setError("");
       setMessage("");
-
-      const nextStatus = action === "approve" || action === "unblock"
-        ? "approved"
-        : action === "block"
-          ? "blocked"
-          : "denied";
-      const nextSubscriptionStatus = nextStatus === "approved" ? "active" : "inactive";
-      await updateDoc(doc(db, "users", user.uid), {
-        status: nextStatus,
-        subscriptionStatus: nextSubscriptionStatus,
-        updatedBy: currentUid,
-        updatedAt: serverTimestamp(),
-      });
+      if (action === "delete") {
+        if (currentRole !== "master_owner" && currentRole !== "admin") {
+          throw new Error("Only the Master Admin can delete accounts.");
+        }
+        await callBankSetuWorker<{ success: boolean }>("/delete-user", { uid: user.uid });
+      } else {
+        await callBankSetuWorker<{ success: boolean }>("/account-action", {
+          uid: user.uid,
+          action,
+        });
+      }
       setMessage(`${user.email || "User"} ${action} successful.`);
       await loadUsers();
     } catch (error: unknown) {
@@ -282,7 +273,7 @@ function AdminUsers({ embedded = false }: Props) {
           <p>
             {currentRole === "client_admin"
               ? "Manage the two users in your workspace. You can approve, deny, block or unblock their access."
-              : "Search and manage client workspaces, Client Admins, and their users. Account removal is handled through the trusted administrator service."}
+              : "Search and manage client workspaces, Client Admins, and their users."}
           </p>
         </div>
 
@@ -453,11 +444,7 @@ function AdminUsers({ embedded = false }: Props) {
                 </div>
 
                 <div className="admin-user-actions">
-                  {(status === "pending" ||
-                    status === "denied" ||
-                    (status === "approved" &&
-                      String(user.subscriptionStatus || "inactive").toLowerCase() !== "active")) &&
-                    canManage && !isAdmin && (
+                  {canManage && !isAdmin && (
                       <button
                         className="approve"
                         disabled={isBusy}
@@ -472,8 +459,7 @@ function AdminUsers({ embedded = false }: Props) {
                       </button>
                     )}
 
-                  {status === "pending" &&
-                    canManage && !isAdmin && (
+                  {canManage && !isAdmin && status !== "denied" && (
                       <button
                         className="delete"
                         disabled={isBusy}
@@ -518,6 +504,17 @@ function AdminUsers({ embedded = false }: Props) {
                         }
                       >
                         Unblock
+                      </button>
+                    )}
+
+                  {(currentRole === "master_owner" || currentRole === "admin") &&
+                    role !== "master_owner" && role !== "admin" && role !== "client_admin" && (
+                      <button
+                        className="delete"
+                        disabled={isBusy}
+                        onClick={() => void runAction(user, "delete")}
+                      >
+                        Delete
                       </button>
                     )}
 

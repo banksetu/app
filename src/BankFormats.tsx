@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import BankFormatLayoutEditor from "./BankFormatLayoutEditor";
 import type { BankFieldPlacement } from "./bankFormatUtils";
@@ -41,12 +41,12 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       if (!tenantId) throw new Error("This account is not assigned to a client workspace.");
       const [settings, googleConfig] = await Promise.all([
         getDoc(doc(db, "tenantSettings", tenantId)),
-        canManage ? httpsCallable(getFunctions(), "getGoogleSetupConfig")({}) : Promise.resolve(null),
+        canManage ? callBankSetuWorker<{ oauthClientId?: string }>("/get-google-setup", {}) : Promise.resolve(null),
         loadGoogleIdentity(),
       ]);
       if (!settings.exists()) throw new Error("Client workspace settings could not be found.");
       const data = settings.data();
-      const config = googleConfig?.data as { oauthClientId?: string } | undefined;
+      const config = googleConfig || undefined;
       if (!active) return;
       setWorkspace({
         tenantId,
@@ -107,8 +107,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
   };
 
   const saveMapping = async (formatType: FormatType, fieldMap: BankFieldPlacement[], pageWidthMm: number, pageHeightMm: number) => {
-    const result = await httpsCallable(getFunctions(), "saveBankFormatMapping")({ formatType, fieldMap, pageWidthMm, pageHeightMm });
-    const response = result.data as { success?: boolean };
+    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, fieldMap, pageWidthMm, pageHeightMm });
     if (!response.success) throw new Error("The bank format field layout could not be saved.");
     setWorkspace((current) => current ? {
       ...current,
@@ -160,8 +159,7 @@ export default function BankFormats({ enabled, canManage }: { enabled: boolean; 
       const uploaded = await uploadResponse.json() as { id?: string; name?: string; mimeType?: string; error?: { message?: string } };
       if (!uploadResponse.ok || !uploaded.id) throw new Error(uploaded.error?.message || "Google Drive could not save this sample.");
       uploadedFileId = uploaded.id;
-      const saveTemplate = httpsCallable(getFunctions(), "saveBankFormatTemplate");
-      await saveTemplate({
+      await callBankSetuWorker("/save-bank-format-template", {
         formatType,
         fileId: uploaded.id,
         fileName: uploaded.name || file.name,

@@ -1,35 +1,57 @@
-# BankSetu Spark plan handoff
+# Bank Setu deployment notes (Firebase Spark)
 
-This package is based on the uploaded repository snapshot. Back up your current `/workspaces/app` first. Preserve newer edits made after this snapshot: compare before replacing.
+Firebase Spark remains the plan. Firebase Authentication, Firestore, and Hosting
+stay on Firebase; operations that need a trusted server now run in the
+`banksetu-client-api` Cloudflare Worker. The app must be built with
+`VITE_BANKSETU_WORKER_URL` set to that Worker URL.
 
-## What changed
-- Admin user management is in Settings, backed by Firestore reads/updates instead of unavailable Cloud Functions.
-- Approve, deny, block and unblock update `users/{uid}`. Approval sets `subscriptionStatus: active`; blocked/denied sets inactive. The existing app and Apps Script check these fields.
-- Admin-only Settings and dashboard color controls are hidden for normal users. Password change, System Status and Logout remain available.
-- Registration uses a temporary Firebase app so creating a new account does not replace the current admin login.
-- Fixed the frontend TypeScript errors for Passbook.
-- Added `firestore.rules` and wired it into `firebase.json`; the unavailable Functions deployment target was removed. Functions source remains for reference but is not deployed.
+## Cloudflare Worker
 
-## Before deployment
-1. Confirm the current Firebase Console Firestore rules. The uploaded ZIP had no rules file. If Console rules include other collections or special access, merge those rules into `firestore.rules` rather than overwriting them. This package uses only `users` and `appSettings` in its frontend.
-2. The admin's `users/{adminUid}` document must have `role: admin`, `status: approved`, `subscriptionStatus: active`. Do not change the admin UID or email. A Firebase Console administrator can inspect this document.
-3. Run `npm install` then `npm run build` in `/workspaces/app`. Build was successful in the analysis workspace.
-4. Deploy Firestore rules first: `firebase deploy --only firestore:rules` from `/workspaces/app`. Test an existing admin login and user list.
-5. Deploy the frontend: `firebase deploy --only hosting:banksetu-app`. This should publish to the configured Hosting site under project `banksetu-69e2f`. Confirm the actual URL shown by Firebase CLI. Firebase project ID is separate from the Hosting URL.
-6. With a separate test account, verify the user list and approve, deny, block and unblock actions, then confirm a blocked account cannot use customer data. Do not test these actions on the owner or a real client account. Confirm the existing customer workflows.
+Follow [cloudflare/README.md](cloudflare/README.md). The Worker requires the
+`FIREBASE_SERVICE_ACCOUNT` secret and the `FIREBASE_WEB_API_KEY` variable, plus
+the project ID and allowed app origins in `cloudflare/wrangler.toml`. Preserve
+the already uploaded service-account secret; never put it in this repository.
+Once the Worker is deployed, build with its `workers.dev` URL:
 
-## Apps Script configuration before updating its deployment
+```sh
+VITE_BANKSETU_WORKER_URL=https://YOUR-WORKER-URL npm run build
+```
 
-The public source does not contain Drive/Sheet identifiers or a Firebase API key. Before deploying `apps-script/Code.gs`, add these Script Properties under Apps Script **Project Settings** using the values from the existing private deployment:
+## Tenant data protection
 
-- `BANKSETU_LEGACY_SPREADSHEET_ID`
-- `BANKSETU_LEGACY_PHOTO_FOLDER_ID`
-- `BANKSETU_FIREBASE_API_KEY`
+Client Admin and Client User profiles must include their own `tenantId`. A
+legacy `user` with no tenant is refused by the app and Apps Script; the Apps
+Script no longer falls back to the Master spreadsheet for that account. Apps
+Script source uses these deployment-only Script Properties for the legacy
+Master workspace: `BANKSETU_LEGACY_SPREADSHEET_ID`,
+`BANKSETU_LEGACY_PHOTO_FOLDER_ID`, and `BANKSETU_FIREBASE_API_KEY`. Preserve
+their existing values when updating the deployment.
 
-Do not put these values in source code, GitHub, a chat message, or the browser. Tenant workspaces read their own Sheet and Drive folder IDs from their tenant settings; these properties are for the legacy Bank Setu workspace only.
+Deploy the Apps Script source as a new version of the existing Web App, keep its
+existing deployment URL, and set access to the intended Google accounts. The
+source change is not live until a new Apps Script version is deployed.
 
-## Limits and security
-- `Delete` is intentionally absent from the browser UI. Removing another person's Firebase Authentication account requires a trusted Admin SDK backend. On Spark, use Firebase Console Authentication > Users to manually remove that account; then remove its Firestore user document in Console. Do not delete the Firestore document alone and assume Auth was removed.
-- Firestore rules prevent a user from approving or elevating themselves, and restrict the user list to a verified active admin profile. Test actual deployed rules before relying on this for customer data.
-- This change does not rewrite the existing Apps Script deployment or audit its deployed version. Repo Apps Script checks Firebase ID tokens and profile status; verify the live Apps Script version matches the repo.
-- Existing Settings appSettings data, customer Sheet/Drive data, and Auth users are not migrated or deleted.
+## Release order
+
+1. Deploy the Worker and confirm its `/health` route if one is configured, or
+   verify that OPTIONS and an unauthenticated POST return the expected response.
+2. Build with `VITE_BANKSETU_WORKER_URL` and deploy Hosting to the existing
+   `banksetu-app` site.
+3. Deploy `firestore.rules` only if the current project does not already have
+   the reviewed tenant rules. These rules were previously deployed to
+   `banksetu-69e2f`.
+4. Deploy the fail-closed Apps Script update while preserving Script Properties.
+5. Test with a disposable client workspace and test users before entering real
+   customer data: separate Master and Client accounts, search, create, update,
+   bank format setup, block/unblock, and deletion.
+
+## Current Worker limits
+
+- Master Admin can create Client Admin accounts and manage regular users.
+- Client Admin can create at most two Client Users and manage their access.
+- Master deletion currently supports ordinary users. Deleting a Client Admin
+  is refused until a tenant offboarding operation can revoke that tenant's
+  other accounts while retaining its Google Drive data.
+- Customer entry, search, and update continue through the existing Apps Script
+  tenant-bound API. The app's Worker and Apps Script code still need deployment
+  before these source changes take effect in production.

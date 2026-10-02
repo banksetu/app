@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
 
 type ClientWorkspace = {
   id: string;
@@ -51,9 +51,8 @@ export default function MasterClients({ enabled }: Props) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    void httpsCallable(getFunctions(), "getGoogleSetupConfig")({}).then((result) => {
+    void callBankSetuWorker<{ oauthClientId?: string; executorEmail?: string; apiUrl?: string }>("/get-google-setup", {}).then((config) => {
       if (!active) return;
-      const config = result.data as { oauthClientId?: string; executorEmail?: string; apiUrl?: string };
       setOauthClientId(String(config.oauthClientId || ""));
       setExecutorEmail(String(config.executorEmail || ""));
       setCommonApiUrl(String(config.apiUrl || ""));
@@ -92,9 +91,8 @@ export default function MasterClients({ enabled }: Props) {
     setError("");
     setMessage("");
     try {
-      const callable = httpsCallable(getFunctions(), "createClient");
-      const result = await callable({ name, email, password, bankName });
-      const tenantId = String((result.data as { tenantId?: string }).tenantId || "");
+      const result = await callBankSetuWorker<{ tenantId?: string }>("/create-client", { name, email, password, bankName });
+      const tenantId = String(result.tenantId || "");
       setMessage(`Client account created. Workspace ID: ${tenantId}`);
       setName("");
       setEmail("");
@@ -116,8 +114,7 @@ export default function MasterClients({ enabled }: Props) {
     setError("");
     setMessage("");
     try {
-      const callable = httpsCallable(getFunctions(), "configureTenantData");
-      await callable({ tenantId: selectedTenantId, spreadsheetId, photoFolderId, apiUrl });
+      await callBankSetuWorker("/configure-tenant-data", { tenantId: selectedTenantId, spreadsheetId, photoFolderId, apiUrl });
       setMessage("Workspace Sheet and photo folder connection saved.");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Unable to save this workspace connection.");
@@ -132,7 +129,7 @@ export default function MasterClients({ enabled }: Props) {
     setError("");
     setMessage("");
     try {
-      await httpsCallable(getFunctions(), "saveGoogleSetupConfig")({
+      await callBankSetuWorker("/save-google-setup", {
         oauthClientId,
         executorEmail,
         apiUrl: commonApiUrl,

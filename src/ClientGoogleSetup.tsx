@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
 import { setTenantApiUrl } from "./tenantApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import type { FormEvent } from "react";
@@ -57,9 +57,8 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    httpsCallable(getFunctions(), "getGoogleSetupConfig")({}).then((result) => {
+    callBankSetuWorker<SetupConfig>("/get-google-setup", {}).then((loaded) => {
       if (!active) return;
-      const loaded = result.data as SetupConfig;
       setConfig(loaded);
       const details = { ...EMPTY_REGISTRATION, ...(loaded.bankInfo || {}), bankName: loaded.bankName || "" };
       setRegistration(details);
@@ -80,7 +79,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
     setSavingRegistration(true);
     setError("");
     try {
-      await httpsCallable(getFunctions(), "saveClientRegistration")({
+      await callBankSetuWorker("/save-client-registration", {
         bankName: registration.bankName,
         passbookBank: registration.passbookBank,
         branchName: registration.branchName,
@@ -145,8 +144,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
 
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error("Bank Setu login expired. Sign in again and retry setup.");
-      const save = httpsCallable(getFunctions(), "configureTenantData");
-      await save({ tenantId: config.tenantId, spreadsheetId, photoFolderId: folderId, googleEmail: profile.email, accessToken });
+      await callBankSetuWorker("/configure-tenant-data", { tenantId: config.tenantId, spreadsheetId, photoFolderId: folderId, googleEmail: profile.email, accessToken });
       setTenantApiUrl(config.apiUrl);
       setConfig({ ...config, spreadsheetId, photoFolderId: folderId, googleEmail: profile.email });
       setSuccess("Your Google Drive workspace is ready. The Bank Setu app received access only to this workspace folder.");

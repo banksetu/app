@@ -352,8 +352,13 @@ function requireAuthorizedUser(
 
 
   const tenantId = cleanValue(profile.tenantId);
-  if (!tenantId && !["admin", "user"].includes(role)) {
+  // The legacy Master Sheet is restricted to legacy/master administrators.
+  // A non-tenant user must fail closed; never fall back to Master data.
+  if (!tenantId && !["admin", "master_owner"].includes(role)) {
     throw new Error("This account is not assigned to an operational workspace.");
+  }
+  if (tenantId && !["client_admin", "client_user"].includes(role)) {
+    throw new Error("Only a client account assigned to this workspace may access its data.");
   }
   const tenantSettings = tenantId
     ? getFirestoreTenantSettings(tenantId, idToken)

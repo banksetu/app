@@ -7,9 +7,9 @@ import {
   type User,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 
 import { auth, db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
 
 import "./App.css";
@@ -29,6 +29,8 @@ const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
 function getAccessError(profile: UserProfile): string {
   const status = normalize(profile.status);
   const subscriptionStatus = normalize(profile.subscriptionStatus);
+  const role = normalize(profile.role);
+  const tenantId = String(profile.tenantId || "").trim();
 
   if (status === "blocked") {
     return "Your Bank Setu account has been blocked by the administrator.";
@@ -40,6 +42,18 @@ function getAccessError(profile: UserProfile): string {
 
   if (subscriptionStatus !== "active") {
     return "Your subscription is inactive. Please contact the administrator.";
+  }
+
+  // Legacy `user` profiles without a tenant must never inherit the historical
+  // master spreadsheet. Operational client accounts are always tenant-bound.
+  if (["client_admin", "client_user"].includes(role) && !tenantId) {
+    return "This account is not assigned to a client workspace. Contact the Bank Setu administrator.";
+  }
+  if (["user"].includes(role) && !tenantId) {
+    return "This account is not assigned to a client workspace. Contact the Bank Setu administrator.";
+  }
+  if (tenantId && !["client_admin", "client_user"].includes(role)) {
+    return "This account cannot use a client workspace. Contact the Bank Setu administrator.";
   }
 
   return "";
@@ -121,7 +135,7 @@ function App() {
           ownerBootstrapAttemptRef.current = true;
           setError("Setting up the verified Bank Setu Master Admin account…");
           try {
-            await httpsCallable(getFunctions(), "bootstrapMasterOwner")({});
+            await callBankSetuWorker("/bootstrap-master-owner", {});
             return;
           } catch (bootstrapError: unknown) {
             const code = String((bootstrapError as { code?: string }).code || "");
