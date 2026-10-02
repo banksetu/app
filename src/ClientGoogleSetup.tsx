@@ -16,6 +16,7 @@ type SetupConfig = {
   googleEmail: string;
   dataApiReady: boolean;
   hasWorkspace: boolean;
+  workspaceStatus: string;
   bankInfo: BankRegistration;
 };
 
@@ -46,7 +47,7 @@ async function googleApi<T>(url: string, accessToken: string, init: RequestInit 
   return payload;
 }
 
-export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
+export default function ClientGoogleSetup({ enabled, placement = "onboarding" }: { enabled: boolean; placement?: "onboarding" | "manage" }) {
   const [config, setConfig] = useState<SetupConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -56,11 +57,13 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   const [registration, setRegistration] = useState<BankRegistration>(EMPTY_REGISTRATION);
   const [registrationSaved, setRegistrationSaved] = useState(false);
   const [savingRegistration, setSavingRegistration] = useState(false);
+  const [workspaceStatus, setWorkspaceStatus] = useState("active");
 
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    // Preload GIS before the click so the OAuth popup stays tied to the user gesture.
+    // Preload GIS before the click so the OAuth popup remains tied to the
+    // browser's user gesture instead of being blocked after an async script load.
     void loadGoogleIdentity().then(() => {
       if (active) setGoogleReady(true);
     }).catch((reason: unknown) => {
@@ -69,6 +72,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
     callBankSetuWorker<SetupConfig>("/get-google-setup", {}).then((loaded) => {
       if (!active) return;
       setConfig(loaded);
+      setWorkspaceStatus(loaded.workspaceStatus || "active");
       const details = { ...EMPTY_REGISTRATION, ...(loaded.bankInfo || {}), bankName: loaded.bankName || "" };
       setRegistration(details);
       setRegistrationSaved(Boolean(details.bankName && details.passbookBank && details.branchName && details.operatorName));
@@ -81,7 +85,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   }, [enabled]);
 
   if (!enabled || loading) return null;
-  if (config?.spreadsheetId && config.photoFolderId && config.dataApiReady && registrationSaved && !success) return null;
+  if (placement === "onboarding" && config?.hasWorkspace) return null;
 
   const saveRegistration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -113,6 +117,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
     let accessToken = "";
     let folderId = "";
     let spreadsheetId = "";
+    let createdResources = false;
     try {
       if (!config?.oauthClientId || !config.executorEmail || !config.apiUrl || !config.tenantId) {
         throw new Error("Bank Setu setup is incomplete. Please contact the Master Admin.");
@@ -123,33 +128,40 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
       const profile = await googleApi<{ email?: string }>("https://www.googleapis.com/oauth2/v2/userinfo", accessToken);
       if (!profile.email) throw new Error("Google did not return the connected account email.");
 
-      const folder = await googleApi<{ id?: string }>("https://www.googleapis.com/drive/v3/files?fields=id", accessToken, {
-        method: "POST",
-        body: JSON.stringify({ name: `Bank Setu - ${config.bankName || "Client Workspace"}`, mimeType: "application/vnd.google-apps.folder" }),
-      });
-      folderId = String(folder.id || "");
-      if (!folderId) throw new Error("Google Drive did not create the workspace folder.");
+      if (config.hasWorkspace && config.spreadsheetId && config.photoFolderId) {
+        // Reconnect the existing isolated workspace; never create duplicates.
+        folderId = config.photoFolderId;
+        spreadsheetId = config.spreadsheetId;
+      } else {
+        const folder = await googleApi<{ id?: string }>("https://www.googleapis.com/drive/v3/files?fields=id", accessToken, {
+          method: "POST",
+          body: JSON.stringify({ name: `Bank Setu - ${config.bankName || "Client Workspace"}`, mimeType: "application/vnd.google-apps.folder" }),
+        });
+        folderId = String(folder.id || "");
+        if (!folderId) throw new Error("Google Drive did not create the workspace folder.");
+        createdResources = true;
 
-      const sheet = await googleApi<{ spreadsheetId?: string }>("https://sheets.googleapis.com/v4/spreadsheets?fields=spreadsheetId", accessToken, {
-        method: "POST",
-        body: JSON.stringify({
-          properties: { title: `Bank Setu - ${config.bankName || "Client Workspace"}` },
-          sheets: [{ properties: { title: "Sheet1", gridProperties: { frozenRowCount: 1 } } }],
-        }),
-      });
-      spreadsheetId = String(sheet.spreadsheetId || "");
-      if (!spreadsheetId) throw new Error("Google Sheets did not create the workspace spreadsheet.");
+        const sheet = await googleApi<{ spreadsheetId?: string }>("https://sheets.googleapis.com/v4/spreadsheets?fields=spreadsheetId", accessToken, {
+          method: "POST",
+          body: JSON.stringify({
+            properties: { title: `Bank Setu - ${config.bankName || "Client Workspace"}` },
+            sheets: [{ properties: { title: "Sheet1", gridProperties: { frozenRowCount: 1 } } }],
+          }),
+        });
+        spreadsheetId = String(sheet.spreadsheetId || "");
+        if (!spreadsheetId) throw new Error("Google Sheets did not create the workspace spreadsheet.");
 
-      const fileInfo = await googleApi<{ parents?: string[] }>(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}?fields=parents`, accessToken);
-      const query = new URLSearchParams({ addParents: folderId, fields: "id,parents" });
-      if (fileInfo.parents?.length) query.set("removeParents", fileInfo.parents.join(","));
-      await googleApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}?${query}`, accessToken, { method: "PATCH" });
+        const fileInfo = await googleApi<{ parents?: string[] }>(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}?fields=parents`, accessToken);
+        const query = new URLSearchParams({ addParents: folderId, fields: "id,parents" });
+        if (fileInfo.parents?.length) query.set("removeParents", fileInfo.parents.join(","));
+        await googleApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}?${query}`, accessToken, { method: "PATCH" });
 
-      // Give the Apps Script deployment account access only to this workspace folder.
-      await googleApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}/permissions?sendNotificationEmail=false`, accessToken, {
-        method: "POST",
-        body: JSON.stringify({ type: "user", role: "writer", emailAddress: config.executorEmail }),
-      });
+        // Give the Apps Script deployment account access only to this workspace folder.
+        await googleApi(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}/permissions?sendNotificationEmail=false`, accessToken, {
+          method: "POST",
+          body: JSON.stringify({ type: "user", role: "writer", emailAddress: config.executorEmail }),
+        });
+      }
 
       const currentUser = auth.currentUser;
       if (!currentUser) throw new Error("Bank Setu login expired. Sign in again and retry setup.");
@@ -166,7 +178,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
       }
     } catch (reason: unknown) {
       // Best effort cleanup avoids leaving half-created workspaces if setup fails.
-      if (accessToken) {
+      if (accessToken && createdResources) {
         for (const fileId of [spreadsheetId, folderId].filter(Boolean)) {
           await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`, {
             method: "DELETE",
@@ -182,25 +194,27 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
 
   return (
     <section style={cardStyle}>
-      <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>FIRST-TIME CLIENT REGISTRATION</p>
-      <h2 style={{ margin: "8px 0", fontSize: 20 }}>Set up your bank workspace</h2>
+      <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
+      <h2 style={{ margin: "8px 0", fontSize: 20 }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
       <p style={copyStyle}>Enter your bank and branch details. Then connect your own Google account. Bank Setu creates a new Sheet in your Drive with the standard Bank Setu columns; your data stays in your workspace.</p>
-      {!registrationSaved && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
+      {(placement === "manage" || !registrationSaved) && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
         <label style={registrationLabel}>Bank / CSP name<input required maxLength={120} style={registrationInput} value={registration.bankName} onChange={(event) => setRegistration((current) => ({ ...current, bankName: event.target.value }))} /></label>
         <label style={registrationLabel}>Bank for Passbook format<input required maxLength={120} style={registrationInput} value={registration.passbookBank} onChange={(event) => setRegistration((current) => ({ ...current, passbookBank: event.target.value }))} /></label>
         <label style={registrationLabel}>Branch name<input required maxLength={120} style={registrationInput} value={registration.branchName} onChange={(event) => setRegistration((current) => ({ ...current, branchName: event.target.value }))} /></label>
         <label style={registrationLabel}>CSP code (optional)<input maxLength={80} style={registrationInput} value={registration.cspCode} onChange={(event) => setRegistration((current) => ({ ...current, cspCode: event.target.value }))} /></label>
         <label style={registrationLabel}>Operator name<input required maxLength={120} style={registrationInput} value={registration.operatorName} onChange={(event) => setRegistration((current) => ({ ...current, operatorName: event.target.value }))} /></label>
         <label style={{ ...registrationLabel, gridColumn: "1 / -1" }}>Branch / CSP address<textarea maxLength={500} style={{ ...registrationInput, minHeight: 70 }} value={registration.address} onChange={(event) => setRegistration((current) => ({ ...current, address: event.target.value }))} /></label>
-        <button type="submit" style={buttonStyle} disabled={savingRegistration}>{savingRegistration ? "Saving bank details…" : "Save bank details"}</button>
+        <button type="submit" style={buttonStyle} disabled={savingRegistration || workspaceStatus !== "active"}>{savingRegistration ? "Saving bank details…" : "Save bank details"}</button>
       </form>}
-      {registrationSaved && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your Google account.</p>}
-      {!config?.hasWorkspace && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !config?.oauthClientId || !registrationSaved}>
-        {connecting ? "Creating your Drive and Sheet…" : "Connect Google and create my workspace"}
+      {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your Google account.</p>}
+      {config?.hasWorkspace && <p style={{ ...copyStyle, color: "#8de3c8" }}>Connected Google account: {config.googleEmail || "Workspace connected"}. Reconnect uses this same Drive folder and Sheet.</p>}
+      {(!config?.hasWorkspace || placement === "manage") && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !googleReady || !config?.oauthClientId || !registrationSaved || workspaceStatus !== "active"}>
+        {connecting ? "Connecting Google workspace…" : !googleReady ? "Loading Google sign-in…" : config?.hasWorkspace ? "Reconnect existing Google workspace" : "Connect Google and create my workspace"}
       </button>}
+      {workspaceStatus !== "active" && <p role="alert" style={errorStyle}>This workspace is {workspaceStatus}. Ask the Master Admin to restore it before connecting Google or entering customer data.</p>}
       {config?.hasWorkspace && !config.dataApiReady && <p role="status" style={copyStyle}>Your private Google workspace is connected. Customer data stays locked until its tenant-isolated data API is deployed.</p>}
       {config?.hasWorkspace && config.dataApiReady && <p style={copyStyle}>Your Google workspace is connected. Save the bank details above to complete registration.</p>}
-      {!config?.oauthClientId && <p style={errorStyle}>Bank Setu setup is pending. The Master Admin must finish one-time Google OAuth configuration.</p>}
+      {!config?.oauthClientId && <p style={errorStyle}>Google sign-in configuration is missing. Contact the Master Admin.</p>}
       {error && <p role="alert" style={errorStyle}>{error}</p>}
       {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}{config?.dataApiReady && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
     </section>
