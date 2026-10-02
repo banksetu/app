@@ -2440,7 +2440,14 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>Advanced Administrator Control</h2></div>
               <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
             </div>
-            <AdvancedAdmin allowConnectionSettings={accountRole === "admin"} isMasterOwner={accountRole === "master_owner"} />
+            <AdvancedAdmin
+              allowConnectionSettings={accountRole === "master_owner" || accountRole === "admin"}
+              isMasterOwner={accountRole === "master_owner" || (
+                accountRole === "admin" &&
+                getAuth().currentUser?.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+                getAuth().currentUser?.emailVerified === true
+              )}
+            />
           </div>
         </div>
       )}
