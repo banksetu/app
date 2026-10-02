@@ -128,27 +128,33 @@ function AdminUsers({ embedded = false }: Props) {
   }, [open, embedded, loadUsers]);
 
   const counts = useMemo(() => {
-    const normalUsers = users.filter(
-      (u) =>
-        !["admin", "master_owner", "client_admin"].includes(
-          String(u.role || "user").toLowerCase()
-        )
-    );
+    const isMaster = ["admin", "master_owner"].includes(currentRole.toLowerCase());
+    // The Master Admin needs totals for the complete client tree. A Client
+    // Admin sees only the two operational users in their own tenant, not their
+    // own administrator account.
+    const countedUsers = users.filter((u) => {
+      const role = String(u.role || "user").toLowerCase();
+      if (["admin", "master_owner"].includes(role)) return false;
+      return isMaster || role !== "client_admin";
+    });
 
     const countStatus = (status: string) =>
-      normalUsers.filter(
+      countedUsers.filter(
         (u) =>
           String(u.status || "pending").toLowerCase() ===
           status
       ).length;
 
     return {
-      total: normalUsers.length,
+      total: countedUsers.length,
       pending: countStatus("pending"),
       approved: countStatus("approved"),
       denied: countStatus("denied"),
+      clientAdmins: isMaster
+        ? users.filter((u) => String(u.role || "").toLowerCase() === "client_admin").length
+        : 0,
     };
-  }, [users]);
+  }, [currentRole, users]);
 
   const visibleUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -319,6 +325,13 @@ function AdminUsers({ embedded = false }: Props) {
           <strong>{counts.denied}</strong>
           <span>Denied</span>
         </div>
+
+        {(currentRole === "admin" || currentRole === "master_owner") && (
+          <div>
+            <strong>{counts.clientAdmins}</strong>
+            <span>Client Admins</span>
+          </div>
+        )}
       </div>
 
       <div className="admin-users-toolbar">
