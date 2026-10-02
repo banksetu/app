@@ -2447,6 +2447,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
                 getAuth().currentUser?.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
                 getAuth().currentUser?.emailVerified === true
               )}
+              isClientAdmin={accountRole === "client_admin"}
             />
           </div>
         </div>
