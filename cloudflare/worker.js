@@ -577,6 +577,10 @@ async function cascadeClientAdminAction(env, actor, target, action) {
   });
   if (!tenant) return;
   const suspend = ["deny", "block"].includes(action);
+  const tenantStatus = String(decodeFields(tenant.fields || {}).status || "active");
+  if (!suspend && ["offboarding", "offboarded"].includes(tenantStatus)) {
+    throw new Error("This workspace is being removed or has already been removed and cannot be restored.");
+  }
   if (suspend) await updateTenantStatus(env, tenantId, "blocked", actor.uid);
   const users = await listWorkspaceUsers(env, tenantId);
   for (const user of users) {
@@ -610,8 +614,25 @@ async function deleteClientWorkspace(env, actor, uid) {
     if (error.status === 404) return null;
     throw error;
   });
-  if (!tenantDocument || decodeFields(tenantDocument.fields || {}).ownerUid !== uid) {
-    return json({ error: "The Client Admin does not own the selected workspace." }, 409);
+  if (!tenantDocument) return json({ error: "The Client Admin workspace was not found." }, 409);
+
+  const ownerUid = String(decodeFields(tenantDocument.fields || {}).ownerUid || "");
+  const users = await listWorkspaceUsers(env, tenantId);
+  const workspaceAdmins = users.filter((user) => String(user.role || "").toLowerCase() === "client_admin");
+  const unexpectedUsers = users.filter((user) => !["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
+  if (workspaceAdmins.length !== 1 || workspaceAdmins[0]?.uid !== uid || unexpectedUsers.length) {
+    return json({ error: "Workspace membership does not identify this account as its sole Client Admin. No accounts were changed." }, 409);
+  }
+
+  // Older workspaces can have an absent or stale ownerUid. Permit recovery only
+  // when the requested account is the sole Client Admin in that exact tenant,
+  // and the stored owner does not still belong to any account in that tenant.
+  if (ownerUid !== uid) {
+    const storedOwner = ownerUid ? await getProfile(env, ownerUid) : null;
+    const storedOwnerStillAssigned = storedOwner && String(storedOwner.tenantId || "") === tenantId;
+    if (storedOwnerStillAssigned) {
+      return json({ error: "Another account is still assigned as this workspace owner. Review its membership before deleting the Client Admin." }, 409);
+    }
   }
 
   // Lock first. If any later revocation fails, the workspace remains closed for retry.
@@ -619,9 +640,7 @@ async function deleteClientWorkspace(env, actor, uid) {
   await putDocument(env, `/tenantSettings/${encodeURIComponent(tenantId)}`, {
     accessRevoked: true, offboardedAt: new Date().toISOString(), offboardedBy: actor.uid,
   });
-  const users = await listWorkspaceUsers(env, tenantId);
-  const managed = users.filter((user) => ["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
-  if (!managed.some((user) => user.uid === uid)) managed.push({ uid, ...profile });
+  const managed = users;
   for (const user of managed) {
     await authUpdate(env, user.uid, { disableUser: true });
     await patchUser(env, user.uid, {
