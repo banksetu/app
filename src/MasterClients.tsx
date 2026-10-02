@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 
@@ -16,14 +16,10 @@ type Props = { enabled: boolean };
 
 export default function MasterClients({ enabled }: Props) {
   const [clients, setClients] = useState<ClientWorkspace[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [bankName, setBankName] = useState("");
-  const [spreadsheetId, setSpreadsheetId] = useState("");
-  const [photoFolderId, setPhotoFolderId] = useState("");
-  const [apiUrl, setApiUrl] = useState("");
   const [oauthClientId, setOauthClientId] = useState("");
   const [executorEmail, setExecutorEmail] = useState("");
   const [commonApiUrl, setCommonApiUrl] = useState("");
@@ -45,7 +41,6 @@ export default function MasterClients({ enabled }: Props) {
   const loadClients = useCallback(async () => {
     const items = await fetchClients();
     setClients(items);
-    setSelectedTenantId((current) => current || items[0]?.id || "");
   }, [fetchClients]);
 
   useEffect(() => {
@@ -62,28 +57,12 @@ export default function MasterClients({ enabled }: Props) {
     void fetchClients().then((items) => {
       if (!active) return;
       setClients(items);
-      setSelectedTenantId((current) => current || items[0]?.id || "");
     }).catch((reason: unknown) => {
       if (!active) return;
       setError(reason instanceof Error ? reason.message : "Unable to load client workspaces.");
     });
     return () => { active = false; };
   }, [enabled, fetchClients]);
-
-  useEffect(() => {
-    if (!enabled || !selectedTenantId) return;
-    let active = true;
-    void getDoc(doc(db, "tenantSettings", selectedTenantId)).then((snapshot) => {
-      if (!active || !snapshot.exists()) return;
-      const settings = snapshot.data();
-      setSpreadsheetId(String(settings.spreadsheetId || ""));
-      setPhotoFolderId(String(settings.photoFolderId || ""));
-      setApiUrl(String(settings.apiUrl || ""));
-    }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : "Unable to load workspace connection.");
-    });
-    return () => { active = false; };
-  }, [enabled, selectedTenantId]);
 
   const createClient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -99,25 +78,8 @@ export default function MasterClients({ enabled }: Props) {
       setPassword("");
       setBankName("");
       await loadClients();
-      setSelectedTenantId(tenantId);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Unable to create the client account.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveConnection = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedTenantId) return;
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      await callBankSetuWorker("/configure-tenant-data", { tenantId: selectedTenantId, spreadsheetId, photoFolderId, apiUrl });
-      setMessage("Workspace Sheet and photo folder connection saved.");
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Unable to save this workspace connection.");
     } finally {
       setBusy(false);
     }
@@ -182,19 +144,6 @@ export default function MasterClients({ enabled }: Props) {
         <label style={labelStyle}>Bank / CSP name<input required style={fieldStyle} value={bankName} onChange={(event) => setBankName(event.target.value)} /></label>
         <button disabled={busy} style={buttonStyle}>{busy ? "Working…" : "Create Client"}</button>
       </form>
-
-      <div style={{ marginTop: 22, borderTop: "1px solid rgba(160,190,200,.18)", paddingTop: 16 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>Connect a client's data</h3>
-        <form onSubmit={saveConnection}>
-          <label style={labelStyle}>Client workspace<select required style={fieldStyle} value={selectedTenantId} onChange={(event) => setSelectedTenantId(event.target.value)}>
-            {clients.map((client) => <option key={client.id} value={client.id}>{client.bankName || "Client"} — {client.id}</option>)}
-          </select></label>
-          <label style={labelStyle}>Google Sheet ID<input required style={fieldStyle} value={spreadsheetId} onChange={(event) => setSpreadsheetId(event.target.value)} placeholder="ID from the Sheet URL" /></label>
-          <label style={labelStyle}>Google Drive photo folder ID<input required style={fieldStyle} value={photoFolderId} onChange={(event) => setPhotoFolderId(event.target.value)} placeholder="ID from the Drive folder URL" /></label>
-          <label style={labelStyle}>Apps Script Web App URL<input required type="url" style={fieldStyle} value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} placeholder="https://script.google.com/macros/s/.../exec" /></label>
-          <button disabled={busy || !selectedTenantId} style={buttonStyle}>{busy ? "Saving…" : "Save Workspace Connection"}</button>
-        </form>
-      </div>
 
       {error && <p role="alert" style={{ color: "#ffaaaa", marginTop: 12 }}>{error}</p>}
       {message && <p role="status" style={{ color: "#8de3c8", marginTop: 12 }}>{message}</p>}
