@@ -4,4 +4,4 @@ compatibility_date = "2026-10-02"
 
 [vars]
 FIREBASE_PROJECT_ID = "banksetu-69e2f"
-ALLOWED_ORIGINS = "https://banksetu-app.web.app,https://banksetu-app.firebaseapp.com"
+ALLOWED_ORIGINS = "https://banksetu-app.web.app,https://banksetu-app.firebaseapp.com,https://banksetu-app--spark-client-test-om37fzmr.web.app"
