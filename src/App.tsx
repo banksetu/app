@@ -11,6 +11,7 @@ import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
+import PublicPages from "./PublicPages";
 import { removeTenantApiUrl, setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
@@ -363,6 +364,11 @@ function App() {
     }
   };
 
+  const publicPath = window.location.pathname.replace(/\\/+$/, "") || "/";
+  if (publicPath === "/about" || publicPath === "/privacy-policy") {
+    return <PublicPages />;
+  }
+
   if (checkingSession) {
     return (
       <main className="app-loader">
@@ -509,6 +515,10 @@ function App() {
             Bank Setu Secure Access
             <span className="footer-separator">•</span>
             v1.0
+            <span className="footer-separator">•</span>
+            <a href="/about" style={{ color: "inherit", textDecoration: "underline" }}>About</a>
+            <span className="footer-separator">•</span>
+            <a href="/privacy-policy" style={{ color: "inherit", textDecoration: "underline" }}>Privacy Policy</a>
           </div>
         </div>
       </section>
