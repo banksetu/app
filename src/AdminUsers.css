@@ -294,7 +294,7 @@
 }
 
 .admin-users-embedded { position: static; width: 100%; max-width: none; max-height: none; box-sizing: border-box; }
-.admin-user-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin: 0 0 14px; }
+.admin-user-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin: 0 0 14px; }
 .admin-user-stats > div { padding:14px; border-radius:12px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); display:flex; flex-direction:column; gap:5px; }
 .admin-user-stats strong { color:#fff; font-size:22px; }
 .admin-user-stats span { color:#9fb2bc; font-size:10px; }
