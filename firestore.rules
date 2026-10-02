@@ -14,6 +14,8 @@ service cloud.firestore {
     function isLegacyAdmin() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && profile().role == 'admin'
+        && request.auth.token.email == 'banksetu2026@gmail.com'
+        && request.auth.token.email_verified == true
         && profile().status == 'approved'
         && profile().subscriptionStatus == 'active';
     }

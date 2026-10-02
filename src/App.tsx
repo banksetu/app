@@ -26,7 +26,7 @@ type UserProfile = {
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
 
-function getAccessError(profile: UserProfile): string {
+function getAccessError(profile: UserProfile, authEmail = "", emailVerified = false): string {
   const status = normalize(profile.status);
   const subscriptionStatus = normalize(profile.subscriptionStatus);
   const role = normalize(profile.role);
@@ -54,6 +54,11 @@ function getAccessError(profile: UserProfile): string {
   }
   if (tenantId && !["client_admin", "client_user"].includes(role)) {
     return "This account cannot use a client workspace. Contact the Bank Setu administrator.";
+  }
+  // Legacy `admin` access points to the shared Master Sheet. Keep it only for
+  // the verified Bank Setu owner account; old client admins must be migrated.
+  if (role === "admin" && (normalize(authEmail) !== MASTER_OWNER_EMAIL || !emailVerified)) {
+    return "This administrator account is not the verified Master Admin. Contact the Bank Setu owner.";
   }
 
   return "";
@@ -159,7 +164,7 @@ function App() {
         const profile = existingProfile as UserProfile;
         applyProfile(profile);
 
-        const accessError = getAccessError(profile);
+        const accessError = getAccessError(profile, user.email || "", user.emailVerified);
         if (accessError) {
           await rejectSession(accessError);
           setCheckingSession(false);
@@ -273,7 +278,7 @@ function App() {
       const userData = userSnap.data() as UserProfile;
       applyProfile(userData);
 
-      const accessError = getAccessError(userData);
+      const accessError = getAccessError(userData, credential.user.email || "", credential.user.emailVerified);
       if (accessError) {
         await rejectSession(accessError);
         return;

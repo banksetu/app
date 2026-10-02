@@ -134,6 +134,12 @@ async function verifyActor(request, env) {
   if (!profile || profile.status !== "approved" || profile.subscriptionStatus !== "active") {
     return { error: json({ error: "This account is not active." }, 403) };
   }
+  // Legacy `admin` accounts historically received Master Sheet access. Restrict
+  // that compatibility role to the verified owner identity only.
+  if (String(profile.role || "").toLowerCase() === "admin" &&
+      (String(account.email || "").trim().toLowerCase() !== "banksetu2026@gmail.com" || account.emailVerified !== true)) {
+    return { error: json({ error: "This legacy administrator is not the verified Master Admin account." }, 403) };
+  }
   return { uid: account.localId, profile };
 }
 

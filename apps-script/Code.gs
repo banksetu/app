@@ -354,6 +354,13 @@ function requireAuthorizedUser(
   const tenantId = cleanValue(profile.tenantId);
   // The legacy Master Sheet is restricted to legacy/master administrators.
   // A non-tenant user must fail closed; never fall back to Master data.
+  if (
+    !tenantId && role === "admin" &&
+    (cleanValue(authAccount.email).toLowerCase() !== "banksetu2026@gmail.com" ||
+      authAccount.emailVerified !== true)
+  ) {
+    throw new Error("This legacy administrator is not the verified Master Admin account.");
+  }
   if (!tenantId && !["admin", "master_owner"].includes(role)) {
     throw new Error("This account is not assigned to an operational workspace.");
   }
