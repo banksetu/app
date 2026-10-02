@@ -364,7 +364,9 @@ async function handleMasterOperation(request, env, actor, route) {
     const tenant = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch((error) => error.status === 404 ? null : Promise.reject(error));
     const tenantData = decodeFields(tenant?.fields || {});
     if (!tenant || tenantData.status !== "active") return json({ error: "Active client workspace not found." }, 404);
-    if (tenantData.ownerUid !== actor.uid) return json({ error: "Only this workspace's Client Admin can connect its Google Drive." }, 403);
+    const ownership = await verifyOrRepairWorkspaceOwner(env, tenantId, tenantData, actor.uid);
+    if (!ownership.ok) return json({ error: ownership.error }, 409);
+    Object.assign(tenantData, ownership.tenantData);
     const setupResponse = await firestoreRequest(env, "/appSettings/googleSetup").catch(() => null);
     const setup = decodeFields(setupResponse?.fields || {});
     const apiUrl = String(setup.apiUrl || env.BANKSETU_APPS_SCRIPT_URL || "");
@@ -562,6 +564,26 @@ async function listWorkspaceUsers(env, tenantId) {
   }));
 }
 
+async function verifyOrRepairWorkspaceOwner(env, tenantId, tenantData, clientAdminUid) {
+  const users = await listWorkspaceUsers(env, tenantId);
+  const admins = users.filter((user) => String(user.role || "").toLowerCase() === "client_admin");
+  const unexpected = users.filter((user) => !["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
+  if (admins.length !== 1 || admins[0]?.uid !== clientAdminUid || unexpected.length) {
+    return { ok: false, error: "Workspace membership does not identify this account as its sole Client Admin." };
+  }
+  const ownerUid = String(tenantData.ownerUid || "");
+  if (ownerUid !== clientAdminUid) {
+    const oldOwner = ownerUid ? await getProfile(env, ownerUid) : null;
+    if (oldOwner && String(oldOwner.tenantId || "") === tenantId) {
+      return { ok: false, error: "Another account is still assigned as this workspace owner." };
+    }
+    await putDocument(env, `/tenants/${encodeURIComponent(tenantId)}`, {
+      ownerUid: clientAdminUid, ownerUidRecoveredAt: new Date().toISOString(),
+    });
+  }
+  return { ok: true, users, tenantData: { ...tenantData, ownerUid: clientAdminUid } };
+}
+
 async function updateTenantStatus(env, tenantId, status, actorUid) {
   await putDocument(env, `/tenants/${encodeURIComponent(tenantId)}`, {
     status, updatedAt: new Date().toISOString(), updatedBy: actorUid,
@@ -616,24 +638,9 @@ async function deleteClientWorkspace(env, actor, uid) {
   });
   if (!tenantDocument) return json({ error: "The Client Admin workspace was not found." }, 409);
 
-  const ownerUid = String(decodeFields(tenantDocument.fields || {}).ownerUid || "");
-  const users = await listWorkspaceUsers(env, tenantId);
-  const workspaceAdmins = users.filter((user) => String(user.role || "").toLowerCase() === "client_admin");
-  const unexpectedUsers = users.filter((user) => !["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
-  if (workspaceAdmins.length !== 1 || workspaceAdmins[0]?.uid !== uid || unexpectedUsers.length) {
-    return json({ error: "Workspace membership does not identify this account as its sole Client Admin. No accounts were changed." }, 409);
-  }
-
-  // Older workspaces can have an absent or stale ownerUid. Permit recovery only
-  // when the requested account is the sole Client Admin in that exact tenant,
-  // and the stored owner does not still belong to any account in that tenant.
-  if (ownerUid !== uid) {
-    const storedOwner = ownerUid ? await getProfile(env, ownerUid) : null;
-    const storedOwnerStillAssigned = storedOwner && String(storedOwner.tenantId || "") === tenantId;
-    if (storedOwnerStillAssigned) {
-      return json({ error: "Another account is still assigned as this workspace owner. Review its membership before deleting the Client Admin." }, 409);
-    }
-  }
+  const ownership = await verifyOrRepairWorkspaceOwner(env, tenantId, decodeFields(tenantDocument.fields || {}), uid);
+  if (!ownership.ok) return json({ error: `${ownership.error} No accounts were changed.` }, 409);
+  const users = ownership.users;
 
   // Lock first. If any later revocation fails, the workspace remains closed for retry.
   await updateTenantStatus(env, tenantId, "offboarding", actor.uid);
