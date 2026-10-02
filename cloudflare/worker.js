@@ -1,3 +1,32 @@
+export function workspaceBankSettingsPath(actor) {
+  const role = String(actor.profile?.role || "").toLowerCase();
+  if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
+  if (isMasterActor(actor)) return "/appSettings/" + encodeURIComponent(actor.uid);
+  return "";
+}
+export function validateWorkspaceBankPatch(body) {
+  const output = {};
+  if (body.bankInfo !== undefined) {
+    const input = body.bankInfo;
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Enter valid bank information.");
+    const limits = { bankName:120, passbookBank:120, branchName:120, cspCode:80, operatorName:120, address:500 };
+    const bankInfo = {};
+    for (const [key,limit] of Object.entries(limits)) {
+      if (typeof input[key] !== "string" || input[key].trim().length > limit) throw new Error("Enter valid bank, branch and operator details.");
+      bankInfo[key] = input[key].trim();
+    }
+    if (!bankInfo.bankName || !bankInfo.passbookBank) throw new Error("Enter Bank / CSP name and select a bank.");
+    Object.assign(output, bankInfo, { bankInfo });
+  }
+  if (body.bankLogo !== undefined) {
+    if (typeof body.bankLogo !== "string" || body.bankLogo.length > 150000 ||
+        (body.bankLogo !== "" && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(body.bankLogo))) throw new Error("Choose a valid bank logo up to 110 KB after resizing.");
+    output.bankLogo = body.bankLogo;
+  }
+  if (!Object.keys(output).length) throw new Error("Provide bank information or a bank logo to save.");
+  return output;
+}
+
 export function bankFormatSelectionError(selectedBank, requestedBank) {
   const key = value => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   const selected = key(selectedBank);
@@ -364,6 +393,19 @@ async function handleMasterOperation(request, env, actor, route) {
       await authDelete(env, newUid).catch(() => undefined);
       throw error;
     }
+  }
+
+  if (route === "/save-workspace-bank-settings") {
+    const path = workspaceBankSettingsPath(actor);
+    if (!path) return json({ error:"Only a Client Admin or Master Admin can change bank settings." },403);
+    const body = await request.json().catch(() => ({}));
+    let patch;
+    try { patch = validateWorkspaceBankPatch(body); }
+    catch(error) { return json({error:error.message},400); }
+    const metadata = {updatedAt:new Date().toISOString(),updatedBy:actor.uid};
+    if (role === "client_admin") metadata.tenantId = actor.profile.tenantId;
+    await putDocument(env,path,{...patch,...metadata});
+    return json({success:true});
   }
 
   if (route === "/save-client-registration") {
@@ -822,7 +864,7 @@ export default {
         "/account-action", "/delete-user", "/create-client-user", "/create-client",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/configure-tenant-data", "/save-bank-format-template",
-        "/save-bank-format-mapping",
+        "/save-bank-format-mapping", "/save-workspace-bank-settings",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -841,7 +883,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping"];
+      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"];
       const result = migratedRoutes.includes(route)
         ? await handleMasterOperation(request, env, actor, route)
         : route === "/create-client-user"

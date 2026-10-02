@@ -11,18 +11,18 @@ import {
 
   doc,
 
-  getDoc,
 
   onSnapshot,
 
-  serverTimestamp,
 
   setDoc,
 
 } from "firebase/firestore";
 
 import { db } from "./firebase";
-import { getTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata, tenantStorageKey } from "./tenantApi";
+import { callBankSetuWorker } from "./workerApi";
+import { prepareBankLogo, restoreWorkspaceBankSettings } from "./workspaceBankSettings";
+import { getTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantStorageKey } from "./tenantApi";
 
 import type {
 
@@ -340,51 +340,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
     useRef<HTMLInputElement | null>(null);
 
-  const [bankLogo, setBankLogo] =
-
-    useState<string>(() => {
-
-      return (
-
-        localStorage.getItem(tenantStorageKey("bankSetuBankLogo")) || ""
-
-      );
-
-    });
-
-  const [bankInfo, setBankInfo] =
-
-    useState<BankInfo>(() => {
-
-      try {
-
-        const saved = localStorage.getItem(tenantStorageKey("bankSetuBankInfo"));
-
-        if (!saved) return emptyBankInfo;
-
-        return {
-
-          ...emptyBankInfo,
-
-          ...JSON.parse(saved),
-
-        };
-
-      } catch (error) {
-
-        console.error(
-
-          "Bank information load failed:",
-
-          error
-
-        );
-
-        return emptyBankInfo;
-
-      }
-
-    });
+  const [bankLogo, setBankLogo] = useState("");
+  const [bankInfo, setBankInfo] = useState<BankInfo>(emptyBankInfo);
+  const [bankSettingsReady, setBankSettingsReady] = useState(false);
+  const [bankSettingsError, setBankSettingsError] = useState("");
+  const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
+  const canManageBankSettings = accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin";
 
   const [bankInfoDraft, setBankInfoDraft] =
 
@@ -394,380 +355,35 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
     useState(false);
 
-  const saveCloudSettings = async (
-
-    patch: Record<string, unknown>
-
-  ) => {
-
-    const user = getAuth().currentUser;
-
-    if (!user) {
-
-      throw new Error(
-
-        "Firebase login session is not available. Please login again."
-
-      );
-
-    }
-
-    await setDoc(
-
-      doc(db, ...tenantSettingsPath(user.uid)),
-
-      {
-
-        ...patch,
-
-        ...tenantSettingsWriteMetadata(user.uid),
-
-        updatedAt: serverTimestamp(),
-
-      },
-
-      { merge: true }
-
-    );
-
-  };
-
   useEffect(() => {
-
-    let cancelled = false;
-
-    const loadCloudSettings = async () => {
-
-      const user = getAuth().currentUser;
-
-      if (!user) {
-
-        return;
-
-      }
-
-      let localInfo: BankInfo = {
-
-        ...emptyBankInfo,
-
-      };
-
+    const user = getAuth().currentUser;
+    if (!user) return;
+    setBankSettingsReady(false); setBankSettingsError("");
+    let receivedServer = false;
+    const timeout = window.setTimeout(() => {
+      if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
+    }, 12000);
+    const unsubscribe = onSnapshot(doc(db, ...tenantSettingsPath(user.uid)), { includeMetadataChanges:true }, snapshot => {
+      if (snapshot.metadata.fromCache && !receivedServer) return;
+      receivedServer = true; window.clearTimeout(timeout);
+      const cloudData = snapshot.exists() ? snapshot.data() : {};
+      const saved = restoreWorkspaceBankSettings(cloudData);
+      if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
+      setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
+      setBankSettingsReady(true); setBankSettingsError("");
+      // This is only a workspace-scoped cache. It never overrides Firebase.
       try {
-
-        const savedInfo = localStorage.getItem(tenantStorageKey("bankSetuBankInfo"));
-
-        if (savedInfo) {
-
-          localInfo = {
-
-            ...emptyBankInfo,
-
-            ...JSON.parse(savedInfo),
-
-          };
-
-        }
-
-      } catch (error) {
-
-        console.error(
-
-          "Local bank information migration read failed:",
-
-          error
-
-        );
-
-      }
-
-      const localLogo =
-
-        localStorage.getItem(tenantStorageKey("bankSetuBankLogo")) || "";
-
-      try {
-
-        const settingsRef = doc(db, ...tenantSettingsPath(user.uid));
-
-        const settingsSnap =
-
-          await getDoc(settingsRef);
-
-        const cloudData =
-
-          settingsSnap.exists()
-
-            ? settingsSnap.data()
-
-            : {};
-
-        const cloudInfo: BankInfo = {
-
-          bankName:
-
-            typeof cloudData.bankName === "string"
-
-              ? cloudData.bankName
-
-              : localInfo.bankName,
-
-          passbookBank:
-
-            typeof cloudData.passbookBank === "string"
-
-              ? cloudData.passbookBank
-
-              : localInfo.passbookBank,
-
-          branchName:
-
-            typeof cloudData.branchName === "string"
-
-              ? cloudData.branchName
-
-              : localInfo.branchName,
-
-          cspCode:
-
-            typeof cloudData.cspCode === "string"
-
-              ? cloudData.cspCode
-
-              : localInfo.cspCode,
-
-          operatorName:
-
-            typeof cloudData.operatorName === "string"
-
-              ? cloudData.operatorName
-
-              : localInfo.operatorName,
-
-          address:
-
-            typeof cloudData.address === "string"
-
-              ? cloudData.address
-
-              : localInfo.address,
-
-        };
-
-        const cloudLogo =
-
-          typeof cloudData.bankLogo === "string"
-
-            ? cloudData.bankLogo
-
-            : localLogo;
-
-        const cloudApiUrl =
-
-          typeof cloudData.apiUrl === "string"
-
-            ? cloudData.apiUrl.trim()
-
-            : "";
-
-        if (cloudApiUrl) {
-
-          setTenantApiUrl(cloudApiUrl);
-
-        }
-
-
-        if (!cancelled) {
-
-          setBankInfo(cloudInfo);
-
-          if (cloudLogo) {
-
-            setBankLogo(cloudLogo);
-
-          }
-
-        }
-
-        try {
-
-          localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cloudInfo));
-
-          if (cloudLogo) {
-
-            localStorage.setItem(tenantStorageKey("bankSetuBankLogo"), cloudLogo);
-
-          }
-
-        } catch (error) {
-
-          console.error(
-
-            "Cloud settings local cache failed:",
-
-            error
-
-          );
-
-        }
-
-        const migrationPatch: Record<
-
-          string,
-
-          unknown
-
-        > = {};
-
-        if (
-
-          typeof cloudData.bankName !== "string" &&
-
-          localInfo.bankName
-
-        ) {
-
-          migrationPatch.bankName =
-
-            localInfo.bankName;
-
-        }
-
-        if (
-
-          typeof cloudData.passbookBank !== "string" &&
-
-          localInfo.passbookBank
-
-        ) {
-
-          migrationPatch.passbookBank =
-
-            localInfo.passbookBank;
-
-        }
-
-        if (
-
-          typeof cloudData.branchName !== "string" &&
-
-          localInfo.branchName
-
-        ) {
-
-          migrationPatch.branchName =
-
-            localInfo.branchName;
-
-        }
-
-        if (
-
-          typeof cloudData.cspCode !== "string" &&
-
-          localInfo.cspCode
-
-        ) {
-
-          migrationPatch.cspCode =
-
-            localInfo.cspCode;
-
-        }
-
-        if (
-
-          typeof cloudData.operatorName !== "string" &&
-
-          localInfo.operatorName
-
-        ) {
-
-          migrationPatch.operatorName =
-
-            localInfo.operatorName;
-
-        }
-
-        if (
-
-          typeof cloudData.address !== "string" &&
-
-          localInfo.address
-
-        ) {
-
-          migrationPatch.address =
-
-            localInfo.address;
-
-        }
-
-        if (
-
-          typeof cloudData.bankLogo !== "string" &&
-
-          localLogo
-
-        ) {
-
-          migrationPatch.bankLogo =
-
-            localLogo;
-
-        }
-
-        if (
-
-          Object.keys(
-
-            migrationPatch
-
-          ).length > 0
-
-        ) {
-
-          await setDoc(
-
-            settingsRef,
-
-            {
-
-              ...migrationPatch,
-
-              updatedAt:
-
-                serverTimestamp(),
-
-            },
-
-            { merge: true }
-
-          );
-
-        }
-
-      } catch (error) {
-
-        console.error(
-
-          "Bank cloud settings load failed:",
-
-          error
-
-        );
-
-      }
-
-    };
-
-    void loadCloudSettings();
-
-    return () => {
-
-      cancelled = true;
-
-    };
-
-  }, []);
+        localStorage.setItem(tenantStorageKey("bankSetuBankInfo"),JSON.stringify(saved.bankInfo));
+        if(saved.bankLogo) localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),saved.bankLogo);
+        else localStorage.removeItem(tenantStorageKey("bankSetuBankLogo"));
+      } catch { /* Saving Firebase settings does not depend on browser storage. */ }
+    }, error => {
+      window.clearTimeout(timeout); setBankSettingsReady(false);
+      setBankSettingsError("Saved bank settings could not be loaded from Firebase. Please retry.");
+      console.error("Workspace bank settings listener failed:", error);
+    });
+    return () => { window.clearTimeout(timeout); unsubscribe(); };
+  }, [bankSettingsRetry]);
 
   const hasBankInfo =
 
@@ -778,6 +394,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     );
 
   const openBankInfoEditor = () => {
+    if (!canManageBankSettings || !bankSettingsReady) return;
 
     setBankInfoDraft({ ...bankInfo });
 
@@ -839,15 +456,11 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
     try {
 
-      await saveCloudSettings({
-
-        ...cleaned,
-
-      });
+      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned });
 
       setBankInfo(cleaned);
 
-      localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned));
+      try { localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned)); } catch { /* Firebase save already succeeded. */ }
 
       setBankInfoEditOpen(false);
 
@@ -1148,81 +761,21 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   };
 
-  const handleLogoUpload = (
-
-    event: ChangeEvent<HTMLInputElement>
-
-  ) => {
-
-    const file =
-
-      event.target.files?.[0];
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-
-      alert(
-
-        "Please select an image file."
-
-      );
-
-      return;
-
+  const handleLogoUpload = async (event:ChangeEvent<HTMLInputElement>) => {
+    const file=event.target.files?.[0]; event.target.value="";
+    if(!file || !canManageBankSettings || !bankSettingsReady) return;
+    try {
+      const bankLogo=await prepareBankLogo(file);
+      await callBankSetuWorker("/save-workspace-bank-settings", {bankLogo});
+      setBankLogo(bankLogo);
+      try { localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),bankLogo); } catch { /* Firebase save already succeeded. */ }
+    } catch(error) {
+      alert(error instanceof Error ? error.message : "The bank logo could not be saved to Firebase.");
     }
-
-    const reader = new FileReader();
-
-    reader.onload = async () => {
-
-      const result = reader.result;
-
-      if (typeof result !== "string") {
-
-        return;
-
-      }
-
-      try {
-
-        await saveCloudSettings({
-
-          bankLogo: result,
-
-        });
-
-        setBankLogo(result);
-
-        localStorage.setItem(tenantStorageKey("bankSetuBankLogo"), result);
-
-      } catch (error) {
-
-        console.error(
-
-          "Logo cloud save failed:",
-
-          error
-
-        );
-
-        alert(
-
-          "Bank logo could not be saved to Firebase Cloud. Please try again."
-
-        );
-
-      }
-
-    };
-
-    reader.readAsDataURL(file);
-
-    event.target.value = "";
-
   };
 
   const openLogoPicker = () => {
+    if (!canManageBankSettings || !bankSettingsReady) return;
 
     logoInputRef.current?.click();
 
@@ -1861,6 +1414,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
+          {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && (
 
@@ -1876,7 +1430,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
             "customer-entry" && (
 
-            <CustomerEntry bankName={bankInfo.passbookBank} />
+            bankSettingsReady ? <CustomerEntry bankName={bankInfo.passbookBank} /> : null
 
           )}
 
@@ -1892,21 +1446,21 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           )}
 
-          {activePage === "passbook" && (
+          {bankSettingsReady && activePage === "passbook" && (
 
             <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} />
 
           )}
 
-          {activePage === "quick-passbook" && (
+          {bankSettingsReady && activePage === "quick-passbook" && (
             <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
           )}
 
-          {activePage === "bank-formats" && (
+          {bankSettingsReady && activePage === "bank-formats" && (
             <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} bankName={bankInfo.passbookBank} />
           )}
 
-          {activePage === "search" && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
+          {bankSettingsReady && activePage === "search" && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
 
           {activePage === "reports" && (
 

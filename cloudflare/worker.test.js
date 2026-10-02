@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { firestoreDocumentName, bankFormatSelectionError } from "./worker.js";
+import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch } from "./worker.js";
 
 
 test("builds Firestore commit resource names without REST URL prefixes", () => {
@@ -40,7 +40,7 @@ test("rejects an unconfigured website origin", async () => {
 });
 
 test("requires Firebase sign-in before account and tenant setup actions", async () => {
-  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping"]) {
+  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"]) {
     const response = await worker.fetch(new Request(`https://worker.example${path}`, {
       method: "POST",
       headers: { origin: "https://banksetu-app.web.app", "content-type": "application/json" },
@@ -58,4 +58,20 @@ test("bank samples require the currently selected bank and never replace built-i
   for (const bank of ["Assam Gramin Bank", "Assam Gramin Vikas Bank", "AGVB"]) {
     assert.match(bankFormatSelectionError(bank, bank), /built-in/);
   }
+});
+
+test("bank settings are written only to the signed-in administrator's workspace", () => {
+  assert.equal(workspaceBankSettingsPath({uid:"client",profile:{role:"client_admin",tenantId:"workspace-1"}}),"/tenantSettings/workspace-1");
+  assert.equal(workspaceBankSettingsPath({uid:"user",profile:{role:"client_user",tenantId:"workspace-1"}}),"");
+  assert.equal(workspaceBankSettingsPath({uid:"master",profile:{role:"master_owner"}}),"/appSettings/master");
+  assert.equal(workspaceBankSettingsPath({uid:"unassigned",profile:{role:"client_admin"}}),"");
+});
+test("bank settings patches preserve unrelated Drive and template configuration", () => {
+  const bankInfo={bankName:" Bank ",passbookBank:"Assam Gramin Bank",branchName:"Branch",cspCode:"",operatorName:"Operator",address:"Address"};
+  const patch=validateWorkspaceBankPatch({bankInfo,tenantId:"another-workspace",spreadsheetId:"overwrite",bankFormats:{}});
+  assert.equal(patch.bankName,"Bank");assert.deepEqual(patch.bankInfo,{...bankInfo,bankName:"Bank"});
+  assert(!("spreadsheetId" in patch));assert(!("bankFormats" in patch));assert(!("tenantId" in patch));
+  assert.deepEqual(validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,AAAA"}),{bankLogo:"data:image/png;base64,AAAA"});
+  assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"https://untrusted.example/logo"}));
+  assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,"+"A".repeat(150000)}));
 });
