@@ -50,6 +50,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   const [config, setConfig] = useState<SetupConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [googleReady, setGoogleReady] = useState(Boolean(window.google?.accounts?.oauth2));
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [registration, setRegistration] = useState<BankRegistration>(EMPTY_REGISTRATION);
@@ -59,6 +60,12 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
+    // Preload GIS before the click so the OAuth popup stays tied to the user gesture.
+    void loadGoogleIdentity().then(() => {
+      if (active) setGoogleReady(true);
+    }).catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : "Google sign-in could not be loaded.");
+    });
     callBankSetuWorker<SetupConfig>("/get-google-setup", {}).then((loaded) => {
       if (!active) return;
       setConfig(loaded);
@@ -111,7 +118,7 @@ export default function ClientGoogleSetup({ enabled }: { enabled: boolean }) {
         throw new Error("Bank Setu setup is incomplete. Please contact the Master Admin.");
       }
       if (!registrationSaved) throw new Error("Save your bank details before connecting Google Drive.");
-      await loadGoogleIdentity();
+      if (!googleReady || !window.google?.accounts?.oauth2) throw new Error("Google sign-in is still loading. Please try again.");
       accessToken = await requestGoogleToken(config.oauthClientId);
       const profile = await googleApi<{ email?: string }>("https://www.googleapis.com/oauth2/v2/userinfo", accessToken);
       if (!profile.email) throw new Error("Google did not return the connected account email.");
