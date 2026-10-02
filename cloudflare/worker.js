@@ -140,7 +140,21 @@ async function verifyActor(request, env) {
       (String(account.email || "").trim().toLowerCase() !== "banksetu2026@gmail.com" || account.emailVerified !== true)) {
     return { error: json({ error: "This legacy administrator is not the verified Master Admin account." }, 403) };
   }
-  return { uid: account.localId, profile };
+  return {
+    uid: account.localId,
+    profile,
+    email: String(account.email || ""),
+    emailVerified: account.emailVerified === true,
+  };
+}
+
+function isMasterActor(actor) {
+  const role = String(actor.profile?.role || "").toLowerCase();
+  return role === "master_owner" || (
+    role === "admin" &&
+    String(actor.email || "").trim().toLowerCase() === "banksetu2026@gmail.com" &&
+    actor.emailVerified === true
+  );
 }
 
 async function patchUser(env, uid, fields) {
@@ -243,7 +257,7 @@ async function handleMasterOperation(request, env, actor, route) {
   }
 
   if (route === "/save-google-setup") {
-    if (role !== "master_owner") return json({ error: "Only the Master Admin can change Bank Setu Google setup." }, 403);
+    if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can change Bank Setu Google setup." }, 403);
     const body = await request.json().catch(() => ({}));
     const oauthClientId = String(body.oauthClientId || "").trim();
     const apiUrl = String(body.apiUrl || "").trim();
@@ -258,7 +272,7 @@ async function handleMasterOperation(request, env, actor, route) {
   }
 
   if (route === "/create-client") {
-    if (role !== "master_owner") return json({ error: "Only the Master Admin can create Client Admin accounts." }, 403);
+    if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can create Client Admin accounts." }, 403);
     const body = await request.json().catch(() => ({}));
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
@@ -304,7 +318,7 @@ async function handleMasterOperation(request, env, actor, route) {
   }
 
   if (route === "/configure-tenant-data") {
-    if (!["master_owner", "client_admin"].includes(role)) return json({ error: "Administrator access is required." }, 403);
+    if (!isMasterActor(actor) && role !== "client_admin") return json({ error: "Administrator access is required." }, 403);
     const body = await request.json().catch(() => ({}));
     const tenantId = String(body.tenantId || "").trim();
     const spreadsheetId = String(body.spreadsheetId || "").trim();
@@ -319,7 +333,7 @@ async function handleMasterOperation(request, env, actor, route) {
     const setup = decodeFields(setupResponse?.fields || {});
     let apiUrl = String(setup.apiUrl || "");
     let googleEmail = String(body.googleEmail || "").trim().toLowerCase();
-    if (role === "master_owner") apiUrl = String(body.apiUrl || apiUrl).trim();
+    if (isMasterActor(actor)) apiUrl = String(body.apiUrl || apiUrl).trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(apiUrl)) return json({ error: "Finish the Bank Setu Google setup first." }, 409);
     if (role === "client_admin") {
       const config = await getGoogleSetupConfig(env, actor).then((response) => response.json());
