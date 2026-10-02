@@ -1815,7 +1815,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
                       setAdvancedAdminOpen(true);
                     }}
                   >
-                    🛡️ Advanced Administrator Control
+                    {accountRole === "client_admin" ? "⚙️ Workspace Settings" : "＋ Create Client Admin"}
                   </button>
                 )}
 
@@ -2435,9 +2435,9 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
       {advancedAdminOpen && userRole === "admin" && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+          <div style={{ ...styles.themeModal, width: accountRole === "client_admin" ? "min(1100px, 94vw)" : "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
-              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>Advanced Administrator Control</h2></div>
+              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Create Client Admin"}</h2></div>
               <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
             </div>
             <AdvancedAdmin

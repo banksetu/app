@@ -35,7 +35,12 @@ type UpdateManifest = {
 
 type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
 
-function Settings({ allowConnectionSettings = false, isMasterOwner = false, isClientAdmin = false }: AdvancedAdminProps) {
+function Settings(props: AdvancedAdminProps) {
+  if (props.isMasterOwner) return <MasterClients enabled />;
+  return <ConnectionSettings {...props} />;
+}
+
+function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = false }: AdvancedAdminProps) {
 
   const [apiUrl, setApiUrl] = useState("");
 
@@ -1139,7 +1144,6 @@ function Settings({ allowConnectionSettings = false, isMasterOwner = false, isCl
 
       </section>}
 
-      <MasterClients enabled={isMasterOwner} />
 
       <section
       style={{
