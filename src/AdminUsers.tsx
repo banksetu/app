@@ -242,7 +242,9 @@ function AdminUsers({ embedded = false }: Props) {
           action,
         });
       }
-      setMessage(`${user.email || "User"} ${action} successful.`);
+      setMessage(action === "delete" && targetRole === "client_admin"
+        ? `${user.email || "Client Admin"} and all workspace login accounts were removed. Their Google Drive folder and Sheet were retained.`
+        : `${user.email || "User"} ${action} successful.`);
       await loadUsers();
     } catch (error: unknown) {
       const err = error as { code?: string; message?: string };
