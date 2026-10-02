@@ -149,11 +149,17 @@ async function verifyActor(request, env) {
       if (error.status === 404) return null;
       throw error;
     });
-    workspaceStatus = String(decodeFields(tenant?.fields || {}).status || "unavailable");
-    // Let blocked clients read setup status so the UI can explain how to restore
-    // access. All write and customer-data routes remain blocked.
+    // Repair an orphaned, approved Client Admin's missing tenant record during
+    // setup. A normal data/write request can never create or reopen a tenant.
     const readOnlySetupCheck = new URL(request.url).pathname === "/get-google-setup";
-    if (!tenant || (workspaceStatus !== "active" && !readOnlySetupCheck)) {
+    let verifiedTenant = tenant;
+    if (!verifiedTenant && readOnlySetupCheck && role === "client_admin") {
+      verifiedTenant = await recoverMissingClientTenant(env, account.localId, profile, tenantId);
+    }
+    workspaceStatus = String(decodeFields(verifiedTenant?.fields || {}).status || "unavailable");
+    // Let clients read setup status while blocked; all write and customer-data
+    // routes remain blocked until the Master Admin restores the workspace.
+    if (!verifiedTenant || (workspaceStatus !== "active" && !readOnlySetupCheck)) {
       return { error: json({ error: "This client workspace is blocked or unavailable." }, 403) };
     }
   }
@@ -574,6 +580,27 @@ async function listWorkspaceUsers(env, tenantId) {
   }));
 }
 
+async function recoverMissingClientTenant(env, uid, profile, tenantId) {
+  const users = await listWorkspaceUsers(env, tenantId);
+  const admins = users.filter((user) => String(user.role || "").toLowerCase() === "client_admin");
+  const unexpected = users.filter((user) => !["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
+  if (admins.length !== 1 || admins[0]?.uid !== uid || unexpected.length) return null;
+  const settingsResult = await firestoreRequest(env, `/tenantSettings/${encodeURIComponent(tenantId)}`).catch((error) => {
+    if (error.status === 404) return null;
+    throw error;
+  });
+  const settings = decodeFields(settingsResult?.fields || {});
+  if ((settings.spreadsheetId || settings.photoFolderId) && settings.workspaceOwnerUid !== uid) return null;
+  const now = new Date().toISOString();
+  await putDocument(env, `/tenants/${encodeURIComponent(tenantId)}`, {
+    tenantId, clientId: tenantId, ownerUid: uid,
+    bankName: String(profile.bankName || settings.bankName || ""),
+    maxUsers: 2, clientUserCount: users.filter((user) => String(user.role || "").toLowerCase() === "client_user").length,
+    status: "active", recoveredAt: now, recoveredFor: "approved_client_admin_setup",
+  });
+  return { fields: encodeFields({ tenantId, ownerUid: uid, status: "active" }) };
+}
+
 async function verifyOrRepairWorkspaceOwner(env, tenantId, tenantData, clientAdminUid) {
   const users = await listWorkspaceUsers(env, tenantId);
   const admins = users.filter((user) => String(user.role || "").toLowerCase() === "client_admin");
@@ -646,7 +673,32 @@ async function deleteClientWorkspace(env, actor, uid) {
     if (error.status === 404) return null;
     throw error;
   });
-  if (!tenantDocument) return json({ error: "The Client Admin workspace was not found." }, 409);
+  if (!tenantDocument) {
+    const orphanUsers = await listWorkspaceUsers(env, tenantId);
+    const admins = orphanUsers.filter((user) => String(user.role || "").toLowerCase() === "client_admin");
+    const unexpected = orphanUsers.filter((user) => !["client_admin", "client_user"].includes(String(user.role || "").toLowerCase()));
+    if (admins.length !== 1 || admins[0]?.uid !== uid || unexpected.length) {
+      return json({ error: "The workspace record is missing and its users cannot be safely identified. No accounts were changed." }, 409);
+    }
+    // The tenant document is already missing. Remove only its sole Client
+    // Admin and assigned client users, retaining any Google Drive files.
+    await putDocument(env, `/tenantSettings/${encodeURIComponent(tenantId)}`, {
+      tenantId, accessRevoked: true, offboardedAt: new Date().toISOString(), offboardedBy: actor.uid,
+    });
+    for (const user of orphanUsers) {
+      await authUpdate(env, user.uid, { disableUser: true });
+      await patchUser(env, user.uid, {
+        status: "blocked", subscriptionStatus: "inactive", updatedBy: actor.uid, updatedAt: new Date().toISOString(),
+      });
+    }
+    for (const user of orphanUsers) {
+      await authDelete(env, user.uid);
+      await firestoreRequest(env, `/users/${encodeURIComponent(user.uid)}`, { method: "DELETE" }).catch((error) => {
+        if (error.status !== 404) throw error;
+      });
+    }
+    return json({ success: true, message: "Orphaned Client Admin account and workspace access removed. Any Google Drive files were kept." });
+  }
 
   const ownership = await verifyOrRepairWorkspaceOwner(env, tenantId, decodeFields(tenantDocument.fields || {}), uid);
   if (!ownership.ok) return json({ error: `${ownership.error} No accounts were changed.` }, 409);
