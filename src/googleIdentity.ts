@@ -44,7 +44,7 @@ export function requestGoogleToken(clientId: string, prompt = "select_account co
   return new Promise((resolve, reject) => {
     const tokenClient = oauth2.initTokenClient({
       client_id: clientId,
-      scope: "https://www.googleapis.com/auth/drive.file email",
+      scope: "openid email https://www.googleapis.com/auth/drive.file",
       callback: (result) => {
         if (result.error || !result.access_token) {
           reject(new Error(result.error_description || result.error || "Google authorization was not completed."));
