@@ -117,9 +117,9 @@ function App() {
     removeTenantApiUrl();
     try {
       const setup = await callBankSetuWorker<{
-        apiUrl?: string; spreadsheetId?: string; photoFolderId?: string; dataApiReady?: boolean;
+        apiUrl?: string; spreadsheetId?: string; photoFolderId?: string; dataApiReady?: boolean; workspaceStatus?: string;
       }>("/get-google-setup", {});
-      if (setup.dataApiReady && setup.apiUrl && setup.spreadsheetId && setup.photoFolderId) {
+      if (setup.workspaceStatus === "active" && setup.dataApiReady && setup.apiUrl && setup.spreadsheetId && setup.photoFolderId) {
         setTenantApiUrl(setup.apiUrl);
         setTenantWorkspaceReady(true);
       }
