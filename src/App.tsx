@@ -365,7 +365,7 @@ function App() {
   };
 
   const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
-  if (publicPath === "about" || publicPath === "privacy-policy") {
+  if (publicPath === "about" || publicPath === "privacy-policy" || publicPath === "terms") {
     return <PublicPages />;
   }
 
@@ -519,6 +519,8 @@ function App() {
             <a href="/about" style={{ color: "inherit", textDecoration: "underline" }}>About</a>
             <span className="footer-separator">•</span>
             <a href="/privacy-policy" style={{ color: "inherit", textDecoration: "underline" }}>Privacy Policy</a>
+            <span className="footer-separator">•</span>
+            <a href="/terms" style={{ color: "inherit", textDecoration: "underline" }}>Terms</a>
           </div>
         </div>
       </section>

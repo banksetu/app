@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker from "./worker.js";
+import worker, { firestoreDocumentName } from "./worker.js";
+
+
+test("builds Firestore commit resource names without REST URL prefixes", () => {
+  assert.equal(
+    firestoreDocumentName({ FIREBASE_PROJECT_ID: "banksetu-69e2f" }, "/tenants/client-123"),
+    "projects/banksetu-69e2f/databases/(default)/documents/tenants/client-123",
+  );
+});
 
 const env = {
   ALLOWED_ORIGINS: "https://banksetu-app.web.app",

@@ -32,7 +32,7 @@ function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: s
 function PageFooter() {
   return <footer style={{ borderTop: "1px solid #ececf3", marginTop: 36, paddingTop: 20, color: "#77798d", fontSize: 13 }}>
     <p>Bank Setu · Effective date: October 2, 2026</p>
-    <p><a href="/about" style={linkStyle}>About Bank Setu</a> · <a href="/privacy-policy" style={linkStyle}>Privacy Policy</a> · <a href="mailto:banksetu2026@gmail.com" style={linkStyle}>Contact support</a></p>
+    <p><a href="/about" style={linkStyle}>About Bank Setu</a> · <a href="/privacy-policy" style={linkStyle}>Privacy Policy</a> · <a href="/terms" style={linkStyle}>Terms &amp; Conditions</a> · <a href="mailto:banksetu2026@gmail.com" style={linkStyle}>Contact support</a></p>
   </footer>;
 }
 
@@ -136,7 +136,66 @@ function PrivacyPolicyPage() {
   </article></main>;
 }
 
+function TermsPage() {
+  useEffect(() => {
+    document.title = "Terms & Conditions | Bank Setu";
+    let description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!description) {
+      description = document.createElement("meta");
+      description.name = "description";
+      document.head.appendChild(description);
+    }
+    description.content = "Terms and Conditions for using the Bank Setu administrator workspace.";
+  }, []);
+
+  return <main style={pageStyle}><article style={cardStyle}>
+    <PageHeader eyebrow="BANK SETU · LEGAL" title="Terms & Conditions" description="The terms for accessing and using the Bank Setu service." />
+    <p><strong>Effective date:</strong> October 2, 2026</p>
+    <p>These Terms &amp; Conditions apply to the Bank Setu web application and related services. By accessing or using Bank Setu, you agree to these Terms. If you do not agree, do not use the service.</p>
+
+    <h2>1. The service and accounts</h2>
+    <p>Bank Setu provides approved Master Admins, Client Admins, and authorized client users with tools for managing client workspaces, customer records, searches, dashboards, reports, passbooks, and related documents. Accounts may be created or approved by the Bank Setu administrator. You must provide accurate account information, keep your sign-in credentials secure, and promptly report suspected account misuse.</p>
+
+    <h2>2. Client workspaces and Google services</h2>
+    <p>A Client Admin may connect a Google Account to create and operate a separate Google Drive folder and Sheet for that client workspace. You authorize the requested Google access and the workspace sharing described during setup and in the <a href="/privacy-policy" style={linkStyle}>Privacy Policy</a>. Google services are also subject to Google’s own terms. Removing required Google access or folder sharing may prevent workspace features from working.</p>
+
+    <h2>3. Customer information and permissions</h2>
+    <p>Client Admins and their authorized users are responsible for the customer information and files they enter, including ensuring they have a lawful basis and any required notices, permissions, or consents. They must keep information accurate, use it only for legitimate authorized work, restrict workspace access to appropriate staff, and follow applicable banking, privacy, and records requirements. Do not enter data that you are not authorized to process.</p>
+
+    <h2>4. Acceptable use</h2>
+    <p>You must not use Bank Setu to break the law, impersonate another person, access another client’s workspace, interfere with the service, bypass security controls, distribute malware, or upload content you do not have the right to use. You must not attempt to discover or access data outside your assigned role and workspace.</p>
+
+    <h2>5. Data, deletion, and account closure</h2>
+    <p>Client workspace data is stored in the connected Google Drive folder and Sheet as described in the Privacy Policy. Client Admins manage user access and customer records in their workspace. Removing a Bank Setu account may revoke service access but does not itself delete client-owned files from Google Drive; the file owner must delete those files. Activity or security records may be retained where needed to operate and protect the service or comply with law.</p>
+
+    <h2>6. Availability and changes</h2>
+    <p>We work to keep Bank Setu available and reliable, but do not guarantee uninterrupted or error-free operation. Features may change, be suspended, or be discontinued to maintain or improve the service, address security issues, or comply with legal requirements. We may update these Terms and will publish the current version and effective date on this page.</p>
+
+    <h2>7. Service and third-party disclaimers</h2>
+    <p>To the extent permitted by applicable law, Bank Setu is provided on an “as available” basis. Bank Setu does not provide banking, legal, tax, or regulatory advice, and does not guarantee the accuracy of information entered by users, the availability of Google services, or suitability of generated documents for a particular institution. Users must review records and documents before relying on them.</p>
+
+    <h2>8. Liability</h2>
+    <p>To the extent permitted by applicable law, Bank Setu and its operators are not liable for indirect, incidental, special, or consequential loss arising from use of or inability to use the service, third-party service interruptions, or information entered or actions taken by users. Nothing in these Terms excludes liability that cannot lawfully be excluded.</p>
+
+    <h2>9. Suspension and contact</h2>
+    <p>Access may be suspended or terminated if an account violates these Terms, creates a security risk, or must be disabled for legal or operational reasons. For questions about these Terms, contact <a href="mailto:banksetu2026@gmail.com" style={linkStyle}>banksetu2026@gmail.com</a>.</p>
+
+    <hr style={{ border: 0, borderTop: "1px solid #ececf3", margin: "34px 0" }} />
+    <h2>हिन्दी में उपयोग की शर्तें</h2>
+    <p><strong>प्रभावी तारीख:</strong> 2 अक्टूबर 2026</p>
+    <p>Bank Setu का उपयोग करके आप इन शर्तों से सहमत होते हैं। सहमत न होने पर सेवा का उपयोग न करें। Bank Setu स्वीकृत Master Admin, Client Admin और अधिकृत client users को अलग workspace में ग्राहक रिकॉर्ड, खोज, dashboard, report और दस्तावेज़ संबंधी सुविधाएँ देता है।</p>
+    <p><strong>खाता और सुरक्षा:</strong> सही जानकारी दें, अपने sign-in विवरण सुरक्षित रखें और अनधिकृत उपयोग का संदेह होने पर तुरंत सूचित करें। Workspace तक पहुँच केवल अपनी भूमिका में करें। किसी दूसरे client का डेटा देखने या सुरक्षा व्यवस्था को bypass करने का प्रयास न करें।</p>
+    <p><strong>Google और ग्राहक डेटा:</strong> Client Admin अपना Google Account जोड़कर अपना Drive folder और Sheet बनाता है। Google की अनुमति और workspace sharing का उपयोग Privacy Policy के अनुसार होगा। Client Admin और उसके अधिकृत कर्मचारी यह सुनिश्चित करने के जिम्मेदार हैं कि वे ग्राहक जानकारी दर्ज करने और उपयोग करने के लिए अधिकृत हैं और आवश्यक सूचना/सहमति ली गई है। ग्राहक जानकारी सही रखें और केवल वैध कार्य के लिए उपयोग करें।</p>
+    <p><strong>उचित उपयोग:</strong> सेवा का उपयोग कानून तोड़ने, किसी की पहचान का गलत उपयोग करने, अनधिकृत डेटा देखने, malware फैलाने या सेवा में बाधा डालने के लिए न करें।</p>
+    <p><strong>डेटा और सेवा:</strong> Bank Setu account हटाने से client के Drive की Sheet और files अपने-आप delete नहीं होतीं; owner उन्हें Google Drive से हटा सकता है। सेवा की निरंतर उपलब्धता या user द्वारा दर्ज डेटा की शुद्धता की गारंटी नहीं है। तैयार passbook/document पर भरोसा करने से पहले उसे जाँचें। Bank Setu बैंकिंग, कानूनी, कर या नियामक सलाह नहीं देता।</p>
+    <p>सुरक्षा, संचालन या कानून के कारण access रोका जा सकता है और सुविधाएँ बदल सकती हैं। इन शर्तों के प्रश्न के लिए <a href="mailto:banksetu2026@gmail.com" style={linkStyle}>banksetu2026@gmail.com</a> पर संपर्क करें। लागू कानून के अंतर्गत जिन दायित्वों को हटाया नहीं जा सकता, वे इन शर्तों से सीमित नहीं होते।</p>
+    <PageFooter />
+  </article></main>;
+}
+
 export default function PublicPages() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  return path === "/privacy-policy" ? <PrivacyPolicyPage /> : <AboutPage />;
+  if (path === "/privacy-policy") return <PrivacyPolicyPage />;
+  if (path === "/terms") return <TermsPage />;
+  return <AboutPage />;
 }

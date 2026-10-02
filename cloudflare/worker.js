@@ -94,6 +94,10 @@ function firestoreBase(env) {
   return `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 }
 
+export function firestoreDocumentName(env, path) {
+  return `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents${path}`;
+}
+
 async function firestoreRequest(env, path, options = {}) {
   const token = await serviceAccessToken(env);
   const response = await fetch(`${firestoreBase(env)}${path}`, {
@@ -339,13 +343,12 @@ async function handleMasterOperation(request, env, actor, route) {
     try { newUid = await createFirebaseAccount(env, email, password, name); }
     catch (error) { return json({ error: error.status === 400 ? "An account already uses this email." : "Could not create the Client Admin account." }, 409); }
     const tenantId = crypto.randomUUID().replaceAll("-", "");
-    const base = firestoreBase(env);
     try {
       const now = new Date().toISOString();
       const docs = [
-        [`${base}/tenants/${tenantId}`, { tenantId, clientId: tenantId, ownerUid: newUid, bankName, maxUsers: 2, clientUserCount: 0, status: "active", createdAt: now, createdBy: actor.uid }],
-        [`${base}/tenantSettings/${tenantId}`, { tenantId, bankName, apiUrl: String(setupData.apiUrl), spreadsheetId: "", photoFolderId: "", bankInfo: {}, bankLogo: "", updatedAt: now, updatedBy: actor.uid }],
-        [`${base}/users/${newUid}`, { name, email, role: "client_admin", tenantId, clientId: tenantId, parentClientUid: actor.uid, bankName, maxUsers: 2, status: "approved", subscriptionStatus: "active", createdAt: now, createdBy: actor.uid }],
+        [firestoreDocumentName(env, `/tenants/${tenantId}`), { tenantId, clientId: tenantId, ownerUid: newUid, bankName, maxUsers: 2, clientUserCount: 0, status: "active", createdAt: now, createdBy: actor.uid }],
+        [firestoreDocumentName(env, `/tenantSettings/${tenantId}`), { tenantId, bankName, apiUrl: String(setupData.apiUrl), spreadsheetId: "", photoFolderId: "", bankInfo: {}, bankLogo: "", updatedAt: now, updatedBy: actor.uid }],
+        [firestoreDocumentName(env, `/users/${newUid}`), { name, email, role: "client_admin", tenantId, clientId: tenantId, parentClientUid: actor.uid, bankName, maxUsers: 2, status: "approved", subscriptionStatus: "active", createdAt: now, createdBy: actor.uid }],
       ];
       await firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes: docs.map(([docName, fields]) => ({ update: { name: docName, fields: encodeFields(fields) }, currentDocument: { exists: false } })) }) });
       return json({ success: true, uid: newUid, tenantId, role: "client_admin" });
@@ -504,8 +507,8 @@ async function createClientUser(request, env, actor) {
   }
   const newUid = account.localId;
   try {
-    const tenantName = `${firestoreBase(env)}/tenants/${encodeURIComponent(tenantId)}`;
-    const userName = `${firestoreBase(env)}/users/${encodeURIComponent(newUid)}`;
+    const tenantName = firestoreDocumentName(env, `/tenants/${encodeURIComponent(tenantId)}`);
+    const userName = firestoreDocumentName(env, `/users/${encodeURIComponent(newUid)}`);
     const profile = {
       name,
       email,
