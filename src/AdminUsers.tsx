@@ -55,6 +55,12 @@ function AdminUsers({ embedded = false }: Props) {
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
+  const currentAuthUser = auth.currentUser;
+  const isMasterAdmin = currentRole === "master_owner" || (
+    currentRole === "admin" &&
+    currentAuthUser?.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+    currentAuthUser.emailVerified
+  );
 
   const loadUsers = useCallback(async () => {
     try {
@@ -128,7 +134,7 @@ function AdminUsers({ embedded = false }: Props) {
   }, [open, embedded, loadUsers]);
 
   const counts = useMemo(() => {
-    const isMaster = ["admin", "master_owner"].includes(currentRole.toLowerCase());
+    const isMaster = isMasterAdmin;
     // The Master Admin needs totals for the complete client tree. A Client
     // Admin sees only the two operational users in their own tenant, not their
     // own administrator account.
@@ -154,7 +160,7 @@ function AdminUsers({ embedded = false }: Props) {
         ? users.filter((u) => String(u.role || "").toLowerCase() === "client_admin").length
         : 0,
     };
-  }, [currentRole, users]);
+  }, [currentRole, isMasterAdmin, users]);
 
   const visibleUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -203,9 +209,9 @@ function AdminUsers({ embedded = false }: Props) {
     }
 
     const targetRole = String(user.role || "user").toLowerCase();
-    const canManageClientAdmin = targetRole === "client_admin" && currentRole === "master_owner";
+    const canManageClientAdmin = targetRole === "client_admin" && isMasterAdmin;
     const canManageRegularUser = !["admin", "master_owner"].includes(targetRole) &&
-      (targetRole !== "client_admin" || currentRole === "master_owner");
+      (targetRole !== "client_admin" || isMasterAdmin);
     if (!canManageClientAdmin && !canManageRegularUser) {
       setError(
         "Administrator accounts cannot be changed from User Management."
@@ -326,7 +332,7 @@ function AdminUsers({ embedded = false }: Props) {
           <span>Denied</span>
         </div>
 
-        {(currentRole === "admin" || currentRole === "master_owner") && (
+        {isMasterAdmin && (
           <div>
             <strong>{counts.clientAdmins}</strong>
             <span>Client Admins</span>
@@ -338,7 +344,7 @@ function AdminUsers({ embedded = false }: Props) {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={currentRole === "master_owner" ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
+          placeholder={isMasterAdmin ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
         />
 
         <button
@@ -377,7 +383,7 @@ function AdminUsers({ embedded = false }: Props) {
             const previousGroupId = index > 0
               ? String(orderedVisibleUsers[index - 1].tenantId || "unassigned")
               : "";
-            const isNewClientGroup = currentRole === "master_owner" && groupId !== previousGroupId;
+            const isNewClientGroup = isMasterAdmin && groupId !== previousGroupId;
             const clientAdmin = groupId === "unassigned" ? undefined : users.find((candidate) =>
               candidate.tenantId === groupId && String(candidate.role || "").toLowerCase() === "client_admin"
             );
@@ -393,7 +399,7 @@ function AdminUsers({ embedded = false }: Props) {
             const role = String(user.role || "user").toLowerCase();
             const isAdmin = ["admin", "master_owner", "client_admin"].includes(role);
             const canManage = !["admin", "master_owner"].includes(role) &&
-              (role !== "client_admin" || currentRole === "master_owner") &&
+              (role !== "client_admin" || isMasterAdmin) &&
               (currentRole !== "client_admin" || role === "client_user");
 
             return (
