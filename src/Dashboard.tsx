@@ -36,6 +36,7 @@ import CustomerEntry from "./CustomerEntry";
 
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
+import MasterClients from "./MasterClients";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 import BankFormats from "./BankFormats";
 
@@ -298,6 +299,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
 
   const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
+  const [clientCreateOpen, setClientCreateOpen] = useState(false);
 
   const [customDashboardColor, setCustomDashboardColor] = useState(() =>
     localStorage.getItem(tenantStorageKey("bankSetuCustomDashboardColor")) || "#123b4a"
@@ -1806,6 +1808,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
 
 
+                {userRole === "admin" && accountRole !== "client_admin" && (
+                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientCreateOpen(true); }}>
+                    ＋ Create Client Admin
+                  </button>
+                )}
+
                 {userRole === "admin" && (
                   <button
                     type="button"
@@ -1815,7 +1823,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
                       setAdvancedAdminOpen(true);
                     }}
                   >
-                    {accountRole === "client_admin" ? "⚙️ Workspace Settings" : "＋ Create Client Admin"}
+                    {accountRole === "client_admin" ? "⚙️ Workspace Settings" : "🛡️ Advanced Administrator Control"}
                   </button>
                 )}
 
@@ -2433,11 +2441,23 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         </div>
       )}
 
+      {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setClientCreateOpen(false); }}>
+          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Create Client Admin</h2>
+              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => setClientCreateOpen(false)}>×</button>
+            </div>
+            <MasterClients enabled />
+          </div>
+        </div>
+      )}
+
       {advancedAdminOpen && userRole === "admin" && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: accountRole === "client_admin" ? "min(1100px, 94vw)" : "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+          <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
-              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Create Client Admin"}</h2></div>
+              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
               <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
             </div>
             <AdvancedAdmin

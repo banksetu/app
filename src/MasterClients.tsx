@@ -23,6 +23,7 @@ export default function MasterClients({ enabled }: Props) {
       await callBankSetuWorker("/create-client", {
         name: name.trim(), email: email.trim(), password, bankName: bankName.trim(),
       });
+      window.dispatchEvent(new Event("banksetu-client-created"));
       setMessage("Client Admin created successfully. They can sign in and connect their Google Account.");
       setName("");
       setEmail("");

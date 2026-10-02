@@ -72,7 +72,7 @@ function AdminUsers({ embedded = false }: Props) {
       if (!currentUser) throw new Error("Please sign in again.");
       const profileSnapshot = await getDoc(doc(db, "users", currentUser.uid));
       const currentProfile = profileSnapshot.data();
-      setCurrentRole(String(currentProfile?.role || ""));
+      setCurrentRole(String(currentProfile?.role || "").toLowerCase());
       const usersRef = collection(db, "users");
       const usersQuery = currentProfile?.role === "client_admin"
         ? currentProfile.tenantId
@@ -89,6 +89,11 @@ function AdminUsers({ embedded = false }: Props) {
       if (masterRole === "master_owner" || isVerifiedLegacyOwner) {
         const tenants = await getDocs(collection(db, "tenants"));
         tenants.docs.forEach((tenant) => tenantStatuses.set(tenant.id, String(tenant.data().status || "unknown")));
+      }
+
+      if (masterRole === "client_admin" && currentProfile?.tenantId) {
+        const tenant = await getDoc(doc(db, "tenants", String(currentProfile.tenantId)));
+        tenantStatuses.set(String(currentProfile.tenantId), String(tenant.data()?.status || "not-found"));
       }
 
       setUsers(
@@ -139,7 +144,9 @@ function AdminUsers({ embedded = false }: Props) {
   useEffect(() => {
     if (open || embedded) {
       const timer = window.setTimeout(() => void loadUsers(), 0);
-      return () => window.clearTimeout(timer);
+      const refresh = () => void loadUsers();
+      window.addEventListener("banksetu-client-created", refresh);
+      return () => { window.clearTimeout(timer); window.removeEventListener("banksetu-client-created", refresh); };
     }
     return undefined;
   }, [open, embedded, loadUsers]);
@@ -164,6 +171,7 @@ function AdminUsers({ embedded = false }: Props) {
 
     return {
       total: countedUsers.length,
+      active: countedUsers.filter((user) => String(user.status || "").toLowerCase() === "approved" && String(user.subscriptionStatus || "").toLowerCase() === "active" && !user.disabled && (!user.tenantStatus || user.tenantStatus === "active")).length,
       pending: countStatus("pending"),
       approved: countStatus("approved"),
       denied: countStatus("denied"),
@@ -205,6 +213,20 @@ function AdminUsers({ embedded = false }: Props) {
     return (roleOrder[leftRole] ?? 2) - (roleOrder[rightRole] ?? 2) ||
       String(left.email || "").localeCompare(String(right.email || ""));
   }), [visibleUsers]);
+
+  const workspaceGroups = useMemo(() => {
+    const groups = new Map<string, ManagedUser[]>();
+    for (const user of users) {
+      if (["admin", "master_owner"].includes(String(user.role || "").toLowerCase())) continue;
+      const id = user.tenantId || `unassigned:${user.uid}`;
+      groups.set(id, [...(groups.get(id) || []), user]);
+    }
+    const matches = new Set(visibleUsers.map((user) => user.uid));
+    return [...groups.entries()]
+      .filter(([, members]) => members.some((user) => matches.has(user.uid)))
+      .map(([id, members]) => ({ id, members }))
+      .sort((left, right) => String(left.members.find((user) => user.role === "client_admin")?.bankName || "").localeCompare(String(right.members.find((user) => user.role === "client_admin")?.bankName || "")));
+  }, [users, visibleUsers]);
 
   const runAction = async (
     user: ManagedUser,
@@ -279,159 +301,21 @@ function AdminUsers({ embedded = false }: Props) {
     }
   };
 
-  const panel = (
-    <section
-      className={
-        embedded
-          ? "admin-users-panel admin-users-embedded"
-          : "admin-users-panel"
-      }
-    >
-      <header className="admin-users-header">
-        <div>
-          <span className="admin-users-kicker">
-            APPLICATION PERMISSION
-          </span>
+  const isActiveUser = (user: ManagedUser) =>
+    String(user.status || "").toLowerCase() === "approved" &&
+    String(user.subscriptionStatus || "").toLowerCase() === "active" &&
+    !user.disabled && (!user.tenantStatus || user.tenantStatus === "active");
 
-          <h2>User Management</h2>
-
-          <p>
-            {currentRole === "client_admin"
-              ? "Manage the two users in your workspace. You can approve, deny, block or unblock their access."
-              : "Search and manage client workspaces, Client Admins, and their users."}
-          </p>
-        </div>
-
-        {!embedded && (
-          <button
-            type="button"
-            className="admin-users-close"
-            onClick={() => setOpen(false)}
-          >
-            ×
-          </button>
-        )}
-      </header>
-
-      {currentRole === "client_admin" && (
-        <form onSubmit={(event) => void createClientUser(event)} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, padding: "14px 0" }}>
-          <input required aria-label="Client user name" placeholder="User name" value={newUserName} onChange={(event) => setNewUserName(event.target.value)} />
-          <input required type="email" aria-label="Client user email" placeholder="User email" value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} />
-          <input required type="password" minLength={8} aria-label="Client user password" placeholder="Temporary password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} />
-          <button type="submit" disabled={busyUid === "create-client-user"}>
-            {busyUid === "create-client-user" ? "Creating…" : "Add Client User"}
-          </button>
-        </form>
-      )}
-
-      <div className="admin-user-stats">
-        <div>
-          <strong>{counts.total}</strong>
-          <span>Total Users</span>
-        </div>
-
-        <div>
-          <strong>{counts.pending}</strong>
-          <span>Pending</span>
-        </div>
-
-        <div>
-          <strong>{counts.approved}</strong>
-          <span>Approved</span>
-        </div>
-
-        <div>
-          <strong>{counts.denied}</strong>
-          <span>Denied</span>
-        </div>
-
-        {isMasterAdmin && (
-          <div>
-            <strong>{counts.clientAdmins}</strong>
-            <span>Client Admins</span>
-          </div>
-        )}
-      </div>
-
-      <div className="admin-users-toolbar">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={isMasterAdmin ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
-        />
-
-        <button
-          type="button"
-          onClick={() => void loadUsers()}
-          disabled={loading}
-        >
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
-      {message && (
-        <div className="admin-users-message success">
-          ✓ {message}
-        </div>
-      )}
-
-      {error && (
-        <div className="admin-users-message error">
-          ! {error}
-        </div>
-      )}
-
-      <div className="admin-users-list">
-        {loading && users.length === 0 ? (
-          <div className="admin-users-empty">
-            Loading users...
-          </div>
-        ) : visibleUsers.length === 0 ? (
-          <div className="admin-users-empty">
-            No users found.
-          </div>
-        ) : (
-          orderedVisibleUsers.map((user, index) => {
-            const groupId = String(user.tenantId || "unassigned");
-            const previousGroupId = index > 0
-              ? String(orderedVisibleUsers[index - 1].tenantId || "unassigned")
-              : "";
-            const isNewClientGroup = isMasterAdmin && groupId !== previousGroupId;
-            const clientAdmin = groupId === "unassigned" ? undefined : users.find((candidate) =>
-              candidate.tenantId === groupId && String(candidate.role || "").toLowerCase() === "client_admin"
-            );
-            const groupUsers = users.filter((candidate) =>
-              candidate.tenantId === user.tenantId && String(candidate.role || "").toLowerCase() === "client_user"
-            );
-            const status = String(
-              user.status || "pending"
-            ).toLowerCase();
-
-            const isBusy = busyUid === user.uid;
-
-            const role = String(user.role || "user").toLowerCase();
-            const isAdmin = ["admin", "master_owner", "client_admin"].includes(role);
-            const canManage = !["admin", "master_owner"].includes(role) &&
-              (role !== "client_admin" || isMasterAdmin) &&
-              (currentRole !== "client_admin" || role === "client_user");
-
-            return (
-              <div key={user.uid}>
-              {isNewClientGroup && (
-                <div className="admin-user-group-heading">
-                  <div>
-                    <strong>{groupId === "unassigned" ? "Legacy / unassigned accounts" : (user.bankName || clientAdmin?.bankName || "Client workspace")}</strong>
-                    <small>{groupId === "unassigned" ? "Accounts without a tenant" : `Workspace: ${groupId}`}</small>
-                  </div>
-                  {clientAdmin && <div className="admin-user-group-owner">
-                    <span>Client Admin</span>
-                    <strong>{clientAdmin.name || clientAdmin.email}</strong>
-                    <small>{clientAdmin.email} · {String(clientAdmin.status || "unknown")}</small>
-                    <small>{groupUsers.length}/2 client users</small>
-                  </div>}
-                </div>
-              )}
-              <article className="admin-user-card">
+  const renderUserCard = (user: ManagedUser) => {
+    const status = String(user.status || "pending").toLowerCase();
+    const isBusy = busyUid === user.uid;
+    const role = String(user.role || "user").toLowerCase();
+    const isAdmin = ["admin", "master_owner", "client_admin"].includes(role);
+    const isActive = isActiveUser(user);
+    const canManage = !["admin", "master_owner"].includes(role) &&
+      (role !== "client_admin" || isMasterAdmin) &&
+      (currentRole !== "client_admin" || role === "client_user");
+    return (<article className="admin-user-card" key={user.uid}>
                 <div className="admin-user-main">
                   <div className="admin-user-avatar">
                     {(user.email || "U")
@@ -441,39 +325,17 @@ function AdminUsers({ embedded = false }: Props) {
 
                   <div className="admin-user-info">
                     <strong>
-                      {user.name ||
-                        user.email ||
-                        "Bank Setu User"}
+                      {user.name && !/^role\s/i.test(user.name) ? user.name : user.email || "Client User"}
                     </strong>
 
-                    {user.name && (
-                      <span>{user.email}</span>
-                    )}
-
-                    <small>{user.uid}</small>
+                    <span>{user.email}</span>
                   </div>
                 </div>
 
                 <div className="admin-user-meta">
-                  <span
-                    className={`admin-user-status status-${status}`}
-                  >
-                    {status}
-                  </span>
-
-                  <span>
-                    {role === "master_owner" ? "Master Admin" :
-                      role === "client_admin" ? "Client Admin" :
-                        role === "client_user" ? "Client User" :
-                          role === "admin" ? "Admin" : "User"}
-                  </span>
-                  {user.tenantId && <span>{user.bankName || user.tenantId}</span>}
-                  {role === "client_admin" && user.tenantStatus && <span>Workspace: {user.tenantStatus}</span>}
-
-                  <span>
-                    {user.subscriptionStatus ||
-                      "inactive"}
-                  </span>
+                  <span className={`admin-user-status status-${status}`}>{isActive ? "Active" : status}</span>
+                  <span>{role === "client_admin" ? "Client Admin" : "Client User"}</span>
+                  {role === "client_admin" && user.tenantStatus && user.tenantStatus !== "active" && <span>Workspace: {user.tenantStatus}</span>}
                 </div>
 
                 <div className="admin-user-actions">
@@ -576,10 +438,138 @@ function AdminUsers({ embedded = false }: Props) {
                     )}
 
                 </div>
-              </article>
+              </article>);
+  };
+
+  const panel = (
+    <section
+      className={
+        embedded
+          ? "admin-users-panel admin-users-embedded"
+          : "admin-users-panel"
+      }
+    >
+      <header className="admin-users-header">
+        <div>
+          <span className="admin-users-kicker">
+            APPLICATION PERMISSION
+          </span>
+
+          <h2>User Management</h2>
+
+          <p>
+            {currentRole === "client_admin"
+              ? "Manage the two users in your workspace. You can approve, deny, block or unblock their access."
+              : "Search and manage client workspaces, Client Admins, and their users."}
+          </p>
+        </div>
+
+        {!embedded && (
+          <button
+            type="button"
+            className="admin-users-close"
+            onClick={() => setOpen(false)}
+          >
+            ×
+          </button>
+        )}
+      </header>
+
+      {currentRole === "client_admin" && (
+        <form onSubmit={(event) => void createClientUser(event)} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, padding: "14px 0" }}>
+          <input required aria-label="Client user name" placeholder="User name" value={newUserName} onChange={(event) => setNewUserName(event.target.value)} />
+          <input required type="email" aria-label="Client user email" placeholder="User email" value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} />
+          <input required type="password" minLength={8} aria-label="Client user password" placeholder="Temporary password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} />
+          <button type="submit" disabled={busyUid === "create-client-user"}>
+            {busyUid === "create-client-user" ? "Creating…" : "Add Client User"}
+          </button>
+        </form>
+      )}
+
+      {isMasterAdmin && <section className="admin-owner-summary">
+        <div className="admin-owner-avatar" aria-hidden="true">A</div>
+        <div><span className="admin-owner-label">MASTER ADMIN</span><h3>Admin</h3><p>{currentAuthUser?.email}</p></div>
+        <span className="admin-owner-active">Active</span>
+      </section>}
+
+      <div className="admin-user-stats">
+        <div>
+          <strong>{counts.total}</strong>
+          <span>Total Users</span>
+        </div>
+
+        <div>
+          <strong>{counts.pending}</strong>
+          <span>Pending</span>
+        </div>
+
+        <div>
+          <strong>{counts.active}</strong>
+          <span>Active Users</span>
+        </div>
+
+
+        {isMasterAdmin && (
+          <div>
+            <strong>{counts.clientAdmins}</strong>
+            <span>Client Admins</span>
+          </div>
+        )}
+      </div>
+
+      <div className="admin-users-toolbar">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={isMasterAdmin ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
+        />
+
+        <button
+          type="button"
+          onClick={() => void loadUsers()}
+          disabled={loading}
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      {message && (
+        <div className="admin-users-message success">
+          ✓ {message}
+        </div>
+      )}
+
+      {error && (
+        <div className="admin-users-message error">
+          ! {error}
+        </div>
+      )}
+
+      <div className="admin-users-list">
+        {loading && users.length === 0 ? (
+          <div className="admin-users-empty">
+            Loading users...
+          </div>
+        ) : visibleUsers.length === 0 ? (
+          <div className="admin-users-empty">
+            No users found.
+          </div>
+        ) : (
+          isMasterAdmin ? (workspaceGroups.length === 0 ? <div className="admin-users-empty">No Client Admins found. Create a client account to get started.</div> : workspaceGroups.map((group) => {
+            const admins = group.members.filter((user) => user.role === "client_admin");
+            const children = group.members.filter((user) => user.role !== "client_admin");
+            return <section className="admin-client-workspace" key={group.id} aria-label={admins[0]?.bankName || "Client workspace"}>
+              <header className="admin-client-workspace-header">
+                <div><span>CLIENT ADMIN</span><h3>{admins[0]?.bankName || "Client workspace"}</h3></div>
+                <span className="admin-client-seat-count">{children.length} {children.length === 1 ? "user" : "users"}</span>
+              </header>
+              {admins.map(renderUserCard)}
+              <div className="admin-client-children">
+                <div className="admin-client-children-heading"><strong>Client users</strong><span>Users assigned to this client</span></div>
+                {children.length ? children.map(renderUserCard) : <p className="admin-client-empty">No users yet. This Client Admin can add users after signing in.</p>}
               </div>
-            );
-          })
+            </section>;
+          })) : orderedVisibleUsers.filter((user) => user.role === "client_user").map(renderUserCard)
         )}
       </div>
     </section>

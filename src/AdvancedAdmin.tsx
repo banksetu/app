@@ -19,7 +19,6 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
-import MasterClients from "./MasterClients";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
 declare const __APP_VERSION__: string;
@@ -36,7 +35,6 @@ type UpdateManifest = {
 type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
 
 function Settings(props: AdvancedAdminProps) {
-  if (props.isMasterOwner) return <MasterClients enabled />;
   return <ConnectionSettings {...props} />;
 }
 
@@ -59,6 +57,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
   const [password, setPassword] = useState("");
 
   const [showAuthBox, setShowAuthBox] = useState(false);
+  const [authMode, setAuthMode] = useState<"unlock" | "lock">("unlock");
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -218,6 +217,12 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
       );
 
+      if (authMode === "lock") {
+        lockControl();
+        setShowAuthBox(false);
+        return;
+      }
+
       setUnlocked(true);
 
       setShowAuthBox(false);
@@ -267,6 +272,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
   };
 
   const lockControl = () => {
+    setAuthMode("unlock");
 
     setUnlocked(false);
 
@@ -746,11 +752,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
             style={styles.unlockButton}
 
-            onClick={() =>
-
-              setShowAuthBox(true)
-
-            }
+            onClick={() => { setAuthMode("unlock"); setPassword(""); setShowAuthBox(true); }}
 
           >
 
@@ -768,7 +770,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
             style={styles.lockButton}
 
-            onClick={lockControl}
+            onClick={() => { setAuthMode("lock"); setPassword(""); setShowAuthBox(true); }}
 
           >
 
@@ -780,7 +782,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
       </section>
 
-      {showAuthBox && !unlocked && (
+      {showAuthBox && (
 
         <section style={styles.authCard}>
 
@@ -850,7 +852,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
                 ? "Verifying..."
 
-                : "Verify & Unlock"}
+                : authMode === "lock" ? "Verify & Lock" : "Verify & Unlock"}
 
             </button>
 
@@ -879,6 +881,13 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
         </section>
 
       )}
+
+      {allowConnectionSettings && <section style={styles.card}>
+        <p style={styles.sectionLabel}>FIREBASE</p>
+        <h2 style={styles.cardTitle}>Account &amp; access connection</h2>
+        <p style={styles.securityText}>Firebase handles administrator sign-in and workspace permissions.</p>
+        <div style={styles.savedBox}><span style={styles.savedLabel}>{auth.currentUser ? "CONNECTED" : "SIGN-IN REQUIRED"}</span><span style={styles.savedUrl}>{auth.app.options.projectId}</span></div>
+      </section>}
 
       {allowConnectionSettings && <section style={styles.card}>
 
