@@ -1033,7 +1033,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           />}
 
-          {sessionStorage.getItem("bankSetuConnectionMode") === "option-b" && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
+          {(accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
         </nav>
 
       </aside>

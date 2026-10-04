@@ -86,7 +86,7 @@ export function bankTemplateValue(customer: Record<string, unknown>, field: stri
     mobile: customer.contact ?? customer.mobile,
     aadhaar: (()=>{const value=String(customer.uidaiNo ?? customer.aadhaar ?? "").replace(/\s/g,"");return value?"XXXXXXXX"+value.slice(-4):"";})(),
     pan: customer.pan,
-    address: customer.fullAddress ?? customer.address,
+    address: String(customer.fullAddress ?? "").trim() || customer.address,
     branchName: customer.branchName ?? customer.branch,
     ifsc: customer.ifsc,
     accountOpeningDate: customer.accountOpeningDate,
@@ -96,4 +96,17 @@ export function bankTemplateValue(customer: Record<string, unknown>, field: stri
     status: customer.status,
   };
   return String(values[field] ?? "").trim();
+}
+
+export function accountOpeningPrintMap(mapping:BankFieldPlacement[]):BankFieldPlacement[]{
+ const anchor=mapping.find(item=>item.field==="name")||mapping.find(item=>item.field==="accountNo");
+ const addresses=new Map<number,BankFieldPlacement>();
+ for(const item of mapping)if(item.field==="address"&&!addresses.has(item.page||1))addresses.set(item.page||1,item);
+ return mapping.filter(item=>!addresses.has(item.page||1)||!["village","postOffice","pinCode"].includes(item.field)).map(item=>{
+  if(item.field==="customerPhoto")return item;
+  const x=anchor&&(anchor.page||1)===(item.page||1)?anchor.x:item.x;
+  if(item.field!=="address")return {...item,x,align:"left"};
+  const next=mapping.filter(other=>(other.page||1)===(item.page||1)&&other.y>item.y+1&&!['address','village','postOffice','pinCode','customerPhoto'].includes(other.field)).sort((a,b)=>a.y-b.y)[0];
+  return {...item,x,width:Math.max(item.width,90-x),height:Math.max(.5,Math.min(9,(next?.y||99)-item.y-.5)),align:"left"};
+ });
 }

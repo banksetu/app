@@ -4,7 +4,7 @@ import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
 import { doc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./firebase";
-import { bankTemplateValue, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
+import { bankTemplateValue, accountOpeningPrintMap, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
 import { getTenantApiUrl } from "./tenantApi";
 import { templateMatchesBank } from "./bankDocumentPolicy";
 
@@ -56,7 +56,7 @@ export default function BankFormatPrint({
           const photo=selected.extractionMap?.find(item=>item.field==="customerPhoto");
           if(photo&&!manual.some(item=>item.field==="customerPhoto"))automatic.push({...photo});
           const merged=[...automatic.filter(field=>!manual.some(item=>item.field===field.field&&(item.page||1)===(field.page||1))),...manual];
-          if(active){setSources(graphics);setTextPages(template);setSettings({...selected,fieldMap:merged,bankLogo:data?.bankLogo});onConfigured(true);}
+          if(active){setSources(graphics);setTextPages(template);setSettings({...selected,fieldMap:accountOpeningPrintMap(merged),bankLogo:data?.bankLogo});onConfigured(true);}
           return;
         } finally {await task.destroy();}
       }
@@ -80,14 +80,14 @@ export default function BankFormatPrint({
   const pageHeightMm = settings.pageHeightMm || (formatType === "accountOpening" ? 297 : 175);
 
   return <section className="bank-format-print-wrap">
-    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => onPrint ? onPrint() : window.print()}>Print bank format</button></div>
+
     <div className="bank-format-print-document" aria-label="Mapped bank document preview">
       {sources.map((source, pageIndex) => <section key={pageIndex} className="bank-format-print" style={{ width: `${pageWidthMm}mm`, height: `${textPages[pageIndex] ? pageWidthMm*textPages[pageIndex].height/textPages[pageIndex].width : pageHeightMm}mm`, backgroundImage: `url(${source})` }}>
         {textPages.length && pageIndex===0 && (values.templateLogo || settings.bankLogo) ? <img alt="Bank logo" src={String(values.templateLogo || settings.bankLogo)} style={{position:"absolute",left:"30%",top:"1%",width:"40%",height:"8%",objectFit:"contain"}} /> : null}
         {textPages[pageIndex] && <svg aria-label="Fixed PDF labels" viewBox={`0 0 ${textPages[pageIndex].width} ${textPages[pageIndex].height}`} preserveAspectRatio="none" style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}}>{textPages[pageIndex].runs.map((run,index)=><text key={index} x={run.x} y={run.y+run.height} fontSize={run.height} textLength={run.width} lengthAdjust="spacingAndGlyphs" fill="#111" xmlSpace="preserve">{run.text}</text>)}</svg>}
         {settings.fieldMap!.filter((placement) => (placement.page || 1) === pageIndex + 1).map((placement) => {
           const value = bankTemplateValue(values, placement.field);
-          const placementStyle = { left: `${placement.x}%`, top: `${placement.y}%`, width: `${placement.width}%`, fontSize: `${placement.fontSize}px`, textAlign: placement.align, textTransform: placement.uppercase ? "uppercase" : "none" } as const;
+          const placementStyle = { left: `${placement.x}%`, top: `${placement.y}%`, width: `${placement.width}%`, fontSize: `${placement.fontSize}px`, textAlign: formatType==="accountOpening"?"left":placement.align, height: placement.field==="address" && formatType==="accountOpening"?`${placement.height}%`:undefined, overflowWrap:"anywhere", textTransform: placement.uppercase ? "uppercase" : "none" } as const;
           if (placement.field === "customerPhoto") {
             const photo = String(values.photoPreview ?? values.photoUrl ?? "");
             return photo ? <img key={`${placement.field}-${placement.x}-${placement.y}`} alt="Customer" src={photo} style={{ ...placementStyle, position: "absolute", height: `${placement.height || placement.width * .8}%`, objectFit: "cover" }} /> : null;
@@ -96,6 +96,7 @@ export default function BankFormatPrint({
         })}
       </section>)}
     </div>
+    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => onPrint ? onPrint() : window.print()}>Print bank format</button></div>
     <style>{`
       .bank-format-print-wrap { margin: 22px auto; max-width: 100%; overflow-x: auto; }
       .bank-format-print-actions { display:flex; justify-content:center; align-items:center; gap:14px; margin:0 auto 12px; color:#d9eaf1; font-size:13px; }

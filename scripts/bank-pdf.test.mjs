@@ -42,7 +42,7 @@ test('text spanning another column is not copied wholesale into a reading box',a
 });
 const formatSource=fs.readFileSync('src/bankFormatUtils.ts','utf8').replace(/^import .*;$/gm,'').replace('GlobalWorkerOptions.workerSrc = pdfWorker;','');
 const formatOutput=ts.transpileModule(formatSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText;
-const {clearSampleRegions,sourceSectionsToPrint}=await import('data:text/javascript;base64,'+Buffer.from(formatOutput).toString('base64'));
+const {clearSampleRegions,sourceSectionsToPrint,accountOpeningPrintMap,bankTemplateValue}=await import('data:text/javascript;base64,'+Buffer.from(formatOutput).toString('base64'));
 test('filled sample cleanup clears only mapped value/photo boxes on their own page',()=>{
  const rectangles=[];const context={fillStyle:'',fillRect:(...args)=>rectangles.push(args)};
  const source=[{field:'name',page:1,x:10,y:20,width:30,height:2,fontSize:10},{field:'customerPhoto',page:2,x:70,y:10,width:15,height:20,fontSize:10}];
@@ -69,4 +69,10 @@ test('PIN is recovered from mapped full address without a PIN label',async()=>{
 test('fixed instructions survive and repeated generic names do not duplicate customer data',async()=>{
  const pdf={numPages:1,getPage:async()=>page([{...item('Customer Name: Old Person',20,700),width:180},{...item('Name of nominee',20,650),width:100},{...item('Please read the declaration carefully',20,600),width:220},{...item('Customer Name: Old Person',20,550),width:180}])};
  const [template]=await globalThis.__semantic.readTextTemplate(pdf);assert.equal(template.fields.filter(f=>f.field==='name').length,1);assert(template.runs.some(r=>r.text==='Please read the declaration carefully'));assert(template.runs.some(r=>r.text==='Name of nominee'));
+});
+
+test('account-opening address prints once, wraps within its block and shares left alignment',()=>{
+ const mapping=[{field:'name',x:32,y:20,page:1,width:25,fontSize:10,align:'center'},{field:'address',x:55,y:40,page:1,width:20,height:2,fontSize:10,align:'right'},{field:'village',x:50,y:40,page:1,width:20,fontSize:10},{field:'postOffice',x:70,y:40,page:1,width:15,fontSize:10},{field:'pinCode',x:60,y:41,page:1,width:12,fontSize:10},{field:'dateOfBirth',x:55,y:55,page:1,width:20,fontSize:10}];
+ const result=accountOpeningPrintMap(mapping);assert.equal(result.length,3);const address=result.find(item=>item.field==='address');assert.equal(address.x,32);assert.equal(address.align,'left');assert.equal(address.height,9);assert.equal(address.width,58);assert(result.every(item=>item.align==='left'));
+ assert.equal(bankTemplateValue({fullAddress:'C/O Ali, Vill Road, P.O. Town, 788806',address:'Road'},'address'),'C/O Ali, Vill Road, P.O. Town, 788806');assert.equal(bankTemplateValue({fullAddress:'  ',address:'Village Road'},'address'),'Village Road');
 });
