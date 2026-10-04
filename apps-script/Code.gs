@@ -71,6 +71,8 @@ function doGet(e) {
         protected: true,
         message:
           "Bank Setu API is running",
+        masterLocalSyncVersion: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "master-v1" : "",
+        masterConnectionId: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? masterLocalConnectionId() : "",
         tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
@@ -138,11 +140,11 @@ function doPost(e) {
       });
     }
 
-    if (["syncCustomerOperation", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"))) {
+    if (["syncCustomerOperation", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
       const authUser = requireAuthorizedUser(idToken, false);
       if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
       if (action === "markPassbookPrinted") {
-        if (authUser.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
+        if (authUser.tenantId && authUser.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
         return markPassbookDelivered(request.rowNumber, authUser);
       }
       return localFirstRead(request, authUser);
@@ -156,7 +158,7 @@ function doPost(e) {
 
     if (["saveCustomer","updateCustomer","deleteCustomer","markPassbookDelivered"].includes(action)) {
       const checked = requireAuthorizedUser(idToken, false);
-      if (checked.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
+      if (checked.tenantId && checked.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
     }
 
     if (action === "getRecentActivities") {
@@ -433,7 +435,7 @@ function requireAuthorizedUser(
     throw new Error("This client-owned bridge cannot access a different workspace.");
   }
   return {
-    connectionId: tenantSettings ? tenantSettings.connectionId : "",
+    connectionId: tenantSettings ? tenantSettings.connectionId : masterLocalConnectionId(),
     uid,
     email:
       cleanValue(
@@ -3128,4 +3130,9 @@ function saveBoundDocument(dataUrl, fileName, folderId, operationId) {
   const previous = folder.getFilesByName(name);
   const file = previous.hasNext() ? previous.next() : folder.createFile(Utilities.newBlob(bytes,match[1],name));
   return {fileId:file.getId(),fileName:file.getName(),mimeType:match[1],driveUrl:"https://drive.google.com/file/d/"+file.getId()+"/view"};
+}
+
+function masterLocalConnectionId() {
+ if(getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || !LEGACY_SPREADSHEET_ID || !CUSTOMER_PHOTO_FOLDER_ID)return "";
+ return "master-"+Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,LEGACY_SPREADSHEET_ID+":"+CUSTOMER_PHOTO_FOLDER_ID).map(byte=>(byte+256).toString(16).slice(-2)).join("");
 }

@@ -1,3 +1,4 @@
+import { masterUsage } from "./masterStatus.js";
 import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 export function workspaceBankSettingsPath(actor) {
@@ -288,12 +289,15 @@ async function getGoogleSetupConfig(env, actor) {
   const apiUrl = String(config.apiUrl || settings.apiUrl || env.BANKSETU_APPS_SCRIPT_URL || "");
   const oauthClientId = String(config.oauthClientId || env.BANKSETU_GOOGLE_OAUTH_CLIENT_ID || "");
   const executorEmail = String(config.executorEmail || env.BANKSETU_APPS_SCRIPT_EXECUTOR_EMAIL || "");
+  let masterLocalReady=false;let masterConnectionId="";
   let dataApiReady = false;
   if (apiUrl) {
     try {
       const statusResponse = await fetch(`${apiUrl}?action=status`, { signal: AbortSignal.timeout(8000) });
       const status = await statusResponse.json();
       dataApiReady = statusResponse.ok && status.success === true && status.tenantIsolationVersion === "v2";
+      masterLocalReady=isMasterActor(actor)&&dataApiReady&&status.masterLocalSyncVersion==="master-v1"&&/^master-[a-f0-9]{64}$/.test(status.masterConnectionId||"");
+      if(masterLocalReady)masterConnectionId=status.masterConnectionId;
     } catch { /* Customer data stays locked until the isolated script version responds. */ }
   }
   if (settings.connectionMode === "option-b") {
@@ -307,6 +311,7 @@ async function getGoogleSetupConfig(env, actor) {
     }
   }
   return json({
+    masterLocalReady,masterConnectionId,
     connectionMode: String(settings.connectionMode || "oauth"),
     serviceAccountEmail: "bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com",
     connectionId: String(settings.connectionId || settings.spreadsheetId || ""),
@@ -453,7 +458,21 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({ success: true });
   }
 
+  if(route === "/presence-heartbeat") {
+    const body=await request.json().catch(()=>({}));
+    await putDocument(env,`/onlinePresence/${actor.uid}`,{uid:actor.uid,role,tenantId:String(actor.profile.tenantId||""),lastSeen:new Date().toISOString(),active:body.active!==false});
+    return json({success:true});
+  }
+  if(route === "/master-system-status") {
+    if(!isMasterActor(actor))return json({error:"Master Admin permission is required."},403);
+    return json(await masterUsage(env,serviceAccessToken,firestoreRequest,decodeFields));
+  }
   if (route === "/get-offline-session") {
+    if(isMasterActor(actor)) {
+      const config=await getGoogleSetupConfig(env,actor).then(response=>response.json());
+      if(!config.masterLocalReady)return json({error:"Update the existing Master Apps Script deployment to enable local sync."},409);
+      const issuedAt=Date.now();return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:`master:${actor.uid}`,role:role==="admin"?"admin":"master_owner",status:"approved",subscriptionStatus:"active",connectionId:config.masterConnectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:issuedAt+8*60*60*1000}));
+    }
     if (!["client_admin","client_user"].includes(role)) return json({error:"Offline customer access requires a client workspace."},403);
     const config=await getGoogleSetupConfig(env,actor).then(response=>response.json());
     if(config.connectionMode!=="option-b" || !config.dataApiReady || !config.hasWorkspace || config.workspaceStatus!=="active") return json({error:"Connect an active Option B workspace before enabling offline access."},409);
@@ -953,7 +972,7 @@ export default {
         "/account-action", "/delete-user", "/create-client-user", "/create-client",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
-        "/save-bank-format-mapping", "/save-workspace-bank-settings",
+        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -972,7 +991,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"];
+      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
       const result = migratedRoutes.includes(route)
         ? await handleMasterOperation(request, env, actor, route)
         : route === "/create-client-user"

@@ -1,3 +1,4 @@
+import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
@@ -247,6 +248,7 @@ type PageName =
   | "sync-backup";
 
 function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
+  useEffect(()=>startPresence(),[]);
 
   const canControlGlobalDashboard = accountRole === "master_owner";
 

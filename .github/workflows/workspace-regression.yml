@@ -25,6 +25,9 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
+      - run: node --test cloudflare/masterStatus.test.js
+      - run: npm run test:local
+      - run: npm run test:bridge
       - run: npm run test:worker
       - run: node --test scripts/workspace-regression.test.mjs
       - run: npm run check:schema

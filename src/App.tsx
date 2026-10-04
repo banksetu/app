@@ -103,7 +103,7 @@ function App() {
       : "user";
     setUserRole(role);
     sessionStorage.setItem("bankSetuRole", role);
-    if (typeof profile.tenantId === "string" && profile.tenantId.trim()) {
+    if (!["master_owner","admin"].includes(normalizedRole) && typeof profile.tenantId === "string" && profile.tenantId.trim()) {
       sessionStorage.setItem("bankSetuTenantId", profile.tenantId.trim());
     } else {
       sessionStorage.removeItem("bankSetuTenantId");
@@ -113,6 +113,17 @@ function App() {
 
   const prepareClientWorkspace = useCallback(async (profile: UserProfile) => {
     const role = normalize(profile.role);
+    if(["master_owner","admin"].includes(role)) {
+      sessionStorage.removeItem("bankSetuMasterLocalEnabled");sessionStorage.setItem("bankSetuConnectionMode","oauth");sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");setTenantWorkspaceReady(false);
+      try {
+        const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string}>("/get-google-setup",{});
+        if(setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl){
+          sessionStorage.setItem("bankSetuMasterLocalEnabled","true");sessionStorage.setItem("bankSetuConnectionMode","master-local");sessionStorage.setItem("bankSetuConnectionId",setup.masterConnectionId);sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl);setTenantApiUrl(setup.apiUrl);setTenantWorkspaceReady(true);await enrollOfflineSession();
+        }
+      }catch(error){console.error("Master local sync readiness:",error);sessionStorage.removeItem("bankSetuMasterLocalEnabled");}
+      return;
+    }
+    sessionStorage.removeItem("bankSetuMasterLocalEnabled");
     if (!["client_admin", "client_user"].includes(role)) {
       setTenantWorkspaceReady(false);
       return;
@@ -142,7 +153,7 @@ function App() {
     clearProfileListener();
     sessionStorage.removeItem("bankSetuRole");
     sessionStorage.removeItem("bankSetuTenantId");
-    sessionStorage.removeItem("bankSetuAccountRole");
+    sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
     setTenantWorkspaceReady(false);
     setUserRole("user");
     setAccountRole("user");
@@ -230,7 +241,7 @@ function App() {
         clearProfileListener();
         sessionStorage.removeItem("bankSetuRole");
         sessionStorage.removeItem("bankSetuTenantId");
-        sessionStorage.removeItem("bankSetuAccountRole");
+        sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
         setTenantWorkspaceReady(false);
         setIsLoggedIn(false);
         setUserRole("user");
@@ -377,7 +388,7 @@ function App() {
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
       sessionStorage.removeItem("bankSetuTenantId");
-      sessionStorage.removeItem("bankSetuAccountRole");
+      sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
       setTenantWorkspaceReady(false);
       setIsLoggedIn(false);
       setUserRole("user");

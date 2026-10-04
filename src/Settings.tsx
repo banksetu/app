@@ -1,3 +1,4 @@
+import MasterSystemStatus from "./MasterSystemStatus";
 import AdminUsers from "./AdminUsers";
 
 type SettingsProps = {
@@ -30,6 +31,7 @@ function Settings({ userRole }: SettingsProps) {
         </p>
       </div>
       <AdminUsers embedded />
+      {["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && <MasterSystemStatus />}
     </section>
   );
 }

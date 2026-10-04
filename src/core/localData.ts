@@ -3,9 +3,10 @@ import { auth } from "../firebase";
 import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
+export const localModeEnabled = () => sessionStorage.getItem("bankSetuConnectionMode")==="option-b" || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
 const identity = () => {
   const uid = auth.currentUser?.uid;
-  const tenant = sessionStorage.getItem("bankSetuTenantId");
+  const tenant = sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true" ? `master:${uid}` : sessionStorage.getItem("bankSetuTenantId");
   const connection = sessionStorage.getItem("bankSetuConnectionId");
   if (!uid || !tenant || !connection || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") throw new Error("An active, verified client connection is required.");
   if (!navigator.onLine && Date.now() > Number(sessionStorage.getItem("bankSetuOfflineUntil") || 0)) throw new Error("Offline access expired. Reconnect to verify account permissions; local records are retained.");
@@ -17,11 +18,12 @@ const fold = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const supportedReads = new Set(["searchCustomer", "getCustomerByRowNumber", "getAllCustomers"]);
 const supportedWrites = new Set(["saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered", "markPassbookPrinted"]);
 export async function localDataFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (sessionStorage.getItem("bankSetuConnectionMode") !== "option-b" || init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
+  if (!localModeEnabled() || init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
   const url = String(input);
   if (url !== sessionStorage.getItem("bankSetuBridgeUrl")) return networkFetch(input, init);
+  if(sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true"){payload.masterLocalSync=true;init={...init,body:JSON.stringify(payload)};}
   const action = String(payload.action || "");
   const scope = identity();
   const state = await repository.read(scope);
@@ -67,7 +69,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   const customer = (payload.customer || {}) as Customer;
   const existing = state.records.find(record => record.rowNumber === Number(payload.rowNumber));
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
-  if (action === "deleteCustomer" && sessionStorage.getItem("bankSetuAccountRole") !== "client_admin") return resultResponse({success:false,message:"Administrator permission is required."});
+  if (action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) return resultResponse({success:false,message:"Administrator permission is required."});
   if (action === "saveCustomer" && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
@@ -113,7 +115,7 @@ export function syncNow(): Promise<void> {
   return running ||= runSync().finally(() => { running = undefined; announce(); });
 }
 async function runSync() {
-  if (!navigator.onLine || sessionStorage.getItem("bankSetuConnectionMode") !== "option-b") return;
+  if (!navigator.onLine || !localModeEnabled()) return;
   const scope = identity();
   const url = sessionStorage.getItem("bankSetuBridgeUrl")!;
   const user = auth.currentUser!;
@@ -123,7 +125,7 @@ async function runSync() {
     const current = await repository.read(scope);
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
-    const response = await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"syncCustomerOperation",operation:{...op,baseRevision:record?.revision || op.baseRevision},connectionId:sessionStorage.getItem("bankSetuConnectionId"),idToken:await user.getIdToken() }),signal:AbortSignal.timeout(25000)});
+    const response = await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"syncCustomerOperation",masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",operation:{...op,baseRevision:record?.revision || op.baseRevision},connectionId:sessionStorage.getItem("bankSetuConnectionId"),idToken:await user.getIdToken() }),signal:AbortSignal.timeout(25000)});
     if (!response.ok) throw new Error("Google sync is temporarily unavailable. Local queue retained.");
     const value = await response.json();
     await repository.transact(scope, state => {
@@ -142,7 +144,7 @@ async function runSync() {
     if(identity()!==scope)return;
     const state=await repository.read(scope);
     const pull=state.pull || {cursor:0,seen:[],startedAt:Date.now()};
-    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getCustomerPage",cursor:pull.cursor,pageSize:250,idToken:await user.getIdToken()}),signal:AbortSignal.timeout(25000)});
+    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getCustomerPage",masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",cursor:pull.cursor,pageSize:250,idToken:await user.getIdToken()}),signal:AbortSignal.timeout(25000)});
     if(!response.ok)throw new Error("Google download interrupted; sync cursor and pending records retained.");
     const value=await response.json();
     if(!value.success)throw new Error(value.message || "Google download rejected; local data retained.");
@@ -174,11 +176,11 @@ function trimCache(state: import("./schema").LocalState) {
 
 export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function exportLocalBackup() { const state=await repository.read(identity());const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
-export function startLocalSync() { const listener=()=>{void syncNow().catch(()=>undefined);};window.addEventListener("online",listener);const timer=setInterval(listener,60000);listener();return ()=>{window.removeEventListener("online",listener);clearInterval(timer);}; }
+export function startLocalSync() { const listener=()=>{void syncNow().catch(()=>undefined);};window.addEventListener("online",listener);window.addEventListener("pagehide",listener);const visibility=()=>{if(document.visibilityState==="hidden")listener();};document.addEventListener("visibilitychange",visibility);const timer=setInterval(listener,60000);listener();return ()=>{window.removeEventListener("online",listener);window.removeEventListener("pagehide",listener);document.removeEventListener("visibilitychange",visibility);clearInterval(timer);}; }
 
 export async function getConflicts() { return (await repository.read(identity())).operations.filter(op=>op.state!=="pending"); }
 export async function resolveConflict(operationId: string, choice: "local" | "cloud") {
-  if (sessionStorage.getItem("bankSetuAccountRole") !== "client_admin") throw new Error("Client Admin review is required.");
+  if (!["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) throw new Error("Client Admin review is required.");
   const scope=identity();
   await repository.transact(scope,state=>{
     const op=state.operations.find(item=>item.operationId===operationId);
@@ -198,7 +200,7 @@ export async function resolveConflict(operationId: string, choice: "local" | "cl
 
 export async function getDataIdToken(forceRefresh = false): Promise<string> {
   if (!auth.currentUser) throw new Error("Sign in again.");
-  if (!navigator.onLine && sessionStorage.getItem("bankSetuConnectionMode") === "option-b") { identity(); return ""; }
+  if (!navigator.onLine && localModeEnabled()) { identity(); return ""; }
   return auth.currentUser.getIdToken(forceRefresh);
 }
 

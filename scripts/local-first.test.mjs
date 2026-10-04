@@ -40,3 +40,15 @@ test('offline save, search, retry, connection isolation and explicit conflict re
  storage.set('bankSetuAccountRole','client_user');await assert.rejects(engine.resolveConflict(conflicts[0].operationId,'local'),/Admin/);storage.set('bankSetuAccountRole','client_admin');
  await engine.resolveConflict(conflicts[0].operationId,'cloud');state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].customer.name,'Cloud edit');assert.equal(state.records[0].rowNumber,4);
 });
+
+test('Master local-first save/search/sync stays outside client scope and retains original connection',async()=>{
+ const clientBefore=await repository.read('user-a:tenant-a:connection-a');
+ globalThis.__auth.currentUser={uid:'master-user',getIdToken:async()=> 'master-token'};
+ storage.clear();storage.set('bankSetuAccountRole','master_owner');storage.set('bankSetuMasterLocalEnabled','true');storage.set('bankSetuConnectionMode','master-local');storage.set('bankSetuConnectionId','master-existing-sheet');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));navigator.onLine=false;
+ const result=await request({action:'saveCustomer',customer:{name:'Master customer',accountNo:'9876543210',enrolId:'M001',uidaiNo:'123456789012'}});assert(result.queued);
+ const scope='master-user:master:master-user:master-existing-sheet';let state=await repository.read(scope);assert.equal(state.operations.length,1);const recordId=state.records[0].recordId;
+ assert.equal((await request({action:'searchCustomer',query:'Master customer'})).customer.name,'Master customer');assert.deepEqual(await repository.read('user-a:tenant-a:connection-a'),clientBefore);
+ navigator.onLine=true;let writes=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.masterLocalSync,true);if(body.action==='syncCustomerOperation'){writes++;assert.equal(body.connectionId,'master-existing-sheet');return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...body.operation.customer,recordId,revision:'r1'}}));}return new Response(JSON.stringify({success:true,customers:[{...state.records[0].customer,recordId,revision:'r1',rowNumber:2}],hasNextPage:false}));};
+ await engine.syncNow();state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(writes,1);await engine.syncNow();assert.equal(writes,1);assert.deepEqual(await repository.read('user-a:tenant-a:connection-a'),clientBefore);
+ storage.set('bankSetuConnectionId','master-replacement');navigator.onLine=false;assert.equal((await request({action:'searchCustomer',query:'Master customer'})).success,false);
+});
