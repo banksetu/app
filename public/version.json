@@ -1,5 +1,5 @@
 {
-  "latestVersion": "1.0.4",
+  "latestVersion": "1.0.5",
   "downloadUrl": "",
   "notes": "Local database, offline restart access, backup restore, bounded Google sync and Windows testing installer.",
   "version": "1.0.5"
