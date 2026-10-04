@@ -4,6 +4,7 @@ on:
     branches:
       - codex/android-live-base
       - codex/windows-production
+      - codex/windows-production-preview
       - codex/spark-client-workspace-20261001
     paths:
       - src/**
