@@ -1,0 +1,50 @@
+name: Local-first validation and Windows test build
+on:
+  push:
+    branches: [codex/local-first-option-b]
+  pull_request:
+    branches: [codex/spark-client-workspace-20261001]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:schema
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs desktop/store.test.cjs
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+  windows-test-package:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Build unsigned installer for testing; automatic updates stay locked
+        run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Upload Windows test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Windows-UNSIGNED-TEST
+          path: |
+            desktop-release/*.exe
+            desktop-release/*.blockmap
+          if-no-files-found: error

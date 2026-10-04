@@ -75,3 +75,14 @@ test("bank settings patches preserve unrelated Drive and template configuration"
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"https://untrusted.example/logo"}));
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,"+"A".repeat(150000)}));
 });
+
+test("Option B validates exact Google resource hosts and verified resource ownership", async () => {
+  const {parseGoogleResource,validateResourceOwnership}=await import('./googleConnection.js');
+  const id='abcdefghijklmnopqrstuvwxyz12345';
+  assert.equal(parseGoogleResource(`https://docs.google.com/spreadsheets/d/${id}/edit`,'sheet'),id);
+  assert.equal(parseGoogleResource(`https://drive.google.com/drive/u/0/folders/${id}`,'folder'),id);
+  assert.throws(()=>parseGoogleResource(`https://docs.google.com.attacker.example/spreadsheets/d/${id}`,'sheet'));
+  const owner={owners:[{emailAddress:'owner@example.com'}],capabilities:{canEdit:true}};
+  const sheet={...owner,id,mimeType:'application/vnd.google-apps.spreadsheet',parents:['folder']};const folder={...owner,id:'folder',mimeType:'application/vnd.google-apps.folder'};
+  validateResourceOwnership(sheet,folder,'owner@example.com');assert.throws(()=>validateResourceOwnership(sheet,folder,'other@example.com'),/belong/);assert.throws(()=>validateResourceOwnership({...sheet,parents:['another']},folder,'owner@example.com'),/inside/);
+});

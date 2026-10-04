@@ -1,3 +1,4 @@
+import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -94,6 +95,23 @@ async function serviceAccessToken(env) {
   cachedAccessToken = token.access_token;
   cachedTokenExpiry = Date.now() + Number(token.expires_in || 3600) * 1000;
   return cachedAccessToken;
+}
+
+let driveToken = null;
+let driveExpiry = 0;
+async function driveServiceAccessToken(env) {
+  if (driveToken && Date.now() < driveExpiry - 60000) return driveToken;
+  if (!env.GOOGLE_DRIVE_SERVICE_ACCOUNT) throw new Error("The dedicated Google sync backend secret is not configured.");
+  const account = JSON.parse(env.GOOGLE_DRIVE_SERVICE_ACCOUNT);
+  if (account.client_email !== "bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com") throw new Error("Use the dedicated Bank Setu Drive service account.");
+  const now = Math.floor(Date.now()/1000);
+  const unsigned = utf8b64url(JSON.stringify({alg:"RS256",typ:"JWT"})) + "." + utf8b64url(JSON.stringify({iss:account.client_email,scope:"https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets",aud:"https://oauth2.googleapis.com/token",iat:now,exp:now+3600}));
+  const key = await crypto.subtle.importKey("pkcs8",decodePem(account.private_key),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5",key,encoder.encode(unsigned));
+  const response = await fetch("https://oauth2.googleapis.com/token",{method:"POST",body:new URLSearchParams({grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer",assertion:unsigned+"."+b64url(new Uint8Array(signature))})});
+  const value = await response.json();
+  if (!response.ok || !value.access_token) throw new Error("Google sync service authorization failed.");
+  driveToken=value.access_token;driveExpiry=Date.now()+Number(value.expires_in||3600)*1000;return driveToken;
 }
 
 function decodeValue(value) {
@@ -277,9 +295,22 @@ async function getGoogleSetupConfig(env, actor) {
       dataApiReady = statusResponse.ok && status.success === true && status.tenantIsolationVersion === "v2";
     } catch { /* Customer data stays locked until the isolated script version responds. */ }
   }
+  if (settings.connectionMode === "option-b") {
+    dataApiReady = false;
+    if (settings.bridgeUrl) {
+      try {
+        const reply = await fetch(`${settings.bridgeUrl}?action=status`, { signal: AbortSignal.timeout(8000) });
+        const status = await reply.json();
+        dataApiReady = reply.ok && status.tenantIsolationVersion === "v3" && status.tenantId === actor.profile.tenantId && status.spreadsheetId === settings.spreadsheetId && status.photoFolderId === settings.photoFolderId;
+      } catch { /* Leave writes locked until the client-owned bridge is ready. */ }
+    }
+  }
   return json({
+    connectionMode: String(settings.connectionMode || "oauth"),
+    serviceAccountEmail: "bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com",
+    connectionId: String(settings.connectionId || settings.spreadsheetId || ""),
     oauthClientId,
-    apiUrl,
+    apiUrl: settings.connectionMode === "option-b" ? String(settings.bridgeUrl || "") : apiUrl,
     executorEmail,
     dataApiReady,
     tenantId: String(actor.profile.tenantId || ""),
@@ -421,6 +452,52 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({ success: true });
   }
 
+  if (route === "/connect-option-b") {
+    if (role !== "client_admin" || !actor.profile.tenantId || !actor.emailVerified) return json({ error: "Only a Client Admin with a verified email can connect resources owned by that email." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const spreadsheetId = parseGoogleResource(body.sheetLink, "sheet");
+    const photoFolderId = parseGoogleResource(body.folderLink, "folder");
+    const bridgeUrl = String(body.bridgeUrl || "").trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(bridgeUrl)) return json({ error: "Enter your authorized client-owned Apps Script bridge URL." }, 400);
+    const tenantId = actor.profile.tenantId;
+    const tenantResult = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`);
+    const tenant = decodeFields(tenantResult.fields);
+    if (tenant.ownerUid !== actor.uid) return json({ error: "Only the workspace owner can change its connection." }, 403);
+    const token = await driveServiceAccessToken(env);
+    const read = async (id) => {
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?supportsAllDrives=true&fields=id,mimeType,owners(emailAddress),parents,trashed,driveId,capabilities(canEdit)`, { headers: { authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Share both resources with the Bank Setu sync service as Editor before connecting.");
+      return response.json();
+    };
+    const [sheet, folder] = await Promise.all([read(spreadsheetId), read(photoFolderId)]);
+    validateResourceOwnership(sheet, folder, actor.email);
+    const statusResponse = await fetch(`${bridgeUrl}?action=status`, { signal: AbortSignal.timeout(10000) });
+    const status = await statusResponse.json();
+    if (!statusResponse.ok || status.tenantIsolationVersion !== "v3" || status.tenantId !== tenantId || status.spreadsheetId !== spreadsheetId || status.photoFolderId !== photoFolderId || String(status.ownerEmail || "").toLowerCase() !== actor.email.toLowerCase()) return json({ error: "The bridge must run as your Google account and be bound to this tenant, Sheet and folder." }, 409);
+    const headersRead = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:X1`, { headers: { authorization: `Bearer ${token}` } });
+    if (!headersRead.ok) return json({ error: "Sheet1 is missing or not accessible." }, 409);
+    const row = (await headersRead.json()).values?.[0] || [];
+    const expected = ["ENDROL ID", "ACCOUNT NO", "NAME", "C/O NAME", "STATUSTUS", "GENDER", "CONTACT", "A/C OPENING DATE", "ADDRESS", "NOMENIEE", "POST OFFICE", "PASS BOOK", "UIADI NO.", "dbt status", "PURPOSE OF ADVANCE", "FULL ADDRESS", "PIN CODE", "PAN", "AOF NO", "PHOTO URL", "PDF URL", "CREATED AT", "UPDATED AT", "UPDATED BY"];
+    if (row.length && !expected.every((name, i) => row[i] === name)) return json({ error: "Sheet headers do not match Bank Setu. Existing data was not changed." }, 409);
+    // Reserve both resources atomically; never bind one resource to two tenants.
+    const path = `/tenantSettings/${encodeURIComponent(tenantId)}`;
+    const prior = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
+    const old = decodeFields(prior?.fields || {});
+    if (!old.bankName || !old.bankInfo?.passbookBank || !old.bankInfo?.branchName || !old.bankInfo?.operatorName) return json({error:"Save the client bank registration before connecting."},409);
+    const changed = old.spreadsheetId !== spreadsheetId || old.photoFolderId !== photoFolderId || old.bridgeUrl !== bridgeUrl;
+    const fields = { ...old, tenantId, connectionMode: "option-b", bridgeUrl, apiUrl: bridgeUrl, spreadsheetId, photoFolderId, workspaceOwnerUid: actor.uid, googleEmail: actor.email, connectionId: changed ? crypto.randomUUID() : old.connectionId || crypto.randomUUID(), updatedBy: actor.uid, updatedAt: new Date().toISOString() };
+    const writes = [];
+    for (const id of [spreadsheetId, photoFolderId]) {
+      const bindingPath = `/googleResourceBindings/${id}`;
+      const binding = await firestoreRequest(env, bindingPath).catch(error => error.status === 404 ? null : Promise.reject(error));
+      if (binding && decodeFields(binding.fields).tenantId !== tenantId) return json({ error: "This Google resource is already reserved for a different client." }, 409);
+      writes.push({ update: { name: firestoreDocumentName(env, bindingPath), fields: encodeFields({ tenantId, resourceId: id }) }, currentDocument: binding ? { updateTime: binding.updateTime } : { exists: false } });
+    }
+    writes.push({ update: { name: firestoreDocumentName(env, path), fields: encodeFields(fields) }, currentDocument: prior ? { updateTime: prior.updateTime } : { exists: false } });
+    await firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes }) });
+    return json({ success: true, connectionId: fields.connectionId });
+  }
+
   if (route === "/configure-tenant-data") {
     if (role !== "client_admin") return json({ error: "Only the Client Admin can connect their own Google workspace." }, 403);
     const body = await request.json().catch(() => ({}));
@@ -501,8 +578,8 @@ async function handleMasterOperation(request, env, actor, route) {
       const fileName = String(body.fileName || "").trim();
       const mimeType = String(body.mimeType || "").toLowerCase();
       const accessToken = String(body.accessToken || "");
-      if (!/^[A-Za-z0-9_-]{20,}$/.test(fileId) || !fileName || fileName.length > 200 || !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(mimeType) || accessToken.length < 20) return json({ error: "Upload a valid PDF or image sample." }, 400);
-      const headers = { authorization: `Bearer ${accessToken}` };
+      if (!/^[A-Za-z0-9_-]{20,}$/.test(fileId) || !fileName || fileName.length > 200 || !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(mimeType) || (settings.connectionMode !== "option-b" && accessToken.length < 20)) return json({ error: "Upload a valid PDF or image sample." }, 400);
+      const headers = { authorization: `Bearer ${settings.connectionMode === "option-b" ? await driveServiceAccessToken(env) : accessToken}` };
       const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,owners(emailAddress),parents,size,trashed`, { headers });
       const file = await fileResponse.json().catch(() => ({}));
       const connectedEmail = String(settings.googleEmail || "").toLowerCase();
@@ -863,7 +940,7 @@ export default {
       const supportedRoutes = [
         "/account-action", "/delete-user", "/create-client-user", "/create-client",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
-        "/bootstrap-master-owner", "/configure-tenant-data", "/save-bank-format-template",
+        "/bootstrap-master-owner", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings",
       ];
       if (!supportedRoutes.includes(route)) {
@@ -883,7 +960,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"];
+      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"];
       const result = migratedRoutes.includes(route)
         ? await handleMasterOperation(request, env, actor, route)
         : route === "/create-client-user"

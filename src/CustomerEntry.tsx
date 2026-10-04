@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
   useRef,
@@ -582,6 +583,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
+  const [originalPdfDataUrl, setOriginalPdfDataUrl] = useState("");
+
   const [
 
     selectedPdfName,
@@ -860,11 +863,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-      return user.getIdToken(
-
-        forceRefresh
-
-      );
+      return getDataIdToken(forceRefresh);
 
     };
 
@@ -908,7 +907,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       const response =
 
-        await fetch(
+        await localDataFetch(
 
           apiUrl,
 
@@ -1230,6 +1229,12 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
+    if (file.size > 5 * 1024 * 1024) { showMessage("PDF must be smaller than 5 MB.", "error"); return; }
+    setOriginalPdfDataUrl("");
+    if (sessionStorage.getItem("bankSetuConnectionMode") === "option-b") {
+      const dataUrl = await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("PDF could not be read."));reader.readAsDataURL(file);});
+      setOriginalPdfDataUrl(dataUrl);
+    }
     setSelectedPdfName(
 
       file.name
@@ -3309,6 +3314,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
             customer: {
 
               ...form,
+              ...(sessionStorage.getItem("bankSetuConnectionMode") === "option-b" && originalPdfDataUrl ? {pdfDataUrl:originalPdfDataUrl,pdfFileName:selectedPdfName} : {}),
 
 
 
@@ -3881,6 +3887,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
             customer: {
 
               ...form,
+              ...(sessionStorage.getItem("bankSetuConnectionMode") === "option-b" && originalPdfDataUrl ? {pdfDataUrl:originalPdfDataUrl,pdfFileName:selectedPdfName} : {}),
 
 
 
@@ -4168,7 +4175,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         const response =
 
-          await fetch(
+          await localDataFetch(
 
             apiUrl,
 
@@ -4432,6 +4439,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
+      setOriginalPdfDataUrl("");
       setSelectedPdfName(
 
         ""

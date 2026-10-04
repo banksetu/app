@@ -1,3 +1,5 @@
+import LocalSyncStatus from "./LocalSyncStatus";
+import { syncNow } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
@@ -118,9 +120,13 @@ function App() {
     removeTenantApiUrl();
     try {
       const setup = await callBankSetuWorker<{
-        apiUrl?: string; spreadsheetId?: string; photoFolderId?: string; dataApiReady?: boolean; workspaceStatus?: string;
+        apiUrl?: string; spreadsheetId?: string; photoFolderId?: string; dataApiReady?: boolean; workspaceStatus?: string; connectionMode?: string; connectionId?: string;
       }>("/get-google-setup", {});
       if (setup.workspaceStatus === "active" && setup.dataApiReady && setup.apiUrl && setup.spreadsheetId && setup.photoFolderId) {
+        sessionStorage.setItem("bankSetuOfflineUntil", String(Date.now()+8*60*60*1000));
+        sessionStorage.setItem("bankSetuConnectionMode", setup.connectionMode || "oauth");
+        sessionStorage.setItem("bankSetuConnectionId", setup.connectionId || setup.spreadsheetId);
+        sessionStorage.setItem("bankSetuBridgeUrl", setup.apiUrl);
         setTenantApiUrl(setup.apiUrl);
         setTenantWorkspaceReady(true);
       }
@@ -345,6 +351,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      await Promise.race([syncNow().catch(() => undefined), new Promise(resolve => setTimeout(resolve, 3000))]);
       clearProfileListener();
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
@@ -396,7 +403,7 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
+        <LocalSyncStatus /><Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
       </div>
     );
   }

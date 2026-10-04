@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -2922,13 +2923,9 @@ function DashboardHome({
 
           try {
 
-            const idToken = await user.getIdToken(
+            const idToken = await getDataIdToken(attempt > 0);
 
-              attempt > 0
-
-            );
-
-            const response = await fetch(apiUrl, {
+            const response = await localDataFetch(apiUrl, {
 
               method: "POST",
 

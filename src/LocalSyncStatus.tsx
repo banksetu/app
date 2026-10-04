@@ -1,0 +1,22 @@
+import { useEffect, useState } from "react";
+import { exportLocalBackup, getConflicts, resolveConflict, getLocalStatus, startLocalSync, syncNow } from "./core/localData";
+import type { QueueOperation } from "./core/schema";
+export default function LocalSyncStatus() {
+  const [conflicts,setConflicts]=useState<QueueOperation[]>([]);
+  const [status,setStatus]=useState({records:0,pending:0,conflicts:0});const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+  useEffect(()=>{const refresh=()=>{void getLocalStatus().then(setStatus).then(()=>getConflicts()).then(setConflicts).catch(()=>undefined);};const stop=startLocalSync();const timer=setInterval(refresh,5000);window.addEventListener("banksetu-sync-change",refresh);refresh();return()=>{stop();clearInterval(timer);window.removeEventListener("banksetu-sync-change",refresh);};},[]);
+  if (sessionStorage.getItem("bankSetuConnectionMode")!=="option-b") return null;
+  return <aside aria-label="Local database sync" style={{background:"#0b2630",color:"#eef7f7",padding:"8px 16px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
+    <span>Local: {status.records} · Pending: {status.pending} · Review: {status.conflicts}</span>
+    <button disabled={busy} onClick={()=>{setBusy(true);setError("");void syncNow().catch(reason=>setError(String(reason.message||reason))).finally(()=>setBusy(false));}}>Sync Now</button>
+    <button onClick={()=>void exportLocalBackup().catch(reason=>setError(String(reason.message||reason)))}>Export backup</button>
+    {error&&<span role="alert">{error}</span>}
+    {status.conflicts>0&&<span role="alert">Conflicting/rejected records remain saved locally. Export them for administrator review.</span>}
+    {sessionStorage.getItem("bankSetuAccountRole")==="client_admin"&&conflicts.map(op=><details key={op.operationId} style={{width:"100%"}}>
+      <summary>{String(op.customer.name||op.recordId)} — {op.error}</summary>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>Local: {JSON.stringify({...op.customer,photoDataUrl:undefined,pdfDataUrl:undefined},null,2)}</pre><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>Google: {JSON.stringify(op.remoteCustomer||{},null,2)}</pre></div>
+      <button onClick={()=>{if(window.confirm("Keep the local version and retry against the displayed Google revision?"))void resolveConflict(op.operationId,"local").catch(reason=>setError(reason.message));}}>Keep local / retry</button>
+      {op.remoteCustomer&&<button onClick={()=>{if(window.confirm("Use the displayed Google version and discard this record's pending local edits? Export a backup first."))void resolveConflict(op.operationId,"cloud").catch(reason=>setError(reason.message));}}>Use Google version</button>}
+    </details>)}
+  </aside>;
+}
