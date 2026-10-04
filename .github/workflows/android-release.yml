@@ -1,0 +1,27 @@
+name: Build signed Android release
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: Increasing Android version code
+        required: true
+        type: string
+      version_name:
+        description: Release version, for example 1.0.6
+        required: true
+        type: string
+      source_ref:
+        description: Branch to package
+        required: true
+        default: codex/android-live-base
+        type: string
+permissions:
+  contents: read
+jobs:
+  signed-apk:
+    uses: banksetu/app/.github/workflows/android-release.yml@codex/android-live-base
+    with:
+      version_code: ${{ inputs.version_code }}
+      version_name: ${{ inputs.version_name }}
+      source_ref: ${{ inputs.source_ref }}
+    secrets: inherit
