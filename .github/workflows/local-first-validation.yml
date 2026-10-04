@@ -69,8 +69,10 @@ jobs:
           name: BankSetu-Windows-UNSIGNED-TEST
           path: windows-test
       - name: Publish immutable Windows testing download
+        id: publish
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BANKSETU_RELEASE_TOKEN || github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if gh release view "v$VERSION" > /dev/null 2>&1; then
@@ -78,3 +80,6 @@ jobs:
             exit 0
           fi
           gh release create "v$VERSION" windows-test/*.exe windows-test/*.blockmap --target "$GITHUB_SHA" --title "Bank Setu $VERSION — Windows testing installer" --notes 'Windows x64 installer for client testing. Unsigned test build. Extracting a ZIP is not required for this release download. See docs/CLIENT_ADMIN_SETUP_HI.md for Google connection, offline, backup and acceptance tests. This does not change the live frontend.'
+      - name: Release permission fallback
+        if: failure() || steps.publish.outcome == 'failure'
+        run: echo 'Windows installer remains available as an Actions artifact. Release publishing requires a repository token with the appropriate contents/workflow permissions; configure BANKSETU_RELEASE_TOKEN without posting it in chat.' >> "$GITHUB_STEP_SUMMARY"
