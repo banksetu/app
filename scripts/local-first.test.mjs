@@ -11,7 +11,7 @@ globalThis.window=new EventTarget();globalThis.__auth={currentUser:{uid:'user-a'
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
 let handler=async()=>{throw new Error('offline');};globalThis.fetch=(...args)=>handler(...args);
 globalThis.__repository=repository;
-let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
+let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";', 'const isAndroid=()=>false; const shareAndroidBackup=async()=>{throw new Error("Native sharing is unavailable in this web test")};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
 globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
 source=source.replace('import { makeBackup, parseBackup, mergeBackup } from "./backup";','const {makeBackup,parseBackup,mergeBackup}=globalThis.__backup;');
 const engine=await import(compile(source));
