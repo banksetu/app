@@ -45,7 +45,6 @@ import BankFormats from "./BankFormats";
 
 
 import SelectedBankDocument from "./SelectedBankDocument";
-import { isAssamBank } from "./bankDocumentPolicy";
 
 import Customers from "./Customers";
 
@@ -968,13 +967,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             onClick={() => openPage("quick-passbook")}
           />
 
-          {(["client_admin", "client_user"].includes(accountRole) && !!bankInfo.passbookBank && !isAssamBank(bankInfo.passbookBank)) && <NavButton
-            icon="🏦"
-            label="Bank Formats"
-            active={activePage === "bank-formats"}
-            onClick={() => openPage("bank-formats")}
-          />}
-
           <NavButton
 
             icon="🔎"
@@ -1464,8 +1456,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
           )}
 
-          {bankSettingsReady && activePage === "bank-formats" && (
-            <BankFormats enabled={accountRole === "client_admin" || accountRole === "client_user"} canManage={accountRole === "client_admin"} bankName={bankInfo.passbookBank} />
+          {bankSettingsReady && activePage === "bank-formats" && accountRole === "client_admin" && (
+            <BankFormats enabled canManage bankName={bankInfo.passbookBank} />
           )}
 
           {bankSettingsReady && activePage === "search" && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
@@ -2003,7 +1995,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
           <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
-              <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {accountRole === "client_admin" && <button type="button" style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.35)",background:"#153b47",color:"#fff"}} onClick={() => { setAdvancedAdminOpen(false); openPage("bank-formats"); }}>🏦 Bank Formats</button>}
+                <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
+              </div>
             </div>
             <AdvancedAdmin
               allowConnectionSettings={accountRole === "master_owner" || accountRole === "admin"}

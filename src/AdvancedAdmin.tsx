@@ -702,7 +702,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
       </p>
 
-      {isClientAdmin && <ClientGoogleSetup enabled placement="manage" />}
+      {isClientAdmin && <ClientGoogleSetup enabled placement="manage" connectionUnlocked={unlocked} />}
 
       </div>
 

@@ -175,6 +175,13 @@ function trimCache(state: import("./schema").LocalState) {
 }
 
 export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalSnapshot() {
+  const state = await repository.read(identity());
+  return {
+    records: state.records.map(record => ({ ...record, customer: { ...record.customer, photoDataUrl: undefined, pdfDataUrl: undefined, photoPreview: undefined } })),
+    operations: state.operations.map(operation => ({ ...operation, customer: { ...operation.customer, photoDataUrl: undefined, pdfDataUrl: undefined, photoPreview: undefined } })),
+  };
+}
 export async function exportLocalBackup() { const state=await repository.read(identity());const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 export function startLocalSync() { const listener=()=>{void syncNow().catch(()=>undefined);};window.addEventListener("online",listener);window.addEventListener("pagehide",listener);const visibility=()=>{if(document.visibilityState==="hidden")listener();};document.addEventListener("visibilitychange",visibility);const timer=setInterval(listener,60000);listener();return ()=>{window.removeEventListener("online",listener);window.removeEventListener("pagehide",listener);document.removeEventListener("visibilitychange",visibility);clearInterval(timer);}; }
 

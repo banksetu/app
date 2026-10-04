@@ -49,7 +49,7 @@ async function googleApi<T>(url: string, accessToken: string, init: RequestInit 
   return payload;
 }
 
-export default function ClientGoogleSetup({ enabled, placement = "onboarding" }: { enabled: boolean; placement?: "onboarding" | "manage" }) {
+export default function ClientGoogleSetup({ enabled, placement = "onboarding", connectionUnlocked = true }: { enabled: boolean; placement?: "onboarding" | "manage"; connectionUnlocked?: boolean }) {
   const [config, setConfig] = useState<SetupConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -87,6 +87,11 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
 
   if (!enabled || loading) return null;
   if (placement === "onboarding" && config?.hasWorkspace) return null;
+  if (placement === "manage" && !connectionUnlocked) return <div style={{border:"1px solid #37646c",borderRadius:10,padding:16,marginTop:16,background:"rgba(4,24,32,.72)"}}>
+    <h3 style={{color:"#eef7f7",marginTop:0}}>Google Sheet / Drive connection 🔒</h3>
+    <p style={{lineHeight:1.6,marginBottom:0}}>यह connection सुरक्षित रूप से locked है। मौजूदा Sheet, Drive folder और bridge settings बदलने या restore करने के लिए ऊपर <strong>Verify Administrator</strong> करके unlock करें।</p>
+    {config?.googleEmail && <p style={{fontSize:13,opacity:.85}}>Connected Google account: {config.googleEmail}</p>}
+  </div>;
 
   const saveRegistration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
