@@ -12,6 +12,8 @@ Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:
 let handler=async()=>{throw new Error('offline');};globalThis.fetch=(...args)=>handler(...args);
 globalThis.__repository=repository;
 let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
+globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
+source=source.replace('import { makeBackup, parseBackup, mergeBackup } from "./backup";','const {makeBackup,parseBackup,mergeBackup}=globalThis.__backup;');
 const engine=await import(compile(source));
 function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
 const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
@@ -30,10 +32,10 @@ test('offline save, search, retry, connection isolation and explicit conflict re
  handler=async(_url,init)=>{const body=JSON.parse(init.body);sent.push(body);throw Error('timeout after cloud commit');};
  await assert.rejects(engine.syncNow());assert.equal((await repository.read('user-a:tenant-a:connection-a')).operations.length,1);
  const originalId=sent[0].operation.operationId;
- handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){sent.push(body);return new Response(JSON.stringify({success:true,rowNumber:9,revision:'r1',customer:{...customer,recordId:saved.recordId,revision:'r1',rowNumber:9}}));}return new Response(JSON.stringify({success:true,customers:[],fullSnapshot:false}));};
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){sent.push(body);return new Response(JSON.stringify({success:true,rowNumber:9,revision:'r1',customer:{...customer,recordId:saved.recordId,revision:'r1',rowNumber:9}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,revision:'r1',rowNumber:9}],hasNextPage:false,nextCursor:1}));};
  await engine.syncNow();assert.equal(sent.at(-1).operation.operationId,originalId);state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].rowNumber,9);
  navigator.onLine=false;await request({action:'updateCustomer',rowNumber:9,customer:{...customer,name:'Local edit'}});navigator.onLine=true;
- handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='syncCustomerOperation'?{success:false,code:'CONFLICT',message:'Changed remotely',customer:{...customer,name:'Cloud edit',recordId:saved.recordId,revision:'r2',rowNumber:4}}:{success:true,customers:[],fullSnapshot:false}));};
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='syncCustomerOperation'?{success:false,code:'CONFLICT',message:'Changed remotely',customer:{...customer,name:'Cloud edit',recordId:saved.recordId,revision:'r2',rowNumber:4}}:{success:true,customers:[{...customer,name:'Cloud edit',recordId:saved.recordId,revision:'r2',rowNumber:4}],hasNextPage:false,nextCursor:1}));};
  await engine.syncNow();const conflicts=await engine.getConflicts();assert.equal(conflicts[0].remoteCustomer.name,'Cloud edit');assert.equal((await repository.read('user-a:tenant-a:connection-a')).records[0].customer.name,'Local edit');
  storage.set('bankSetuAccountRole','client_user');await assert.rejects(engine.resolveConflict(conflicts[0].operationId,'local'),/Admin/);storage.set('bankSetuAccountRole','client_admin');
  await engine.resolveConflict(conflicts[0].operationId,'cloud');state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].customer.name,'Cloud edit');assert.equal(state.records[0].rowNumber,4);

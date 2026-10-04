@@ -18,10 +18,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check:schema
-      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs desktop/store.test.cjs
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs
       - run: npm run build
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - run: npx playwright install --with-deps chromium
+      - name: Mobile browser smoke
+        run: |
+          npm run preview -- --host 127.0.0.1 > /tmp/banksetu-vite.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173 > /dev/null && break || sleep 1; done
+          node scripts/ui-smoke.mjs
   windows-test-package:
     needs: validate
     runs-on: windows-latest
@@ -36,7 +42,9 @@ jobs:
       - run: npm run build
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
-      - name: Build unsigned installer for testing; automatic updates stay locked
+      - name: Windows Electron login smoke
+        run: node scripts/ui-smoke.mjs --desktop
+      - name: Build Windows installer for client testing
         run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

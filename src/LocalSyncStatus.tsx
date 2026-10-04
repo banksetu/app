@@ -1,15 +1,23 @@
 import { useEffect, useState } from "react";
-import { exportLocalBackup, getConflicts, resolveConflict, getLocalStatus, startLocalSync, syncNow } from "./core/localData";
+import { exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, startLocalSync, syncNow } from "./core/localData";
 import type { QueueOperation } from "./core/schema";
 export default function LocalSyncStatus() {
   const [conflicts,setConflicts]=useState<QueueOperation[]>([]);
-  const [status,setStatus]=useState({records:0,pending:0,conflicts:0});const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+  const [status,setStatus]=useState({records:0,pending:0,conflicts:0,downloading:false,cacheLimited:false});const [error,setError]=useState("");const [busy,setBusy]=useState(false);
   useEffect(()=>{const refresh=()=>{void getLocalStatus().then(setStatus).then(()=>getConflicts()).then(setConflicts).catch(()=>undefined);};const stop=startLocalSync();const timer=setInterval(refresh,5000);window.addEventListener("banksetu-sync-change",refresh);refresh();return()=>{stop();clearInterval(timer);window.removeEventListener("banksetu-sync-change",refresh);};},[]);
   if (sessionStorage.getItem("bankSetuConnectionMode")!=="option-b") return null;
   return <aside aria-label="Local database sync" style={{background:"#0b2630",color:"#eef7f7",padding:"8px 16px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
     <span>Local: {status.records} · Pending: {status.pending} · Review: {status.conflicts}</span>
     <button disabled={busy} onClick={()=>{setBusy(true);setError("");void syncNow().catch(reason=>setError(String(reason.message||reason))).finally(()=>setBusy(false));}}>Sync Now</button>
     <button onClick={()=>void exportLocalBackup().catch(reason=>setError(String(reason.message||reason)))}>Export backup</button>
+    <label style={{cursor:"pointer"}}>Restore backup<input aria-label="Restore local backup" type="file" accept="application/json,.json" style={{maxWidth:220}} onChange={event=>{
+      const file=event.target.files?.[0];event.target.value="";if(!file)return;
+      if(file.size>90*1024*1024){setError("Backup exceeds 90 MB.");return;}
+      if(!window.confirm("Merge this backup into the current workspace? Existing edits will be preserved; differences go to Review."))return;
+      void file.text().then(restoreLocalBackup).then(report=>setError(`Restored ${report.records} records and ${report.operations} operations; ${report.conflicts} need review.`)).catch(reason=>setError(reason.message));
+    }}/></label>
+    {status.downloading&&<span>Downloading the next Google batch…</span>}
+    {status.cacheLimited&&<span>Offline cache limit reached. Pending edits are retained; older cloud records remain searchable online.</span>}
     {error&&<span role="alert">{error}</span>}
     {status.conflicts>0&&<span role="alert">Conflicting/rejected records remain saved locally. Export them for administrator review.</span>}
     {sessionStorage.getItem("bankSetuAccountRole")==="client_admin"&&conflicts.map(op=><details key={op.operationId} style={{width:"100%"}}>

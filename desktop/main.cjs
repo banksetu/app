@@ -37,13 +37,18 @@ app.whenReady().then(async()=>{
   const {autoUpdater}=require('electron-updater');
   autoUpdater.autoDownload=false;autoUpdater.autoInstallOnAppQuit=false;autoUpdater.allowDowngrade=false;
   autoUpdater.on('error',()=>{});autoUpdater.on('update-downloaded',()=>{downloaded=true;});
+  const hasSignedRelease=()=>{
+    const config=path.join(process.resourcesPath,'app-update.yml');
+    return app.isPackaged && fs.existsSync(config) && /^publisherName:/m.test(fs.readFileSync(config,'utf8'));
+  };
+  const testUpdater=require('./testUpdater.cjs').createTestUpdater({fetch:net.fetch,current:app.getVersion(),directory:path.join(app.getPath('userData'),'updates'),backup:()=>store.backup(),launch:async file=>{const error=await shell.openPath(file);if(error)throw new Error(error);app.quit();}});
   const assertSignedRelease=()=>{
     const config=path.join(process.resourcesPath,'app-update.yml');
     if (!app.isPackaged || !fs.existsSync(config) || !/^publisherName:/m.test(fs.readFileSync(config,'utf8'))) throw new Error('Signed Windows release configuration is required before automatic updates.');
   };
   ipcMain.handle('update:version',event=>{trusted(event);return app.getVersion();});
-  ipcMain.handle('update:check',async event=>{trusted(event);assertSignedRelease();const result=await autoUpdater.checkForUpdates();return {latestVersion:result?.updateInfo.version || app.getVersion(),notes:'Verified Windows update feed.'};});
-  ipcMain.handle('update:install',async event=>{trusted(event);assertSignedRelease();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
+  ipcMain.handle('update:check',async event=>{trusted(event);if(app.isPackaged&&!hasSignedRelease())return testUpdater.check();assertSignedRelease();const result=await autoUpdater.checkForUpdates();return {latestVersion:result?.updateInfo.version || app.getVersion(),notes:'Verified Windows update feed.'};});
+  ipcMain.handle('update:install',async event=>{trusted(event);if(app.isPackaged&&!hasSignedRelease())return testUpdater.install();assertSignedRelease();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
   await window.loadURL(ORIGIN+'/index.html');
 }).catch(error=>{require('electron').dialog.showErrorBox('Bank Setu startup failed',error.message);app.quit();});
 app.on('window-all-closed',()=>app.quit());

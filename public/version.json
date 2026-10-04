@@ -1,5 +1,5 @@
 {
-  "latestVersion": "1.0.3",
+  "latestVersion": "1.0.4",
   "downloadUrl": "",
-  "notes": "Dashboard UI improved, Bank Information alignment updated, bank logo layout improved, mobile responsive view optimized, Firebase cloud sync and API integration improvements."
+  "notes": "Local database, offline restart access, backup restore, bounded Google sync and Windows testing installer."
 }

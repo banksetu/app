@@ -1,3 +1,4 @@
+import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
 import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
@@ -25,17 +26,24 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   const scope = identity();
   const state = await repository.read(scope);
   if (supportedReads.has(action)) {
+    // Bulk online export must read every cloud page, even when only part is cached.
+    if(action === "getAllCustomers" && navigator.onLine){
+      const response=await networkFetch(input,init);const value=await response.clone().json();
+      if(value.success)await cacheResponse(scope,value);return response;
+    }
     const query = fold(payload.query);
     const hits = state.records.filter(record => !record.deleted && (action === "getAllCustomers" || (action === "getCustomerByRowNumber" ? record.rowNumber === Number(payload.rowNumber) : query && ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(field => fold(record.customer[field]).includes(query)))));
     if (hits.length || !navigator.onLine) {
       if (!hits.length) return resultResponse({success:false,message:"Customer is not in this device's offline cache."});
       const first = hits[0];
       if (navigator.onLine && hits.length===1 && !first.pending && first.customer.photoUrl && !first.customer.photoPreview && action!=="getAllCustomers") {
-        const response=await networkFetch(input,{...init,body:JSON.stringify({...payload,action:"getCustomerByRowNumber",rowNumber:first.rowNumber})});
+        const response=await networkFetch(input,{...init,body:JSON.stringify({...payload,action:"getCustomerByRowNumber",rowNumber:first.rowNumber,recordId:first.recordId})});
         const value=await response.clone().json();if(value.success){await cacheResponse(scope,value);return response;}
       }
-      const matches = hits.map(record => ({...record.customer, rowNumber:record.rowNumber, recordId:record.recordId, revision:record.revision}));
-      return resultResponse({success:true,message:"Customer loaded from local database.",customer:{...first.customer,recordId:first.recordId,revision:first.revision},rowNumber:first.rowNumber,matches,multipleMatches:hits.length>1,customers:matches,local:true});
+      const page = Math.max(1,Number(payload.page)||1);const pageSize=Math.min(250,Math.max(1,Number(payload.pageSize)||50));
+      const visible=action==="getAllCustomers"?hits.slice((page-1)*pageSize,page*pageSize):hits;
+      const matches = visible.map(record => ({...record.customer, rowNumber:record.rowNumber, recordId:record.recordId, revision:record.revision}));
+      return resultResponse({success:true,message:"Customer loaded from local database.",customer:{...first.customer,recordId:first.recordId,revision:first.revision},rowNumber:first.rowNumber,matches,multipleMatches:hits.length>1,customers:matches,hasNextPage:action==="getAllCustomers"&&page*pageSize<hits.length,local:true});
     }
     const response = await networkFetch(input, init);
     const value = await response.clone().json();
@@ -75,6 +83,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     current.records = current.records.filter(item => item.recordId !== recordId);current.records.push(record);
     const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending"};
     current.operations.push(operation);
+    if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
   announce();
   if (navigator.onLine) void syncNow().catch(() => undefined);
@@ -90,9 +99,12 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending) continue;
-      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),customer:{...customer,photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},pending:false};
+      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},pending:false};
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
+    const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
+    state.records=state.records.filter(record=>record.pending || !deleted.has(record.recordId));
+    trimCache(state);
   });
   announce();
 }
@@ -106,7 +118,7 @@ async function runSync() {
   const url = sessionStorage.getItem("bankSetuBridgeUrl")!;
   const user = auth.currentUser!;
   const initial = await repository.read(scope);
-  for (const op of initial.operations.filter(operation => operation.state === "pending")) {
+  for (const op of initial.operations.filter(operation => operation.state === "pending").slice(0,25)) {
     if (identity() !== scope || auth.currentUser?.uid !== user.uid) return;
     const current = await repository.read(scope);
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
@@ -124,14 +136,44 @@ async function runSync() {
       if (saved) { saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer=value.customer; }
     });
   }
-  // Controlled pull after pushing: pending/conflicting edits are never overwritten.
-  if (identity() !== scope) return;
-  const response = await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getAllCustomers",idToken:await user.getIdToken()}),signal:AbortSignal.timeout(25000)});
-  const value = await response.json();
-  if (value.success) await cacheResponse(scope,value);
+  // At most four 250-row pages per sync; resume the cursor on the next tick.
+  const started=Date.now();
+  for(let page=0;page<4 && Date.now()-started<20000;page++) {
+    if(identity()!==scope)return;
+    const state=await repository.read(scope);
+    const pull=state.pull || {cursor:0,seen:[],startedAt:Date.now()};
+    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getCustomerPage",cursor:pull.cursor,pageSize:250,idToken:await user.getIdToken()}),signal:AbortSignal.timeout(25000)});
+    if(!response.ok)throw new Error("Google download interrupted; sync cursor and pending records retained.");
+    const value=await response.json();
+    if(!value.success)throw new Error(value.message || "Google download rejected; local data retained.");
+    // An old bridge without page support must be upgraded; never infer a complete snapshot.
+    if(!Array.isArray(value.customers))throw new Error("Deploy the current client bridge to enable paged sync.");
+    await cacheResponse(scope,value);
+    await repository.transact(scope,current=>{
+      const seen=new Set([...pull.seen,...value.customers.map((customer:Customer)=>String(customer.recordId))]);
+      if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
+      if(value.hasNextPage)current.pull={...pull,cursor:value.nextCursor,seen:[...seen]};
+      else {
+        current.records=current.records.filter(record=>record.pending || (record.cachedAt||0)>pull.startedAt || seen.has(record.recordId));
+        current.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:current.pull?.cacheLimited};
+      }
+    });
+    if(!value.hasNextPage)break;
+  }
 }
-export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length}; }
-export async function exportLocalBackup() { const state=await repository.read(identity());const url=URL.createObjectURL(new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),...state},null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
+function trimCache(state: import("./schema").LocalState) {
+  const MAX_RECORDS=10000;const MAX_BYTES=80*1024*1024;
+  let over=state.records.length>MAX_RECORDS;
+  if(JSON.stringify(state).length>MAX_BYTES){delete state.documents;for(const record of state.records)if(!record.pending){delete record.customer.photoPreview;delete record.customer.photoDataUrl;delete record.customer.pdfDataUrl;}over=true;}
+  const candidates=state.records.filter(record=>!record.pending).sort((a,b)=>(a.cachedAt||0)-(b.cachedAt||0));
+  while(candidates.length && (state.records.length>MAX_RECORDS || JSON.stringify(state).length>MAX_BYTES)) {
+    const record=candidates.shift()!;state.records=state.records.filter(item=>item.recordId!==record.recordId);over=true;
+  }
+  if(over){state.pull ||= {cursor:0,seen:[],startedAt:Date.now()};state.pull.cacheLimited=true;}
+}
+
+export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function exportLocalBackup() { const state=await repository.read(identity());const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 export function startLocalSync() { const listener=()=>{void syncNow().catch(()=>undefined);};window.addEventListener("online",listener);const timer=setInterval(listener,60000);listener();return ()=>{window.removeEventListener("online",listener);clearInterval(timer);}; }
 
 export async function getConflicts() { return (await repository.read(identity())).operations.filter(op=>op.state!=="pending"); }
@@ -158,4 +200,11 @@ export async function getDataIdToken(forceRefresh = false): Promise<string> {
   if (!auth.currentUser) throw new Error("Sign in again.");
   if (!navigator.onLine && sessionStorage.getItem("bankSetuConnectionMode") === "option-b") { identity(); return ""; }
   return auth.currentUser.getIdToken(forceRefresh);
+}
+
+export async function restoreLocalBackup(text: string) {
+  const scope=identity();const backup=parseBackup(text,scope);
+  let report={records:0,operations:0,conflicts:0};
+  await repository.transact(scope,state=>{report=mergeBackup(state,backup);if(JSON.stringify(state).length>90*1024*1024)throw new Error("Merged backup exceeds local storage limit. Existing data was not changed.");});
+  announce();return report;
 }

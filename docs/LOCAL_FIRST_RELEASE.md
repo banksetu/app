@@ -1,36 +1,26 @@
-# Local-first implementation and release status
+# Local-first testing build 1.0.4
 
-Base: `f3bf8d7`, `codex/spark-client-workspace-20261001`. Implementation is isolated on `codex/local-first-option-b`; production auto-deploy workflows do not run on this branch. The backup branch preserves the base commit. Existing OAuth/Master connections keep their current path; local-first behavior activates only for verified Option B connections.
+Implementation branch: `codex/local-first-option-b`. Base working state: `f3bf8d7`, preserved on `backup/pre-local-first-f3bf8d7`. Existing frontend remains on its working branch; a separate Firebase `local-first-test` preview is built. Compatible backend additions deploy to the existing Worker, retaining legacy account/OAuth routes.
 
-Implemented: shared data request adapter, transactional IndexedDB record/outbox state, user/tenant/connection partitioning, stable record IDs, operation replay, revision conflicts, explicit administrator review, controlled pull, local photo/PDF queue, client-owned document bridge, resource owner checks and atomic resource reservations, encrypted SQLite desktop store, limited Electron preload, offline shell caching, bounded logout flush, update backup and signed-updater gate.
+Implemented: shared customer data adapter, IndexedDB and encrypted SQLite transactions, partitioned record/outbox state, UUID identity, replay/idempotency, revision conflicts and admin review, bounded paged sync/cache, queued photos, client-owned PDF bridge, resource binding/owner checks, generated client setup download, signed eight-hour offline restart lease with online renewal, scoped backup export/restore, offline web shell, bounded logout attempt, desktop installer and updates with pre-install backup.
 
-## Deployment prerequisites
+## Setup and packages
 
-- Existing Worker Firebase admin credential remains separate. Add `GOOGLE_DRIVE_SERVICE_ACCOUNT` through Cloudflare secret settings using the dedicated sync account JSON. Never commit the JSON or embed it in the installer. Enable Google Drive and Sheets APIs for that service account project.
-- Deploy the Worker and Hosting after reviewing this branch. Existing production workflows target `codex/spark-client-workspace-20261001`; merging changes there triggers live deployments. Apps Script is a separate deployment.
-- Each Gmail client must authorize/deploy the client-owned Apps Script bridge; see `CLIENT_ADMIN_SETUP_HI.md`. Its authenticated API rechecks Firebase approval, subscription, tenant status and ownership. The new flow currently requires the client's verified Firebase email to match Google resource ownership. Shared Drives and a different resource-owner email fail closed until separate ownership proof is implemented.
-- No customer records are put in Firestore. `googleResourceBindings` contains resource/tenant mapping only and is accessible through privileged Worker credentials; existing rules deny browser access by default.
-- Google and Cloudflare quotas still apply; Firebase Functions are not deployed and Blaze is not required by this architecture.
+Read [Client Admin setup and acceptance tests](CLIENT_ADMIN_SETUP_HI.md). GitHub preview workflow uses existing Firebase/Cloudflare deployment secrets. The dedicated Google sync account must be configured separately as the Worker secret `GOOGLE_DRIVE_SERVICE_ACCOUNT`; optionally configure Actions secret `BANKSETU_GOOGLE_DRIVE_SERVICE_ACCOUNT` for its automated installation. No secret is included in the app/EXE. Drive/Sheets APIs must be enabled.
 
-## Windows
+Validation workflow builds the unsigned Windows x64 NSIS installer after tests, browser login smoke and Windows Electron login/preload smoke. Signed installer workflow remains available with signing secrets. Unsigned testing builds use the fixed repository release and GitHub SHA-256 asset digest; signed builds retain electron-updater Authenticode verification. Publish a higher stable version installer in `banksetu/app` Releases to exercise updates. Artifact-only builds do not appear in that feed. Both paths back up before install and preserve userData.
 
-The validation workflow produces an **unsigned test installer**, not a production signed release. The signing workflow requires repository secrets `WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD`, `WINDOWS_PUBLISHER_NAME`. It produces artifacts without publishing. A reviewed signed release must include the installer, blockmap and `latest.yml` at the configured `banksetu/app` GitHub release feed. Package version must be incremented via the existing release script before release.
+## Validation and practical boundaries
 
-Electron uses a packaged build, sandbox/context isolation, denied navigation/permissions and an allowlisted external-link handler. SQLite lives under Electron userData/database. Windows safeStorage encrypts payloads before SQLite writes; startup fails if OS encryption is unavailable. Compare-and-swap transactions reject stale desktop writes. Before update installation the encrypted database is checkpointed and copied; uninstall preserves app data. Release/update behavior still needs real Windows verification and signing credentials.
+Local checks: 26 meaningful automated tests, original 24-column schema verification and TypeScript/Vite build. GitHub CI additionally exercises browser/native app startup and creates the Windows installer. Actual account upload/search and device install/printing are acceptance tests for the user; no claim of live-account success is made before these run.
 
-## Limits requiring acceptance
+- Option B local-first activates for verified client workspaces. Master/OAuth workspaces retain their current behavior.
+- Offline restart uses a previously authenticated persisted Firebase session, not offline password authentication. An eight-hour signed lease expires; disconnected devices cannot receive instant revocation. Public verification material is enrolled over the trusted authenticated Worker connection; local profile compromise is outside that permission boundary.
+- Pulls are limited to four pages of 250 rows per run, 20-second pull budget, and 25 queued writes per run. Cache limits are 10,000 records/about 80 MB; pending records are not evicted. Local transactions reject above the 90 MB limit. Large workloads require real performance tests.
+- Same verified Firebase/Google owner email is required. Shared Drives and separately owned resources fail closed. Each Gmail client must authorize/deploy their own bridge once. Organization policies may prohibit this deployment.
+- Browser origin storage is not Windows encrypted storage and can be erased. Export before clearing data or replacing a connection. Backup restore is scoped to the same user/tenant/connection.
+- Apps Script locks apply to one script project. Do not run multiple write bridges for one Sheet. Manual edits can still race a write; revision checks catch preexisting changes. Freeze old row-number writers before migrating.
+- Photo upload can precede failed record sync; retries use deterministic operation identities. Orphan document cleanup is not automatic.
+- Firestore stores configuration/resource binding, not the customer cloud database. Firebase Functions are not deployed. Google/Cloudflare quotas apply.
 
-- Offline operations currently require an already verified signed-in session. Fresh login/restart while offline has not been implemented as a persistent signed permission lease. The eight-hour offline limit is a local usability control; it cannot promise instant revocation on a disconnected device.
-- Local-first is enabled for Option B client connections only. Existing Master/OAuth workspaces are preserved rather than automatically migrated.
-- Full pull currently reads all customers; pagination and bounded large-workspace cache have not been implemented. Large client datasets need performance testing.
-- Browser records are origin-scoped IndexedDB without Windows at-rest encryption; site-data deletion can lose pending edits. JSON export exists; restore/import is not yet implemented.
-- Conflict replay and row mutation are protected under one Apps Script project's lock. Do not run multiple independent write bridges against one Sheet. Manual spreadsheet edits and other script projects cannot share that lock; revision checks detect preexisting changes, but a concurrent manual edit during a write remains a race.
-- Legacy routes retain compatibility. Option B UI writes use the sync protocol; stable identity cannot protect old clients calling legacy row-number mutation APIs. Freeze legacy writers before migrating a Sheet.
-- Client-owned photo/PDF uploads, Google permissions, quotas, Apps Script CORS/authorization, Windows rendering/printing and signed updater recovery need live-account/device acceptance tests. Unit tests are not proof those deployments work.
-- Photo upload can succeed before a record write fails. Retry is confined to the same client folder; PDFs use operation-derived names to avoid duplicate uploads. Orphan document cleanup is not automated.
-
-## Validation
-
-Run `npm run build`, `npm run check:schema`, and `node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs desktop/store.test.cjs`. CI repeats these and builds the Windows test package. Do not publish a manifest claiming a working desktop updater before the signed installer and its acceptance tests pass.
-
-Local verification completed: TypeScript/Vite production build, original 24-column schema check, focused lint for new local/connection components, and 21 automated tests passed. A browser visual smoke test was attempted, but Chromium download was blocked/corrupted in this environment; no visual QA or live-account test is claimed.
+Commands: `npm run build`, `npm run check:schema`, `node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs`.

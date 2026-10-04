@@ -365,7 +365,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
     }, 12000);
     const unsubscribe = onSnapshot(doc(db, ...tenantSettingsPath(user.uid)), { includeMetadataChanges:true }, snapshot => {
-      if (snapshot.metadata.fromCache && !receivedServer) return;
+      if (snapshot.metadata.fromCache && !receivedServer && navigator.onLine) return;
+      if(snapshot.metadata.fromCache && !snapshot.exists()) return;
       receivedServer = true; window.clearTimeout(timeout);
       const cloudData = snapshot.exists() ? snapshot.data() : {};
       const saved = restoreWorkspaceBankSettings(cloudData);
@@ -395,7 +396,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     );
 
   const openBankInfoEditor = () => {
-    if (!canManageBankSettings || !bankSettingsReady) return;
+    if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     setBankInfoDraft({ ...bankInfo });
 
@@ -776,7 +777,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   };
 
   const openLogoPicker = () => {
-    if (!canManageBankSettings || !bankSettingsReady) return;
+    if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     logoInputRef.current?.click();
 

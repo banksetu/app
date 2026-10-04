@@ -1,3 +1,4 @@
+import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { syncNow } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -129,6 +130,7 @@ function App() {
         sessionStorage.setItem("bankSetuBridgeUrl", setup.apiUrl);
         setTenantApiUrl(setup.apiUrl);
         setTenantWorkspaceReady(true);
+        if(setup.connectionMode === "option-b") await enrollOfflineSession();
       }
     } catch (workspaceError) {
       console.error("Client workspace check failed; customer APIs remain disabled:", workspaceError);
@@ -136,6 +138,7 @@ function App() {
   }, []);
 
   const rejectSession = useCallback(async (message: string) => {
+    if(auth.currentUser) await clearOfflineSession(auth.currentUser.uid).catch(()=>undefined);
     clearProfileListener();
     sessionStorage.removeItem("bankSetuRole");
     sessionStorage.removeItem("bankSetuTenantId");
@@ -237,6 +240,13 @@ function App() {
       }
 
       setCheckingSession(true);
+      if(!navigator.onLine){
+        void resumeOfflineSession(user.uid).then(claims=>{
+          if(auth.currentUser?.uid!==user.uid)return;
+          applyProfile(claims);setIsLoggedIn(true);setError("");setCheckingSession(false);
+        }).catch(reason=>{setError(reason instanceof Error?reason.message:"Connect to verify your account.");setCheckingSession(false);});
+        return;
+      }
       watchUserProfile(user);
     });
 
@@ -244,7 +254,18 @@ function App() {
       unsubscribe();
       clearProfileListener();
     };
-  }, [clearProfileListener, watchUserProfile]);
+  }, [applyProfile, clearProfileListener, watchUserProfile]);
+
+  useEffect(()=>{
+    const reconnect=()=>{if(auth.currentUser)watchUserProfile(auth.currentUser);};
+    window.addEventListener("online",reconnect);return()=>window.removeEventListener("online",reconnect);
+  },[watchUserProfile]);
+
+  useEffect(()=>{
+    if(!isLoggedIn)return;
+    const timer=setInterval(()=>{if(navigator.onLine && sessionStorage.getItem("bankSetuConnectionMode")==="option-b")void enrollOfflineSession().catch(()=>undefined);},30*60*1000);
+    return()=>clearInterval(timer);
+  },[isLoggedIn]);
 
   const handleForgotPassword = async () => {
     setError("");

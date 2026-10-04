@@ -138,7 +138,7 @@ function doPost(e) {
       });
     }
 
-    if (["syncCustomerOperation", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"))) {
+    if (["syncCustomerOperation", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"))) {
       const authUser = requireAuthorizedUser(idToken, false);
       if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
       if (action === "markPassbookPrinted") {
@@ -3027,10 +3027,20 @@ function localFirstRead(request, authUser) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
+    if (["getCustomerPage","getAllCustomers"].includes(request.action)) {
+      const total=Math.max(0,sheet.getLastRow()-1);
+      const size=Math.min(250,Math.max(1,Number(request.pageSize)||250));
+      const cursor=request.action==="getCustomerPage"?Number(request.cursor||0):((Math.max(1,Number(request.page)||1)-1)*size);
+      if(!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Invalid customer page cursor.");
+      const count=Math.min(size,Math.max(0,total-cursor));
+      const batch=count?sheet.getRange(cursor+2,1,count,27).getDisplayValues():[];
+      const customers=batch.map((row,i)=>row[26]==="true"?null:syncCustomerObject(row,cursor+i+2)).filter(Boolean);
+      return jsonResponse({success:true,customers,deletedIds:batch.filter(row=>row[26]==="true").map(row=>String(row[24])),nextCursor:cursor+count,hasNextPage:cursor+count<total,totalRows:total});
+    }
     const values = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, 27).getDisplayValues() : [];
     let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, i+2)).filter(Boolean);
     if (request.action === "getAllCustomers") return jsonResponse({success:true,customers,fullSnapshot:true});
-    if (request.action === "getCustomerByRowNumber") customers = customers.filter(customer => customer.rowNumber === Number(request.rowNumber));
+    if (request.action === "getCustomerByRowNumber") customers = customers.filter(customer => request.recordId ? customer.recordId === String(request.recordId) : customer.rowNumber === Number(request.rowNumber));
     else {
       const query = normalize(request.query);
       customers = query ? customers.filter(customer => ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(key => normalize(customer[key]).includes(query))) : [];

@@ -1,6 +1,6 @@
 import fs from 'node:fs';import crypto from 'node:crypto';
 const assets=fs.readdirSync('dist/assets').map(name=>'/assets/'+name);
-const files=['/index.html',...assets];
+const files=['/index.html','/client-bridge/Code.gs',...assets];
 const hash=crypto.createHash('sha256').update(fs.readFileSync('dist/index.html')).digest('hex').slice(0,16);
 fs.writeFileSync('dist/sw.js',`
 const CACHE='banksetu-shell-${hash}';

@@ -27,3 +27,5 @@ desktop-release/
 *.sqlite*
 *.pfx
 *.p12
+
+public/client-bridge/Code.gs

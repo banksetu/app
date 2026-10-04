@@ -22,7 +22,7 @@ jobs:
         run: |
           if (!$env:CERT -or !$env:PASSWORD -or !$env:PUBLISHER) { throw 'Configure WINDOWS_CSC_LINK, WINDOWS_CSC_KEY_PASSWORD and WINDOWS_PUBLISHER_NAME as repository secrets. No unsigned production release will be produced.' }
       - run: npm ci
-      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs desktop/store.test.cjs
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs
       - run: npm run check:schema
       - run: npm run build
         env:

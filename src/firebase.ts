@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjm01ZjY9sHVtMLI9J2OG7HqR-w9lVnLo",
@@ -11,7 +11,8 @@ const firebaseConfig = {
   appId: "1:806744371163:web:28535d723bee82074641fe",
 };
 
+export const FIREBASE_WEB_API_KEY = firebaseConfig.apiKey;
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, {localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});

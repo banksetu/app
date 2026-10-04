@@ -1,3 +1,4 @@
+import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
@@ -450,6 +451,14 @@ async function handleMasterOperation(request, env, actor, route) {
     if (!registration.bankName || !registration.passbookBank || !registration.branchName || !registration.operatorName || registration.bankName.length > 120 || registration.cspCode.length > 80 || registration.address.length > 500) return json({ error: "Complete the required bank, branch and operator details." }, 400);
     await putDocument(env, `/tenantSettings/${encodeURIComponent(actor.profile.tenantId)}`, { tenantId: actor.profile.tenantId, ...registration, bankInfo: registration, updatedAt: new Date().toISOString(), updatedBy: actor.uid });
     return json({ success: true });
+  }
+
+  if (route === "/get-offline-session") {
+    if (!["client_admin","client_user"].includes(role)) return json({error:"Offline customer access requires a client workspace."},403);
+    const config=await getGoogleSetupConfig(env,actor).then(response=>response.json());
+    if(config.connectionMode!=="option-b" || !config.dataApiReady || !config.hasWorkspace || config.workspaceStatus!=="active") return json({error:"Connect an active Option B workspace before enabling offline access."},409);
+    const issuedAt=Date.now();
+    return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",connectionId:config.connectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:issuedAt+8*60*60*1000}));
   }
 
   if (route === "/connect-option-b") {
@@ -926,21 +935,22 @@ export default {
     }
     const origins = String(env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
     const origin = request.headers.get("origin") || "";
+    const allowedOrigin=origins.includes(origin) || (env.ALLOW_LOCAL_FIRST_PREVIEW === "true" && /^https:\/\/banksetu-app--local-first-test-[a-z0-9]+\.web\.app$/.test(origin));
     const cors = {
-      "access-control-allow-origin": origins.includes(origin) ? origin : "null",
+      "access-control-allow-origin": allowedOrigin ? origin : "null",
       "access-control-allow-methods": "POST, OPTIONS",
       "access-control-allow-headers": "authorization, content-type",
       "vary": "Origin",
     };
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    if (!origins.includes(origin)) return json({ error: "Origin is not allowed." }, 403, cors);
+    if (!allowedOrigin) return json({ error: "Origin is not allowed." }, 403, cors);
     if (request.method !== "POST") return json({ error: "Method not allowed." }, 405, cors);
     const route = new URL(request.url).pathname;
     try {
       const supportedRoutes = [
         "/account-action", "/delete-user", "/create-client-user", "/create-client",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
-        "/bootstrap-master-owner", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
+        "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings",
       ];
       if (!supportedRoutes.includes(route)) {
@@ -960,7 +970,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"];
+      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"];
       const result = migratedRoutes.includes(route)
         ? await handleMasterOperation(request, env, actor, route)
         : route === "/create-client-user"

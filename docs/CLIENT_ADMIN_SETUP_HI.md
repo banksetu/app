@@ -1,46 +1,50 @@
-# Bank Setu — Client Admin Google connection
+# Bank Setu 1.0.4 — Client Admin connection और testing
 
-यह guide नए Option B implementation के लिए है। अभी इसे live app पर deployment और वास्तविक client-account test के बाद इस्तेमाल करें। पुराना working connection अपने आप migrate नहीं होता।
+## पहले Master की एक बार की तैयारी
 
-## App में दो steps
+Cloudflare Worker में `GOOGLE_DRIVE_SERVICE_ACCOUNT` secret dedicated sync account के JSON से configure होना चाहिए। Account: `bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com`। Google project में Drive और Sheets APIs enabled हों। Firebase administration credential अलग रहता है। JSON को chat, code या client को न दें। GitHub Actions secret `BANKSETU_GOOGLE_DRIVE_SERVICE_ACCOUNT` configure करने पर testing deployment इसे Worker में रखता है; पहले से configured Worker secret भी चलेगा।
 
-पहले अपनी Bank Information save करें। Google Sheet और Drive folder आपके verified Bank Setu login email वाले Google account में होने चाहिए। Client Users connection नहीं बदल सकते; वे Client Admin का connection इस्तेमाल करेंगे।
+Testing web link GitHub Actions के **Deploy local-first testing frontend and compatible backend** run में मिलता है। Windows EXE **Local-first validation and Windows test build** run → Artifacts → `BankSetu-Windows-UNSIGNED-TEST` ZIP में है। ZIP extract करके `.exe` installer खोलें; `.blockmap` installer नहीं है।
 
-1. **Share करें।** अपनी Bank Setu Sheet को अपने चुने हुए Drive folder में रखें। Sheet और folder दोनों की Share screen में यह email डालकर Editor चुनें:
+## Client Admin के लिए app में दो steps
 
-   `bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com`
+अपनी Bank Information पहले save करें। Sheet और folder का owner वही Google email हो जो verified Bank Setu Client Admin login email है। Sheet को उसी Drive folder में रखें। Client User connection बदल नहीं सकता।
 
-2. **Test & Connect करें।** Client Workspace Settings में Google Sheet link, Drive folder link और पहले से तैयार client-owned upload bridge का `/exec` URL डालें। Test & Connect दबाएँ। Success के बाद workspace खोलने के लिए app reload करें।
+1. **Share:** Sheet और folder दोनों की Share screen में `bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com` को Editor दें।
+2. **Connect:** Client Workspace Settings में Sheet link, Folder link और तैयार bridge का `/exec` URL डालकर **Test & Connect** दबाएँ। Success के बाद app reload करें।
 
-Connection test resource owner, Sheet location, Editor access, original 24 headers, bridge tenant binding और दूसरे tenant के resource reservation की जाँच करता है। गलत columns पर existing customer data overwrite नहीं होता।
+Ownership, Editor access, Sheet का folder, original 24 headers और दूसरे client के resource binding की जाँच होती है। Existing गलत headers पर data overwrite नहीं होता। नई connection में पुराने pending records अपने आप नहीं भेजे जाते।
 
-## पहली बार की जरूरी तैयारी — यह दो app steps से अलग है
+## पहली बार bridge तैयार करना
 
-सामान्य Gmail में service account अकेले नए PDFs/photos का owner नहीं बन सकता। इसलिए client के Google account में एक बार Apps Script bridge authorize और deploy करना जरूरी है। यह तैयारी अभी अपने आप नहीं होती; इसे पूरी पहली setup का “केवल दो steps” न समझें। Bank Setu के OAuth client पर connection निर्भर नहीं है, लेकिन Google में script को अनुमति देना जरूरी है।
+यह Google की जरूरी initial authorization है; पूरी पहली setup केवल दो clicks में नहीं होती। App में ऊपर के दो connection steps हैं। Client का अपना authorized Apps Script Gmail Drive में PDFs/photos upload करता है।
 
-Administrator client को इसी repository का `apps-script/Code.gs` देता है। Client अपनी Sheet → Extensions → Apps Script में इसे डालता है। Project Settings → Script properties में ये values लगती हैं:
+- Settings में Sheet और Folder link भरें और **Download ready client setup** दबाएँ। `BankSetuClientSetup.gs` में अपने tenant/resource IDs और public Firebase web key पहले से भरे मिलेंगे; Script properties हाथ से भरने की जरूरत नहीं है।
+- अपनी Sheet → **Extensions → Apps Script** खोलें। Downloaded file का पूरा text editor में लगाकर Save करें।
+- Function list से **setupBankSetuClient** चुनें, Run करें और अपने Google account में permissions authorize करें। यह Sheet1 और headers तैयार करता है। Y:AA में existing दूसरे columns हों तो setup सुरक्षित रूप से रुकता है।
+- **Deploy → New deployment → Web app**, Execute as **Me**, access **Anyone** चुनें। Deployment के `/exec` URL को app में डालकर Test & Connect करें।
 
-| Property | Value |
-| --- | --- |
-| `BANKSETU_FIREBASE_API_KEY` | Bank Setu Firebase web API key; deployment account private key नहीं |
-| `BANKSETU_CLIENT_TENANT_ID` | App में दिखा अपना tenant ID |
-| `BANKSETU_CLIENT_SPREADSHEET_ID` | Sheet link में `/d/` के बाद वाला ID |
-| `BANKSETU_CLIENT_FOLDER_ID` | Drive link में `/folders/` के बाद वाला ID |
+Anyone deployment में भी API requests के लिए approved Firebase user/tenant authorization अनिवार्य है। Script update के बाद उसी deployment में नया version select करें। Google organization अगर Anyone deployment रोकती है, तो यह setup उस account में उपलब्ध नहीं होगा। दूसरे owner email या Shared Drive का ownership flow इस version में समर्थित नहीं है।
 
-Client `initializeClientWorkspace` function एक बार अपने Google account से Run और authorize करे। इससे Sheet1 और headers तैयार होंगे; existing अलग headers या Y:AA में अपने columns होने पर migration रुकेगी।
+## Offline, backup और update
 
-Deploy → New deployment → Web app → Execute as **Me** चुनें। API calls के लिए **Anyone** access वाला deployment चाहिए; request में Firebase token अनिवार्य है और script केवल अपने configured tenant/Sheet/folder का इस्तेमाल करती है। `/exec` URL app में रखें। Script को बाद में बदलने पर उसी deployment को नया version दें।
+पहली login/connection internet पर करें। उसके बाद persisted Firebase session के साथ आठ घंटे की server-signed offline permission में app बंद करके offline दोबारा खोल सकते हैं। Offline नई password login नहीं होती। Online रहते permission हर 30 मिनट renew करने का प्रयास होता है। Instant blocking की खबर offline device को नहीं मिल सकती; expired permission पर internet चाहिए, records retained रहते हैं।
 
-Google organization policy अगर Anyone deployment रोकती है तो इस bridge का deployment नहीं चलेगा; उस client के लिए अलग approved access design जरूरी होगा।
+Data pages में cache होता है; startup पर सारी बड़ी Sheet एक साथ download नहीं होती। **Sync Now** दोहराएँ या background sync को चलने दें। Cache अधिकतम 10,000 records/लगभग 80 MB; pending records सुरक्षित रखे जाते हैं। सभी बड़े-workspace customers offline उपलब्ध होने का दावा नहीं है। Pending zero और downloading समाप्त होने पर उस traversal की sync पूरी है।
 
-## Offline काम
+**Export backup** JSON निकालता है; **Restore backup** इसी user/tenant/connection की file को merge करता है। Duplicate operations फिर append नहीं होते; अलग versions review में जाते हैं। Backup में customer information है, इसे निजी रखें। Browser site data हटाने से local data खो सकता है; Windows में encrypted SQLite per-user app-data में रहता है। Logout pending queue नहीं मिटाता।
 
-पहले internet से login और verified Option B connection तैयार करें। इस signed-in session में customer save/search स्थानीय database से चलेगा। Offline access आठ घंटे बाद permissions दोबारा जाँचने के लिए internet माँगेगा। नए device पर पूरा cache बनने तक सभी पुराने customers offline नहीं मिलेंगे। Internet पर Sync Now या background sync queue भेजेगा। Logout पर अधिकतम तीन सेकंड का अंतिम sync प्रयास होता है; बाकी queue मिटती नहीं।
+Conflict पर Client Admin versions देखकर **Keep local/retry** या **Use Google version** चुनता है। Google version चुनने से उस record के pending edits हटते हैं, पहले export करें।
 
-Web में browser/site data हटाने से local records मिट सकते हैं। Pending records होने पर **Export backup** रखें। Windows database per-user app-data में encrypted SQLite है। Backup export JSON में customer information होती है; इसे निजी रखें। Export का automatic restore/import अभी उपलब्ध नहीं है।
+Windows test installer बिना signing certificate का है। Software Update screen fixed `banksetu/app` GitHub release से नई version जाँचती है, SHA-256 checksum मिलाती है और install से पहले database backup बनाती है। नया installer release में publish होने तक “no newer version” सही है। Signed build का Authenticode updater अलग सुरक्षित path पर रहता है। Web update waiting offline shell को activate करता है।
 
-Pending count शून्य होने तक cloud sync पूरा न मानें। Review count बढ़े तो Client Admin local और Google versions देखे: Keep local/retry या Use Google version चुने। Cloud version चुनना उस record के सभी pending edits हटाता है; पहले export करें। दूसरे user या नई Sheet/connection में पुराने pending records अपने आप नहीं भेजे जाते।
+## आप जो पूरा test करेंगे
 
-## वास्तविक acceptance test
+1. Test Client Admin से connection बनाएँ। एक customer, photo और PDF upload करें; उसी Sheet/Folder में देखें।
+2. Account number/name से search; passbook, account-opening और custom bank PDF preview/print देखें। Assam और existing Master connection भी जाँचें।
+3. Internet बंद कर entry/save/search करें, app बंद करके खोलें, pending data देखें। Internet लौटाकर Sync Now करें; retry पर duplicate न बने।
+4. दो devices से same customer edit करें; conflict review आए। दूसरे client का data न दिखे।
+5. Export, नया local test profile या सुरक्षित test reset और same user/connection में Restore करें। Queue/records देखें।
+6. Windows ZIP extract करके EXE install करें। Login, save, restart, print, offline और backup restore दोहराएँ। अगली higher version release पर Software Update और database retention जाँचें।
 
-Administrator पहले एक test client में connection, customer + photo/PDF upload, local search, offline save, internet लौटने पर sync, retry बिना duplicate, दो clients का data separation और reconnect test करे। Signed Windows update को वास्तविक Windows machine पर installer, backup और restart सहित test करने के बाद ही production-ready मानें।
+Testing केवल अलग client/test records पर करें। Automated checks असली Google permissions, upload quotas और आपके printer/device परीक्षण की जगह नहीं लेते।
