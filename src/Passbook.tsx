@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
   useState,
@@ -441,11 +442,11 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
 
 
-    const idToken = await user.getIdToken();
+    const idToken = await getDataIdToken();
 
 
 
-    const response = await fetch(apiUrl, {
+    const response = await localDataFetch(apiUrl, {
 
       method: "POST",
 
@@ -885,7 +886,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
     setMessage("");
 
     try {
-      const response = await fetch("http://127.0.0.1:18181/print-pr2", {
+      const response = await localDataFetch("http://127.0.0.1:18181/print-pr2", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

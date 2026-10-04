@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
   useState,
@@ -233,11 +234,11 @@ export default function Customers() {
 
     const idToken =
 
-      await user.getIdToken();
+      await getDataIdToken();
 
     const response =
 
-      await fetch(apiUrl, {
+      await localDataFetch(apiUrl, {
 
         method: "POST",
 

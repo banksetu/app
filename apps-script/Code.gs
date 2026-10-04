@@ -71,7 +71,11 @@ function doGet(e) {
         protected: true,
         message:
           "Bank Setu API is running",
-        tenantIsolationVersion: "v2"
+        tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
+        tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
+        spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
+        photoFolderId: getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID"),
+        ownerEmail: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? Session.getEffectiveUser().getEmail() : ""
       });
     }
 
@@ -132,6 +136,27 @@ function doPost(e) {
         message:
           "Firebase authentication is required."
       });
+    }
+
+    if (["syncCustomerOperation", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"))) {
+      const authUser = requireAuthorizedUser(idToken, false);
+      if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
+      if (action === "markPassbookPrinted") {
+        if (authUser.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
+        return markPassbookDelivered(request.rowNumber, authUser);
+      }
+      return localFirstRead(request, authUser);
+    }
+
+    if (action === "uploadBankFormatSample") {
+      const admin = requireAuthorizedUser(idToken, true);
+      if (admin.role !== "client_admin") throw new Error("Client Admin permission is required.");
+      return jsonResponse(Object.assign({success:true}, saveBoundDocument(request.dataUrl, request.fileName, admin.photoFolderId, request.operationId)));
+    }
+
+    if (["saveCustomer","updateCustomer","deleteCustomer","markPassbookDelivered"].includes(action)) {
+      const checked = requireAuthorizedUser(idToken, false);
+      if (checked.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
     }
 
     if (action === "getRecentActivities") {
@@ -403,7 +428,12 @@ function requireAuthorizedUser(
     throw new Error("Client workspaces cannot use the Master Admin spreadsheet.");
   }
 
+  const clientTenant = getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID");
+  if (clientTenant && (tenantId !== clientTenant || spreadsheetId !== getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID") || photoFolderId !== getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID"))) {
+    throw new Error("This client-owned bridge cannot access a different workspace.");
+  }
   return {
+    connectionId: tenantSettings ? tenantSettings.connectionId : "",
     uid,
     email:
       cleanValue(
@@ -594,6 +624,7 @@ function getFirestoreTenantSettings(tenantId, idToken) {
     spreadsheetId: firestoreString(document, "spreadsheetId"),
     photoFolderId: firestoreString(document, "photoFolderId"),
     workspaceOwnerUid: firestoreString(document, "workspaceOwnerUid"),
+    connectionId: firestoreString(document, "connectionId"),
     bankFormats: firestoreBankFormats(document)
   };
 }
@@ -1311,7 +1342,7 @@ function searchCustomer(
 
         customer.photoPreview =
           getPhotoPreviewFromFileId(
-            drivePhoto.fileId
+            drivePhoto.fileId, authUser.photoFolderId
           );
       } else {
         /*
@@ -1321,7 +1352,7 @@ function searchCustomer(
 
         customer.photoPreview =
           getPhotoPreviewDataUrl(
-            customer.photoUrl
+            customer.photoUrl, authUser.photoFolderId
           );
       }
 
@@ -1672,7 +1703,7 @@ function drivePhotoObject(
 ========================================================= */
 
 function getPhotoPreviewFromFileId(
-  fileId
+  fileId, allowedFolderId
 ) {
   try {
     if (!fileId) {
@@ -1680,12 +1711,9 @@ function getPhotoPreviewFromFileId(
     }
 
 
-    const blob =
-      DriveApp
-        .getFileById(
-          fileId
-        )
-        .getBlob();
+    const file = DriveApp.getFileById(fileId);
+    if (!allowedFolderId || !fileBelongsToFolder(file, allowedFolderId)) return "";
+    const blob = file.getBlob();
 
 
     const mimeType =
@@ -1734,7 +1762,7 @@ function getPhotoPreviewFromFileId(
 ========================================================= */
 
 function getPhotoPreviewDataUrl(
-  photoUrl
+  photoUrl, allowedFolderId
 ) {
   const fileId =
     extractDriveFileId(
@@ -1748,7 +1776,7 @@ function getPhotoPreviewDataUrl(
 
 
   return getPhotoPreviewFromFileId(
-    fileId
+    fileId, allowedFolderId
   );
 }
 
@@ -1852,7 +1880,7 @@ function deleteCustomer(
 
   if (pdfId) {
     safeTrashDriveFile(
-      pdfId
+      pdfId, admin.photoFolderId
     );
   }
 
@@ -2549,16 +2577,12 @@ function extractDriveFileId(
 
 
 function safeTrashDriveFile(
-  fileId
+  fileId, allowedFolderId
 ) {
   try {
-    DriveApp
-      .getFileById(
-        fileId
-      )
-      .setTrashed(
-        true
-      );
+    const file = DriveApp.getFileById(fileId);
+    if (!allowedFolderId || !fileBelongsToFolder(file, allowedFolderId)) throw new Error("File is outside this workspace folder.");
+    file.setTrashed(true);
 
   } catch (error) {
     console.error(
@@ -2972,4 +2996,136 @@ function migrateOldPhotoNames() {
       ", Skipped: " +
       skipped
   );
+}
+
+
+/* Local-first protocol. Original A:X columns stay in their existing positions.
+ * UUID and operation history are written with the customer in one row write.
+ * Revision fingerprints include legacy edits and manual spreadsheet changes.
+ */
+const SYNC_HEADERS = ["BANKSETU RECORD ID", "BANKSETU OPERATIONS", "BANKSETU DELETED"];
+function ensureSyncMetadata(sheet) {
+  if (sheet.getMaxColumns() < HEADERS.length + SYNC_HEADERS.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), HEADERS.length + SYNC_HEADERS.length - sheet.getMaxColumns());
+  const actual = sheet.getRange(1, 25, 1, 3).getDisplayValues()[0];
+  if (actual.some((cell, i) => cell && cell !== SYNC_HEADERS[i])) throw new Error("Columns Y:AA are already in use. Sync migration stopped without overwriting them.");
+  sheet.getRange(1, 25, 1, 3).setValues([SYNC_HEADERS]);
+  const count = sheet.getLastRow() - 1;
+  if (count > 0) {
+    const meta = sheet.getRange(2, 25, count, 3).getValues();
+    let changed = false;
+    meta.forEach(row => { if (!row[0]) { row[0] = Utilities.getUuid(); changed = true; } });
+    if (changed) sheet.getRange(2, 25, count, 3).setValues(meta);
+  }
+}
+function syncRevision(row) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(row.slice(0, 24))).map(byte => (byte + 256).toString(16).slice(-2)).join("");
+}
+function syncCustomerObject(row, rowNumber) {
+  return Object.assign(rowToCustomer(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
+}
+function localFirstRead(request, authUser) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
+    if (["getCustomerPage","getAllCustomers"].includes(request.action)) {
+      const total=Math.max(0,sheet.getLastRow()-1);
+      const size=Math.min(250,Math.max(1,Number(request.pageSize)||250));
+      const cursor=request.action==="getCustomerPage"?Number(request.cursor||0):((Math.max(1,Number(request.page)||1)-1)*size);
+      if(!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Invalid customer page cursor.");
+      const count=Math.min(size,Math.max(0,total-cursor));
+      const batch=count?sheet.getRange(cursor+2,1,count,27).getDisplayValues():[];
+      const customers=batch.map((row,i)=>row[26]==="true"?null:syncCustomerObject(row,cursor+i+2)).filter(Boolean);
+      return jsonResponse({success:true,customers,deletedIds:batch.filter(row=>row[26]==="true").map(row=>String(row[24])),nextCursor:cursor+count,hasNextPage:cursor+count<total,totalRows:total});
+    }
+    const values = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, 27).getDisplayValues() : [];
+    let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, i+2)).filter(Boolean);
+    if (request.action === "getAllCustomers") return jsonResponse({success:true,customers,fullSnapshot:true});
+    if (request.action === "getCustomerByRowNumber") customers = customers.filter(customer => request.recordId ? customer.recordId === String(request.recordId) : customer.rowNumber === Number(request.rowNumber));
+    else {
+      const query = normalize(request.query);
+      customers = query ? customers.filter(customer => ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(key => normalize(customer[key]).includes(query))) : [];
+    }
+    if (!customers.length) return jsonResponse({success:false,message:"Customer not found."});
+    const customer = customers[0];
+    if (customer.photoUrl) customer.photoPreview = getPhotoPreviewDataUrl(customer.photoUrl, authUser.photoFolderId);
+    else {
+      const photo = findPhotoByCustomerId(customer.enrolId, authUser.photoFolderId);
+      if (photo) { customer.photoUrl = photo.driveUrl; customer.photoPreview = getPhotoPreviewFromFileId(photo.fileId, authUser.photoFolderId); }
+    }
+    customer.passbookDisplay = getPassbookDisplay(customer.passbookStatus);
+    return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches:customers,multipleMatches:customers.length>1});
+  } finally { lock.releaseLock(); }
+}
+function syncCustomerOperation(request, authUser) {
+  const op = request.operation || {};
+  if (request.connectionId !== authUser.connectionId || !authUser.connectionId) return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed. Old queue remains on its original connection."});
+  if (!/^[a-f0-9-]{36}$/i.test(op.recordId || "") || !/^[a-f0-9-]{36}$/i.test(op.operationId || "")) throw new Error("Invalid sync identity.");
+  if (!["saveCustomer","updateCustomer","markPassbookPrinted","markPassbookDelivered","deleteCustomer"].includes(op.action)) throw new Error("Unsupported queued operation.");
+  if (op.action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(authUser.role)) throw new Error("Administrator permission is required.");
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
+    const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,27).getDisplayValues() : [];
+    const index = rows.findIndex(row => String(row[24]) === op.recordId);
+    const existing = index >= 0 ? rows[index] : null;
+    const operations = existing && existing[25] ? JSON.parse(existing[25]) : [];
+    if (operations.includes(op.operationId)) return jsonResponse({success:true,replayed:true,rowNumber:index+2,revision:syncRevision(existing),customer:syncCustomerObject(existing,index+2)});
+    if (existing && (existing[26] === "true" || op.baseRevision !== syncRevision(existing))) return jsonResponse({success:false,code:"CONFLICT",message:"This customer changed in Google Sheets. Both versions are retained for administrator review.",customer:syncCustomerObject(existing,index+2)});
+    if (!existing && op.action !== "saveCustomer") return jsonResponse({success:false,code:"CONFLICT",message:"The original customer was removed. No other row was changed."});
+    if (!existing && op.baseRevision) return jsonResponse({success:false,code:"CONFLICT",message:"Original record is missing."});
+    const customer = Object.assign(existing ? rowToCustomer(existing) : {}, op.customer || {});
+    if (!cleanValue(customer.name) || !cleanValue(customer.accountNo) || !cleanValue(customer.enrolId) || normalizeDigits(customer.uidaiNo).length !== 12) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
+    if (op.action !== "deleteCustomer") {
+      const duplicate = duplicateErrorResponse(findDuplicates(customer, existing ? index+2 : null, authUser));
+      if (duplicate) return duplicate;
+    }
+    if (customer.photoDataUrl && op.action !== "deleteCustomer") {
+      const photo = saveBoundDocument(customer.photoDataUrl, customer.enrolId + "-photo", authUser.photoFolderId, op.operationId);
+      customer.photoUrl = photo.driveUrl;
+    }
+    if (customer.pdfDataUrl && op.action !== "deleteCustomer") {
+      const document = saveBoundDocument(customer.pdfDataUrl, customer.pdfFileName || customer.enrolId + ".pdf", authUser.photoFolderId, op.operationId);
+      customer.pdfUrl = document.driveUrl;
+    }
+    customer.updatedBy = authUser.email;
+    operations.push(op.operationId);
+    if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");
+    const row = customerToRow(customer, existing ? existing[21] : new Date(), new Date()).concat([op.recordId,JSON.stringify(operations),op.action === "deleteCustomer" ? "true" : ""]);
+    const rowNumber = existing ? index+2 : sheet.getLastRow()+1;
+    if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
+    SpreadsheetApp.flush();
+    const saved = sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0];
+    return jsonResponse({success:true,rowNumber,revision:syncRevision(saved),deleted:op.action === "deleteCustomer",customer:syncCustomerObject(saved,rowNumber)});
+  } finally { lock.releaseLock(); }
+}
+function initializeClientWorkspace() {
+  const spreadsheetId = getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID");
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  let sheet = spreadsheet.getSheetByName("Sheet1");
+  if (!sheet) sheet = spreadsheet.insertSheet("Sheet1");
+  const headers = sheet.getRange(1,1,1,24).getDisplayValues()[0];
+  if (headers.some(Boolean) && !HEADERS.every((header,i)=>headers[i]===header)) throw new Error("Existing columns differ; no data was changed.");
+  sheet.getRange(1,1,1,24).setValues([HEADERS]);
+  ensureSyncMetadata(sheet);
+  DriveApp.getFolderById(getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID")).getName();
+  UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/about?fields=user", {headers:{Authorization:"Bearer "+ScriptApp.getOAuthToken()}});
+}
+
+function fileBelongsToFolder(file, folderId) {
+  const parents = file.getParents();
+  while (parents.hasNext()) if (parents.next().getId() === folderId) return true;
+  return false;
+}
+
+function saveBoundDocument(dataUrl, fileName, folderId, operationId) {
+  if (!/^[a-f0-9-]{36}$/i.test(operationId || "")) throw new Error("Document operation ID is required.");
+  const match = String(dataUrl || "").match(/^data:(application\/pdf|image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error("Upload a valid PDF or image.");
+  const bytes = Utilities.base64Decode(match[2]);
+  if (bytes.length > MAX_PHOTO_SIZE) throw new Error("Document exceeds 5 MB.");
+  const folder = DriveApp.getFolderById(folderId);
+  const name = operationId + "-" + safeFileName(fileName || "document").slice(0,120);
+  const previous = folder.getFilesByName(name);
+  const file = previous.hasNext() ? previous.next() : folder.createFile(Utilities.newBlob(bytes,match[1],name));
+  return {fileId:file.getId(),fileName:file.getName(),mimeType:match[1],driveUrl:"https://drive.google.com/file/d/"+file.getId()+"/view"};
 }

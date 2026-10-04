@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -31,9 +32,9 @@ export default function BankFormatPrint({
       const apiUrl = String(data?.apiUrl || getTenantApiUrl() || "");
       const user = auth.currentUser;
       if (!user || !apiUrl) throw new Error("Sign in and connect this client workspace before printing its bank format.");
-      const response = await fetch(apiUrl, {
+      const response = await localDataFetch(apiUrl, {
         method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "getBankFormatPreview", idToken: await user.getIdToken(), formatType }),
+        body: JSON.stringify({ action: "getBankFormatPreview", idToken: await getDataIdToken(), formatType }),
       });
       const result = await response.json() as { success?: boolean; data?: string; mimeType?: string; message?: string };
       if (!response.ok || !result.success || !result.data || !result.mimeType) {

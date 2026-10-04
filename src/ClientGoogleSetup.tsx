@@ -1,3 +1,4 @@
+import OptionBConnection from "./OptionBConnection";
 import { useEffect, useState } from "react";
 import { auth } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
@@ -6,6 +7,7 @@ import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import type { FormEvent } from "react";
 
 type SetupConfig = {
+  connectionMode: string;
   oauthClientId: string;
   apiUrl: string;
   executorEmail: string;
@@ -65,13 +67,11 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
     let active = true;
     // Preload GIS before the click so the OAuth popup remains tied to the
     // browser's user gesture instead of being blocked after an async script load.
-    void loadGoogleIdentity().then(() => {
-      if (active) setGoogleReady(true);
-    }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : "Google sign-in could not be loaded.");
-    });
     callBankSetuWorker<SetupConfig>("/get-google-setup", {}).then((loaded) => {
       if (!active) return;
+      if (loaded.hasWorkspace && loaded.connectionMode !== "option-b") {
+        void loadGoogleIdentity().then(()=>{if(active)setGoogleReady(true);}).catch(()=>{if(active)setError("Legacy Google sign-in could not be loaded.");});
+      }
       setConfig(loaded);
       setWorkspaceStatus(loaded.workspaceStatus || "active");
       const details = { ...EMPTY_REGISTRATION, ...(loaded.bankInfo || {}), bankName: loaded.bankName || "" };
@@ -103,7 +103,7 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
       });
       setRegistrationSaved(true);
       setConfig((current) => current ? { ...current, bankName: registration.bankName, bankInfo: registration } : current);
-      setSuccess("Bank details saved. Next, connect your Google account to create your private workspace.");
+      setSuccess("Bank details saved. Next, share your Sheet and folder and use Test & Connect.");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Bank details could not be saved.");
     } finally {
@@ -197,7 +197,8 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
     <section style={cardStyle}>
       <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
       <h2 style={{ margin: "8px 0", fontSize: 20 }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
-      <p style={copyStyle}>Enter your bank and branch details, then connect your own Google account. Bank Setu creates a Sheet with the standard columns in your Drive. To sync workspace data, the folder is shared with the Bank Setu Apps Script account shown below.</p>
+      <p style={copyStyle}>Save your bank and branch details, then connect your own Sheet and Drive folder below. Existing Google connections remain available.</p>
+      <OptionBConnection tenantId={config?.tenantId || ""} disabled={!registrationSaved || workspaceStatus !== "active"} />
       {(placement === "manage" || !registrationSaved) && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
         <label style={registrationLabel}>Bank / CSP name<input required maxLength={120} style={registrationInput} value={registration.bankName} onChange={(event) => setRegistration((current) => ({ ...current, bankName: event.target.value }))} /></label>
         <label style={registrationLabel}>Bank for Passbook format<input required maxLength={120} style={registrationInput} value={registration.passbookBank} onChange={(event) => setRegistration((current) => ({ ...current, passbookBank: event.target.value }))} /></label>
@@ -207,19 +208,19 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
         <label style={{ ...registrationLabel, gridColumn: "1 / -1" }}>Branch / CSP address<textarea maxLength={500} style={{ ...registrationInput, minHeight: 70 }} value={registration.address} onChange={(event) => setRegistration((current) => ({ ...current, address: event.target.value }))} /></label>
         <button type="submit" style={buttonStyle} disabled={savingRegistration || workspaceStatus !== "active"}>{savingRegistration ? "Saving bank details…" : "Save bank details"}</button>
       </form>}
-      {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your Google account.</p>}
+      {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your own Sheet and Drive folder.</p>}
       {config?.hasWorkspace && <p style={{ ...copyStyle, color: "#8de3c8" }}>Connected Google account: {config.googleEmail || "Workspace connected"}. Reconnect uses this same Drive folder and Sheet.</p>}
-      {registrationSaved && (!config?.hasWorkspace || placement === "manage") && <label style={{ ...copyStyle, display: "flex", gap: 10, alignItems: "flex-start", margin: "12px 0", padding: 12, borderRadius: 9, background: "rgba(99,226,196,.08)" }}>
+      {config?.hasWorkspace && config.connectionMode !== "option-b" && registrationSaved && placement === "manage" && <label style={{ ...copyStyle, display: "flex", gap: 10, alignItems: "flex-start", margin: "12px 0", padding: 12, borderRadius: 9, background: "rgba(99,226,196,.08)" }}>
         <input type="checkbox" checked={shareConsent} onChange={(event) => setShareConsent(event.target.checked)} style={{ marginTop: 4 }} />
         <span>I understand that this workspace folder is shared with <strong>{config?.executorEmail || "the Bank Setu Apps Script account"}</strong> with writer access to save and sync my workspace data. I can remove this access in Google Drive, which will stop Bank Setu sync.</span>
       </label>}
-      {(!config?.hasWorkspace || placement === "manage") && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !googleReady || !config?.oauthClientId || !registrationSaved || !shareConsent || workspaceStatus !== "active"}>
+      {config?.hasWorkspace && config.connectionMode !== "option-b" && placement === "manage" && <button type="button" style={buttonStyle} onClick={() => void connect()} disabled={connecting || !googleReady || !config?.oauthClientId || !registrationSaved || !shareConsent || workspaceStatus !== "active"}>
         {connecting ? "Connecting Google workspace…" : !googleReady ? "Loading Google sign-in…" : config?.hasWorkspace ? "Reconnect existing Google workspace" : "Connect Google and create my workspace"}
       </button>}
       {workspaceStatus !== "active" && <p role="alert" style={errorStyle}>This workspace is {workspaceStatus}. Ask the Master Admin to restore it before connecting Google or entering customer data.</p>}
       {config?.hasWorkspace && !config.dataApiReady && <p role="status" style={copyStyle}>Your private Google workspace is connected. Customer data stays locked until its tenant-isolated data API is deployed.</p>}
       {config?.hasWorkspace && config.dataApiReady && <p style={copyStyle}>Your Google workspace is connected. Save the bank details above to complete registration.</p>}
-      {!config?.oauthClientId && <p style={errorStyle}>Google sign-in configuration is missing. Contact the Master Admin.</p>}
+      {config?.hasWorkspace && config.connectionMode !== "option-b" && !config?.oauthClientId && <p style={errorStyle}>Google sign-in configuration is missing. Contact the Master Admin.</p>}
       {error && <p role="alert" style={errorStyle}>{error}</p>}
       {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}{config?.dataApiReady && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
     </section>

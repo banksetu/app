@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -45,7 +46,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       const [settings, googleConfig] = await Promise.all([
         getDoc(doc(db, "tenantSettings", tenantId)),
         canManage ? callBankSetuWorker<{ oauthClientId?: string }>("/get-google-setup", {}) : Promise.resolve(null),
-        loadGoogleIdentity(),
+        sessionStorage.getItem("bankSetuConnectionMode") === "option-b" ? Promise.resolve() : loadGoogleIdentity(),
       ]);
       if (!settings.exists()) throw new Error("Client workspace settings could not be found.");
       const data = settings.data();
@@ -79,10 +80,10 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("Please sign in again.");
-      const response = await fetch(workspace.apiUrl, {
+      const response = await localDataFetch(workspace.apiUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "getBankFormatPreview", idToken: await user.getIdToken(), formatType }),
+        body: JSON.stringify({ action: "getBankFormatPreview", idToken: await getDataIdToken(), formatType }),
       });
       const result = await response.json() as { success?: boolean; data?: string; mimeType?: string; message?: string };
       if (!response.ok || !result.success || !result.data || !result.mimeType) {
@@ -130,15 +131,22 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
     let accessToken = "";
     let uploadedFileId = "";
     try {
-      if (!workspace.photoFolderId || !workspace.googleEmail || !oauthClientId) {
+      if (!workspace.photoFolderId || !workspace.googleEmail || (sessionStorage.getItem("bankSetuConnectionMode") !== "option-b" && !oauthClientId)) {
         throw new Error("Connect your Google Drive and complete Bank Setu's one-time Google setup first.");
       }
       if (file.size > 5 * 1024 * 1024) throw new Error("Choose a sample up to 5 MB.");
       if (!["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(file.type)) {
         throw new Error("Upload a PDF, JPG, PNG, or WebP sample.");
       }
+      let uploaded: {id?:string;name?:string;mimeType?:string;error?:{message?:string}};
+      if (sessionStorage.getItem("bankSetuConnectionMode") === "option-b") {
+        const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("Sample could not be read."));reader.readAsDataURL(file);});
+        const response=await localDataFetch(workspace.apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"uploadBankFormatSample",dataUrl,fileName:file.name,operationId:crypto.randomUUID(),idToken:await getDataIdToken()})});
+        const result=await response.json();if(!result.success)throw new Error(result.message||"Sample upload failed.");
+        uploaded={id:result.fileId,name:result.fileName,mimeType:result.mimeType};
+      } else {
       accessToken = await requestGoogleToken(oauthClientId, "select_account");
-      const accountResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      const accountResponse = await localDataFetch("https://www.googleapis.com/oauth2/v2/userinfo", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const account = await accountResponse.json() as { email?: string };
@@ -156,13 +164,15 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
         `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
         `--${boundary}\r\nContent-Type: ${file.type}\r\n\r\n`, file, `\r\n--${boundary}--`,
       ], { type: `multipart/related; boundary=${boundary}` });
-      const uploadResponse = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType", {
+      const uploadResponse = await localDataFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType", {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
         body,
       });
-      const uploaded = await uploadResponse.json() as { id?: string; name?: string; mimeType?: string; error?: { message?: string } };
+      uploaded = await uploadResponse.json() as { id?: string; name?: string; mimeType?: string; error?: { message?: string } };
       if (!uploadResponse.ok || !uploaded.id) throw new Error(uploaded.error?.message || "Google Drive could not save this sample.");
+      }
+      if(!uploaded.id)throw new Error("Sample upload returned no file ID.");
       uploadedFileId = uploaded.id;
       await callBankSetuWorker("/save-bank-format-template", {
         selectedBank: bankName,
@@ -198,7 +208,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       }
     } catch (reason: unknown) {
       if (accessToken && uploadedFileId) {
-        await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(uploadedFileId)}`, {
+        await localDataFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(uploadedFileId)}`, {
           method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` },
         }).catch(() => undefined);
       }
@@ -216,10 +226,10 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("Please sign in again.");
-      const response = await fetch(workspace.apiUrl, {
+      const response = await localDataFetch(workspace.apiUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "testTenantConnection", idToken: await user.getIdToken() }),
+        body: JSON.stringify({ action: "testTenantConnection", idToken: await getDataIdToken() }),
       });
       const result = await response.json() as {
         success?: boolean; message?: string; spreadsheetName?: string; photoFolderName?: string; customerTab?: string;

@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
@@ -351,11 +352,11 @@ export default function AccountOpeningPDF() {
 
 
 
-    const idToken = await user.getIdToken();
+    const idToken = await getDataIdToken();
 
 
 
-    const response = await fetch(apiUrl, {
+    const response = await localDataFetch(apiUrl, {
 
       method: "POST",
 

@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useCallback, useState, type FormEvent } from "react";
 import { auth } from "./firebase";
 import { getTenantApiUrl } from "./tenantApi";
@@ -16,7 +17,7 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
   const request = async (body: Record<string,unknown>) => {
     const user=auth.currentUser, url=getTenantApiUrl();
     if (!user || !url) throw new Error("Connect this workspace's Google account first.");
-    const response=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({...body,idToken:await user.getIdToken(),includePhoto:true})});
+    const response=await localDataFetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({...body,idToken:await getDataIdToken(),includePhoto:true})});
     const result=await response.json();
     if (!response.ok || !result.success) throw new Error(result.message || "The customer could not be loaded.");
     return result;

@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -364,7 +365,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
     }, 12000);
     const unsubscribe = onSnapshot(doc(db, ...tenantSettingsPath(user.uid)), { includeMetadataChanges:true }, snapshot => {
-      if (snapshot.metadata.fromCache && !receivedServer) return;
+      if (snapshot.metadata.fromCache && !receivedServer && navigator.onLine) return;
+      if(snapshot.metadata.fromCache && !snapshot.exists()) return;
       receivedServer = true; window.clearTimeout(timeout);
       const cloudData = snapshot.exists() ? snapshot.data() : {};
       const saved = restoreWorkspaceBankSettings(cloudData);
@@ -394,7 +396,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     );
 
   const openBankInfoEditor = () => {
-    if (!canManageBankSettings || !bankSettingsReady) return;
+    if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     setBankInfoDraft({ ...bankInfo });
 
@@ -775,7 +777,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   };
 
   const openLogoPicker = () => {
-    if (!canManageBankSettings || !bankSettingsReady) return;
+    if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     logoInputRef.current?.click();
 
@@ -2922,13 +2924,9 @@ function DashboardHome({
 
           try {
 
-            const idToken = await user.getIdToken(
+            const idToken = await getDataIdToken(attempt > 0);
 
-              attempt > 0
-
-            );
-
-            const response = await fetch(apiUrl, {
+            const response = await localDataFetch(apiUrl, {
 
               method: "POST",
 

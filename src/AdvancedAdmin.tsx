@@ -580,6 +580,14 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     );
 
     try {
+      if (window.bankSetuDesktop) {
+        const manifest = await window.bankSetuDesktop.checkUpdate() as {latestVersion: string; notes?: string};
+        const current = await window.bankSetuDesktop.version();
+        const available = compareVersions(manifest.latestVersion, current) > 0;
+        setLatestVersion(manifest.latestVersion);setUpdateAvailable(available);setUpdateNotes(manifest.notes || "");
+        setUpdateMessage(available ? `New Windows version ${manifest.latestVersion} is available.` : "Bank Setu is already up to date.");
+        return;
+      }
       const response = await fetch(
         `${UPDATE_MANIFEST_URL}?t=${Date.now()}`,
         { cache: "no-store" }
@@ -635,6 +643,11 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
   };
 
   const installUpdate = () => {
+    if (window.bankSetuDesktop) {
+      setUpdateMessage("Downloading and verifying the signed Windows update…");
+      void window.bankSetuDesktop.installUpdate().catch(error => setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."));
+      return;
+    }
     if (!updateAvailable) {
       setUpdateMessage(
         "No new update is available."
@@ -651,7 +664,12 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
       return;
     }
 
-    window.location.reload();
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.getRegistration().then(registration=>{
+        if(registration?.waiting){navigator.serviceWorker.addEventListener("controllerchange",()=>window.location.reload(),{once:true});registration.waiting.postMessage("ACTIVATE_UPDATE");}
+        else window.location.reload();
+      });
+    } else window.location.reload();
   };
 
   const maskedUrl = savedUrl

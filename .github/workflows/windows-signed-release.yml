@@ -1,0 +1,44 @@
+name: Build signed Windows release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Require Windows signing credentials
+        shell: pwsh
+        env:
+          CERT: ${{ secrets.WINDOWS_CSC_LINK }}
+          PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          PUBLISHER: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
+        run: |
+          if (!$env:CERT -or !$env:PASSWORD -or !$env:PUBLISHER) { throw 'Configure WINDOWS_CSC_LINK, WINDOWS_CSC_KEY_PASSWORD and WINDOWS_PUBLISHER_NAME as repository secrets. No unsigned production release will be produced.' }
+      - run: npm ci
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs
+      - run: npm run check:schema
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Package and sign without publishing
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          PUBLISHER: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
+        run: npx electron-builder --win nsis --publish never --config.win.publisherName="$env:PUBLISHER" --config.forceCodeSigning=true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Windows-SIGNED
+          path: |
+            desktop-release/*.exe
+            desktop-release/*.blockmap
+            desktop-release/latest.yml
+          if-no-files-found: error

@@ -1,0 +1,85 @@
+name: Local-first validation and Windows test build
+on:
+  push:
+    branches: [codex/local-first-option-b]
+  pull_request:
+    branches: [codex/spark-client-workspace-20261001]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:schema
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - run: npx playwright install --with-deps chromium
+      - name: Mobile browser smoke
+        run: |
+          npm run preview -- --host 127.0.0.1 > /tmp/banksetu-vite.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173 > /dev/null && break || sleep 1; done
+          node scripts/ui-smoke.mjs
+  windows-test-package:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Windows Electron login smoke
+        run: node scripts/ui-smoke.mjs --desktop
+      - name: Build Windows installer for client testing
+        run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Upload Windows test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Windows-UNSIGNED-TEST
+          path: |
+            desktop-release/*.exe
+            desktop-release/*.blockmap
+          if-no-files-found: error
+  publish-test-installer:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/local-first-option-b'
+    needs: windows-test-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@v4
+        with:
+          name: BankSetu-Windows-UNSIGNED-TEST
+          path: windows-test
+      - name: Publish immutable Windows testing download
+        id: publish
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.BANKSETU_RELEASE_TOKEN || github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo 'An installer for this version already exists. Increment package version before publishing a different installer.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh release create "v$VERSION" windows-test/*.exe windows-test/*.blockmap --target "$GITHUB_SHA" --title "Bank Setu $VERSION — Windows testing installer" --notes 'Windows x64 installer for client testing. Unsigned test build. Extracting a ZIP is not required for this release download. See docs/CLIENT_ADMIN_SETUP_HI.md for Google connection, offline, backup and acceptance tests. This does not change the live frontend.'
+      - name: Release permission fallback
+        if: failure() || steps.publish.outcome == 'failure'
+        run: echo 'Windows installer remains available as an Actions artifact. Release publishing requires a repository token with the appropriate contents/workflow permissions; configure BANKSETU_RELEASE_TOKEN without posting it in chat.' >> "$GITHUB_STEP_SUMMARY"
