@@ -1,3 +1,4 @@
+import { readAutomaticCustomer } from "./pdfTextTemplate";
 import { getDocument, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BankFieldPlacement } from "./bankFormatUtils";
 const aliases: Record<string,string[]> = {
@@ -100,7 +101,7 @@ export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFie
     }
     for(const [,row] of [...rows.entries()].sort((a,b)=>b[0]-a[0]))lines.push(row.sort((a,b)=>a.x-b.x).map(i=>i.text).join(" ").trim());
   }
-  const result=validateExtractedCustomer({...(!mappedOnly ? parseBankCustomerLines(lines) : {}),...values});
+  const result=validateExtractedCustomer({...(!mappedOnly ? parseBankCustomerLines(lines) : {}),...await readAutomaticCustomer(pdf),...values});
   const opening=result.accountOpeningDate?.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
   if(opening)result.accountOpeningDate=opening[3]+"-"+opening[2]+"-"+opening[1];
   return result;

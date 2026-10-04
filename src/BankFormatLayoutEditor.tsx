@@ -17,6 +17,7 @@ export default function BankFormatLayoutEditor({
   onClose: () => void;
 }) {
   const [pages, setPages] = useState<Array<{ dataUrl: string; width: number; height: number }>>([]);
+  const [zoom,setZoom]=useState(1);
   const [selectedPage, setSelectedPage] = useState(1);
   const [fieldMap, setFieldMap] = useState<BankFieldPlacement[]>(initialMap);
   const [selectedField, setSelectedField] = useState<string>(BANK_TEMPLATE_FIELD_OPTIONS[0][0]);
@@ -82,12 +83,12 @@ export default function BankFormatLayoutEditor({
 
   const currentPage = pages[selectedPage - 1];
   const aspect = currentPage ? currentPage.width / currentPage.height : 1;
-  const previewWidth = Math.min(900, Math.max(320, 600 * aspect));
+  const previewWidth = Math.min(900, Math.max(320, 600 * aspect)) * zoom;
   const previewHeight = previewWidth / aspect;
 
   return <div style={overlay} role="dialog" aria-modal="true" aria-label="Bank format field mapping">
     <section style={dialog}>
-      <header style={header}><div><h2 style={{ margin: 0 }}>{mode === "extraction" ? "PDF से डेटा पढ़ने के sections चुनें" : "फॉर्म में print की जगह चुनें"}</h2><p style={help}>{mode === "extraction" ? "Field चुनें, फिर उसकी value के चारों ओर box खींचें। Label और पास के columns को box में न लें। Print में इन boxes के पुराने data/photo साफ होंगे; सभी पुराने customer sections चुनें।" : "Field चुनकर उसकी print position पर क्लिक करें।"}</p></div><button type="button" style={quiet} onClick={onClose}>Close</button></header>
+      <header style={header}><div><h2 style={{ margin: 0 }}>{mode === "extraction" ? "PDF से डेटा पढ़ने के sections चुनें" : "फॉर्म में print की जगह चुनें"}</h2><p style={help}>{mode === "extraction" ? "Field चुनें, फिर उसकी value के चारों ओर box खींचें। Label और पास के columns को box में न लें। छोटे sections के लिए Zoom बढ़ाएँ। Account Opening में पहचाने labels से नया text template बनेगा।" : "Field चुनकर उसकी print position पर क्लिक करें।"}</p></div><button type="button" style={quiet} onClick={onClose}>Close</button></header>
       {onModeChange && <div style={toolbar}><button type="button" style={quiet} disabled={mode==="extraction"} onClick={()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||window.confirm("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("extraction");}}>1. डेटा कहाँ से पढ़ें</button><button type="button" style={quiet} disabled={mode==="print"} onClick={()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||window.confirm("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("print");}}>2. कहाँ print करें</button><span>Switch करने से पहले Save करें।</span></div>}
       <div style={toolbar}>
         <label>Field to place <select value={selectedField} onChange={(event) => setSelectedField(event.target.value)}>{BANK_TEMPLATE_FIELD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -95,7 +96,8 @@ export default function BankFormatLayoutEditor({
         <label>Paper width (mm) <input type="number" min={50} max={500} value={pageWidthMm} onChange={(event) => setPageWidthMm(Number(event.target.value))} /></label>
         <label>Paper height (mm) <input type="number" min={50} max={500} value={pageHeightMm} onChange={(event) => setPageHeightMm(Number(event.target.value))} /></label>
       </div>
-      {currentPage ? <div onClick={mode === "print" ? addPlacement : undefined} onPointerDown={event=>{
+      <label>Zoom <select aria-label="Mapping zoom" value={zoom} onChange={event=>setZoom(Number(event.target.value))}><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
+      <div style={{overflow:"auto",maxWidth:"100%"}}>{currentPage ? <div onClick={mode === "print" ? addPlacement : undefined} onPointerDown={event=>{
         if(mode!=="extraction")return;event.currentTarget.setPointerCapture(event.pointerId);drawing.current=point(event);setDraft({...drawing.current,width:0,height:0});
       }} onPointerMove={event=>{if(!drawing.current)return;const end=point(event),start=drawing.current;setDraft({x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),width:Math.abs(end.x-start.x),height:Math.abs(end.y-start.y)});}}
       onPointerUp={event=>{if(!drawing.current)return;const end=point(event),start=drawing.current;drawing.current=null;setDraft(null);
@@ -111,7 +113,7 @@ export default function BankFormatLayoutEditor({
           const y = Math.max(0, Math.min(99, ((event.clientY - rect.top) / rect.height) * 100));
           setFieldMap((current) => current.map((row, i) => i === index ? { ...row, x, y } : row));
         }} onClick={(event) => { event.stopPropagation(); setSelectedField(item.field); }} style={{ ...placed, left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height:mode === "extraction" ? `${item.height || 2}%` : undefined, pointerEvents:mode === "extraction" ? "none" : "auto", fontSize: `${Math.max(10, item.fontSize)}px` }}>{BANK_TEMPLATE_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</button>)}
-      </div> : <p style={help}>Preparing the sample preview…</p>}
+      </div> : <p style={help}>Preparing the sample preview…</p>}</div>
       <div style={mapList}>{fieldMap.map((item, index) => <div key={`${item.page || 1}-${item.field}`} style={mapRow}>
         <strong>Page {item.page || 1}: {BANK_TEMPLATE_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</strong>
         <label>Width % <input type="number" min={1} max={100} value={item.width} onChange={(event) => setFieldMap((current) => current.map((row, i) => i === index ? { ...row, width: Number(event.target.value) } : row))} /></label>
@@ -132,8 +134,8 @@ const overlay: React.CSSProperties = { position: "fixed", inset: 0, zIndex: 1000
 const dialog: React.CSSProperties = { maxWidth: 1020, margin: "20px auto", padding: 20, borderRadius: 16, background: "white", color: "#17202a", boxShadow: "0 20px 80px rgba(0,0,0,.3)" };
 const header: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 20, alignItems: "start" };
 const toolbar: React.CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, margin: "16px 0" };
-const canvas: React.CSSProperties = { position: "relative", maxWidth: "100%", margin: "0 auto", backgroundSize: "100% 100%", backgroundRepeat: "no-repeat", border: "1px solid #ccd3dc", cursor: "crosshair", overflow: "hidden" };
-const placed: React.CSSProperties = { position: "absolute", transform: "translate(-2px,-2px)", minHeight: 20, padding: "2px 4px", border: "1px solid #0b7665", background: "rgba(255,255,255,.82)", color: "#053f36", textAlign: "left", cursor: "move", whiteSpace: "nowrap", overflow: "hidden" };
+const canvas: React.CSSProperties = { position: "relative", margin: "0 auto", backgroundSize: "100% 100%", backgroundRepeat: "no-repeat", border: "1px solid #ccd3dc", cursor: "crosshair", overflow: "hidden" };
+const placed: React.CSSProperties = { position: "absolute", transform: "translate(-2px,-2px)", minHeight: 0, padding: 0, border: "1px solid #0b7665", background: "rgba(255,255,255,.82)", color: "#053f36", textAlign: "left", cursor: "move", whiteSpace: "nowrap", overflow: "hidden" };
 const mapList: React.CSSProperties = { display: "grid", gap: 8, marginTop: 16 };
 const mapRow: React.CSSProperties = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: 10, border: "1px solid #e4e8ee", borderRadius: 8 };
 const footer: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginTop: 18 };

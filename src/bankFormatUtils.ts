@@ -62,6 +62,7 @@ export async function renderBankSampleFirstPage(dataUrl: string, mimeType: strin
 }
 
 export const BANK_TEMPLATE_FIELD_OPTIONS = [
+  ["dateOfBirth", "Date of birth"], ["religion", "Religion"], ["category", "Category"], ["village", "Village"],
   ["name", "Customer name"], ["fatherName", "Father / guardian name"],
   ["accountNo", "Account number"], ["customerId", "Customer ID"],
   ["aofNo", "AOF number"], ["gender", "Gender"], ["mobile", "Mobile"],
@@ -74,6 +75,8 @@ export const BANK_TEMPLATE_FIELD_OPTIONS = [
 
 export function bankTemplateValue(customer: Record<string, unknown>, field: string): string {
   const values: Record<string, unknown> = {
+    dateOfBirth: customer.dateOfBirth ?? customer.dob,
+    religion: customer.religion, category: customer.category, village: customer.address,
     name: customer.name,
     fatherName: customer.coName ?? customer.fatherName ?? customer.guardianName,
     accountNo: customer.accountNo,
@@ -81,7 +84,7 @@ export function bankTemplateValue(customer: Record<string, unknown>, field: stri
     aofNo: customer.aofNo,
     gender: customer.gender,
     mobile: customer.contact ?? customer.mobile,
-    aadhaar: customer.uidaiNo ?? customer.aadhaar,
+    aadhaar: (()=>{const value=String(customer.uidaiNo ?? customer.aadhaar ?? "").replace(/\s/g,"");return value?"XXXXXXXX"+value.slice(-4):"";})(),
     pan: customer.pan,
     address: customer.fullAddress ?? customer.address,
     branchName: customer.branchName ?? customer.branch,

@@ -596,7 +596,7 @@ async function handleMasterOperation(request, env, actor, route) {
       formats[formatType] = { bankKey: selectedBank, fileId, fileName: String(file.name || fileName).slice(0, 200), mimeType, updatedAt: new Date().toISOString(), updatedBy: actor.uid };
     } else {
       const width = Number(body.pageWidthMm); const height = Number(body.pageHeightMm);
-      const fields = new Set(["name", "fatherName", "accountNo", "customerId", "aofNo", "gender", "mobile", "aadhaar", "pan", "address", "branchName", "ifsc", "accountOpeningDate", "nominee", "postOffice", "pinCode", "status", "customerPhoto"]);
+      const fields = new Set(["dateOfBirth", "religion", "category", "village", "name", "fatherName", "accountNo", "customerId", "aofNo", "gender", "mobile", "aadhaar", "pan", "address", "branchName", "ifsc", "accountOpeningDate", "nominee", "postOffice", "pinCode", "status", "customerPhoto"]);
       const fieldMap = Array.isArray(body.fieldMap) ? body.fieldMap : [];
       if (!formats[formatType]?.fileId || formats[formatType]?.bankKey !== selectedBank || !Number.isFinite(width) || !Number.isFinite(height) || width < 50 || width > 500 || height < 50 || height > 500 || fieldMap.length > 50) return json({ error: "Upload a sample and enter valid page dimensions first." }, 400);
       const normalized = fieldMap.map((item) => ({ field: String(item.field || ""), page: Number(item.page || 1), x: Number(item.x), y: Number(item.y), width: Number(item.width), ...(item.height !== undefined ? { height: Number(item.height) } : {}), fontSize: Number(item.fontSize), uppercase: item.uppercase === true, align: String(item.align || "left") }));
