@@ -47,8 +47,8 @@ app.whenReady().then(async()=>{
     if (!app.isPackaged || !fs.existsSync(config) || !/^publisherName:/m.test(fs.readFileSync(config,'utf8'))) throw new Error('Signed Windows release configuration is required before automatic updates.');
   };
   ipcMain.handle('update:version',event=>{trusted(event);return app.getVersion();});
-  ipcMain.handle('update:check',async event=>{trusted(event);if(app.isPackaged&&!hasSignedRelease())return testUpdater.check();assertSignedRelease();const result=await autoUpdater.checkForUpdates();return {latestVersion:result?.updateInfo.version || app.getVersion(),notes:'Verified Windows update feed.'};});
-  ipcMain.handle('update:install',async event=>{trusted(event);if(app.isPackaged&&!hasSignedRelease())return testUpdater.install();assertSignedRelease();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
+  ipcMain.handle('update:check',async event=>{trusted(event);if(!app.isPackaged||!hasSignedRelease())return testUpdater.check();assertSignedRelease();downloaded=false;const result=await autoUpdater.checkForUpdates();return {latestVersion:result?.updateInfo.version || app.getVersion(),notes:'Verified Windows update feed.'};});
+  ipcMain.handle('update:install',async event=>{trusted(event);if(!app.isPackaged||!hasSignedRelease())return testUpdater.install();assertSignedRelease();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
   await window.loadURL(ORIGIN+'/index.html');
 }).catch(error=>{require('electron').dialog.showErrorBox('Bank Setu startup failed',error.message);app.quit();});
 app.on('window-all-closed',()=>app.quit());

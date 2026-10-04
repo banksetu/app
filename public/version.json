@@ -1,6 +1,8 @@
 {
-  "latestVersion": "1.0.5",
+  "latestVersion": "1.0.6",
   "downloadUrl": "",
   "notes": "Local database, offline restart access, backup restore, bounded Google sync and Windows testing installer.",
-  "version": "1.0.5"
+  "version": "1.0.6",
+  "releaseTag": "v1.0.6",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.6"
 }

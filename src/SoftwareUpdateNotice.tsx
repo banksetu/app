@@ -1,0 +1,215 @@
+import { useEffect, useState } from "react";
+import { isAndroid } from "./platform/android/runtime";
+import { checkAndroidUpdate } from "./platform/android/updates";
+
+declare const __APP_VERSION__: string;
+
+type DesktopBridge = {
+  version(): Promise<string>;
+  checkUpdate(): Promise<unknown>;
+  installUpdate(): Promise<void>;
+};
+
+type UpdateNoticeState = {
+  available: boolean;
+  latestVersion: string;
+  downloadUrl: string;
+  notes: string;
+  platform: "web" | "android" | "windows";
+};
+
+type VersionManifest = {
+  latestVersion?: string;
+  downloadUrl?: string;
+  notes?: string;
+};
+
+const desktopBridge = () =>
+  (window as Window & { bankSetuDesktop?: DesktopBridge }).bankSetuDesktop;
+
+function compareVersions(latest: string, current: string) {
+  const a = latest.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const b = current.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const left = a[index] || 0;
+    const right = b[index] || 0;
+    if (left !== right) return left > right ? 1 : -1;
+  }
+  return 0;
+}
+
+async function findUpdate(): Promise<UpdateNoticeState> {
+  const current = __APP_VERSION__;
+
+  if (isAndroid()) {
+    const result = await checkAndroidUpdate();
+    return {
+      available: result.available,
+      latestVersion: result.latestVersion,
+      downloadUrl: result.downloadUrl,
+      notes: result.notes,
+      platform: "android",
+    };
+  }
+
+  const desktop = desktopBridge();
+  if (desktop) {
+    const [installedVersion, rawResult] = await Promise.all([
+      desktop.version(),
+      desktop.checkUpdate(),
+    ]);
+    const result = rawResult as { latestVersion?: string; notes?: string };
+    const latestVersion = String(result.latestVersion || installedVersion);
+    return {
+      available: compareVersions(latestVersion, installedVersion) > 0,
+      latestVersion,
+      downloadUrl: "",
+      notes: String(result.notes || ""),
+      platform: "windows",
+    };
+  }
+
+  const response = await fetch(`/version.json?t=${Date.now()}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("Update manifest unavailable.");
+  const manifest = (await response.json()) as VersionManifest;
+  const latestVersion = String(manifest.latestVersion || current).trim();
+  return {
+    available: compareVersions(latestVersion, current) > 0,
+    latestVersion,
+    downloadUrl: String(manifest.downloadUrl || "").trim(),
+    notes: String(manifest.notes || "").trim(),
+    platform: "web",
+  };
+}
+
+export default function SoftwareUpdateNotice() {
+  const [notice, setNotice] = useState<UpdateNoticeState | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      if (!navigator.onLine) return;
+      void findUpdate()
+        .then((result) => {
+          if (!active || !result.available) return;
+          if (
+            sessionStorage.getItem("bankSetuUpdateDismissed") ===
+            result.latestVersion
+          ) {
+            return;
+          }
+          setNotice(result);
+        })
+        .catch(() => undefined);
+    }, 1500);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  if (!notice) return null;
+
+  const dismiss = () => {
+    sessionStorage.setItem("bankSetuUpdateDismissed", notice.latestVersion);
+    setNotice(null);
+  };
+
+  const install = async () => {
+    try {
+      if (notice.platform === "windows" && desktopBridge()) {
+        setMessage("Downloading and verifying the Windows update…");
+        await desktopBridge()!.installUpdate();
+        return;
+      }
+      if (notice.downloadUrl) {
+        window.open(notice.downloadUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The update could not be installed. Your local data is retained."
+      );
+    }
+  };
+
+  return (
+    <aside
+      role="status"
+      aria-live="polite"
+      style={{
+        position: "fixed",
+        top: 16,
+        right: 16,
+        zIndex: 3000,
+        width: "min(380px, calc(100vw - 32px))",
+        padding: "16px 18px",
+        borderRadius: 16,
+        color: "#fff",
+        background:
+          "linear-gradient(135deg, rgba(11,56,83,.98), rgba(15,126,123,.98))",
+        boxShadow: "0 18px 44px rgba(4,25,42,.28)",
+        border: "1px solid rgba(255,255,255,.2)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <strong style={{ display: "block", fontSize: 15 }}>
+            New Bank Setu update available
+          </strong>
+          <span style={{ display: "block", marginTop: 4, fontSize: 13, opacity: 0.9 }}>
+            Version {notice.latestVersion} is ready to download.
+          </span>
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss update notification"
+          onClick={dismiss}
+          style={{
+            border: 0,
+            background: "transparent",
+            color: "#fff",
+            fontSize: 22,
+            cursor: "pointer",
+            lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
+      </div>
+      {notice.notes && (
+        <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.88 }}>
+          {notice.notes}
+        </p>
+      )}
+      {message && (
+        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#ffe3a8" }}>
+          {message}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => void install()}
+        style={{
+          marginTop: 14,
+          padding: "9px 14px",
+          border: 0,
+          borderRadius: 9,
+          background: "#d7ff75",
+          color: "#153c34",
+          fontWeight: 800,
+          cursor: "pointer",
+        }}
+      >
+        Download / Install update
+      </button>
+    </aside>
+  );
+}

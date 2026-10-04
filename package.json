@@ -1,7 +1,7 @@
 {
   "name": "app",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,11 +13,20 @@
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --win nsis --publish never",
+    "desktop:pack:unsigned": "npm run build && electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false",
     "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs",
     "test:bridge": "node --test scripts/bridge.test.mjs",
-    "predev": "node scripts/prepare-client-assets.mjs"
+    "predev": "node scripts/prepare-client-assets.mjs",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android",
+    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/filesystem": "8.1.4",
+    "@capacitor/share": "8.0.3",
     "electron-updater": "^6.8.9",
     "firebase": "^12.19.0",
     "pdfjs-dist": "^6.3.289",
@@ -25,6 +34,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.2",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -57,6 +67,7 @@
     ],
     "asar": true,
     "win": {
+      "artifactName": "BankSetu-Setup-${version}-${arch}.${ext}",
       "target": [
         {
           "target": "nsis",

@@ -29,3 +29,6 @@ desktop-release/
 *.p12
 
 public/client-bridge/Code.gs
+
+*.jks
+*.keystore
