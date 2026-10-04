@@ -1,0 +1,74 @@
+name: Build signed Android release
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: Increasing Android version code
+        required: true
+        type: string
+      version_name:
+        description: Release version, for example 1.0.6
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ANDROID_VERSION_CODE: ${{ inputs.version_code }}
+      ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
+          log-accepted-android-sdk-licenses: false
+      - name: Validate release settings
+        env:
+          KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          if (!/^[1-9]\d{0,8}$/.test(process.env.ANDROID_VERSION_CODE) || !/^\d+\.\d+\.\d+$/.test(process.env.ANDROID_VERSION_NAME)) throw Error('Use a positive increasing version code and a numeric x.y.z version name.');
+          for (const key of ['KEY','STORE_PASSWORD','ALIAS','KEY_PASSWORD']) if (!process.env[key]) throw Error('Configure Android signing secrets before building a release.');
+          writeFileSync(`${process.env.RUNNER_TEMP}/banksetu-release.jks`, Buffer.from(process.env.KEY, 'base64'), {mode:0o600});
+          NODE
+      - run: npm ci
+      - run: npm run test:local && npm run test:bridge && npm run check:schema
+      - run: npm run android:sync
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/banksetu-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: chmod +x android/gradlew && cd android && ./gradlew assembleRelease
+      - name: Verify and name APK
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose android/app/build/outputs/apk/release/app-release.apk
+          mkdir -p android-release
+          cp android/app/build/outputs/apk/release/app-release.apk "android-release/BankSetu-Android-${ANDROID_VERSION_CODE}.apk"
+          cd android-release && sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Android-SIGNED
+          path: android-release/*
+          if-no-files-found: error
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/banksetu-release.jks"

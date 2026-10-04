@@ -1,3 +1,5 @@
+import { isAndroid } from './platform/android/runtime';
+import { checkAndroidUpdate } from './platform/android/updates';
 import { useEffect, useState } from "react";
 
 import type { CSSProperties } from "react";
@@ -580,6 +582,13 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     );
 
     try {
+      if (isAndroid()) {
+        const result = await checkAndroidUpdate();
+        setLatestVersion(result.latestVersion); setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl); setUpdateNotes(result.notes);
+        setUpdateMessage(result.available ? 'New Android APK available. Download it and install over the existing app to retain local data.' : 'No newer published Android APK is available.');
+        return;
+      }
       if (window.bankSetuDesktop) {
         const manifest = await window.bankSetuDesktop.checkUpdate() as {latestVersion: string; notes?: string};
         const current = await window.bankSetuDesktop.version();
