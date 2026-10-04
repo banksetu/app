@@ -368,9 +368,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
     }, 12000);
     const unsubscribe = onSnapshot(doc(db, ...tenantSettingsPath(user.uid)), { includeMetadataChanges:true }, snapshot => {
-      if (snapshot.metadata.fromCache && !receivedServer && navigator.onLine) return;
-      if(snapshot.metadata.fromCache && !snapshot.exists()) return;
-      receivedServer = true; window.clearTimeout(timeout);
+      receivedServer = !snapshot.metadata.fromCache;
+      if (receivedServer) window.clearTimeout(timeout);
       const cloudData = snapshot.exists() ? snapshot.data() : {};
       const saved = restoreWorkspaceBankSettings(cloudData);
       if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
@@ -527,7 +526,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
       }
     }, (error) => console.error("Global UI theme listener failed:", error));
-  }, []);
+  }, [bankSettingsRetry]);
 
   const changeDashboardTheme = async (themeId: DashboardThemeId) => {
     setDashboardTheme(themeId);
@@ -1419,9 +1418,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
           {activePage === "dashboard" && (
 
             <DashboardHome
-
               openPage={openPage}
-
+              apiUrl={getTenantApiUrl()}
             />
 
           )}
@@ -2830,11 +2828,11 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 function DashboardHome({
 
   openPage,
+  apiUrl,
 
 }: {
-
   openPage: (page: PageName) => void;
-
+  apiUrl: string;
 }) {
 
   type DashboardStats = {
@@ -2881,19 +2879,15 @@ function DashboardHome({
 
       setStatsError("");
 
+      if (!apiUrl) {
+        // Workspace settings may still be loading from Firebase. Keep the
+        // dashboard usable and retry automatically when the parent receives
+        // the saved tenant connection.
+        setStatsLoading(false);
+        return;
+      }
+
       try {
-
-        const apiUrl = getTenantApiUrl();
-
-        if (!apiUrl) {
-
-          throw new Error(
-
-            "Google Sheet API URL is not configured."
-
-          );
-
-        }
 
         const auth = getAuth();
 
@@ -3147,7 +3141,7 @@ function DashboardHome({
 
     };
 
-  }, []);
+  }, [apiUrl]);
 
   const stats = [
 
