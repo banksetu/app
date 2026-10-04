@@ -55,7 +55,7 @@ import pdfWorker from
 
 
 import { auth, db } from "./firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDocFromServer } from "firebase/firestore";
 import { isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
 import { extractBankCustomer } from "./bankPdf";
 
@@ -1298,7 +1298,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
       if (!isAssamBank(bankName)) {
         const tenantId = sessionStorage.getItem("bankSetuTenantId");
         if (tenantId) {
-          const settings = await getDoc(doc(db, "tenantSettings", tenantId));
+          const settings = await getDocFromServer(doc(db, "tenantSettings", tenantId));
           const sample = settings.data()?.bankFormats?.accountOpening;
           if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
         }
@@ -1772,7 +1772,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
       if (!isAssamBank(bankName)) {
         const tenantId = sessionStorage.getItem("bankSetuTenantId") || "";
         if (!tenantId) return "";
-        const settings = (await getDoc(doc(db, "tenantSettings", tenantId))).data();
+        const settings = (await getDocFromServer(doc(db, "tenantSettings", tenantId))).data();
         const sample = settings?.bankFormats?.accountOpening;
         if (!templateMatchesBank(sample, bankName)) return "";
         const photo = sample.extractionMap?.find((field: { field: string }) => field.field === "customerPhoto");

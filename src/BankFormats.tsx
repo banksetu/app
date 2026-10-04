@@ -1,6 +1,6 @@
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
@@ -45,7 +45,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       const tenantId = sessionStorage.getItem("bankSetuTenantId")?.trim() || "";
       if (!tenantId) throw new Error("This account is not assigned to a client workspace.");
       const [settings, googleConfig] = await Promise.all([
-        getDoc(doc(db, "tenantSettings", tenantId)),
+        getDocFromServer(doc(db, "tenantSettings", tenantId)),
         canManage ? callBankSetuWorker<{ oauthClientId?: string }>("/get-google-setup", {}) : Promise.resolve(null),
         sessionStorage.getItem("bankSetuConnectionMode") === "option-b" ? Promise.resolve() : loadGoogleIdentity(),
       ]);
@@ -120,6 +120,10 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       ...current,
       formats: { ...current.formats, [formatType]: { ...current.formats[formatType], [mappingMode === "extraction" ? "extractionMap" : "fieldMap"]: fieldMap, pageWidthMm, pageHeightMm } },
     } : current);
+    const confirmed = await getDocFromServer(doc(db, "tenantSettings", workspace!.tenantId));
+    const sample = confirmed.data()?.bankFormats?.[formatType];
+    const key = mappingMode === "extraction" ? "extractionMap" : "fieldMap";
+    if (!sample?.fileId || !Array.isArray(sample[key]) || sample[key].length !== fieldMap.length || !fieldMap.every((entry, index) => Object.entries(entry).every(([name, value]) => sample[key][index]?.[name] === value))) throw new Error("Mapping save could not be confirmed. Keep this dialog open and retry.");
     setEditingFormat(null);
     setMessage(mappingMode === "extraction" ? "Reading sections saved. Customer Entry will use these sections for this bank." : "Print positions saved. This layout will be used when printing.");
   };
@@ -183,6 +187,9 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
         mimeType: uploaded.mimeType || file.type,
         accessToken,
       });
+      const confirmed = await getDocFromServer(doc(db, "tenantSettings", workspace.tenantId));
+      const savedSample = confirmed.data()?.bankFormats?.[formatType];
+      if (savedSample?.fileId !== uploaded.id || !templateMatchesBank(savedSample, bankName)) throw new Error("Sample file uploaded, but its saved workspace reference could not be confirmed. Please retry.");
       const url = URL.createObjectURL(file);
       setPreviews((current) => ({ ...current, [formatType]: { url, mimeType: file.type } }));
       setWorkspace((current) => current ? {

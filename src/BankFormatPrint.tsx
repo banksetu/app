@@ -1,6 +1,6 @@
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { bankTemplateValue, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
 import { getTenantApiUrl } from "./tenantApi";
@@ -22,13 +22,12 @@ export default function BankFormatPrint({
     const load = async () => {
       const tenantId = sessionStorage.getItem("bankSetuTenantId")?.trim() || "";
       if (!tenantId) throw new Error("A Client Admin must upload the selected bank samples in their connected workspace.");
-      const snapshot = await getDoc(doc(db, "tenantSettings", tenantId));
+      const snapshot = await getDocFromServer(doc(db, "tenantSettings", tenantId));
       const data = snapshot.data();
       const selected = (data?.bankFormats?.[formatType] || {}) as FormatSettings;
       if (bankName && !templateMatchesBank(selected, bankName)) throw new Error("Upload this selected bank\'s sample in Bank Formats first.");
-      if (!selected.fileId || !Array.isArray(selected.fieldMap) || selected.fieldMap.length === 0) {
-        throw new Error("Upload this document sample and save its field layout in Bank Formats first.");
-      }
+      if (!selected.fileId) throw new Error("No saved sample found. Upload this document sample in Bank Formats.");
+      if (!Array.isArray(selected.fieldMap) || selected.fieldMap.length === 0) throw new Error("Your sample is saved. Its PRINT mapping is missing: Bank Formats → Edit field layout → कहाँ print करें → Save print layout. Reading sections are saved separately.");
       const apiUrl = String(data?.apiUrl || getTenantApiUrl() || "");
       const user = auth.currentUser;
       if (!user || !apiUrl) throw new Error("Sign in and connect this client workspace before printing its bank format.");

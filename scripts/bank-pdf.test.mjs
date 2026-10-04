@@ -31,3 +31,9 @@ test('reading rectangles include multiline address and exclude adjacent column; 
 test('customer autofill does not enqueue or retain an original PDF upload',()=>{
  const entry=fs.readFileSync('src/CustomerEntry.tsx','utf8');assert(!entry.includes('pdfDataUrl:'));assert(!entry.includes('originalPdfDataUrl'));
 });
+
+test('text spanning another column is not copied wholesale into a reading box',async()=>{
+ const text={...item('Alice Male',100,700),width:180};
+ const pdf={numPages:1,getPage:async()=>page([text])};
+ assert.deepEqual(await extractBankCustomer(pdf,[{field:'name',page:1,x:100/600*100,y:90/800*100,width:20,height:2,fontSize:10}],true),{});
+});

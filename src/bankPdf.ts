@@ -79,13 +79,13 @@ export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFie
       const left=placement.x/100*viewport.width, top=placement.y/100*viewport.height;
       const neighbours=fieldMap.filter(item=>(item.page||1)===number && item.field!==placement.field && item.x>placement.x && Math.abs(item.y-placement.y)<2);
       const right=Math.min(placement.x+placement.width,...neighbours.map(item=>item.x));
-      const width=(right-placement.x)/100*viewport.width;
+      const width=(mappedOnly ? placement.width : right-placement.x)/100*viewport.width;
       const height=placement.height ? placement.height/100*viewport.height : Math.max(12,placement.fontSize*72/96*1.6);
       const candidates:Array<{x:number,y:number,text:string}>=[];
       for (const item of content.items) if ("str" in item) {
         const point=viewport.convertToViewportPoint(item.transform[4],item.transform[5]);
         const itemHeight=Math.abs(item.height) || 10;
-        if (point[0]>=left-2 && point[0]<left+width && point[1]>=top-2 && point[1]-itemHeight<top+height-2) {
+        if (point[0]>=left-2 && point[0]<left+width && point[1]-itemHeight/2>=top && point[1]-itemHeight/2<top+height && (typeof item.width!=="number" || point[0]+item.width<=left+width+2)) {
           const text=cleanExtractedValue(item.str);
           if (text) candidates.push({x:point[0],y:point[1],text});
         }
