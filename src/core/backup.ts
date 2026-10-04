@@ -35,7 +35,7 @@ export function mergeBackup(state: LocalState, backup: Backup): {records:number;
   for(const imported of backup.operations){
     if(existingOps.has(imported.operationId))continue;
     const op=structuredClone(imported);
-    if(divergent.has(op.recordId)){op.state="conflict";op.error="Restored edit differs from this device's saved version. Review both versions before retrying.";const current=state.records.find(record=>record.recordId===op.recordId);op.remoteCustomer=current?{...current.customer,recordId:current.recordId,revision:current.revision,rowNumber:current.rowNumber}:undefined;conflicts++;}
+    if(divergent.has(op.recordId)){op.state="conflict";op.conflictSource="backup";op.error="Restored edit differs from this device's saved version. Review both versions before retrying.";const current=state.records.find(record=>record.recordId===op.recordId);op.remoteCustomer=current?{...current.customer,recordId:current.recordId,revision:current.revision,rowNumber:current.rowNumber}:undefined;conflicts++;}
     state.operations.push(op);existingOps.add(op.operationId);operations++;
   }
   for(const record of state.records)record.pending=state.operations.some(op=>op.recordId===record.recordId);

@@ -22,9 +22,9 @@ export default function LocalSyncStatus() {
     {status.conflicts>0&&<span role="alert">Conflicting/rejected records remain saved locally. Export them for administrator review.</span>}
     {sessionStorage.getItem("bankSetuAccountRole")==="client_admin"&&conflicts.map(op=><details key={op.operationId} style={{width:"100%"}}>
       <summary>{String(op.customer.name||op.recordId)} — {op.error}</summary>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>Local: {JSON.stringify({...op.customer,photoDataUrl:undefined,pdfDataUrl:undefined},null,2)}</pre><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>Google: {JSON.stringify(op.remoteCustomer||{},null,2)}</pre></div>
-      <button onClick={()=>{if(window.confirm("Keep the local version and retry against the displayed Google revision?"))void resolveConflict(op.operationId,"local").catch(reason=>setError(reason.message));}}>Keep local / retry</button>
-      {op.remoteCustomer&&<button onClick={()=>{if(window.confirm("Use the displayed Google version and discard this record's pending local edits? Export a backup first."))void resolveConflict(op.operationId,"cloud").catch(reason=>setError(reason.message));}}>Use Google version</button>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>Local: {JSON.stringify({...op.customer,photoDataUrl:undefined,pdfDataUrl:undefined},null,2)}</pre><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{op.conflictSource==="backup"?"Saved on this device":"Google"}: {JSON.stringify(op.remoteCustomer||{},null,2)}</pre></div>
+      <button onClick={()=>{if(window.confirm("Keep this queued version and retry against the displayed revision?"))void resolveConflict(op.operationId,"local").catch(reason=>setError(reason.message));}}>Keep local / retry</button>
+      {op.remoteCustomer&&<button onClick={()=>{if(window.confirm("Use the displayed saved version and discard this record's pending local edits? Export a backup first."))void resolveConflict(op.operationId,"cloud").catch(reason=>setError(reason.message));}}>{op.conflictSource==="backup"?"Use current device version":"Use Google version"}</button>}
     </details>)}
   </aside>;
 }

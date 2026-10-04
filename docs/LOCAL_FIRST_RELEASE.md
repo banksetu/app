@@ -1,4 +1,4 @@
-# Local-first testing build 1.0.4
+# Local-first testing build 1.0.5
 
 Implementation branch: `codex/local-first-option-b`. Base working state: `f3bf8d7`, preserved on `backup/pre-local-first-f3bf8d7`. Existing frontend remains on its working branch; a separate Firebase `local-first-test` preview is built. Compatible backend additions deploy to the existing Worker, retaining legacy account/OAuth routes.
 

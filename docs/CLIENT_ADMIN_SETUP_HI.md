@@ -1,4 +1,4 @@
-# Bank Setu 1.0.4 — Client Admin connection और testing
+# Bank Setu 1.0.5 — Client Admin connection और testing
 
 ## पहले Master की एक बार की तैयारी
 

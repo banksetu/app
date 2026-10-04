@@ -25,14 +25,16 @@ jobs:
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
       - name: Add testing build identification
-        run: node --input-type=module -e "import {writeFileSync} from 'node:fs';writeFileSync('dist/deployment.json',JSON.stringify({commit:process.env.GITHUB_SHA,version:'1.0.4',channel:'local-first-test'}));"
+        run: node --input-type=module -e "import {writeFileSync,readFileSync} from 'node:fs';writeFileSync('dist/deployment.json',JSON.stringify({commit:process.env.GITHUB_SHA,version:JSON.parse(readFileSync('package.json','utf8')).version,channel:'local-first-test'}));"
       - name: Deploy compatible backend additions
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: c67c1c38d8481b01e9b9fbca5cb0f9b5
           wranglerVersion: '4.146.0'
-          command: deploy --config cloudflare/wrangler.toml
+          command: |
+            deploy --config cloudflare/wrangler.toml
+            secret list --config cloudflare/wrangler.toml
         env:
           WRANGLER_SEND_METRICS: 'false'
       - name: Google credential setup status

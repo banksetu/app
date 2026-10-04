@@ -129,7 +129,7 @@ async function runSync() {
     await repository.transact(scope, state => {
       const queued = state.operations.find(item => item.operationId === op.operationId);
       if (!queued) return;
-      if (!value.success) { queued.state = value.code === "CONFLICT" ? "conflict" : "failed";queued.error=String(value.message || "Sync rejected");queued.remoteCustomer=value.customer;return; }
+      if (!value.success) { queued.state = value.code === "CONFLICT" ? "conflict" : "failed";queued.error=String(value.message || "Sync rejected");queued.remoteCustomer=value.customer;queued.conflictSource="google";return; }
       state.operations=state.operations.filter(item => item.operationId !== op.operationId);
       const saved=state.records.find(item => item.recordId === op.recordId);
       if (value.deleted) state.records=state.records.filter(item=>item.recordId!==op.recordId);
@@ -191,7 +191,7 @@ export async function resolveConflict(operationId: string, choice: "local" | "cl
     } else {
       if (op.state==="conflict" && !op.remoteCustomer) throw new Error("Original cloud record was removed. Export and review instead of recreating it automatically.");
       if(record && op.remoteCustomer)record.revision=String(op.remoteCustomer.revision||"");
-      op.operationId=crypto.randomUUID();op.key=op.operationId;op.baseRevision=record?.revision||"";op.state="pending";delete op.error;delete op.remoteCustomer;
+      op.operationId=crypto.randomUUID();op.key=op.operationId;op.baseRevision=record?.revision||"";op.state="pending";delete op.error;delete op.remoteCustomer;delete op.conflictSource;
     }
   });announce();
 }
