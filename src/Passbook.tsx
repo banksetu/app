@@ -2009,6 +2009,28 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
           }
 
+          /* Union's separate renderer must also remain visible when the
+             browser print stylesheet hides the application shell. */
+          .union-pb-document,
+
+          .union-pb-document * {
+
+            visibility: visible !important;
+
+          }
+
+          .union-pb-document {
+
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 20.5cm !important;
+            height: 17.5cm !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+
+          }
+
 
 
           .passbook-shell {
