@@ -68,7 +68,7 @@ export default function BankFormatPrint({
           const placementStyle = { left: `${placement.x}%`, top: `${placement.y}%`, width: `${placement.width}%`, fontSize: `${placement.fontSize}px`, textAlign: placement.align, textTransform: placement.uppercase ? "uppercase" : "none" } as const;
           if (placement.field === "customerPhoto") {
             const photo = String(values.photoPreview ?? values.photoUrl ?? "");
-            return photo ? <img key={placement.field} alt="Customer" src={photo} style={{ ...placementStyle, position: "absolute", height: `${placement.width * .8}%`, objectFit: "cover" }} /> : null;
+            return photo ? <img key={placement.field} alt="Customer" src={photo} style={{ ...placementStyle, position: "absolute", height: `${placement.height || placement.width * .8}%`, objectFit: "cover" }} /> : null;
           }
           return <span key={placement.field} style={placementStyle}>{value}</span>;
         })}

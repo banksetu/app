@@ -9,6 +9,7 @@ export type BankFieldPlacement = {
   x: number;
   y: number;
   width: number;
+  height?: number;
   fontSize: number;
   uppercase: boolean;
   align: "left" | "center" | "right";

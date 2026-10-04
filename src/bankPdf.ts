@@ -25,6 +25,23 @@ export function cleanExtractedValue(value:string) {
   if (!clean || identifyPdfField(clean) || /\{\{|\}\}/.test(clean)) return "";
   return clean;
 }
+export function validateExtractedCustomer(input:Record<string,string>) {
+  const result:Record<string,string>={};
+  for (const [field,raw] of Object.entries(input)) {
+    const value=cleanExtractedValue(raw);
+    if (!value || /\b(?:date of birth|relationship|age|customer id|account no|aadhaar|aadhar)\b/i.test(value)) continue;
+    if (field === "accountNo" && !/^\d{6,20}$/.test(value)) continue;
+    if (field === "enrolId" && !/^[a-z0-9/-]{2,30}$/i.test(value)) continue;
+    if (field === "contact" && !/^(?:\+91[ -]?)?[6-9]\d{9}$/.test(value)) continue;
+    if (field === "pinCode" && !/^[1-9]\d{5}$/.test(value)) continue;
+    if (field === "pan" && !/^[A-Z]{5}\d{4}[A-Z]$/i.test(value)) continue;
+    if (["name","coName","nominee"].includes(field) && (/\d|\b(?:male|female|gender|sex)\b/i.test(value) || value.length>100)) continue;
+    if (field === "gender" && !/^(?:male|female|other|transgender|m|f)$/i.test(value)) continue;
+    if (field === "accountOpeningDate" && !/^(?:\d{4}-\d{2}-\d{2}|\d{2}[-/]\d{2}[-/]\d{4})$/.test(value)) continue;
+    result[field]=value;
+  }
+  return result;
+}
 export function parseBankCustomerLines(lines:string[]) {
   const result:Record<string,string>={};
   const keys:Record<string,string>={customerId:"enrolId",fatherName:"coName",mobile:"contact",address:"fullAddress"};
@@ -41,13 +58,13 @@ export function parseBankCustomerLines(lines:string[]) {
   }
   return result;
 }
-export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFieldPlacement[] = []) {
+export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFieldPlacement[] = [], mappedOnly = false) {
   const values:Record<string,string>={};
   const lines:string[]=[];
   for(let number=1;number<=Math.min(pdf.numPages,10);number++){
     const page=await pdf.getPage(number);
     const annotations=await page.getAnnotations();
-    for(const annotation of annotations){
+    for(const annotation of mappedOnly ? [] : annotations){
       const field=identifyPdfField(String(annotation.fieldName || annotation.alternativeText || ""));
       if(field && field!=="aadhaar" && field!=="customerPhoto" && typeof annotation.fieldValue==="string"){
         const key=({customerId:"enrolId",fatherName:"coName",mobile:"contact",address:"fullAddress"} as Record<string,string>)[field]||field;
@@ -60,13 +77,15 @@ export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFie
     for (const placement of fieldMap.filter(item => (item.page || 1) === number)) {
       if (placement.field === "aadhaar" || placement.field === "customerPhoto") continue;
       const left=placement.x/100*viewport.width, top=placement.y/100*viewport.height;
-      const width=placement.width/100*viewport.width;
-      const height=Math.max(12,placement.fontSize*72/96*1.6);
+      const neighbours=fieldMap.filter(item=>(item.page||1)===number && item.field!==placement.field && item.x>placement.x && Math.abs(item.y-placement.y)<2);
+      const right=Math.min(placement.x+placement.width,...neighbours.map(item=>item.x));
+      const width=(right-placement.x)/100*viewport.width;
+      const height=placement.height ? placement.height/100*viewport.height : Math.max(12,placement.fontSize*72/96*1.6);
       const candidates:Array<{x:number,y:number,text:string}>=[];
       for (const item of content.items) if ("str" in item) {
         const point=viewport.convertToViewportPoint(item.transform[4],item.transform[5]);
         const itemHeight=Math.abs(item.height) || 10;
-        if (point[0]>=left-2 && point[0]<left+width && point[1]>=top-2 && point[1]-itemHeight<=top+height) {
+        if (point[0]>=left-2 && point[0]<left+width && point[1]>=top-2 && point[1]-itemHeight<top+height-2) {
           const text=cleanExtractedValue(item.str);
           if (text) candidates.push({x:point[0],y:point[1],text});
         }
@@ -81,7 +100,7 @@ export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFie
     }
     for(const [,row] of [...rows.entries()].sort((a,b)=>b[0]-a[0]))lines.push(row.sort((a,b)=>a.x-b.x).map(i=>i.text).join(" ").trim());
   }
-  const result={...parseBankCustomerLines(lines),...values};
+  const result=validateExtractedCustomer({...(!mappedOnly ? parseBankCustomerLines(lines) : {}),...values});
   const opening=result.accountOpeningDate?.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
   if(opening)result.accountOpeningDate=opening[3]+"-"+opening[2]+"-"+opening[1];
   return result;

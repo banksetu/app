@@ -52,3 +52,14 @@ Windows test installer बिना signing certificate का है। Softwar
 Testing केवल अलग client/test records पर करें। Automated checks असली Google permissions, upload quotas और आपके printer/device परीक्षण की जगह नहीं लेते।
 
 Version 1.0.5 Release publishing सफल हुआ है। Future automatic-update test के लिए higher version installer publish करें। यदि किसी बाद की release में permission error आए तो artifact fallback उपलब्ध है; appropriate repository contents/workflow permissions वाला `BANKSETU_RELEASE_TOKEN` secret optional publishing fallback है। Token/private JSON chat में न भेजें।
+
+## Visual PDF mapping
+
+Bank Formats में sample upload करने पर mapping dialog खुलेगा।
+
+1. “डेटा कहाँ से पढ़ें”: field चुनें और केवल value के चारों ओर rectangle बनाएँ। Photo के लिए पूरा photo rectangle लें। हर page अलग चुनें।
+2. Test extraction में उसी layout की customer PDF चुनकर text और photo preview जाँचें। यह test PDF Drive पर upload नहीं होती। Reading sections सेव करें।
+3. “कहाँ print करें”: Account Opening, Passbook और Quick Passbook के sample पर print positions अलग सेव करें।
+4. Customer Entry में custom bank की auto-fill, accountOpening की extractionMap से चलेगी। पुराने print maps reading maps नहीं हैं; पहली बार reading sections बनाएँ। बैंक या layout बदलने पर दोबारा mapping जाँचें।
+
+Auto-fill के लिए चुनी गई नई customer PDF local queue या Drive पर नहीं भेजी जाती। केवल customer data और निकाली हुई photo sync होती हैं। पहले से queue में पड़ी या Drive पर पहले upload हुई PDFs स्वतः delete नहीं होतीं। Reusable bank samples सुरक्षित रहते हैं। Scanned PDFs में text layer न होने पर manual entry आवश्यक है; OCR अभी शामिल नहीं है।

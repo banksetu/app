@@ -10,7 +10,7 @@ import { bankKey, isAssamBank, templateMatchesBank } from "./bankDocumentPolicy"
 import { detectBankPdfLayout } from "./bankPdf";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
-type FormatItem = { bankKey?: string; fileId: string; fileName: string; mimeType: string; updatedAt?: string; fieldMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
+type FormatItem = { bankKey?: string; fileId: string; fileName: string; mimeType: string; updatedAt?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 type Workspace = {
   tenantId: string;
   bankName: string;
@@ -34,6 +34,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
   const [message, setMessage] = useState("");
   const [connectionCheck, setConnectionCheck] = useState("");
   const [oauthClientId, setOauthClientId] = useState("");
+  const [mappingMode, setMappingMode] = useState<"print" | "extraction">("print");
   const [editingFormat, setEditingFormat] = useState<FormatType | null>(null);
 
   useEffect(() => {
@@ -113,14 +114,14 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
   };
 
   const saveMapping = async (formatType: FormatType, fieldMap: BankFieldPlacement[], pageWidthMm: number, pageHeightMm: number) => {
-    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, selectedBank: bankName, fieldMap, pageWidthMm, pageHeightMm });
+    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, selectedBank: bankName, mappingType: mappingMode, fieldMap, pageWidthMm, pageHeightMm });
     if (!response.success) throw new Error("The bank format field layout could not be saved.");
     setWorkspace((current) => current ? {
       ...current,
-      formats: { ...current.formats, [formatType]: { ...current.formats[formatType], fieldMap, pageWidthMm, pageHeightMm } },
+      formats: { ...current.formats, [formatType]: { ...current.formats[formatType], [mappingMode === "extraction" ? "extractionMap" : "fieldMap"]: fieldMap, pageWidthMm, pageHeightMm } },
     } : current);
     setEditingFormat(null);
-    setMessage("Field positions saved. The mapped format will be used when printing this document.");
+    setMessage(mappingMode === "extraction" ? "Reading sections saved. Customer Entry will use these sections for this bank." : "Print positions saved. This layout will be used when printing.");
   };
 
   const upload = async (formatType: FormatType, file?: File) => {
@@ -192,20 +193,11 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       uploadedFileId = "";
       let detected;
       try { detected = await detectBankPdfLayout(file); }
-      catch { setMessage("Sample saved. Open Edit field layout to place fields on this PDF."); return; }
-      if (detected.fieldMap.length) {
-        try {
-          await saveMapping(formatType, detected.fieldMap, detected.pageWidthMm, detected.pageHeightMm);
-          setMessage(`Sample saved. ${detected.fieldMap.length} field positions detected automatically. Preview and adjust them if needed.`);
-        } catch {
-          setMessage("Sample saved. Open Edit field layout to review and save the detected field positions.");
-          setWorkspace(current => current ? {...current, formats:{...current.formats,[formatType]:{...current.formats[formatType],...detected}}} : current);
-          setEditingFormat(formatType);
-        }
-      } else {
-        setMessage("Sample saved. This PDF has no recognizable fields. Place the customer fields once on its preview.");
-        setEditingFormat(formatType);
-      }
+      catch { detected = {fieldMap:[],pageWidthMm:210,pageHeightMm:297}; }
+      setWorkspace(current => current ? {...current, formats:{...current.formats,[formatType]:{...current.formats[formatType],...detected}}} : current);
+      setMappingMode(formatType === "accountOpening" ? "extraction" : "print");
+      setEditingFormat(formatType);
+      setMessage("Sample saved. Choose the source sections and print positions, test them, then save each mapping.");
     } catch (reason: unknown) {
       if (accessToken && uploadedFileId) {
         await localDataFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(uploadedFileId)}`, {
@@ -273,7 +265,8 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
                 </label>
               )}
               {sample && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => void preview(item.id)}>{busy === `preview:${item.id}` ? "Loading preview…" : "Preview sample"}</button>}
-              {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => void editLayout(item.id)}>{workspace?.formats[item.id]?.fieldMap?.length ? "Edit field layout" : "Map fields for printing"}</button>}
+              {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => {setMappingMode("extraction"); void editLayout(item.id);}}>Map data to read</button>}
+              {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => {setMappingMode("print"); void editLayout(item.id);}}>{workspace?.formats[item.id]?.fieldMap?.length ? "Edit field layout" : "Map fields for printing"}</button>}
               {filePreview && (filePreview.mimeType === "application/pdf"
                 ? <iframe title={`${item.title} preview`} src={filePreview.url} style={previewFrame} />
                 : <img alt={`${item.title} preview`} src={filePreview.url} style={previewImage} />)}
@@ -284,10 +277,12 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       {error && <p role="alert" style={{ color: "#a22" }}>{error}</p>}
       {message && <p role="status" style={{ color: "#176b54" }}>{message}</p>}
       {!workspace?.googleEmail && canManage && <p style={errorHint}>Connect your Google Drive first to store templates in your own account.</p>}
-      {editingFormat && previews[editingFormat] && workspace && <BankFormatLayoutEditor
+      {editingFormat && previews[editingFormat] && workspace && <BankFormatLayoutEditor key={`${editingFormat}-${mappingMode}`}
+        mode={mappingMode}
+        onModeChange={setMappingMode}
         sampleUrl={previews[editingFormat].url}
         mimeType={previews[editingFormat].mimeType}
-        initialMap={workspace.formats[editingFormat]?.fieldMap || []}
+        initialMap={(mappingMode === "extraction" ? workspace.formats[editingFormat]?.extractionMap : workspace.formats[editingFormat]?.fieldMap) || []}
         initialWidth={workspace.formats[editingFormat]?.pageWidthMm || (editingFormat === "accountOpening" ? 210 : 205)}
         initialHeight={workspace.formats[editingFormat]?.pageHeightMm || (editingFormat === "accountOpening" ? 297 : 175)}
         onSave={(fieldMap, pageWidthMm, pageHeightMm) => saveMapping(editingFormat, fieldMap, pageWidthMm, pageHeightMm)}

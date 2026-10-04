@@ -583,7 +583,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-  const [originalPdfDataUrl, setOriginalPdfDataUrl] = useState("");
+
 
   const [
 
@@ -1230,11 +1230,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
     if (file.size > 5 * 1024 * 1024) { showMessage("PDF must be smaller than 5 MB.", "error"); return; }
-    setOriginalPdfDataUrl("");
-    if (sessionStorage.getItem("bankSetuConnectionMode") === "option-b") {
-      const dataUrl = await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("PDF could not be read."));reader.readAsDataURL(file);});
-      setOriginalPdfDataUrl(dataUrl);
-    }
+
     setSelectedPdfName(
 
       file.name
@@ -1261,6 +1257,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
+    let importedPdfTask: ReturnType<typeof getDocument> | undefined;
     try {
 
       const buffer =
@@ -1269,13 +1266,9 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-      const pdf =
+      importedPdfTask = getDocument({ data: buffer });
+      const pdf = await importedPdfTask.promise;
 
-        await getDocument({
-
-          data: buffer,
-
-        }).promise;
 
 
 
@@ -1307,10 +1300,10 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
         if (tenantId) {
           const settings = await getDoc(doc(db, "tenantSettings", tenantId));
           const sample = settings.data()?.bankFormats?.accountOpening;
-          if (templateMatchesBank(sample, bankName)) extractionMap = sample?.fieldMap || [];
+          if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
         }
       }
-      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf, extractionMap) };
+      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf, extractionMap, !isAssamBank(bankName)) };
       if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
       const extractedCount = Object.values(extracted).filter(value => String(value || "").trim()).length;
       const extractionMessage = extractedCount
@@ -1612,6 +1605,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
     } finally {
+      if (importedPdfTask) await importedPdfTask.destroy();
 
       setExtractingPdf(
 
@@ -1781,11 +1775,11 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
         const settings = (await getDoc(doc(db, "tenantSettings", tenantId))).data();
         const sample = settings?.bankFormats?.accountOpening;
         if (!templateMatchesBank(sample, bankName)) return "";
-        const photo = sample.fieldMap?.find((field: { field: string }) => field.field === "customerPhoto");
+        const photo = sample.extractionMap?.find((field: { field: string }) => field.field === "customerPhoto");
         if (!photo) return "";
         photoPage = photo.page || 1;
         if (photoPage > pdf.numPages) return "";
-        region = {x:photo.x/100,y:photo.y/100,width:photo.width/100,height:photo.width*0.8/100};
+        region = {x:photo.x/100,y:photo.y/100,width:photo.width/100,height:(photo.height || photo.width*0.8)/100};
       }
 
       const page =
@@ -3327,7 +3321,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
             customer: {
 
               ...form,
-              ...(sessionStorage.getItem("bankSetuConnectionMode") === "option-b" && originalPdfDataUrl ? {pdfDataUrl:originalPdfDataUrl,pdfFileName:selectedPdfName} : {}),
+
 
 
 
@@ -3900,7 +3894,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
             customer: {
 
               ...form,
-              ...(sessionStorage.getItem("bankSetuConnectionMode") === "option-b" && originalPdfDataUrl ? {pdfDataUrl:originalPdfDataUrl,pdfFileName:selectedPdfName} : {}),
+
 
 
 
@@ -4452,7 +4446,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-      setOriginalPdfDataUrl("");
+
       setSelectedPdfName(
 
         ""
