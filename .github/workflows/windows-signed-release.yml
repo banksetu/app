@@ -1,5 +1,8 @@
 name: Build signed Windows release
 on:
+  push:
+    branches: [codex/android-live-base]
+    paths: [.github/workflows/windows-signed-release.yml]
   workflow_dispatch:
 permissions:
   contents: read
