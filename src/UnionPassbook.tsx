@@ -30,9 +30,8 @@ export default function UnionPassbook({
   bankInfo?: PassbookBankInfo;
   onEdit: () => void;
 }) {
-  // The physical Union Bank passbook already contains its logo, labels,
-  // branch address/phone labels, accountant line and other static print.
-  // Only customer/branch-specific dot-matrix values are overlaid here.
+  // Union Bank's physical book already has all labels, logo, branch details,
+  // IFSC, accountant text and other static print. This layer prints values only.
   const address = upper(
     c.fullAddress ||
       [c.address, c.postOffice, c.pinCode].filter(Boolean).join(", "),
@@ -43,14 +42,13 @@ export default function UnionPassbook({
       <style>{`
         .union-pb-document {
           position: relative;
-          width: 205mm;
-          height: 175mm;
+          width: 8in;
+          height: 8.4in;
           margin: 0 auto;
-          background: #fff;
+          background: transparent;
           color: #171717;
           box-sizing: border-box;
-          font: 3.25mm/4.5mm "Courier New", monospace;
-          box-shadow: 0 4px 24px #0002;
+          font: 0.13in/0.18in "Courier New", monospace;
           overflow: hidden;
         }
         .union-pb-document * { box-sizing: border-box; text-align: left; }
@@ -60,23 +58,28 @@ export default function UnionPassbook({
           white-space: pre-wrap;
           overflow-wrap: anywhere;
         }
-        .union-pb-branch { left: 67mm; top: 10mm; width: 95mm; text-align: center; }
-        .union-pb-account { left: 68mm; top: 54mm; width: 92mm; }
-        .union-pb-name-1 { left: 48mm; top: 69mm; width: 125mm; }
-        .union-pb-name-2 { left: 48mm; top: 76mm; width: 125mm; }
-        .union-pb-occupation { left: 68mm; top: 101mm; width: 110mm; }
-        .union-pb-address { left: 68mm; top: 110mm; width: 125mm; max-height: 18mm; overflow: hidden; }
-        .union-pb-opening { left: 68mm; top: 130mm; width: 75mm; }
-        .union-pb-nomination { left: 96mm; top: 139mm; width: 25mm; }
+        /* The book is 8.4in open and folds at 4.2in.
+           Values are printed only in the lower 4.2in panel. */
+        .union-pb-branch { left: 2.45in; top: 4.48in; width: 3.7in; text-align: center; }
+        .union-pb-account { left: 2.45in; top: 5.08in; width: 3.7in; }
+        .union-pb-name-1 { left: 2.45in; top: 5.55in; width: 4.9in; }
+        .union-pb-name-2 { left: 2.45in; top: 5.90in; width: 4.9in; }
+        .union-pb-name-3 { left: 2.45in; top: 6.25in; width: 4.9in; }
+        .union-pb-name-4 { left: 2.45in; top: 6.60in; width: 4.9in; }
+        .union-pb-occupation { left: 2.45in; top: 6.98in; width: 4.9in; }
+        .union-pb-address { left: 2.45in; top: 7.34in; width: 5.2in; max-height: 0.42in; overflow: hidden; }
+        .union-pb-opening { left: 2.45in; top: 7.86in; width: 2.8in; }
+        .union-pb-nomination { left: 5.25in; top: 7.86in; width: 0.7in; }
         .union-pb-edit { display: block; margin: 12px auto 0; }
         @media print {
-          @page { size: 205mm 175mm; margin: 0; }
+          @page { size: 8in 8.4in; margin: 0; }
           .union-pb-document {
             position: fixed;
             left: 0;
             top: 0;
             margin: 0;
             box-shadow: none;
+            background: transparent !important;
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
           }
@@ -84,36 +87,20 @@ export default function UnionPassbook({
         }
       `}</style>
 
-      <article className="union-pb-document" aria-label="Union Bank passbook">
-        <span className="union-pb-value union-pb-branch">
-          {upper(bankInfo.branchName)}
-        </span>
-        <span className="union-pb-value union-pb-account">
-          {upper(c.accountNo)}
-        </span>
-        <span className="union-pb-value union-pb-name-1">
-          {upper(c.name)}
-        </span>
-        <span className="union-pb-value union-pb-name-2">
-          {upper(c.coName)}
-        </span>
-        <span className="union-pb-value union-pb-occupation">
-          {upper(c.occupation || c.purposeOfAdvance)}
-        </span>
+      <article className="union-pb-document" aria-label="Union Bank passbook data">
+        <span className="union-pb-value union-pb-branch">{upper(bankInfo.branchName)}</span>
+        <span className="union-pb-value union-pb-account">{upper(c.accountNo)}</span>
+        <span className="union-pb-value union-pb-name-1">{upper(c.name)}</span>
+        <span className="union-pb-value union-pb-name-2">{upper(c.coName)}</span>
+        <span className="union-pb-value union-pb-name-3"></span>
+        <span className="union-pb-value union-pb-name-4"></span>
+        <span className="union-pb-value union-pb-occupation">{upper(c.occupation || c.purposeOfAdvance)}</span>
         <span className="union-pb-value union-pb-address">{address}</span>
-        <span className="union-pb-value union-pb-opening">
-          {date(c.accountOpeningDate)}
-        </span>
-        <span className="union-pb-value union-pb-nomination">
-          {c.nominee ? "Y" : "N"}
-        </span>
+        <span className="union-pb-value union-pb-opening">{date(c.accountOpeningDate)}</span>
+        <span className="union-pb-value union-pb-nomination">{c.nominee ? "Y" : "N"}</span>
       </article>
 
-      <button
-        type="button"
-        className="passbook-button union-pb-edit"
-        onClick={onEdit}
-      >
+      <button type="button" className="passbook-button union-pb-edit" onClick={onEdit}>
         Temporary Edit
       </button>
     </div>
