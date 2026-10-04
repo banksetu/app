@@ -77,3 +77,15 @@ export async function renderTemplateGraphics(pdf:PDFDocumentProxy, excluded:Set<
  }
  return graphics;
 }
+
+// Remove sample address labels/values underneath the single customer address block.
+// The customer's fullAddress string is kept verbatim by the value renderer.
+export function clearAddressTemplate(pages:TextTemplatePage[], mapping:BankFieldPlacement[]):TextTemplatePage[]{
+ return pages.map((page,index)=>{
+  const addresses=mapping.filter(item=>item.field==="address"&&(item.page||1)===index+1);
+  return {...page,runs:page.runs.filter(run=>!addresses.some(box=>{
+   const x=run.x/page.width*100,y=(run.y+run.height/2)/page.height*100;
+   return x>=box.x-1&&x<=box.x+box.width+1&&y>=box.y-.5&&y<=box.y+(box.height||9);
+  }))};
+ });
+}

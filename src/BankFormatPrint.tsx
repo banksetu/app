@@ -1,5 +1,5 @@
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { readTextTemplate, renderTemplateGraphics, type TextTemplatePage } from "./pdfTextTemplate";
+import { readTextTemplate, clearAddressTemplate, renderTemplateGraphics, type TextTemplatePage } from "./pdfTextTemplate";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
 import { doc, getDocFromServer } from "firebase/firestore";
@@ -56,7 +56,8 @@ export default function BankFormatPrint({
           const photo=selected.extractionMap?.find(item=>item.field==="customerPhoto");
           if(photo&&!manual.some(item=>item.field==="customerPhoto"))automatic.push({...photo});
           const merged=[...automatic.filter(field=>!manual.some(item=>item.field===field.field&&(item.page||1)===(field.page||1))),...manual];
-          if(active){setSources(graphics);setTextPages(template);setSettings({...selected,fieldMap:accountOpeningPrintMap(merged),bankLogo:data?.bankLogo});onConfigured(true);}
+          const printMap=accountOpeningPrintMap(merged);
+          if(active){setSources(graphics);setTextPages(clearAddressTemplate(template,printMap));setSettings({...selected,fieldMap:printMap,bankLogo:data?.bankLogo});onConfigured(true);}
           return;
         } finally {await task.destroy();}
       }

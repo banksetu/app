@@ -76,3 +76,11 @@ test('account-opening address prints once, wraps within its block and shares lef
  const result=accountOpeningPrintMap(mapping);assert.equal(result.length,3);const address=result.find(item=>item.field==='address');assert.equal(address.x,32);assert.equal(address.align,'left');assert.equal(address.height,9);assert.equal(address.width,58);assert(result.every(item=>item.align==='left'));
  assert.equal(bankTemplateValue({fullAddress:'C/O Ali, Vill Road, P.O. Town, 788806',address:'Road'},'address'),'C/O Ali, Vill Road, P.O. Town, 788806');assert.equal(bankTemplateValue({fullAddress:'  ',address:'Village Road'},'address'),'Village Road');
 });
+
+test('address block removes old C/O Vill P.O. labels and duplicate Care Of placement',()=>{
+ const mapping=accountOpeningPrintMap([{field:'name',page:1,x:35,y:20,width:25,fontSize:10},{field:'address',page:1,x:35,y:40,width:40,fontSize:10},{field:'fatherName',page:1,x:35,y:40,width:25,fontSize:10}]);assert(!mapping.some(field=>field.field==='fatherName'));
+ const run=(text,x,y)=>({text,x,y,width:50,height:10,fontSize:12});
+ const pages=globalThis.__semantic.clearAddressTemplate([{width:600,height:800,fields:[],runs:[run('Flat No / Bldg',30,320),run('C/O:',210,320),run('Vill:',300,320),run('P.O.:',400,320),run('Customer Name',30,100)]}],mapping);
+ assert.deepEqual(pages[0].runs.map(run=>run.text),['Flat No / Bldg','Customer Name']);
+ assert.equal(bankTemplateValue({fullAddress:'C/O Ali, Vill- Bundashil, P.O.- Badarpur, 788806'},'address'),'C/O Ali, Vill- Bundashil, P.O.- Badarpur, 788806');
+});

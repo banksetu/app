@@ -102,11 +102,16 @@ export function accountOpeningPrintMap(mapping:BankFieldPlacement[]):BankFieldPl
  const anchor=mapping.find(item=>item.field==="name")||mapping.find(item=>item.field==="accountNo");
  const addresses=new Map<number,BankFieldPlacement>();
  for(const item of mapping)if(item.field==="address"&&!addresses.has(item.page||1))addresses.set(item.page||1,item);
- return mapping.filter(item=>!addresses.has(item.page||1)||!["village","postOffice","pinCode"].includes(item.field)).map(item=>{
+ return mapping.filter(item=>{
+  const address=addresses.get(item.page||1);if(!address)return true;
+  if(["village","postOffice","pinCode"].includes(item.field))return false;
+  if(item.field==="fatherName"&&item.y>=address.y-1&&item.y<=address.y+9)return false;
+  return item.field!=="address"||item===address;
+ }).map(item=>{
   if(item.field==="customerPhoto")return item;
   const x=anchor&&(anchor.page||1)===(item.page||1)?anchor.x:item.x;
   if(item.field!=="address")return {...item,x,align:"left"};
-  const next=mapping.filter(other=>(other.page||1)===(item.page||1)&&other.y>item.y+1&&!['address','village','postOffice','pinCode','customerPhoto'].includes(other.field)).sort((a,b)=>a.y-b.y)[0];
+  const next=mapping.filter(other=>(other.page||1)===(item.page||1)&&other.y>item.y+1&&!['address','village','postOffice','pinCode','customerPhoto','fatherName'].includes(other.field)).sort((a,b)=>a.y-b.y)[0];
   return {...item,x,width:Math.max(item.width,90-x),height:Math.max(.5,Math.min(9,(next?.y||99)-item.y-.5)),align:"left"};
  });
 }
