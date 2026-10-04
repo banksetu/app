@@ -14,7 +14,7 @@ export default function OptionBConnection({tenantId, disabled}: {tenantId: strin
       if (!config.dataApiReady) throw new Error("Connection saved, but the upload bridge is not ready. Ask your administrator to verify it.");
       sessionStorage.setItem("bankSetuOfflineUntil", String(Date.now()+8*60*60*1000));
         sessionStorage.setItem("bankSetuConnectionMode","option-b");sessionStorage.setItem("bankSetuConnectionId",config.connectionId);sessionStorage.setItem("bankSetuBridgeUrl",config.apiUrl);
-      setTenantApiUrl(config.apiUrl);setTenantWorkspaceReady(true);window.dispatchEvent(new Event("banksetu-sync-change"));setMessage("कनेक्शन तैयार है। Google sync और document upload bridge जाँच लिया गया है।");
+      setTenantApiUrl(config.apiUrl);setTenantWorkspaceReady(true);window.dispatchEvent(new Event("banksetu-sync-change"));setMessage("कनेक्शन तैयार है। Resource permissions और bridge binding सत्यापित हैं। पहली photo/PDF upload को Sync Now के बाद जाँचें।");
     } catch(error) {setMessage(error instanceof Error?error.message:"Connection failed.");}finally{setBusy(false);}
   };
   return <div style={{border:"1px solid #37646c",borderRadius:10,padding:16,marginTop:16}}>
