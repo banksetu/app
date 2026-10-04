@@ -1,5 +1,5 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
-import LocalSyncStatus from "./LocalSyncStatus";
+
 import { syncNow } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -424,7 +424,7 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <LocalSyncStatus /><Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
+        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
       </div>
     );
   }

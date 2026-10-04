@@ -13,11 +13,17 @@ const aliases: Record<string,string[]> = {
   accountOpeningDate:["account opening date","opening date"], nominee:["nominee name","nominee"],
   postOffice:["post office"], pinCode:["pin code","pincode"], customerPhoto:["customer photo","photograph","photo"],
 };
-const normalize=(s:string)=>s.toLowerCase().replace(/[_:.\-]+/g," ").replace(/\s+/g," ").trim();
+const normalize=(s:string)=>s.toLowerCase().replace(/[_:.\-{}=]+/g," ").replace(/\s+/g," ").trim();
 export function identifyPdfField(label:string) {
   const clean=normalize(label);
   for (const [field,names] of Object.entries(aliases)) if(names.includes(clean)) return field;
   return "";
+}
+const customerKeys: Record<string,string> = {customerId:"enrolId",fatherName:"coName",mobile:"contact",address:"fullAddress"};
+export function cleanExtractedValue(value:string) {
+  const clean = value.trim().replace(/^[:=\s_-]+|[:=\s_-]+$/g, "");
+  if (!clean || identifyPdfField(clean) || /\{\{|\}\}/.test(clean)) return "";
+  return clean;
 }
 export function parseBankCustomerLines(lines:string[]) {
   const result:Record<string,string>={};
@@ -30,11 +36,12 @@ export function parseBankCustomerLines(lines:string[]) {
     if(!field || field==="aadhaar" || field==="customerPhoto")continue;
     let value=parts[1]?.trim() || "";
     if(!value && identifyPdfField(line) && lines[i+1] && !identifyPdfField(lines[i+1].split(/[:=]/)[0])) value=lines[i+1].trim();
-    if(value && !/^[_.\s-]+$/.test(value))result[keys[field]||field]=value;
+    value=cleanExtractedValue(value);
+    if(value)result[keys[field]||field]=value;
   }
   return result;
 }
-export async function extractBankCustomer(pdf:PDFDocumentProxy) {
+export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFieldPlacement[] = []) {
   const values:Record<string,string>={};
   const lines:string[]=[];
   for(let number=1;number<=Math.min(pdf.numPages,10);number++){
@@ -44,10 +51,29 @@ export async function extractBankCustomer(pdf:PDFDocumentProxy) {
       const field=identifyPdfField(String(annotation.fieldName || annotation.alternativeText || ""));
       if(field && field!=="aadhaar" && field!=="customerPhoto" && typeof annotation.fieldValue==="string"){
         const key=({customerId:"enrolId",fatherName:"coName",mobile:"contact",address:"fullAddress"} as Record<string,string>)[field]||field;
-        if(annotation.fieldValue.trim())values[key]=annotation.fieldValue.trim();
+        const value=cleanExtractedValue(annotation.fieldValue);
+        if(value)values[key]=value;
       }
     }
     const content=await page.getTextContent();
+    const viewport=page.getViewport({scale:1});
+    for (const placement of fieldMap.filter(item => (item.page || 1) === number)) {
+      if (placement.field === "aadhaar" || placement.field === "customerPhoto") continue;
+      const left=placement.x/100*viewport.width, top=placement.y/100*viewport.height;
+      const width=placement.width/100*viewport.width;
+      const height=Math.max(12,placement.fontSize*72/96*1.6);
+      const candidates:Array<{x:number,y:number,text:string}>=[];
+      for (const item of content.items) if ("str" in item) {
+        const point=viewport.convertToViewportPoint(item.transform[4],item.transform[5]);
+        const itemHeight=Math.abs(item.height) || 10;
+        if (point[0]>=left-2 && point[0]<left+width && point[1]>=top-2 && point[1]-itemHeight<=top+height) {
+          const text=cleanExtractedValue(item.str);
+          if (text) candidates.push({x:point[0],y:point[1],text});
+        }
+      }
+      const value=cleanExtractedValue(candidates.sort((a,b)=>Math.abs(a.y-b.y)>3?a.y-b.y:a.x-b.x).map(item=>item.text).join(" "));
+      if (value) values[customerKeys[placement.field] || placement.field]=value;
+    }
     const rows=new Map<number,Array<{x:number,text:string}>>();
     for(const item of content.items)if("str" in item){
       const y=Math.round(item.transform[5]/3)*3;

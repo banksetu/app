@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, startLocalSync, syncNow } from "./core/localData";
 import type { QueueOperation } from "./core/schema";
-export default function LocalSyncStatus() {
+export default function LocalSyncStatus({ visible = true }: { visible?: boolean }) {
   const [conflicts,setConflicts]=useState<QueueOperation[]>([]);
   const [status,setStatus]=useState({records:0,pending:0,conflicts:0,downloading:false,cacheLimited:false});const [error,setError]=useState("");const [busy,setBusy]=useState(false);
   useEffect(()=>{const refresh=()=>{void getLocalStatus().then(setStatus).then(()=>getConflicts()).then(setConflicts).catch(()=>undefined);};const stop=startLocalSync();const timer=setInterval(refresh,5000);window.addEventListener("banksetu-sync-change",refresh);refresh();return()=>{stop();clearInterval(timer);window.removeEventListener("banksetu-sync-change",refresh);};},[]);
-  if (sessionStorage.getItem("bankSetuConnectionMode")!=="option-b") return null;
-  return <aside aria-label="Local database sync" style={{background:"#0b2630",color:"#eef7f7",padding:"8px 16px",display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
+  if (!visible || sessionStorage.getItem("bankSetuConnectionMode")!=="option-b") return null;
+  return <aside aria-label="Local database sync" style={{background:"#0b2630",color:"#eef7f7",padding:"8px 16px",borderRadius:16,display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
+    <h2 style={{width:"100%",color:"white",margin:"8px 0"}}>Sync & Backup</h2>
     <span>Local: {status.records} · Pending: {status.pending} · Review: {status.conflicts}</span>
     <button disabled={busy} onClick={()=>{setBusy(true);setError("");void syncNow().catch(reason=>setError(String(reason.message||reason))).finally(()=>setBusy(false));}}>Sync Now</button>
     <button onClick={()=>void exportLocalBackup().catch(reason=>setError(String(reason.message||reason)))}>Export backup</button>

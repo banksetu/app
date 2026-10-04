@@ -1,3 +1,4 @@
+import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 
@@ -242,7 +243,8 @@ type PageName =
 
   | "reports"
 
-  | "settings";
+  | "settings"
+  | "sync-backup";
 
 function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
@@ -1031,6 +1033,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           />}
 
+          {sessionStorage.getItem("bankSetuConnectionMode") === "option-b" && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
         </nav>
 
       </aside>
@@ -1416,6 +1419,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
+          <LocalSyncStatus visible={activePage === "sync-backup"} />
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && (

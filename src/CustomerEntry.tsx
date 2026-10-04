@@ -1301,8 +1301,21 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf) };
+      let extractionMap: import("./bankFormatUtils").BankFieldPlacement[] = [];
+      if (!isAssamBank(bankName)) {
+        const tenantId = sessionStorage.getItem("bankSetuTenantId");
+        if (tenantId) {
+          const settings = await getDoc(doc(db, "tenantSettings", tenantId));
+          const sample = settings.data()?.bankFormats?.accountOpening;
+          if (templateMatchesBank(sample, bankName)) extractionMap = sample?.fieldMap || [];
+        }
+      }
+      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf, extractionMap) };
       if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
+      const extractedCount = Object.values(extracted).filter(value => String(value || "").trim()).length;
+      const extractionMessage = extractedCount
+        ? `${extractedCount} PDF fields extracted. Please check the values before saving. Aadhaar remains manual.`
+        : "No customer values detected. For this bank, check Account Opening sample → Edit field layout. Scanned PDFs require manual entry.";
 
 
 
@@ -1552,7 +1565,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         showMessage(
 
-          "PDF data and customer photo extracted successfully. Aadhaar has been left blank for manual entry.",
+          `${extractionMessage} Photo crop prepared; please check it.`,
 
           "success"
 
@@ -1564,7 +1577,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         showMessage(
 
-          "PDF data extracted successfully. Photo crop could not be generated. Aadhaar has been left blank.",
+          `${extractionMessage} Photo crop could not be generated.`,
 
           "success"
 
