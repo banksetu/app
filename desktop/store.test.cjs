@@ -1,0 +1,7 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const crypto=require('node:crypto');const {createStore}=require('./store.cjs');
+test('SQLite transactions survive restart, reject stale commits, isolate scopes and preserve encrypted update backup',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-'));const key=crypto.randomBytes(32);
+ const cipher={encrypt(value){const iv=crypto.randomBytes(12);const c=crypto.createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,c.update(value),c.final(),c.getAuthTag()]);},decrypt(value){const c=crypto.createDecipheriv('aes-256-gcm',key,value.subarray(0,12));c.setAuthTag(value.subarray(-16));return Buffer.concat([c.update(value.subarray(12,-16)),c.final()]).toString();}};
+ let store=createStore(directory,cipher);const empty={records:[],operations:[]};const saved={records:[{name:'private-customer'}],operations:[{id:'pending'}]};store.commit('a',empty,saved);assert.throws(()=>store.commit('a',empty,empty),/changed/);assert.deepEqual(store.read('b'),empty);store.backup();store.close();
+ store=createStore(directory,cipher);assert.deepEqual(store.read('a'),saved);store.close();assert(!fs.readFileSync(path.join(directory,'customers.sqlite')).includes(Buffer.from('private-customer')));assert(fs.existsSync(path.join(directory,'customers-before-update.sqlite')));fs.rmSync(directory,{recursive:true,force:true});
+});

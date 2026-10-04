@@ -8,3 +8,7 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  void navigator.serviceWorker.register('/sw.js').catch(error => console.warn('Offline application cache unavailable', error));
+}
