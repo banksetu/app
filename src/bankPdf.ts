@@ -12,7 +12,7 @@ const aliases: Record<string,string[]> = {
   pan:["pan number","pan no","pan"], address:["communication address","residential address","customer address","full address","address"],
   branchName:["branch name","branch"], ifsc:["ifsc code","ifsc"],
   accountOpeningDate:["account opening date","opening date"], nominee:["nominee name","nominee"],
-  postOffice:["post office"], pinCode:["pin code","pincode"], customerPhoto:["customer photo","photograph","photo"],
+  postOffice:["post office"], pinCode:["pin code","pincode","postal code","pin"], customerPhoto:["customer photo","photograph","photo"],
 };
 const normalize=(s:string)=>s.toLowerCase().replace(/[_:.\-{}=]+/g," ").replace(/\s+/g," ").trim();
 export function identifyPdfField(label:string) {
@@ -102,6 +102,7 @@ export async function extractBankCustomer(pdf:PDFDocumentProxy, fieldMap:BankFie
     for(const [,row] of [...rows.entries()].sort((a,b)=>b[0]-a[0]))lines.push(row.sort((a,b)=>a.x-b.x).map(i=>i.text).join(" ").trim());
   }
   const result=validateExtractedCustomer({...(!mappedOnly ? parseBankCustomerLines(lines) : {}),...await readAutomaticCustomer(pdf),...values});
+  if(!result.pinCode && result.fullAddress){const pin=result.fullAddress.match(/(?:^|[\s,])([1-9]\d{5})(?:$|[\s,])/);if(pin)result.pinCode=pin[1];}
   const opening=result.accountOpeningDate?.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
   if(opening)result.accountOpeningDate=opening[3]+"-"+opening[2]+"-"+opening[1];
   return result;

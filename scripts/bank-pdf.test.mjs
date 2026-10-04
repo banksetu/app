@@ -61,3 +61,12 @@ test('text template retains labels and excludes previous customer values',async(
  assert.equal(pages[0].fields.length,2);assert(pages[0].runs.every(run=>!run.text.includes('Previous')&&!run.text.includes('123456')));
  assert.equal(pages[0].fields[0].field,'name');
 });
+
+test('PIN is recovered from mapped full address without a PIN label',async()=>{
+ const pdf={numPages:1,getPage:async()=>page([item('Vill- Bundashil, P.O.- Badarpur, KARIMGANJ ASSAM 788806',100,600)])};
+ const result=await extractBankCustomer(pdf,[{field:'address',page:1,x:100/600*100,y:190/800*100,width:75,height:4,fontSize:10}],true);assert.equal(result.pinCode,'788806');
+});
+test('fixed instructions survive and repeated generic names do not duplicate customer data',async()=>{
+ const pdf={numPages:1,getPage:async()=>page([{...item('Customer Name: Old Person',20,700),width:180},{...item('Name of nominee',20,650),width:100},{...item('Please read the declaration carefully',20,600),width:220},{...item('Customer Name: Old Person',20,550),width:180}])};
+ const [template]=await globalThis.__semantic.readTextTemplate(pdf);assert.equal(template.fields.filter(f=>f.field==='name').length,1);assert(template.runs.some(r=>r.text==='Please read the declaration carefully'));assert(template.runs.some(r=>r.text==='Name of nominee'));
+});

@@ -9,7 +9,7 @@ import { getTenantApiUrl } from "./tenantApi";
 import { templateMatchesBank } from "./bankDocumentPolicy";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
-type FormatSettings = { bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
+type FormatSettings = { bankLogo?:string; bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 
 export default function BankFormatPrint({
   formatType, customer, onConfigured, onPrint, bankName, allowPrint = true,
@@ -47,7 +47,7 @@ export default function BankFormatPrint({
         const task=getDocument({data:Uint8Array.from(atob(result.data),char=>char.charCodeAt(0))});
         try {
           const pdf=await task.promise;
-          const template=await readTextTemplate(pdf);
+          const template=await readTextTemplate(pdf,selected.extractionMap||[]);
           const excluded=new Set(Object.entries(OPS).filter(([name])=>/show.*text|show.*glyph|paint.*image/i.test(name)).map(([,value])=>value));
           const graphics=await renderTemplateGraphics(pdf,excluded);
           if(!template.some(page=>page.runs.length))throw new Error("Readable PDF labels could not be identified. Check the sample's text layer.");
@@ -56,7 +56,7 @@ export default function BankFormatPrint({
           const photo=selected.extractionMap?.find(item=>item.field==="customerPhoto");
           if(photo&&!manual.some(item=>item.field==="customerPhoto"))automatic.push({...photo});
           const merged=[...automatic.filter(field=>!manual.some(item=>item.field===field.field&&(item.page||1)===(field.page||1))),...manual];
-          if(active){setSources(graphics);setTextPages(template);setSettings({...selected,fieldMap:merged});onConfigured(true);}
+          if(active){setSources(graphics);setTextPages(template);setSettings({...selected,fieldMap:merged,bankLogo:data?.bankLogo});onConfigured(true);}
           return;
         } finally {await task.destroy();}
       }
@@ -83,8 +83,8 @@ export default function BankFormatPrint({
     <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => onPrint ? onPrint() : window.print()}>Print bank format</button></div>
     <div className="bank-format-print-document" aria-label="Mapped bank document preview">
       {sources.map((source, pageIndex) => <section key={pageIndex} className="bank-format-print" style={{ width: `${pageWidthMm}mm`, height: `${textPages[pageIndex] ? pageWidthMm*textPages[pageIndex].height/textPages[pageIndex].width : pageHeightMm}mm`, backgroundImage: `url(${source})` }}>
-        {textPages.length && pageIndex===0 && values.templateLogo ? <img alt="Bank logo" src={String(values.templateLogo)} style={{position:"absolute",left:"5%",top:"1%",width:"8%",height:"6%",objectFit:"contain"}} /> : null}
-        {textPages[pageIndex]?.runs.map((run,index)=><span key={`label-${index}`} style={{left:`${run.x/textPages[pageIndex].width*100}%`,top:`${run.y/textPages[pageIndex].height*100}%`,width:`${run.width/textPages[pageIndex].width*100}%`,fontSize:`${run.fontSize}px`,color:"#111"}}>{run.text}</span>)}
+        {textPages.length && pageIndex===0 && (values.templateLogo || settings.bankLogo) ? <img alt="Bank logo" src={String(values.templateLogo || settings.bankLogo)} style={{position:"absolute",left:"30%",top:"1%",width:"40%",height:"8%",objectFit:"contain"}} /> : null}
+        {textPages[pageIndex] && <svg aria-label="Fixed PDF labels" viewBox={`0 0 ${textPages[pageIndex].width} ${textPages[pageIndex].height}`} preserveAspectRatio="none" style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}}>{textPages[pageIndex].runs.map((run,index)=><text key={index} x={run.x} y={run.y+run.height} fontSize={run.height} textLength={run.width} lengthAdjust="spacingAndGlyphs" fill="#111" xmlSpace="preserve">{run.text}</text>)}</svg>}
         {settings.fieldMap!.filter((placement) => (placement.page || 1) === pageIndex + 1).map((placement) => {
           const value = bankTemplateValue(values, placement.field);
           const placementStyle = { left: `${placement.x}%`, top: `${placement.y}%`, width: `${placement.width}%`, fontSize: `${placement.fontSize}px`, textAlign: placement.align, textTransform: placement.uppercase ? "uppercase" : "none" } as const;

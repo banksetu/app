@@ -2,7 +2,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BankFieldPlacement } from "./bankFormatUtils";
 export type TextRun={text:string;x:number;y:number;width:number;height:number;fontSize:number};
 export type TextTemplatePage={width:number;height:number;runs:TextRun[];fields:BankFieldPlacement[]};
-const names:Record<string,string[]>={name:['customer name','applicant name','account holder name','full name','name'],accountNo:['account number','account no','a/c no'],customerId:['customer id','customer no','cif no','enrolment no','enrollment no'],aofNo:['reference number','reference no','aof no'],fatherName:['father / husband name','father name','father’s name','guardian name','c/o','s/o'],gender:['gender','sex'],mobile:['mobile number','mobile no','contact number','phone no'],aadhaar:['aadhaar number','aadhaar no','aadhar no'],pan:['pan number','pan no'],address:['full address','residential address','communication address','address'],postOffice:['post office','p.o.','p.o','po'],village:['village','vill.','vill'],pinCode:['pin code','pincode'],nominee:['nominee name','nominee'],dateOfBirth:['date of birth','dob','d.o.b.'],religion:['religion'],category:['category','caste'],branchName:['branch name'],ifsc:['ifsc code'],accountOpeningDate:['account opening date','opening date']};
+const names:Record<string,string[]>={name:['customer name','applicant name','account holder name','full name','name'],accountNo:['account number','account no','a/c no'],customerId:['customer id','customer no','cif no','enrolment no','enrollment no'],aofNo:['reference number','reference no','aof no'],fatherName:['father / husband name','father name','father’s name','guardian name','c/o','s/o'],gender:['gender','sex'],mobile:['mobile number','mobile no','contact number','phone no'],aadhaar:['aadhaar number','aadhaar no','aadhar no'],pan:['pan number','pan no'],address:['full address','residential address','communication address','address'],postOffice:['post office','p.o.','p.o','po'],village:['village','vill.','vill'],pinCode:['pin code','pincode','pin-code','postal code','pin'],nominee:['nominee name','nominee'],dateOfBirth:['date of birth','dob','d.o.b.'],religion:['religion'],category:['category','caste'],branchName:['branch name'],ifsc:['ifsc code'],accountOpeningDate:['account opening date','opening date']};
 const escaped=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const alternatives=Object.entries(names).flatMap(([field,labels])=>labels.map(label=>({field,label}))).sort((a,b)=>b.label.length-a.label.length);
 const labelPattern=new RegExp('(?<![\\p{L}])('+alternatives.map(item=>escaped(item.label)).join('|')+')(?![\\p{L}])','giu');
@@ -13,10 +13,12 @@ export function splitLabelValues(text:string){
 export function parseAddressParts(text:string){
  const postOffice=text.match(/\b(?:P\.?\s*O\.?|Post\s+Office)\s*[:\-/]?\s*([^,;\n]+)/i)?.[1]?.trim();
  const village=text.match(/\b(?:VILL(?:AGE)?\.?)\s*[:\-/]\s*([^,;\n]+)/i)?.[1]?.trim();
- return {...(postOffice?{postOffice}:{}),...(village?{address:village}:{})};
+ const pinCode=text.match(/(?:\bPIN(?:\s*CODE)?\s*[:.-]?\s*|[,\s])([1-9]\d{5})\b/i)?.[1];
+ return {...(pinCode?{pinCode}:{}),...(postOffice?{postOffice}:{}),...(village?{address:village}:{})};
 }
-export async function readTextTemplate(pdf:PDFDocumentProxy):Promise<TextTemplatePage[]>{
+export async function readTextTemplate(pdf:PDFDocumentProxy, regions:BankFieldPlacement[]=[]):Promise<TextTemplatePage[]>{
  const pages:TextTemplatePage[]=[];
+ const placed=new Set<string>();
  for(let n=1;n<=Math.min(pdf.numPages,10);n++){
   const page=await pdf.getPage(n),viewport=page.getViewport({scale:1}),content=await page.getTextContent();
   const runs:TextRun[]=[],fields:BankFieldPlacement[]=[];
@@ -25,17 +27,23 @@ export async function readTextTemplate(pdf:PDFDocumentProxy):Promise<TextTemplat
   for(const row of rows.values()){
    row.sort((a,b)=>a.x-b.x);
    for(let index=0;index<row.length;index++){
-    const item=row[index],labels=splitLabelValues(item.text);
+    const item=row[index];
+    const candidates=/capital letters|wish to|hereby|please|following type/i.test(item.text)?[]:splitLabelValues(item.text);
+    // Words in instructions (e.g. 'Name of nominee') are fixed copy, not customer fields.
+    const labels=candidates.filter(label=>!/^\s+of\b/i.test(item.text.slice(label.end)) && (label.start<8 || /[:=]/.test(item.text.slice(0,label.start))));
+    const covered=regions.some(box=>(box.page||1)===n && item.x+item.width/2>=box.x/100*viewport.width && item.x+item.width/2<=(box.x+box.width)/100*viewport.width && item.y+item.height/2>=box.y/100*viewport.height && item.y+item.height/2<=(box.y+(box.height||2))/100*viewport.height);
+
     if(labels.length){
      for(const [li,label] of labels.entries()){
       const unit=item.width/Math.max(1,item.text.length),x=item.x+label.start*unit;
-      runs.push({...item,text:label.label+':',x,width:label.label.length*unit});
-      const valueX=item.x+label.end*unit+4;
+      runs.push({...item,text:item.text.slice(li===0?0:label.start,label.end)+(item.text.slice(label.end).match(/^[\s:=-]+/)?.[0]||''),x:li===0?item.x:x,width:Math.max(1,(label.end-(li===0?0:label.start))*unit)});
+      const following=row[index+1];
+      const valueX=label.value ? item.x+label.end*unit+4 : following && !splitLabelValues(following.text).length ? following.x : item.x+label.end*unit+4;
       const next=labels[li+1]?item.x+labels[li+1].start*unit:row.slice(index+1).find(other=>splitLabelValues(other.text).length)?.x??viewport.width-20;
       const width=Math.max(12,next-valueX-4);
-      fields.push({field:label.field,page:n,x:valueX/viewport.width*100,y:item.y/viewport.height*100,width:width/viewport.width*100,height:item.height*1.4/viewport.height*100,fontSize:item.fontSize,align:'left',uppercase:false});
+      if(!placed.has(label.field)){placed.add(label.field);fields.push({field:label.field,page:n,x:valueX/viewport.width*100,y:item.y/viewport.height*100,width:width/viewport.width*100,height:item.height*1.4/viewport.height*100,fontSize:item.fontSize,align:'left',uppercase:false});}
      }
-    }else if(!row.slice(0,index).some(other=>splitLabelValues(other.text).length) && (/^\s*\d+[.)]\s/.test(item.text)||/bank|account opening form|application form/i.test(item.text))){runs.push(item);}
+    }else if(!covered && !row.slice(0,index).some(other=>splitLabelValues(other.text).length && !/\bof\b/i.test(other.text))){runs.push(item);}
    }
   }
   pages.push({width:viewport.width,height:viewport.height,runs,fields});
