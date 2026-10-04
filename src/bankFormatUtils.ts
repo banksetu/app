@@ -15,8 +15,24 @@ export type BankFieldPlacement = {
   align: "left" | "center" | "right";
 };
 
-export async function renderBankSamplePages(dataUrl: string, mimeType: string) {
-  if (!mimeType.includes("pdf")) return [{ dataUrl, width: 1, height: 1 }];
+export function clearSampleRegions(context: Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">, width: number, height: number, regions: BankFieldPlacement[], page: number) {
+  context.fillStyle = "#ffffff";
+  for (const region of regions.filter(item => (item.page || 1) === page)) {
+    if (!region.height || region.height <= 0) continue;
+    context.fillRect(region.x/100*width, region.y/100*height, region.width/100*width, region.height/100*height);
+  }
+}
+export function sourceSectionsToPrint(regions: BankFieldPlacement[]) {
+  return regions.map(region => ({...region, fontSize: region.fontSize || 10, uppercase: false, align: "left" as const}));
+}
+export async function renderBankSamplePages(dataUrl: string, mimeType: string, clearRegions: BankFieldPlacement[] = []) {
+  if (!mimeType.includes("pdf")) {
+    const image = new Image(); image.src=dataUrl; await image.decode();
+    const canvas=document.createElement("canvas");canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+    const context=canvas.getContext("2d");if(!context)throw new Error("Sample image could not be prepared.");
+    context.drawImage(image,0,0);clearSampleRegions(context,canvas.width,canvas.height,clearRegions,1);
+    return [{dataUrl:canvas.toDataURL("image/png"),width:canvas.width,height:canvas.height}];
+  }
   const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   const loadingTask = getDocument({ data: bytes });
@@ -32,6 +48,7 @@ export async function renderBankSamplePages(dataUrl: string, mimeType: string) {
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) throw new Error("This browser could not prepare the PDF sample preview.");
     await page.render({ canvas, canvasContext: context, viewport }).promise;
+    clearSampleRegions(context,canvas.width,canvas.height,clearRegions,pageNumber);
     rendered.push({ dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height });
     page.cleanup();
   }

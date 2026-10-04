@@ -7,7 +7,7 @@ import { getTenantApiUrl } from "./tenantApi";
 import { templateMatchesBank } from "./bankDocumentPolicy";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
-type FormatSettings = { bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
+type FormatSettings = { bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 
 export default function BankFormatPrint({
   formatType, customer, onConfigured, onPrint, bankName, allowPrint = true,
@@ -39,7 +39,7 @@ export default function BankFormatPrint({
       if (!response.ok || !result.success || !result.data || !result.mimeType) {
         throw new Error(result.message || "The saved bank sample could not be loaded. Deploy the latest Apps Script version.");
       }
-      const rendered = await renderBankSamplePages(`data:${result.mimeType};base64,${result.data}`, result.mimeType);
+      const rendered = await renderBankSamplePages(`data:${result.mimeType};base64,${result.data}`, result.mimeType, selected.extractionMap || []);
       if (!active) return;
       setSources(rendered.map((page) => page.dataUrl));
       setSettings(selected);

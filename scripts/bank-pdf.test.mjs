@@ -37,3 +37,12 @@ test('text spanning another column is not copied wholesale into a reading box',a
  const pdf={numPages:1,getPage:async()=>page([text])};
  assert.deepEqual(await extractBankCustomer(pdf,[{field:'name',page:1,x:100/600*100,y:90/800*100,width:20,height:2,fontSize:10}],true),{});
 });
+const formatSource=fs.readFileSync('src/bankFormatUtils.ts','utf8').replace(/^import .*;$/gm,'').replace('GlobalWorkerOptions.workerSrc = pdfWorker;','');
+const formatOutput=ts.transpileModule(formatSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText;
+const {clearSampleRegions,sourceSectionsToPrint}=await import('data:text/javascript;base64,'+Buffer.from(formatOutput).toString('base64'));
+test('filled sample cleanup clears only mapped value/photo boxes on their own page',()=>{
+ const rectangles=[];const context={fillStyle:'',fillRect:(...args)=>rectangles.push(args)};
+ const source=[{field:'name',page:1,x:10,y:20,width:30,height:2,fontSize:10},{field:'customerPhoto',page:2,x:70,y:10,width:15,height:20,fontSize:10}];
+ clearSampleRegions(context,1000,2000,source,1);assert.deepEqual(rectangles,[[100,400,300,40]]);assert.equal(context.fillStyle,'#ffffff');
+ assert.deepEqual(sourceSectionsToPrint(source).map(p=>[p.x,p.y,p.width,p.height]),source.map(p=>[p.x,p.y,p.width,p.height]));
+});

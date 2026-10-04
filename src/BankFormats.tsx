@@ -7,6 +7,7 @@ import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import BankFormatLayoutEditor from "./BankFormatLayoutEditor";
 import type { BankFieldPlacement } from "./bankFormatUtils";
 import { bankKey, isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { sourceSectionsToPrint } from "./bankFormatUtils";
 import { detectBankPdfLayout } from "./bankPdf";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
@@ -113,19 +114,19 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
     }
   };
 
-  const saveMapping = async (formatType: FormatType, fieldMap: BankFieldPlacement[], pageWidthMm: number, pageHeightMm: number) => {
-    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, selectedBank: bankName, mappingType: mappingMode, fieldMap, pageWidthMm, pageHeightMm });
+  const saveMapping = async (formatType: FormatType, fieldMap: BankFieldPlacement[], pageWidthMm: number, pageHeightMm: number, mode = mappingMode) => {
+    const response = await callBankSetuWorker<{ success?: boolean }>("/save-bank-format-mapping", { formatType, selectedBank: bankName, mappingType: mode, fieldMap, pageWidthMm, pageHeightMm });
     if (!response.success) throw new Error("The bank format field layout could not be saved.");
     setWorkspace((current) => current ? {
       ...current,
-      formats: { ...current.formats, [formatType]: { ...current.formats[formatType], [mappingMode === "extraction" ? "extractionMap" : "fieldMap"]: fieldMap, pageWidthMm, pageHeightMm } },
+      formats: { ...current.formats, [formatType]: { ...current.formats[formatType], [mode === "extraction" ? "extractionMap" : "fieldMap"]: fieldMap, pageWidthMm, pageHeightMm } },
     } : current);
     const confirmed = await getDocFromServer(doc(db, "tenantSettings", workspace!.tenantId));
     const sample = confirmed.data()?.bankFormats?.[formatType];
-    const key = mappingMode === "extraction" ? "extractionMap" : "fieldMap";
+    const key = mode === "extraction" ? "extractionMap" : "fieldMap";
     if (!sample?.fileId || !Array.isArray(sample[key]) || sample[key].length !== fieldMap.length || !fieldMap.every((entry, index) => Object.entries(entry).every(([name, value]) => sample[key][index]?.[name] === value))) throw new Error("Mapping save could not be confirmed. Keep this dialog open and retry.");
     setEditingFormat(null);
-    setMessage(mappingMode === "extraction" ? "Reading sections saved. Customer Entry will use these sections for this bank." : "Print positions saved. This layout will be used when printing.");
+    setMessage(mode === "extraction" ? "Reading sections saved. Customer Entry will use these sections for this bank." : "Print positions saved. This layout will be used when printing.");
   };
 
   const upload = async (formatType: FormatType, file?: File) => {
@@ -272,6 +273,10 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
                 </label>
               )}
               {sample && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => void preview(item.id)}>{busy === `preview:${item.id}` ? "Loading preview…" : "Preview sample"}</button>}
+              {sample?.extractionMap?.length && canManage ? <button style={secondaryButton} disabled={Boolean(busy)} onClick={()=>{
+                if(!window.confirm("Replace print positions with the saved reading boxes? Old sample values inside these boxes will be cleared in the generated form."))return;
+                void saveMapping(item.id,sourceSectionsToPrint(sample.extractionMap!),sample.pageWidthMm||210,sample.pageHeightMm||297,"print").catch(reason=>setError(reason.message));
+              }}>Print in the same sections</button> : null}
               {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => {setMappingMode("extraction"); void editLayout(item.id);}}>Map data to read</button>}
               {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => {setMappingMode("print"); void editLayout(item.id);}}>{workspace?.formats[item.id]?.fieldMap?.length ? "Edit field layout" : "Map fields for printing"}</button>}
               {filePreview && (filePreview.mimeType === "application/pdf"
