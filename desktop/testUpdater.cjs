@@ -30,10 +30,25 @@ function findLatestWindowsAsset(releases,current){
     return 0;
   })[0] || null;
 }
-function createTestUpdater({fetch,current,directory,backup,launch}){
+function createTestUpdater({fetch,current,directory,backup,launch,manifestUrl}){
   let selected;
   return {
     async check(){
+      if (manifestUrl) {
+        const manifestResponse=await fetch(`${manifestUrl}?t=${Date.now()}`,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(15000)}).catch(()=>null);
+        if (manifestResponse?.ok) {
+          const manifest=await manifestResponse.json().catch(()=>null);
+          if (manifest?.windowsVersion && newer(String(manifest.windowsVersion),current)) {
+            // Firebase announces the update; GitHub remains the verified binary source.
+            const releaseResponse=await fetch(REPO,{headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
+            if (releaseResponse.ok) {
+              const releases=await releaseResponse.json();
+              selected=findLatestWindowsAsset(Array.isArray(releases)?releases:[releases],current);
+            }
+            return {latestVersion:String(manifest.windowsVersion),notes:manifest.notes||'New Bank Setu update is available.'};
+          }
+        }
+      }
       const response=await fetch(REPO,{headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
       if(response.status===404){selected=null;return {latestVersion:current,notes:'No newer test installer is published.'};}
       if(!response.ok)throw new Error('Could not check the Bank Setu test release.');

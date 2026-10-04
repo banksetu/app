@@ -41,7 +41,7 @@ app.whenReady().then(async()=>{
     const config=path.join(process.resourcesPath,'app-update.yml');
     return app.isPackaged && fs.existsSync(config) && /^publisherName:/m.test(fs.readFileSync(config,'utf8'));
   };
-  const testUpdater=require('./testUpdater.cjs').createTestUpdater({fetch:net.fetch,current:app.getVersion(),directory:path.join(app.getPath('userData'),'updates'),backup:()=>store.backup(),launch:async file=>{const error=await shell.openPath(file);if(error)throw new Error(error);app.quit();}});
+  const testUpdater=require('./testUpdater.cjs').createTestUpdater({fetch:net.fetch,current:app.getVersion(),manifestUrl:'https://banksetu-app.web.app/version.json',directory:path.join(app.getPath('userData'),'updates'),backup:()=>store.backup(),launch:async file=>{const error=await shell.openPath(file);if(error)throw new Error(error);app.quit();}});
   const assertSignedRelease=()=>{
     const config=path.join(process.resourcesPath,'app-update.yml');
     if (!app.isPackaged || !fs.existsSync(config) || !/^publisherName:/m.test(fs.readFileSync(config,'utf8'))) throw new Error('Signed Windows release configuration is required before automatic updates.');
