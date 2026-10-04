@@ -6,7 +6,7 @@ Cloudflare Worker में `GOOGLE_DRIVE_SERVICE_ACCOUNT` secret dedicated sync
 
 **वर्तमान जाँच: Worker में dedicated Google secret मौजूद नहीं है।** Master Google Cloud Console → project `banksetu-69e2f` → IAM & Admin → Service Accounts → dedicated sync account चुने। Existing सुरक्षित JSON उपलब्ध हो तो वही इस्तेमाल करें; उपलब्ध न हो तो account Keys → Add key → Create new key → JSON से सुरक्षित local copy बनाएँ। Cloudflare → Workers & Pages → `banksetu-client-api` → Settings → Variables and Secrets में नाम `GOOGLE_DRIVE_SERVICE_ACCOUNT`, type Secret और पूरा JSON value रखकर Deploy करें। Dedicated account को Firebase admin permissions न दें। Client सिर्फ Sheet/Folder share करता है। Firebase administration credential अलग रहता है। JSON को chat, code या client को न दें। GitHub Actions secret `BANKSETU_GOOGLE_DRIVE_SERVICE_ACCOUNT` configure करने पर testing deployment इसे Worker में रखता है; पहले से configured Worker secret भी चलेगा।
 
-Testing web link GitHub Actions के **Deploy local-first testing frontend and compatible backend** run में मिलता है। Windows EXE **Local-first validation and Windows test build** run → Artifacts → `BankSetu-Windows-UNSIGNED-TEST` ZIP में है। ZIP extract करके `.exe` installer खोलें; `.blockmap` installer नहीं है। Release permission उपलब्ध हो तो GitHub Releases में direct EXE download भी मिलता है; अभी Actions artifact इस्तेमाल करें।
+Testing web link GitHub Actions के **Deploy local-first testing frontend and compatible backend** run में मिलता है। Windows EXE **Local-first validation and Windows test build** run → Artifacts → `BankSetu-Windows-UNSIGNED-TEST` ZIP में है। ZIP extract करके `.exe` installer खोलें; `.blockmap` installer नहीं है। Version 1.0.5 का direct installer [GitHub Release](https://github.com/banksetu/app/releases/tag/v1.0.5) में उपलब्ध है।
 
 ## Client Admin के लिए app में दो steps
 
@@ -51,4 +51,4 @@ Windows test installer बिना signing certificate का है। Softwar
 
 Testing केवल अलग client/test records पर करें। Automated checks असली Google permissions, upload quotas और आपके printer/device परीक्षण की जगह नहीं लेते।
 
-GitHub Release publishing अभी HTTP 403 से blocked है। EXE artifact का installation इस permission पर निर्भर नहीं है। Future automatic-update test के लिए repository Release में higher version installer publish करें; Actions से publish करने के लिए appropriate repository contents/workflow permissions वाला `BANKSETU_RELEASE_TOKEN` secret configure किया जा सकता है। Token/private JSON chat में न भेजें।
+Version 1.0.5 Release publishing सफल हुआ है। Future automatic-update test के लिए higher version installer publish करें। यदि किसी बाद की release में permission error आए तो artifact fallback उपलब्ध है; appropriate repository contents/workflow permissions वाला `BANKSETU_RELEASE_TOKEN` secret optional publishing fallback है। Token/private JSON chat में न भेजें।
