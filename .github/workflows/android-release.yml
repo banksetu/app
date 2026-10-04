@@ -10,11 +10,6 @@ on:
         description: Release version, for example 1.0.6
         required: true
         type: string
-      source_ref:
-        description: Branch to package
-        required: true
-        default: codex/android-live-base
-        type: string
 permissions:
   contents: read
 jobs:
@@ -23,5 +18,4 @@ jobs:
     with:
       version_code: ${{ inputs.version_code }}
       version_name: ${{ inputs.version_name }}
-      source_ref: ${{ inputs.source_ref }}
     secrets: inherit
