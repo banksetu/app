@@ -4,7 +4,7 @@
 
 Cloudflare Worker में `GOOGLE_DRIVE_SERVICE_ACCOUNT` secret dedicated sync account के JSON से configure होना चाहिए। Account: `bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com`। Google project में Drive और Sheets APIs enabled हों। Firebase administration credential अलग रहता है। JSON को chat, code या client को न दें। GitHub Actions secret `BANKSETU_GOOGLE_DRIVE_SERVICE_ACCOUNT` configure करने पर testing deployment इसे Worker में रखता है; पहले से configured Worker secret भी चलेगा।
 
-Testing web link GitHub Actions के **Deploy local-first testing frontend and compatible backend** run में मिलता है। Windows EXE **Local-first validation and Windows test build** run → Artifacts → `BankSetu-Windows-UNSIGNED-TEST` ZIP में है। ZIP extract करके `.exe` installer खोलें; `.blockmap` installer नहीं है।
+Testing web link GitHub Actions के **Deploy local-first testing frontend and compatible backend** run में मिलता है। Windows EXE **Local-first validation and Windows test build** run → Artifacts → `BankSetu-Windows-UNSIGNED-TEST` ZIP में है। ZIP extract करके `.exe` installer खोलें; `.blockmap` installer नहीं है। सफल branch build के बाद GitHub Releases में direct EXE download भी प्रकाशित होता है।
 
 ## Client Admin के लिए app में दो steps
 
