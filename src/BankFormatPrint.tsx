@@ -1,4 +1,4 @@
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { readTextTemplate, type TextTemplatePage } from "./pdfTextTemplate";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
@@ -46,14 +46,25 @@ export default function BankFormatPrint({
         if(!result.mimeType.includes("pdf"))throw new Error("Account Opening text template needs a readable PDF.");
         const task=getDocument({data:Uint8Array.from(atob(result.data),char=>char.charCodeAt(0))});
         try {
-          const template=await readTextTemplate(await task.promise);
+          const pdf=await task.promise;
+          const template=await readTextTemplate(pdf);
+          const graphics:string[]=[];
+          const excluded=new Set(Object.entries(OPS).filter(([name])=>/show.*text|show.*glyph|paint.*image/i.test(name)).map(([,value])=>value));
+          for(let number=1;number<=template.length;number++){
+            const page=await pdf.getPage(number),viewport=page.getViewport({scale:1.5}),operators=await page.getOperatorList();
+            const canvas=document.createElement("canvas");canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+            const context=canvas.getContext("2d");
+            if(!context)throw new Error("Template graphics could not be prepared.");
+            await page.render({canvas,canvasContext:context,viewport,annotationMode:0,operationsFilter:index=>!excluded.has(operators.fnArray[index])}).promise;
+            graphics.push(canvas.toDataURL("image/png"));
+          }
           if(!template.some(page=>page.runs.length))throw new Error("Readable PDF labels could not be identified. Check the sample's text layer.");
           const automatic=template.flatMap(page=>page.fields);
           const manual=selected.fieldMap||[];
           const photo=selected.extractionMap?.find(item=>item.field==="customerPhoto");
           if(photo&&!manual.some(item=>item.field==="customerPhoto"))automatic.push({...photo});
           const merged=[...automatic.filter(field=>!manual.some(item=>item.field===field.field&&(item.page||1)===(field.page||1))),...manual];
-          if(active){setTextPages(template);setSettings({...selected,fieldMap:merged});onConfigured(true);}
+          if(active){setSources(graphics);setTextPages(template);setSettings({...selected,fieldMap:merged});onConfigured(true);}
           return;
         } finally {await task.destroy();}
       }
@@ -79,7 +90,7 @@ export default function BankFormatPrint({
   return <section className="bank-format-print-wrap">
     <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => onPrint ? onPrint() : window.print()}>Print bank format</button></div>
     <div className="bank-format-print-document" aria-label="Mapped bank document preview">
-      {(textPages.length ? textPages.map(()=>"") : sources).map((source, pageIndex) => <section key={pageIndex} className="bank-format-print" style={{ width: `${pageWidthMm}mm`, height: `${textPages[pageIndex] ? pageWidthMm*textPages[pageIndex].height/textPages[pageIndex].width : pageHeightMm}mm`, backgroundImage: `url(${source})` }}>
+      {sources.map((source, pageIndex) => <section key={pageIndex} className="bank-format-print" style={{ width: `${pageWidthMm}mm`, height: `${textPages[pageIndex] ? pageWidthMm*textPages[pageIndex].height/textPages[pageIndex].width : pageHeightMm}mm`, backgroundImage: `url(${source})` }}>
         {textPages.length && pageIndex===0 && values.templateLogo ? <img alt="Bank logo" src={String(values.templateLogo)} style={{position:"absolute",left:"5%",top:"1%",width:"8%",height:"6%",objectFit:"contain"}} /> : null}
         {textPages[pageIndex]?.runs.map((run,index)=><span key={`label-${index}`} style={{left:`${run.x/textPages[pageIndex].width*100}%`,top:`${run.y/textPages[pageIndex].height*100}%`,width:`${run.width/textPages[pageIndex].width*100}%`,fontSize:`${run.fontSize}px`,color:"#111"}}>{run.text}</span>)}
         {settings.fieldMap!.filter((placement) => (placement.page || 1) === pageIndex + 1).map((placement) => {
