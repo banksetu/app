@@ -1,3 +1,4 @@
+import "./OptionBConnection.css";
 import { enrollOfflineSession } from "./core/offlineSession";
 import { sendEmailVerification } from "firebase/auth";
 import { auth, FIREBASE_WEB_API_KEY } from "./firebase";
@@ -6,9 +7,10 @@ import { callBankSetuWorker } from "./workerApi";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 const SERVICE_EMAIL = "bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com";
 export default function OptionBConnection({tenantId, disabled}: {tenantId: string; disabled: boolean}) {
+  const [downloading,setDownloading]=useState(false);
   const [sheetLink,setSheetLink]=useState("");const [folderLink,setFolderLink]=useState("");const [bridgeUrl,setBridgeUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");
   const downloadSetup=async()=>{
-    setMessage("");
+    setMessage("");setDownloading(true);
     try {
       const sheet=sheetLink.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/);
       const folder=folderLink.match(/^https:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]{20,})/);
@@ -18,9 +20,9 @@ export default function OptionBConnection({tenantId, disabled}: {tenantId: strin
       if(!source.includes("function syncCustomerOperation"))throw new Error("Client setup source is incomplete.");
       const properties={BANKSETU_FIREBASE_API_KEY:FIREBASE_WEB_API_KEY,BANKSETU_CLIENT_TENANT_ID:tenantId,BANKSETU_CLIENT_SPREADSHEET_ID:sheet[1],BANKSETU_CLIENT_FOLDER_ID:folder[1]};
       const setup=`\n\n// Run this function once in your own Google account.\nfunction setupBankSetuClient() {\n  PropertiesService.getScriptProperties().setProperties(${JSON.stringify(properties)});\n  initializeClientWorkspace();\n}\n`;
-      const url=URL.createObjectURL(new Blob([source,setup],{type:"text/plain;charset=utf-8"}));const link=document.createElement("a");link.href=url;link.download="BankSetuClientSetup.gs";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      const url=URL.createObjectURL(new Blob([source,setup],{type:"text/plain;charset=utf-8"}));const link=document.createElement("a");link.href=url;link.download="BankSetuClientSetup.gs";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
       setMessage("Setup file तैयार है। अपनी Sheet → Extensions → Apps Script में file का पूरा text लगाएँ। setupBankSetuClient Run/authorize करें, फिर Web app deploy करें और /exec URL यहाँ रखें।");
-    }catch(error){setMessage(error instanceof Error?error.message:"Setup download failed.");}
+    }catch(error){setMessage(error instanceof Error?error.message:"Setup download failed.");}finally{setDownloading(false);}
   };
   const connect=async()=>{
     setBusy(true);setMessage("");
@@ -44,9 +46,14 @@ export default function OptionBConnection({tenantId, disabled}: {tenantId: strin
     <form onSubmit={event=>{event.preventDefault();void connect();}} style={{display:"grid",gap:10}}>
       <label>Google Sheet link<input required type="url" value={sheetLink} onChange={event=>setSheetLink(event.target.value)} style={inputStyle}/></label>
       <label>Google Drive folder link<input required type="url" value={folderLink} onChange={event=>setFolderLink(event.target.value)} style={inputStyle}/></label>
-      <button type="button" disabled={disabled||busy} onClick={()=>void downloadSetup()}>Download ready client setup</button>
+      <div className="option-b-setup-download">
+        <strong>पहली बार जरूरी: Client setup file</strong>
+        <p>दोनों links भरने के बाद file डाउनलोड करें। इसे अपनी Google Sheet के Apps Script में लगाकर authorize करेंगे।</p>
+        <button className="option-b-download-button" type="button" disabled={busy||downloading} onClick={()=>void downloadSetup()}>{downloading?"Setup file तैयार हो रही है…":"Download ready client setup"}</button>
+      </div>
+      {disabled&&<p role="status">Setup file अभी डाउनलोड कर सकते हैं। Test &amp; Connect चालू करने के लिए नीचे bank/branch details भरकर Save bank details करें। Workspace inactive हो तो Master से activate करवाएँ।</p>}
       <label>Client-owned upload bridge URL<input required type="url" value={bridgeUrl} onChange={event=>setBridgeUrl(event.target.value)} style={inputStyle}/></label>
-      <button disabled={disabled||busy} type="submit" style={{padding:12,borderRadius:8,border:0,background:"#63e2c4",color:"#06242a",fontWeight:700}}>{busy?"Checking permissions…":"Test & Connect"}</button>
+      <button disabled={disabled||busy||downloading} type="submit" style={{padding:12,borderRadius:8,border:0,background:"#63e2c4",color:"#06242a",fontWeight:700}}>{busy?"Checking permissions…":"Test & Connect"}</button>
     </form>
     {message&&<p role="status" style={{overflowWrap:"anywhere"}}>{message}</p>}
     {sessionStorage.getItem("bankSetuConnectionMode")==="option-b"&&<button type="button" onClick={()=>window.location.reload()}>Open workspace</button>}

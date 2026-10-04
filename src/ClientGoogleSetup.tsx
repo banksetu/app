@@ -196,7 +196,7 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding" }:
   return (
     <section style={cardStyle}>
       <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
-      <h2 style={{ margin: "8px 0", fontSize: 20 }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
+      <h2 style={{ margin: "8px 0", fontSize: 20, color: "#eef7f7" }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
       <p style={copyStyle}>Save your bank and branch details, then connect your own Sheet and Drive folder below. Existing Google connections remain available.</p>
       <OptionBConnection tenantId={config?.tenantId || ""} disabled={!registrationSaved || workspaceStatus !== "active"} />
       {(placement === "manage" || !registrationSaved) && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
