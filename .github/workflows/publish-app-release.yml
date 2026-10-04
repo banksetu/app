@@ -1,0 +1,79 @@
+name: Publish signed Android and Windows release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: banksetu-signed-app-release
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      code: ${{ steps.version.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - id: version
+        name: Validate version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync, appendFileSync} from 'node:fs';
+          const v = JSON.parse(readFileSync('package.json')).version;
+          if (!/^\d+\.\d+\.\d+$/.test(v)) throw Error('Release version must be x.y.z.');
+          const [a,b,c] = v.split('.').map(Number);
+          const code = a*1000000+b*1000+c;
+          if (b>999 || c>999 || code<1 || code>99999999) throw Error('Unsupported version.');
+          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${v}`) throw Error('Tag and package version differ.');
+          appendFileSync(process.env.GITHUB_OUTPUT, `name=${v}\ncode=${code}\n`);
+          NODE
+      - name: Refuse replacing an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'This version already exists. Run npm run release and commit before releasing.' >&2
+            exit 1
+          fi
+  android:
+    needs: version
+    uses: ./.github/workflows/android-release.yml
+    with:
+      version_code: ${{ needs.version.outputs.code }}
+      version_name: ${{ needs.version.outputs.name }}
+    secrets: inherit
+  windows:
+    needs: version
+    uses: ./.github/workflows/windows-signed-release.yml
+    secrets: inherit
+  publish:
+    needs: [version, android, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: BankSetu-Android-SIGNED
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: BankSetu-Windows-SIGNED
+          path: release
+      - name: Publish both signed apps and update metadata together
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          test -f release/latest.yml
+          compgen -G 'release/*.apk' >/dev/null
+          compgen -G 'release/*.exe' >/dev/null
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Bank Setu $VERSION" --notes "Signed Android and Windows release. Install over your existing release to retain local data. Use Settings > Check for Update for later releases."
+          gh release upload "v$VERSION" release/* --repo "$GITHUB_REPOSITORY"
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest

@@ -1,8 +1,13 @@
 name: Build signed Windows release
 on:
-  push:
-    branches: [codex/android-live-base]
-    paths: [.github/workflows/windows-signed-release.yml]
+  workflow_call:
+    secrets:
+      WINDOWS_CSC_LINK:
+        required: true
+      WINDOWS_CSC_KEY_PASSWORD:
+        required: true
+      WINDOWS_PUBLISHER_NAME:
+        required: true
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,6 +42,14 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
           PUBLISHER: ${{ secrets.WINDOWS_PUBLISHER_NAME }}
         run: npx electron-builder --win nsis --publish never --config.win.publisherName="$env:PUBLISHER" --config.forceCodeSigning=true
+      - name: Verify installer signature and update metadata
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem desktop-release/*.exe)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one installer.' }
+          if ((Get-AuthenticodeSignature $installers[0].FullName).Status -ne 'Valid') { throw 'Installer signature is not valid.' }
+          if (!(Test-Path desktop-release/latest.yml)) { throw 'Missing Windows update manifest.' }
+          if (!(Get-ChildItem desktop-release/*.blockmap)) { throw 'Missing Windows update blockmap.' }
       - uses: actions/upload-artifact@v4
         with:
           name: BankSetu-Windows-SIGNED

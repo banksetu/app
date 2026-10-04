@@ -1,7 +1,5 @@
 name: Build Android testing APK
 on:
-  push:
-    branches: [codex/android-live-base]
   workflow_dispatch:
 permissions:
   contents: read
