@@ -11,7 +11,8 @@ import {
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
 
-import AssamQuickPassbook, { isAssamBank, type PassbookBankInfo } from "./AssamQuickPassbook";
+import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
+import UnionPassbook from "./UnionPassbook";
 
 
 
@@ -351,6 +352,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
     email: bankInfo?.branchEmail || "",
   };
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
+  const isUnion = formatType === "passbook" && isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
 
 
   const [query, setQuery] = useState("");
@@ -2372,7 +2374,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
 
 
-          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : (
+          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : (
 <div className="passbook-shell">
 
             {/* HOVER EDIT */}

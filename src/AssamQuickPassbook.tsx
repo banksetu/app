@@ -2,11 +2,15 @@ import type { CSSProperties } from "react";
 
 export type PassbookBankInfo = {
   bankName?: string; passbookBank?: string; branchName?: string; address?: string;
-  ifsc?: string; micr?: string; branchCode?: string; branchEmail?: string;
+  ifsc?: string; micr?: string; branchCode?: string; branchEmail?: string; branchPhone?: string;
 };
 
 export function isAssamBank(value: string = "") {
   return /^(assam gramin(?: vikas)? bank|agvb|agb)$/.test(value.trim().toLowerCase().replace(/\s+/g, " "));
+}
+
+export function isUnionBank(value: string = "") {
+  return /union bank(?: of india)?/.test(value.trim().toLowerCase().replace(/\s+/g, " "));
 }
 
 type RecordData = {
