@@ -1,5 +1,5 @@
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { readTextTemplate, type TextTemplatePage } from "./pdfTextTemplate";
+import { readTextTemplate, renderTemplateGraphics, type TextTemplatePage } from "./pdfTextTemplate";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
 import { doc, getDocFromServer } from "firebase/firestore";
@@ -48,16 +48,8 @@ export default function BankFormatPrint({
         try {
           const pdf=await task.promise;
           const template=await readTextTemplate(pdf);
-          const graphics:string[]=[];
           const excluded=new Set(Object.entries(OPS).filter(([name])=>/show.*text|show.*glyph|paint.*image/i.test(name)).map(([,value])=>value));
-          for(let number=1;number<=template.length;number++){
-            const page=await pdf.getPage(number),viewport=page.getViewport({scale:1.5}),operators=await page.getOperatorList();
-            const canvas=document.createElement("canvas");canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-            const context=canvas.getContext("2d");
-            if(!context)throw new Error("Template graphics could not be prepared.");
-            await page.render({canvas,canvasContext:context,viewport,annotationMode:0,operationsFilter:index=>!excluded.has(operators.fnArray[index])}).promise;
-            graphics.push(canvas.toDataURL("image/png"));
-          }
+          const graphics=await renderTemplateGraphics(pdf,excluded);
           if(!template.some(page=>page.runs.length))throw new Error("Readable PDF labels could not be identified. Check the sample's text layer.");
           const automatic=template.flatMap(page=>page.fields);
           const manual=selected.fieldMap||[];

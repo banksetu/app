@@ -56,3 +56,16 @@ export async function readAutomaticCustomer(pdf:PDFDocumentProxy){
  }
  return result;
 }
+
+// Render only form graphics; never retain the sample customer's text or images.
+export async function renderTemplateGraphics(pdf:PDFDocumentProxy, excluded:Set<number>){
+ const graphics:string[]=[];
+ for(let number=1;number<=Math.min(pdf.numPages,10);number++){
+  const page=await pdf.getPage(number),viewport=page.getViewport({scale:1.5}),operators=await page.getOperatorList();
+  const canvas=document.createElement("canvas");canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+  const context=canvas.getContext("2d");if(!context)throw new Error("Template graphics could not be prepared.");
+  await page.render({canvas,canvasContext:context,viewport,annotationMode:0,operationsFilter:index=>!excluded.has(operators.fnArray[index])}).promise;
+  graphics.push(canvas.toDataURL("image/png"));
+ }
+ return graphics;
+}
