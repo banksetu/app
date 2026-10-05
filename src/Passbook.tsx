@@ -336,7 +336,7 @@ function makePrintAddress(customer: Customer) {
 
 
 
-export default function Passbook({ formatType = "passbook", bankInfo }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo }) {
+export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo; bankLogo?: string }) {
   const workspaceBranch = bankInfo?.branchName?.trim();
   const referenceBranch = !workspaceBranch || workspaceBranch.toUpperCase() === "BADARPUR";
   const branchAddress = bankInfo?.address?.trim().split(/\n+/) || [];
@@ -352,7 +352,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
     email: bankInfo?.branchEmail || "",
   };
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
-  const isUnion = formatType === "passbook" && isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
 
 
   const [query, setQuery] = useState("");
@@ -529,7 +529,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: isAssamQuick,
+        includePhoto: isAssamQuick || isUnion,
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -549,6 +549,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
       const loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
+        photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
 
       setCustomer(loaded);
@@ -578,12 +579,13 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: isAssamQuick,
+        includePhoto: isAssamQuick || isUnion,
       });
 
       const loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
+        photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
 
       setCustomer(loaded);
@@ -2011,21 +2013,21 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
           /* Union's separate renderer must also remain visible when the
              browser print stylesheet hides the application shell. */
-          .union-pb-document,
+          .union-document,
 
-          .union-pb-document * {
+          .union-document * {
 
             visibility: visible !important;
 
           }
 
-          .union-pb-document {
+          .union-document {
 
             position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: 20.5cm !important;
-            height: 17.5cm !important;
+            width: 203.2mm !important;
+            height: 213.36mm !important;
             margin: 0 !important;
             box-shadow: none !important;
 
@@ -2396,7 +2398,7 @@ export default function Passbook({ formatType = "passbook", bankInfo }: { format
 
 
 
-          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : (
+          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
 <div className="passbook-shell">
 
             {/* HOVER EDIT */}

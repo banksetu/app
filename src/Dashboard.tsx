@@ -1532,12 +1532,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           {bankSettingsReady && activePage === "passbook" && (
 
-            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} />
+            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} bankLogo={bankLogo} />
 
           )}
 
           {bankSettingsReady && activePage === "quick-passbook" && (
-            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
+            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} bankLogo={bankLogo} />
           )}
 
           {bankSettingsReady && activePage === "bank-formats" && accountRole === "client_admin" && (
