@@ -7,18 +7,6 @@ on:
       - codex/windows-production-preview
     tags:
       - 'v*'
-    paths:
-      - src/**
-      - public/**
-      - scripts/check-sheet-schema.mjs
-      - index.html
-      - package.json
-      - package-lock.json
-      - vite.config.*
-      - tsconfig*.json
-      - firebase.json
-      - .firebaserc
-      - .github/workflows/deploy-firebase-hosting.yml
   workflow_dispatch:
 
 permissions:
@@ -64,6 +52,30 @@ jobs:
             commit: process.env.GITHUB_SHA,
             builtAt: new Date().toISOString(),
             workerUrl: 'https://banksetu-client-api.banksetu2026.workers.dev',
+          }, null, 2) + '\n');
+          NODE
+
+      - name: Generate current release manifest
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('package.json version must be x.y.z');
+          const [major, minor, patch] = version.split('.').map(Number);
+          const androidBuild = major * 1000000 + minor * 1000 + patch;
+          const releaseTag = `v${version}`;
+          const base = `https://github.com/banksetu/app/releases/download/${releaseTag}`;
+          writeFileSync('dist/version.json', JSON.stringify({
+            latestVersion: version,
+            version,
+            releaseTag,
+            releaseUrl: `https://github.com/banksetu/app/releases/tag/${releaseTag}`,
+            androidBuild,
+            androidDownloadUrl: `${base}/BankSetu-Android-${androidBuild}.apk`,
+            windowsVersion: version,
+            windowsDownloadUrl: `${base}/BankSetu-Setup-${version}-x64.exe`,
+            downloadUrl: `${base}/BankSetu-Setup-${version}-x64.exe`,
+            notes: 'Install the latest signed Bank Setu release over the existing app to retain local data.'
           }, null, 2) + '\n');
           NODE
 
