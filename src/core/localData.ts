@@ -96,17 +96,17 @@ function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 async function cacheResponse(scope: string, value: Record<string, unknown>) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   await repository.transact(scope, state => {
-    if (value.fullSnapshot === true) state.records=state.records.filter(record=>record.pending || list.some(customer=>String(customer.recordId)===record.recordId));
+    if (value.fullSnapshot === true) { const incoming = new Set(list.map(customer => String(customer.recordId))); state.records.forEach(record => { if (!record.pending && !incoming.has(record.recordId)) record.deleted = true; }); }
     for (const customer of list) {
       const recordId = String(customer.recordId || "");
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending) continue;
-      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},pending:false};
+      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},pending:false};
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
     const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
-    state.records=state.records.filter(record=>record.pending || !deleted.has(record.recordId));
+    state.records.forEach(record => { if (!record.pending && deleted.has(record.recordId)) record.deleted = true; });
     trimCache(state);
   });
   announce();
@@ -135,8 +135,8 @@ async function runSync() {
       if (!value.success) { queued.state = value.code === "CONFLICT" ? "conflict" : "failed";queued.error=String(value.message || "Sync rejected");queued.remoteCustomer=value.customer;queued.conflictSource="google";return; }
       state.operations=state.operations.filter(item => item.operationId !== op.operationId);
       const saved=state.records.find(item => item.recordId === op.recordId);
-      if (value.deleted) state.records=state.records.filter(item=>item.recordId!==op.recordId);
-      if (saved) { saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer=value.customer; }
+      if (value.deleted) { const deletedRecord=state.records.find(item=>item.recordId===op.recordId); if (deletedRecord) deletedRecord.deleted=true; }
+      if (saved) { saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer={...value.customer,photoDataUrl:saved.customer.photoDataUrl || value.customer.photoDataUrl,pdfDataUrl:saved.customer.pdfDataUrl || value.customer.pdfDataUrl}; }
     });
   }
   // At most four 250-row pages per sync; resume the cursor on the next tick.
@@ -157,7 +157,7 @@ async function runSync() {
       if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
       if(value.hasNextPage)current.pull={...pull,cursor:value.nextCursor,seen:[...seen]};
       else {
-        current.records=current.records.filter(record=>record.pending || (record.cachedAt||0)>pull.startedAt || seen.has(record.recordId));
+        current.records.forEach(record => { if (!record.pending && (record.cachedAt||0)<=pull.startedAt && !seen.has(record.recordId)) record.deleted = true; });
         current.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:current.pull?.cacheLimited};
       }
     });
@@ -165,14 +165,20 @@ async function runSync() {
   }
 }
 function trimCache(state: import("./schema").LocalState) {
-  const MAX_RECORDS=10000;const MAX_BYTES=80*1024*1024;
-  let over=state.records.length>MAX_RECORDS;
-  if(JSON.stringify(state).length>MAX_BYTES){delete state.documents;for(const record of state.records)if(!record.pending){delete record.customer.photoPreview;delete record.customer.photoDataUrl;delete record.customer.pdfDataUrl;}over=true;}
-  const candidates=state.records.filter(record=>!record.pending).sort((a,b)=>(a.cachedAt||0)-(b.cachedAt||0));
-  while(candidates.length && (state.records.length>MAX_RECORDS || JSON.stringify(state).length>MAX_BYTES)) {
-    const record=candidates.shift()!;state.records=state.records.filter(item=>item.recordId!==record.recordId);over=true;
+  // Permanent customer data and uploaded photo/PDF data are never removed.
+  // Only transient previews are eligible for cache cleanup.
+  if (state.records.length > 10000 || JSON.stringify(state).length > 80*1024*1024) {
+    state.pull ||= {cursor:0,seen:[],startedAt:Date.now()};
+    state.pull.cacheLimited = true;
   }
-  if(over){state.pull ||= {cursor:0,seen:[],startedAt:Date.now()};state.pull.cacheLimited=true;}
+}
+async function pruneTransientCache(scope: string) {
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  await repository.transact(scope, state => {
+    for (const record of state.records) {
+      if (!record.pending && (record.cachedAt || 0) < cutoff) delete record.customer.photoPreview;
+    }
+  });
 }
 
 export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
@@ -184,7 +190,7 @@ export async function getLocalSnapshot() {
   };
 }
 export async function exportLocalBackup() { const state=await repository.read(identity());if(isAndroid()){await shareAndroidBackup(JSON.stringify(makeBackup(identity(),state),null,2));return;}const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
-export function startLocalSync() { const listener=()=>{void syncNow().catch(()=>undefined);};window.addEventListener("online",listener);window.addEventListener("pagehide",listener);const visibility=()=>{if(document.visibilityState==="hidden")listener();};document.addEventListener("visibilitychange",visibility);const timer=setInterval(listener,60000);listener();return ()=>{window.removeEventListener("online",listener);window.removeEventListener("pagehide",listener);document.removeEventListener("visibilitychange",visibility);clearInterval(timer);}; }
+export function startLocalSync() { const cleanup=()=>{try{void pruneTransientCache(identity()).catch(()=>undefined);}catch{}}; const listener=()=>{void syncNow().catch(()=>undefined);cleanup();}; window.addEventListener("online",listener); window.addEventListener("pagehide",()=>{listener();cleanup();}); const visibility=()=>{if(document.visibilityState==="hidden")listener();}; document.addEventListener("visibilitychange",visibility); const timer=setInterval(listener,60000); listener(); return ()=>{window.removeEventListener("online",listener);document.removeEventListener("visibilitychange",visibility);clearInterval(timer);}; }
 
 export async function getConflicts() { return (await repository.read(identity())).operations.filter(op=>op.state!=="pending"); }
 export async function resolveConflict(operationId: string, choice: "local" | "cloud") {
