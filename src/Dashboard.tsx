@@ -2968,13 +2968,19 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 \========================= */
 
 function DashboardHome({
-
   openPage,
-
+  cardTheme,
+  syncKey,
+  onSyncStateChange,
 }: {
-
   openPage: (page: PageName) => void;
-
+  cardTheme: {
+    statBackground: string;
+    panelBackground: string;
+    quickGradients: [string, string, string, string];
+  };
+  syncKey: number;
+  onSyncStateChange: (syncing: boolean) => void;
 }) {
 
   type DashboardStats = {
