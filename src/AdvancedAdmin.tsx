@@ -69,6 +69,8 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
   const [updateChecking, setUpdateChecking] =
     useState(false);
+  const [currentVersion, setCurrentVersion] =
+    useState(CURRENT_APP_VERSION);
   const [latestVersion, setLatestVersion] =
     useState(CURRENT_APP_VERSION);
   const [updateAvailable, setUpdateAvailable] =
@@ -584,9 +586,16 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     try {
       if (isAndroid()) {
         const result = await checkAndroidUpdate();
-        setLatestVersion(result.latestVersion); setUpdateAvailable(result.available);
-        setUpdateDownloadUrl(result.downloadUrl); setUpdateNotes(result.notes);
-        setUpdateMessage(result.available ? 'New Android APK available. Download it and install over the existing app to retain local data.' : 'No newer published Android APK is available.');
+        setCurrentVersion(result.currentVersion || CURRENT_APP_VERSION);
+        setLatestVersion(result.latestVersion);
+        setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl);
+        setUpdateNotes(result.notes);
+        setUpdateMessage(
+          result.available
+            ? 'New Android APK available. Download it and install over the existing app to retain local data.'
+            : 'This app is already using the latest published Android build.'
+        );
         return;
       }
       if (window.bankSetuDesktop) {
@@ -1217,7 +1226,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
             CURRENT VERSION
           </span>
           <strong style={styles.versionValue}>
-            v{CURRENT_APP_VERSION}
+            v{currentVersion}
           </strong>
         </div>
 
