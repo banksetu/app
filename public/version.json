@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.7",
+  "latestVersion": "1.0.20",
   "downloadUrl": "",
   "notes": "Local database, offline restart access, backup restore, bounded Google sync and Windows testing installer.",
-  "version": "1.0.7",
-  "releaseTag": "v1.0.7",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.7",
-  "androidBuild": 1000007,
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.7/BankSetu-Android-1000007.apk",
-  "windowsVersion": "1.0.7",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.7/BankSetu-Setup-1.0.7-x64.exe"
+  "version": "1.0.20",
+  "releaseTag": "v1.0.20",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.20",
+  "androidBuild": 1000020,
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.20/BankSetu-Android-1000020.apk",
+  "windowsVersion": "1.0.20",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.20/BankSetu-Setup-1.0.20-x64.exe"
 }
