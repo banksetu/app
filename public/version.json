@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.20",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.20/BankSetu-Setup-1.0.20-x64.exe",
-  "notes": "Windows print-preview popup fix and selected-drive local data migration. Install over the existing app to retain data.",
-  "version": "1.0.20",
-  "releaseTag": "v1.0.20",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.20",
-  "androidBuild": 1000020,
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.20/BankSetu-Android-1000020.apk",
-  "windowsVersion": "1.0.20",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.20/BankSetu-Setup-1.0.20-x64.exe"
+  "latestVersion": "1.0.22",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.22/BankSetu-Setup-1.0.22-x64.exe",
+  "notes": "Union Bank Quick Passbook complete stationery and Passbook Print values-only on 8 x 8.4 inch pages. Existing PDF extraction and local data are preserved.",
+  "version": "1.0.22",
+  "releaseTag": "v1.0.22",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.22",
+  "androidBuild": 1000022,
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.22/BankSetu-Android-1000022.apk",
+  "windowsVersion": "1.0.22",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.22/BankSetu-Setup-1.0.22-x64.exe"
 }

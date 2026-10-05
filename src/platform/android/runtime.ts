@@ -5,6 +5,10 @@ import { Share } from '@capacitor/share';
 
 export const isAndroid = () => Capacitor.getPlatform() === 'android';
 const NativePrint = registerPlugin<{ print(): Promise<void> }>('BankSetuPrint');
+const NativeUpdate = registerPlugin<{
+  downloadAndInstall(options: { url: string }): Promise<void>;
+  addListener(eventName: 'downloadProgress', listenerFunc: (event: { downloaded: number; total: number; percent: number }) => void): Promise<{ remove: () => Promise<void> }>;
+}>('BankSetuUpdate');
 export function startAndroidRuntime() {
   if (!isAndroid()) return;
   window.print = () => { void NativePrint.print().catch(() => window.alert('Printing could not be started. Please retry.')); };
@@ -20,5 +24,16 @@ export async function shareAndroidBackup(text: string) {
   } finally {
     // Keep the temporary file long enough for the chosen app to read it.
     setTimeout(() => { void Filesystem.deleteFile({path, directory: Directory.Cache}).catch(() => undefined); }, 300000);
+  }
+}
+
+export async function downloadAndroidUpdate(url: string, onProgress: (percent: number) => void) {
+  const listener = await NativeUpdate.addListener('downloadProgress', (event) => {
+    if (event.percent >= 0) onProgress(Math.min(100, Math.max(0, event.percent)));
+  });
+  try {
+    await NativeUpdate.downloadAndInstall({ url });
+  } finally {
+    await listener.remove().catch(() => undefined);
   }
 }

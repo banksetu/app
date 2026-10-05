@@ -52,7 +52,7 @@ jobs:
           fi
   android:
     needs: version
-    uses: banksetu/app/.github/workflows/android-release.yml@codex/android-live-base
+    uses: ./.github/workflows/android-release.yml
     with:
       version_code: ${{ needs.version.outputs.code }}
       version_name: ${{ needs.version.outputs.name }}
