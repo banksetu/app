@@ -85,6 +85,29 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     useState<number | null>(null);
 
   useEffect(() => {
+    if (!isAndroid()) return;
+    let active = true;
+    void (async () => {
+      try {
+        const result = await Promise.race([
+          checkAndroidUpdate(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("update-timeout")), 4000)),
+        ]) as Awaited<ReturnType<typeof checkAndroidUpdate>>;
+        if (!active) return;
+        setCurrentVersion(result.currentVersion || CURRENT_APP_VERSION);
+        setLatestVersion(result.latestVersion);
+        setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl);
+        setUpdateNotes(result.notes);
+        setUpdateMessage(result.available ? `New Android version ${result.latestVersion} is available.` : "This app is already using the latest published Android build.");
+      } catch {
+        // Startup must not be blocked by update-server latency.
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadApiConnection = async () => {
