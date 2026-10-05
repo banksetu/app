@@ -8,11 +8,36 @@ const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 if (!app.requestSingleInstanceLock()) app.quit();
 let window,store,downloaded=false;
+const copyMissingFiles = (source, target) => {
+  if (!fs.existsSync(source)) return;
+  fs.mkdirSync(target, { recursive: true });
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name), to = path.join(target, entry.name);
+    if (entry.isDirectory()) copyMissingFiles(from, to);
+    else if (!fs.existsSync(to)) fs.copyFileSync(from, to);
+  }
+};
 const resolveDataDirectory = () => {
   if (process.platform !== 'win32') return path.join(app.getPath('userData'), 'database');
-  const preferred = process.env.BANKSETU_DATA_DIR || path.join(process.env.ProgramData || 'C:\\ProgramData', 'Bank Setu', 'Data');
-  try { fs.mkdirSync(preferred, { recursive: true }); return preferred; }
-  catch { return path.join(app.getPath('userData'), 'database'); }
+  const legacy = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Bank Setu', 'Data');
+  const selectedDrive = path.parse(process.execPath).root || 'C:\\';
+  const preferred = process.env.BANKSETU_DATA_DIR || path.join(selectedDrive, 'Bank Setu Data');
+  try {
+    fs.mkdirSync(preferred, { recursive: true });
+    // Keep the legacy folder intact; copy only missing files so migration is recoverable.
+    if (path.resolve(preferred).toLowerCase() !== path.resolve(legacy).toLowerCase()
+      && fs.existsSync(path.join(legacy, 'customers.sqlite'))
+      && !fs.existsSync(path.join(preferred, 'customers.sqlite'))) {
+      copyMissingFiles(legacy, preferred);
+      fs.writeFileSync(path.join(preferred, 'data-location.json'), JSON.stringify({
+        migratedFrom: legacy, selectedDrive, version: 1
+      }, null, 2));
+    }
+    return preferred;
+  } catch {
+    try { fs.mkdirSync(legacy, { recursive: true }); return legacy; }
+    catch { return path.join(app.getPath('userData'), 'database'); }
+  }
 };
 const trusted = event => {
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(ORIGIN+'/')) throw new Error('Untrusted application frame.');
