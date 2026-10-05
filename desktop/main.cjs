@@ -1,4 +1,5 @@
 const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage} = require('electron');
+const {execFileSync} = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const {pathToFileURL} = require('node:url');
@@ -48,6 +49,15 @@ app.whenReady().then(async()=>{
       freeBytes = Number(stat.bavail) * Number(stat.bsize);
       totalBytes = Number(stat.blocks) * Number(stat.bsize);
     } catch {}
+    if (freeBytes === null && process.platform === 'win32') {
+      try {
+        const drive = path.parse(userData).root.slice(0, 1);
+        const command = "$d=Get-PSDrive -Name '" + drive + "'; [Console]::WriteLine(\"$($d.Free)|$($d.Used+$d.Free)\")";
+        const result = execFileSync('powershell.exe', ['-NoProfile', '-Command', command], { encoding: 'utf8' }).trim().split('|');
+        freeBytes = Number(result[0]) || null;
+        totalBytes = Number(result[1]) || null;
+      } catch {}
+    }
     return { path: userData, databasePath, usedBytes: directoryBytes(databasePath), freeBytes, totalBytes };
   };
   ipcMain.handle('local:storage',(event)=>{trusted(event);return localStorageInfo();});
