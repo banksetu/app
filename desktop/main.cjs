@@ -8,13 +8,20 @@ const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 if (!app.requestSingleInstanceLock()) app.quit();
 let window,store,downloaded=false;
+const resolveDataDirectory = () => {
+  if (process.platform !== 'win32') return path.join(app.getPath('userData'), 'database');
+  const preferred = process.env.BANKSETU_DATA_DIR || path.join(process.env.ProgramData || 'C:\\ProgramData', 'Bank Setu', 'Data');
+  try { fs.mkdirSync(preferred, { recursive: true }); return preferred; }
+  catch { return path.join(app.getPath('userData'), 'database'); }
+};
 const trusted = event => {
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(ORIGIN+'/')) throw new Error('Untrusted application frame.');
 };
 const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{10,250}$/.test(scope)) throw new Error('Invalid workspace scope.');};
 app.whenReady().then(async()=>{
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows credential encryption is unavailable. Local database is locked.');
-  store=createStore(path.join(app.getPath('userData'),'database'),{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value)});
+  const dataDirectory = resolveDataDirectory();
+  store=createStore(dataDirectory,{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value)});
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',request=>{
     const url=new URL(request.url);
@@ -40,8 +47,8 @@ app.whenReady().then(async()=>{
     return total;
   };
   const localStorageInfo = () => {
-    const userData = app.getPath('userData');
-    const databasePath = path.join(userData, 'database');
+    const userData = dataDirectory;
+    const databasePath = dataDirectory;
     let freeBytes = null;
     let totalBytes = null;
     try {
