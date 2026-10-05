@@ -2886,13 +2886,18 @@ function DashboardHome({
         const apiUrl = getTenantApiUrl();
 
         if (!apiUrl) {
-
-          throw new Error(
-
-            "Google Sheet API URL is not configured."
-
-          );
-
+          // Avoid a long loading/retry loop until the client connection exists.
+          if (!cancelled) {
+            setDashboardStats({
+              totalCustomers: 0,
+              kycPending: 0,
+              passbookPending: 0,
+              inactiveAccounts: 0,
+            });
+            setStatsError("");
+            setStatsLoading(false);
+          }
+          return;
         }
 
         const auth = getAuth();
@@ -2940,13 +2945,10 @@ function DashboardHome({
               },
 
               body: JSON.stringify({
-
                 action: "getDashboardStats",
-
                 idToken,
-
               }),
-
+              signal: AbortSignal.timeout(10_000),
             });
 
             const rawText = await response.text();
