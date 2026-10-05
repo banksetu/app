@@ -4,6 +4,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
         registerPlugin(BankSetuPrintPlugin.class);
+        registerPlugin(BankSetuUpdatePlugin.class);
         super.onCreate(state);
     }
 }
