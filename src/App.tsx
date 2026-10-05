@@ -111,6 +111,13 @@ function App() {
     return role;
   }, []);
 
+  const prepareClientWorkspaceWithTimeout = useCallback(async (profile: UserProfile) => {
+    await Promise.race([
+      prepareClientWorkspace(profile),
+      new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+    ]);
+  }, [prepareClientWorkspace]);
+
   const prepareClientWorkspace = useCallback(async (profile: UserProfile) => {
     const role = normalize(profile.role);
     if(["master_owner","admin"].includes(role)) {
@@ -217,7 +224,7 @@ function App() {
           return;
         }
 
-        await prepareClientWorkspace(profile);
+        await prepareClientWorkspaceWithTimeout(profile);
 
         if (!loginAttemptRef.current) {
           setError("");
@@ -232,7 +239,7 @@ function App() {
         setCheckingSession(false);
       }
     );
-  }, [applyProfile, clearProfileListener, prepareClientWorkspace, rejectSession]);
+  }, [applyProfile, clearProfileListener, prepareClientWorkspaceWithTimeout, rejectSession]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -352,7 +359,7 @@ function App() {
         return;
       }
 
-      await prepareClientWorkspace(userData);
+      await prepareClientWorkspaceWithTimeout(userData);
 
       setLoginSuccess(true);
       await new Promise((resolve) => setTimeout(resolve, 1200));
