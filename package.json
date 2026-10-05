@@ -76,7 +76,7 @@
           ]
         }
       ],
-      "verifyUpdateCodeSignature": true
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
