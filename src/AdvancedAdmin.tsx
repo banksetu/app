@@ -79,6 +79,17 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     useState("");
   const [updateMessage, setUpdateMessage] =
     useState("Check for a new Bank Setu version.");
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+
+  useEffect(() => {
+    const desktop = (window as typeof window & { bankSetuDesktop?: { onUpdateProgress?: (callback: (payload: { percent?: number }) => void) => (() => void) } }).bankSetuDesktop;
+    if (!desktop?.onUpdateProgress) return;
+    return desktop.onUpdateProgress(payload => {
+      const percent = Math.max(0, Math.min(100, Number(payload?.percent || 0)));
+      setDownloadProgress(percent);
+      if (percent >= 100) setUpdateMessage("Update downloaded. The installer is ready.");
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -593,7 +604,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
         const manifest = await window.bankSetuDesktop.checkUpdate() as {latestVersion: string; notes?: string};
         const current = await window.bankSetuDesktop.version();
         const available = compareVersions(manifest.latestVersion, current) > 0;
-        setLatestVersion(manifest.latestVersion);setUpdateAvailable(available);setUpdateNotes(manifest.notes || "");
+        setLatestVersion(manifest.latestVersion);setUpdateAvailable(available);setUpdateNotes(manifest.notes || "");setDownloadProgress(null);
         setUpdateMessage(available ? `New Windows version ${manifest.latestVersion} is available.` : "Bank Setu is already up to date.");
         return;
       }
@@ -653,8 +664,9 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
   const installUpdate = () => {
     if (window.bankSetuDesktop) {
+      setDownloadProgress(0);
       setUpdateMessage("Downloading and verifying the signed Windows update…");
-      void window.bankSetuDesktop.installUpdate().catch(error => setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."));
+      void window.bankSetuDesktop.installUpdate().catch(error => { setDownloadProgress(null); setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."); });
       return;
     }
     if (!updateAvailable) {
@@ -1234,6 +1246,17 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
       <p style={styles.updateText}>
         {updateMessage}
       </p>
+
+      {downloadProgress !== null && (
+        <div style={{ marginTop: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#45dfc5", fontSize: "10px", marginBottom: "6px" }}>
+            <span>Downloading update</span><strong>{Math.round(downloadProgress)}%</strong>
+          </div>
+          <div style={{ height: "9px", borderRadius: "999px", background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+            <div style={{ width: `${downloadProgress}%`, height: "100%", background: "linear-gradient(90deg,#34dcbf,#2faade)", transition: "width .2s ease" }} />
+          </div>
+        </div>
+      )}
 
       {updateNotes && (
         <div style={styles.updateNotes}>
