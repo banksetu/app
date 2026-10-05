@@ -1,4 +1,4 @@
-import { readAutomaticCustomer } from "./pdfTextTemplate";
+/^(?:proof|signature(?:\s|$)|gbpa\b|pf\s*no\b|date\s*$|declaration\b|for office use\b)import { readAutomaticCustomer } from "./pdfTextTemplate";
 import { getDocument, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BankFieldPlacement } from "./bankFormatUtils";
 const aliases: Record<string,string[]> = {
