@@ -27,6 +27,30 @@ app.whenReady().then(async()=>{
   window.webContents.setWindowOpenHandler(({url})=>{if (/^https:\/\/(?:docs\.google\.com|drive\.google\.com|script\.google\.com|github\.com)\//.test(url)) void shell.openExternal(url);return {action:'deny'};});
   window.webContents.on('will-navigate',(event,url)=>{if (!url.startsWith(ORIGIN+'/')) event.preventDefault();});
   window.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+  const directoryBytes = directory => {
+    let total = 0;
+    try {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const target = path.join(directory, entry.name);
+        if (entry.isDirectory()) total += directoryBytes(target);
+        else if (entry.isFile()) total += fs.statSync(target).size;
+      }
+    } catch {}
+    return total;
+  };
+  const localStorageInfo = () => {
+    const userData = app.getPath('userData');
+    const databasePath = path.join(userData, 'database');
+    let freeBytes = null;
+    let totalBytes = null;
+    try {
+      const stat = fs.statfsSync(userData);
+      freeBytes = Number(stat.bavail) * Number(stat.bsize);
+      totalBytes = Number(stat.blocks) * Number(stat.bsize);
+    } catch {}
+    return { path: userData, databasePath, usedBytes: directoryBytes(databasePath), freeBytes, totalBytes };
+  };
+  ipcMain.handle('local:storage',(event)=>{trusted(event);return localStorageInfo();});
   ipcMain.handle('local:read',(event,scope)=>{trusted(event);scopeCheck(scope);return store.read(scope);});
   ipcMain.handle('local:commit',(event,scope,before,after)=>{
     trusted(event);scopeCheck(scope);
