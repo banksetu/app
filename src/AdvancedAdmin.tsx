@@ -1,4 +1,4 @@
-import { isAndroid } from './platform/android/runtime';
+import { downloadAndroidUpdate, isAndroid } from './platform/android/runtime';
 import { checkAndroidUpdate } from './platform/android/updates';
 import { useEffect, useState } from "react";
 
@@ -81,6 +81,8 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     useState("");
   const [updateMessage, setUpdateMessage] =
     useState("Check for a new Bank Setu version.");
+  const [downloadProgress, setDownloadProgress] =
+    useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -660,25 +662,36 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     }
   };
 
-  const installUpdate = () => {
+  const installUpdate = async () => {
     if (window.bankSetuDesktop) {
       setUpdateMessage("Downloading and verifying the signed Windows update…");
       void window.bankSetuDesktop.installUpdate().catch(error => setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."));
       return;
     }
     if (!updateAvailable) {
-      setUpdateMessage(
-        "No new update is available."
-      );
+      setUpdateMessage("No new update is available.");
+      return;
+    }
+
+    if (isAndroid() && updateDownloadUrl) {
+      setDownloadProgress(0);
+      setUpdateMessage("Downloading the Android update inside Bank Setu…");
+      try {
+        await downloadAndroidUpdate(updateDownloadUrl, (percent) => {
+          setDownloadProgress(percent);
+          setUpdateMessage(`Downloading Android update… ${percent}%`);
+        });
+        setDownloadProgress(100);
+        setUpdateMessage("Download complete. Android installer opened; tap Install to finish.");
+      } catch (error) {
+        setDownloadProgress(null);
+        setUpdateMessage(error instanceof Error ? error.message : "Android update download failed.");
+      }
       return;
     }
 
     if (updateDownloadUrl) {
-      window.open(
-        updateDownloadUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
+      window.open(updateDownloadUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
@@ -1243,6 +1256,15 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
       <p style={styles.updateText}>
         {updateMessage}
       </p>
+
+      {downloadProgress !== null && (
+        <div style={{ margin: "14px 0", width: "100%" }}>
+          <div style={{ height: "10px", borderRadius: "999px", background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+            <div style={{ width: `${downloadProgress}%`, height: "100%", borderRadius: "999px", background: "linear-gradient(90deg,#35dec0,#29a8e8)", transition: "width .2s ease" }} />
+          </div>
+          <div style={{ marginTop: "6px", textAlign: "center", color: "#8eeede", fontSize: "11px" }}>{downloadProgress}%</div>
+        </div>
+      )}
 
       {updateNotes && (
         <div style={styles.updateNotes}>
