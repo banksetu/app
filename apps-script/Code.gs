@@ -19,7 +19,11 @@ const CUSTOMER_PHOTO_FOLDER_ID = getBankSetuScriptProperty("BANKSETU_LEGACY_PHOT
 const FIREBASE_PROJECT_ID =
   "banksetu-69e2f";
 
-const FIREBASE_API_KEY = getBankSetuScriptProperty("BANKSETU_FIREBASE_API_KEY");
+// Firebase Web API keys identify the project and are safe to use in this
+// token-verification request; the ID token remains mandatory.
+const FIREBASE_API_KEY =
+  getBankSetuScriptProperty("BANKSETU_FIREBASE_API_KEY") ||
+  "AIzaSyDjm01ZjY9sHVtMLI9J2OG7HqR-w9lVnLo";
 
 const MAX_PHOTO_SIZE =
   5 * 1024 * 1024;
