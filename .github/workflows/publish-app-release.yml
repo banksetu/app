@@ -5,6 +5,7 @@ on:
     branches:
       - codex/windows-production-preview
     paths:
+      - desktop/**
       - package.json
       - package-lock.json
       - .github/workflows/publish-app-release.yml
