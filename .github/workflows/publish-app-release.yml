@@ -2,6 +2,14 @@ name: Publish signed Android and Windows release
 on:
   workflow_dispatch:
   push:
+    branches:
+      - codex/windows-production-preview
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/publish-app-release.yml
+      - .github/workflows/android-release.yml
+      - .github/workflows/windows-signed-release.yml
     tags: ['v*']
 permissions:
   contents: read
@@ -43,7 +51,7 @@ jobs:
           fi
   android:
     needs: version
-    uses: ./.github/workflows/android-release.yml
+    uses: banksetu/app/.github/workflows/android-release.yml@codex/android-live-base
     with:
       version_code: ${{ needs.version.outputs.code }}
       version_name: ${{ needs.version.outputs.name }}
