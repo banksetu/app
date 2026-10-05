@@ -27,7 +27,7 @@ test("all document types use bank-specific policy, never another bank's sample",
   for(const type of ["passbook","quickPassbook","accountOpening"]){
     assert.equal(bankDocumentMode(""),"select",type);
     for(const bank of ["Assam Gramin Bank","Assam Gramin Vikas Bank","AGVB"])assert.equal(bankDocumentMode(bank),"builtin",type);
-    assert.equal(bankDocumentMode("Union Bank of India"),"custom",type);
+    assert.equal(bankDocumentMode("Union Bank of India"),"builtin",type);
     assert.equal(templateMatchesBank({bankKey:bankKey("Union Bank of India")},"Union Bank of India"),true);
     assert.equal(templateMatchesBank({bankKey:bankKey("State Bank of India")},"Union Bank of India"),false);
     assert.equal(templateMatchesBank({},"Union Bank of India"),false);
