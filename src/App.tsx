@@ -1,6 +1,6 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 
-import { syncNow } from "./core/localData";
+import { startLocalSync, syncNow } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
@@ -278,6 +278,12 @@ function App() {
     const timer=setInterval(()=>{if(navigator.onLine && sessionStorage.getItem("bankSetuConnectionMode")==="option-b")void enrollOfflineSession().catch(()=>undefined);},30*60*1000);
     return()=>clearInterval(timer);
   },[isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return;
+    const stop = startLocalSync();
+    return stop;
+  }, [isLoggedIn]);
 
   const handleForgotPassword = async () => {
     setError("");
