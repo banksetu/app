@@ -3,6 +3,7 @@ import type { CustomerRepository, LocalState } from "./schema";
 declare global {
   interface Window { bankSetuDesktop?: {
     read(scope: string): Promise<LocalState>;
+    storage(): Promise<{ path: string; databasePath: string; usedBytes: number; freeBytes: number | null; totalBytes: number | null }>;
     commit(scope: string, before: LocalState, after: LocalState): Promise<void>;
     version(): Promise<string>;
     checkUpdate(): Promise<unknown>;
