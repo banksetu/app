@@ -111,13 +111,6 @@ function App() {
     return role;
   }, []);
 
-  const prepareClientWorkspaceWithTimeout = useCallback(async (profile: UserProfile) => {
-    await Promise.race([
-      prepareClientWorkspace(profile),
-      new Promise<void>((resolve) => setTimeout(resolve, 4000)),
-    ]);
-  }, [prepareClientWorkspace]);
-
   const prepareClientWorkspace = useCallback(async (profile: UserProfile) => {
     const role = normalize(profile.role);
     if(["master_owner","admin"].includes(role)) {
@@ -154,6 +147,13 @@ function App() {
       console.error("Client workspace check failed; customer APIs remain disabled:", workspaceError);
     }
   }, []);
+
+  const prepareClientWorkspaceWithTimeout = useCallback(async (profile: UserProfile) => {
+    await Promise.race([
+      prepareClientWorkspace(profile),
+      new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+    ]);
+  }, [prepareClientWorkspace]);
 
   const rejectSession = useCallback(async (message: string) => {
     if(auth.currentUser) await clearOfflineSession(auth.currentUser.uid).catch(()=>undefined);
