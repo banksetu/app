@@ -84,3 +84,9 @@ test('address block removes old C/O Vill P.O. labels and duplicate Care Of place
  assert.deepEqual(pages[0].runs.map(run=>run.text),['Flat No / Bldg','Customer Name']);
  assert.equal(bankTemplateValue({fullAddress:'C/O Ali, Vill- Bundashil, P.O.- Badarpur, 788806'},'address'),'C/O Ali, Vill- Bundashil, P.O.- Badarpur, 788806');
 });
+
+test('AOF footer signature and address proof headings are never customer values',()=>{
+ assert.deepEqual(validateExtractedCustomer({name:'Signature GBPA / PF No Date',fullAddress:'Proof',coName:'Abdul Kalam'}),{coName:'Abdul Kalam'});
+ const entry=fs.readFileSync('src/CustomerEntry.tsx','utf8');
+ assert(entry.indexOf('...bankSpecific,')>entry.indexOf('...await extractBankCustomer(pdf, extractionMap'));
+});

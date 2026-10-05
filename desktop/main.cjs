@@ -57,6 +57,8 @@ app.whenReady().then(async()=>{
     return net.fetch(pathToFileURL(file).toString());
   });
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog});
+  printPreview.attach(window);
   // Customer print previews use document.write() into an about:blank window.
   // Allow only that local preview; it has no preload or database IPC privileges.
   window.webContents.setWindowOpenHandler(({url})=>{
@@ -64,13 +66,14 @@ app.whenReady().then(async()=>{
       action:'allow',
       overrideBrowserWindowOptions:{
         width:1000,height:800,title:'Bank Setu Print Preview',
-        webPreferences:{preload:'',nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}
+        webPreferences:{preload:path.join(__dirname,'print-source.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}
       }
     };
     if (/^https:\/\/(?:docs\.google\.com|drive\.google\.com|script\.google\.com|github\.com)\//.test(url)) void shell.openExternal(url);
     return {action:'deny'};
   });
   window.webContents.on('did-create-window',child=>{
+    printPreview.attach(child);
     child.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     child.webContents.on('will-navigate',(event,url)=>{if(url!=='about:blank')event.preventDefault();});
   });

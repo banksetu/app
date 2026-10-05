@@ -17,3 +17,6 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
     return () => ipcRenderer.removeListener('update:ready', listener);
   },
 });
+contextBridge.exposeInMainWorld('bankSetuPrint', {
+  preview: html => ipcRenderer.invoke('print:preview', html)
+});
