@@ -36,7 +36,7 @@ app.whenReady().then(async()=>{
   });
   const {autoUpdater}=require('electron-updater');
   autoUpdater.autoDownload=false;autoUpdater.autoInstallOnAppQuit=false;autoUpdater.allowDowngrade=false;
-  autoUpdater.on('error',()=>{});autoUpdater.on('update-downloaded',()=>{downloaded=true;});
+  autoUpdater.on('error',()=>{});autoUpdater.on('download-progress',progress=>{window?.webContents.send('update:progress',{percent:Number(progress?.percent||0),transferred:Number(progress?.transferred||0),total:Number(progress?.total||0),bytesPerSecond:Number(progress?.bytesPerSecond||0)});});autoUpdater.on('update-downloaded',()=>{downloaded=true;window?.webContents.send('update:ready',{ready:true});});
   const hasSignedRelease=()=>{
     const config=path.join(process.resourcesPath,'app-update.yml');
     return app.isPackaged && fs.existsSync(config) && /^publisherName:/m.test(fs.readFileSync(config,'utf8'));
