@@ -1,7 +1,7 @@
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { extractBankCustomer } from "./bankPdf";
 import { useEffect, useRef, useState } from "react";
-import { BANK_TEMPLATE_FIELD_OPTIONS, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
+import { BANK_TEMPLATE_FIELD_OPTIONS, BANK_PRINT_FIELD_OPTIONS, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
 
 export default function BankFormatLayoutEditor({
   mode = "print", onModeChange, sampleUrl, mimeType, initialMap, initialWidth, initialHeight, onSave, onClose,
@@ -91,7 +91,7 @@ export default function BankFormatLayoutEditor({
       <header style={header}><div><h2 style={{ margin: 0 }}>{mode === "extraction" ? "PDF से डेटा पढ़ने के sections चुनें" : "फॉर्म में print की जगह चुनें"}</h2><p style={help}>{mode === "extraction" ? "Field चुनें, फिर उसकी value के चारों ओर box खींचें। Label और पास के columns को box में न लें। छोटे sections के लिए Zoom बढ़ाएँ। Account Opening में पहचाने labels से नया text template बनेगा।" : "Field चुनकर उसकी print position पर क्लिक करें।"}</p></div><button type="button" style={quiet} onClick={onClose}>Close</button></header>
       {onModeChange && <div style={toolbar}><button type="button" style={quiet} disabled={mode==="extraction"} onClick={()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||window.confirm("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("extraction");}}>1. डेटा कहाँ से पढ़ें</button><button type="button" style={quiet} disabled={mode==="print"} onClick={()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||window.confirm("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("print");}}>2. कहाँ print करें</button><span>Switch करने से पहले Save करें।</span></div>}
       <div style={toolbar}>
-        <label>Field to place <select value={selectedField} onChange={(event) => setSelectedField(event.target.value)}>{BANK_TEMPLATE_FIELD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>Field to place <select value={selectedField} onChange={(event) => setSelectedField(event.target.value)}>{(mode === "print" ? BANK_PRINT_FIELD_OPTIONS : BANK_TEMPLATE_FIELD_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>Sample page <select value={selectedPage} onChange={(event) => setSelectedPage(Number(event.target.value))}>{pages.map((_, index) => <option key={index} value={index + 1}>Page {index + 1}</option>)}</select></label>
         <label>Paper width (mm) <input type="number" min={50} max={500} value={pageWidthMm} onChange={(event) => setPageWidthMm(Number(event.target.value))} /></label>
         <label>Paper height (mm) <input type="number" min={50} max={500} value={pageHeightMm} onChange={(event) => setPageHeightMm(Number(event.target.value))} /></label>
@@ -112,10 +112,10 @@ export default function BankFormatLayoutEditor({
           const x = Math.max(0, Math.min(99, ((event.clientX - rect.left) / rect.width) * 100));
           const y = Math.max(0, Math.min(99, ((event.clientY - rect.top) / rect.height) * 100));
           setFieldMap((current) => current.map((row, i) => i === index ? { ...row, x, y } : row));
-        }} onClick={(event) => { event.stopPropagation(); setSelectedField(item.field); }} style={{ ...placed, left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height:mode === "extraction" ? `${item.height || 2}%` : undefined, pointerEvents:mode === "extraction" ? "none" : "auto", fontSize: `${Math.max(10, item.fontSize)}px` }}>{BANK_TEMPLATE_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</button>)}
+        }} onClick={(event) => { event.stopPropagation(); setSelectedField(item.field); }} style={{ ...placed, left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height:mode === "extraction" ? `${item.height || 2}%` : undefined, pointerEvents:mode === "extraction" ? "none" : "auto", fontSize: `${Math.max(10, item.fontSize)}px` }}>{BANK_PRINT_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</button>)}
       </div> : <p style={help}>Preparing the sample preview…</p>}</div>
       <div style={mapList}>{fieldMap.map((item, index) => <div key={`${item.page || 1}-${item.field}`} style={mapRow}>
-        <strong>Page {item.page || 1}: {BANK_TEMPLATE_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</strong>
+        <strong>Page {item.page || 1}: {BANK_PRINT_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</strong>
         <label>Width % <input type="number" min={1} max={100} value={item.width} onChange={(event) => setFieldMap((current) => current.map((row, i) => i === index ? { ...row, width: Number(event.target.value) } : row))} /></label>
         {(mode === "extraction" || item.field === "customerPhoto") && <label>Height % <input type="number" min={0.2} max={100-item.y} step={0.1} value={item.height || 2} onChange={event=>setFieldMap(current=>current.map((row,i)=>i===index?{...row,height:Number(event.target.value)}:row))} /></label>}
         <label>Font px <input type="number" min={5} max={48} value={item.fontSize} onChange={(event) => setFieldMap((current) => current.map((row, i) => i === index ? { ...row, fontSize: Number(event.target.value) } : row))} /></label>
