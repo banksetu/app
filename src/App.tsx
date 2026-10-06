@@ -1,6 +1,6 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 
-import { startLocalSync, syncNow } from "./core/localData";
+import { startLocalSync, configureConnectionRecovery, syncNow } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
@@ -9,14 +9,14 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
+import { doc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
-import { removeTenantApiUrl, setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
+import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
 
@@ -85,6 +85,9 @@ function App() {
   const [accountRole, setAccountRole] = useState("user");
 
   const loginAttemptRef = useRef(false);
+  const activeProfile = useRef<UserProfile | null>(null);
+  const verifiedNavigation = useRef(false);
+  const recoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ownerBootstrapAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
 
@@ -97,6 +100,11 @@ function App() {
 
   const applyProfile = useCallback((profile: UserProfile) => {
     const normalizedRole = normalize(profile.role);
+    const previous=activeProfile.current;
+    if((!previous && sessionStorage.getItem("bankSetuWorkspaceReady")!=="true") || (previous && (previous.role!==profile.role || previous.tenantId!==profile.tenantId))){
+      setTenantWorkspaceReady(false);sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+    }
+    activeProfile.current=profile;
     setAccountRole(normalizedRole || "user");
     sessionStorage.setItem("bankSetuAccountRole", normalizedRole || "user");
     const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole)
@@ -112,46 +120,38 @@ function App() {
     return role;
   }, []);
 
-  const prepareClientWorkspace = useCallback(async (profile: UserProfile) => {
-    const role = normalize(profile.role);
-    if(["master_owner","admin"].includes(role)) {
-      sessionStorage.removeItem("bankSetuMasterLocalEnabled");sessionStorage.setItem("bankSetuConnectionMode","oauth");sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");setTenantWorkspaceReady(false);
-      try {
-        const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string}>("/get-google-setup",{});
-        if(setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl){
-          sessionStorage.setItem("bankSetuMasterLocalEnabled","true");sessionStorage.setItem("bankSetuConnectionMode","master-local");sessionStorage.setItem("bankSetuConnectionId",setup.masterConnectionId);sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl);setTenantApiUrl(setup.apiUrl);setTenantWorkspaceReady(true);await enrollOfflineSession();
-        }
-      }catch(error){console.error("Master local sync readiness:",error);sessionStorage.removeItem("bankSetuMasterLocalEnabled");}
-      return;
+  const prepareClientWorkspace = useCallback(async () => {
+    const profile=activeProfile.current;const user=auth.currentUser;
+    if(!profile||!user)return;
+    const role=normalize(profile.role);
+    if(!["master_owner","admin","client_admin","client_user"].includes(role))return;
+    const stillCurrent=()=>auth.currentUser?.uid===user.uid && activeProfile.current?.role===profile.role && activeProfile.current?.tenantId===profile.tenantId;
+    if(sessionStorage.getItem("bankSetuWorkspaceReady")!=="true"){
+      try{await resumeOfflineSession(user.uid,{role,tenantId:String(profile.tenantId||"")});}catch{/* First use needs a verified connection. */}
     }
-    sessionStorage.removeItem("bankSetuMasterLocalEnabled");
-    if (!["client_admin", "client_user"].includes(role)) {
-      setTenantWorkspaceReady(false);
-      return;
+    if(!stillCurrent())return;
+    const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string;workspaceStatus?:string;dataApiReady?:boolean;spreadsheetId?:string;photoFolderId?:string;connectionMode?:string;connectionId?:string}>("/get-google-setup",{});
+    if(!stillCurrent())return;
+    const master=["master_owner","admin"].includes(role);
+    const ready=master?setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl:setup.workspaceStatus==="active"&&setup.dataApiReady&&setup.apiUrl&&setup.spreadsheetId&&setup.photoFolderId;
+    if(!ready){
+      // A bridge outage must not disconnect an already verified local workspace.
+      if((!master&&setup.workspaceStatus!=="active")||(setup.apiUrl&&setup.apiUrl!==sessionStorage.getItem("bankSetuBridgeUrl")))setTenantWorkspaceReady(false);
+      throw new Error("Google connection unavailable; local data retained and reconnect will retry.");
     }
-    setTenantWorkspaceReady(false);
-    removeTenantApiUrl();
-    try {
-      const setup = await callBankSetuWorker<{
-        apiUrl?: string; spreadsheetId?: string; photoFolderId?: string; dataApiReady?: boolean; workspaceStatus?: string; connectionMode?: string; connectionId?: string;
-      }>("/get-google-setup", {});
-      if (setup.workspaceStatus === "active" && setup.dataApiReady && setup.apiUrl && setup.spreadsheetId && setup.photoFolderId) {
-        sessionStorage.setItem("bankSetuOfflineUntil", String(Date.now()+8*60*60*1000));
-        sessionStorage.setItem("bankSetuConnectionMode", setup.connectionMode || "oauth");
-        sessionStorage.setItem("bankSetuConnectionId", setup.connectionId || setup.spreadsheetId);
-        sessionStorage.setItem("bankSetuBridgeUrl", setup.apiUrl);
-        setTenantApiUrl(setup.apiUrl);
-        setTenantWorkspaceReady(true);
-        if(setup.connectionMode === "option-b") await enrollOfflineSession();
-      }
-    } catch (workspaceError) {
-      console.error("Client workspace check failed; customer APIs remain disabled:", workspaceError);
-    }
+    if(master)sessionStorage.setItem("bankSetuMasterLocalEnabled","true");else sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+    sessionStorage.setItem("bankSetuConnectionMode",master?"master-local":setup.connectionMode||"oauth");
+    sessionStorage.setItem("bankSetuConnectionId",String(master?setup.masterConnectionId:setup.connectionId||setup.spreadsheetId));
+    sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);
+    setTenantWorkspaceReady(true);
+    // Offline grant renewal is independent of online workspace readiness.
+    if(master||setup.connectionMode==="option-b")void enrollOfflineSession().catch(()=>undefined);
   }, []);
 
   const rejectSession = useCallback(async (message: string) => {
+    clearTimeout(recoveryTimer.current);verifiedNavigation.current=true;setTenantWorkspaceReady(false);
     if(auth.currentUser) await clearOfflineSession(auth.currentUser.uid).catch(()=>undefined);
-    clearProfileListener();
+    clearProfileListener();activeProfile.current=null;
     sessionStorage.removeItem("bankSetuRole");
     sessionStorage.removeItem("bankSetuTenantId");
     sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
@@ -177,7 +177,10 @@ function App() {
     const userRef = doc(db, "users", user.uid);
     profileUnsubscribeRef.current = onSnapshot(
       userRef,
+      { includeMetadataChanges: true },
       async (snapshot) => {
+        if(auth.currentUser?.uid!==user.uid)return;
+        if(navigator.onLine && snapshot.metadata.fromCache)return;
         const existingProfile = snapshot.exists() ? snapshot.data() as UserProfile : null;
         const mayBootstrapOwner = normalize(user.email) === MASTER_OWNER_EMAIL &&
           user.emailVerified &&
@@ -218,13 +221,8 @@ function App() {
           return;
         }
 
-        await prepareClientWorkspace(profile);
-
-        if (!loginAttemptRef.current) {
-          setError("");
-          setIsLoggedIn(true);
-        }
-
+        verifiedNavigation.current=true;clearTimeout(recoveryTimer.current);
+        setError("");setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);
         setCheckingSession(false);
       },
       async (snapshotError) => {
@@ -233,11 +231,13 @@ function App() {
         setCheckingSession(false);
       }
     );
-  }, [applyProfile, clearProfileListener, prepareClientWorkspace, rejectSession]);
+  }, [applyProfile, clearProfileListener, rejectSession]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      clearTimeout(recoveryTimer.current);verifiedNavigation.current=false;activeProfile.current=null;setTenantWorkspaceReady(false);
       if (!user) {
+        activeProfile.current=null;
         ownerBootstrapAttemptRef.current = false;
         clearProfileListener();
         sessionStorage.removeItem("bankSetuRole");
@@ -260,10 +260,17 @@ function App() {
         return;
       }
       watchUserProfile(user);
+      recoveryTimer.current=setTimeout(()=>{
+        if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
+        void resumeOfflineSession(user.uid).then(claims=>{
+          if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
+          applyProfile(claims);verifiedNavigation.current=true;setIsLoggedIn(true);setCheckingSession(false);setError("");
+        }).catch(()=>{/* Never bypass verification for a first login or expired grant. */});
+      },4000);
     });
 
     return () => {
-      unsubscribe();
+      clearTimeout(recoveryTimer.current);unsubscribe();
       clearProfileListener();
     };
   }, [applyProfile, clearProfileListener, watchUserProfile]);
@@ -275,15 +282,10 @@ function App() {
 
   useEffect(()=>{
     if(!isLoggedIn)return;
-    const timer=setInterval(()=>{if(navigator.onLine && sessionStorage.getItem("bankSetuConnectionMode")==="option-b")void enrollOfflineSession().catch(()=>undefined);},30*60*1000);
-    return()=>clearInterval(timer);
-  },[isLoggedIn]);
-
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const stop = startLocalSync();
-    return stop;
-  }, [isLoggedIn]);
+    configureConnectionRecovery(prepareClientWorkspace);
+    const stop=startLocalSync();
+    return()=>{stop();configureConnectionRecovery(undefined);};
+  },[isLoggedIn,prepareClientWorkspace]);
 
   const handleForgotPassword = async () => {
     setError("");
@@ -334,37 +336,8 @@ function App() {
     try {
       setLoading(true);
 
-      const credential = await signInWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
-
-      const userRef = doc(db, "users", credential.user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        await rejectSession(
-          "Your Bank Setu profile was not found. Please contact the administrator."
-        );
-        return;
-      }
-
-      const userData = userSnap.data() as UserProfile;
-      applyProfile(userData);
-
-      const accessError = getAccessError(userData, credential.user.email || "", credential.user.emailVerified);
-      if (accessError) {
-        await rejectSession(accessError);
-        return;
-      }
-
-      await prepareClientWorkspace(userData);
-
-      setLoginSuccess(true);
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      setIsLoggedIn(true);
-      setLoginSuccess(false);
+      await signInWithEmailAndPassword(auth,email.trim(),password);
+      // The single profile listener authorizes navigation; no Google work here.
     } catch (error: unknown) {
       const err = error as { code?: string };
       console.error("Login error:", err);

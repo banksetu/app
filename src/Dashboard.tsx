@@ -1,3 +1,5 @@
+import { useSyncStatus } from "./core/useSyncStatus";
+import { syncNow } from "./core/localData";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken } from "./core/localData";
@@ -391,7 +393,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
   const [dashboardSyncKey, setDashboardSyncKey] = useState(0);
-  const [dashboardSyncing, setDashboardSyncing] = useState(false);
+  const syncStatus=useSyncStatus();
+  const dashboardSyncing=syncStatus.syncing;
   const canManageBankSettings = accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin";
 
   const [bankInfoDraft, setBankInfoDraft] =
@@ -434,10 +437,11 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   const syncDashboard = () => {
     if (dashboardSyncing) return;
-    setDashboardSyncing(true);
+    window.dispatchEvent(new Event("banksetu-sync-request"));
+    void syncNow().catch(()=>undefined);
     setBankSettingsRetry((value) => value + 1);
     setDashboardSyncKey((value) => value + 1);
-    window.setTimeout(() => setDashboardSyncing(false), 4500);
+
   };
 
   const hasBankInfo =
@@ -1325,10 +1329,11 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
               style={{ ...styles.dashboardSyncButton, opacity: dashboardSyncing ? 0.65 : 1 }}
               onClick={syncDashboard}
               disabled={dashboardSyncing}
-              title="Sync dashboard data"
+              aria-busy={dashboardSyncing}
+              title={syncStatus.error || (!syncStatus.online ? "Offline — changes pending" : dashboardSyncing ? "Syncing Google customer data…" : syncStatus.pending ? `${syncStatus.pending} changes pending` : "Sync customer data")}
               aria-label="Sync dashboard data"
             >
-              {dashboardSyncing ? "⟳" : "↻"}
+              <span className={dashboardSyncing ? "banksetu-sync-spinning" : undefined}>{!syncStatus.online || syncStatus.error ? "!" : "↻"}</span>
             </button>
 
             <button
@@ -1505,7 +1510,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
               apiUrl={getTenantApiUrl()}
               cardTheme={selectedCardTheme}
               syncKey={dashboardSyncKey}
-              onSyncStateChange={setDashboardSyncing}
             />
 
           )}
@@ -2940,7 +2944,6 @@ function DashboardHome({
   apiUrl,
   cardTheme,
   syncKey,
-  onSyncStateChange,
 }: {
   openPage: (page: PageName) => void;
   apiUrl: string;
@@ -2950,7 +2953,6 @@ function DashboardHome({
     quickGradients: [string, string, string, string];
   };
   syncKey: number;
-  onSyncStateChange: (syncing: boolean) => void;
 }) {
 
   type DashboardStats = {
@@ -3261,12 +3263,6 @@ function DashboardHome({
 
   }, [apiUrl, syncKey]);
 
-  useEffect(() => {
-    if (syncKey === 0) return;
-    onSyncStateChange(true);
-    const done = window.setTimeout(() => onSyncStateChange(false), 2200);
-    return () => window.clearTimeout(done);
-  }, [syncKey, onSyncStateChange]);
 
   const stats = [
 

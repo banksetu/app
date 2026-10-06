@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.25",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.25/BankSetu-Setup-1.0.25-x64.exe",
-  "notes": "Print preview lifecycle and cancellation fixes, packaged Windows startup resource loading, and Bank Setu branding.",
-  "version": "1.0.25",
-  "releaseTag": "v1.0.25",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.25",
-  "androidBuild": 1000025,
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.25/BankSetu-Android-1000025.apk",
-  "windowsVersion": "1.0.25",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.25/BankSetu-Setup-1.0.25-x64.exe"
+  "latestVersion": "1.0.26",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.26/BankSetu-Setup-1.0.26-x64.exe",
+  "notes": "Non-blocking login, background customer sync and automatic connection recovery.",
+  "version": "1.0.26",
+  "releaseTag": "v1.0.26",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.26",
+  "androidBuild": 1000026,
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.26/BankSetu-Android-1000026.apk",
+  "windowsVersion": "1.0.26",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.26/BankSetu-Setup-1.0.26-x64.exe"
 }

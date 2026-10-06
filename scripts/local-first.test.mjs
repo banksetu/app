@@ -11,7 +11,7 @@ globalThis.window=new EventTarget();globalThis.__auth={currentUser:{uid:'user-a'
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
 let handler=async()=>{throw new Error('offline');};globalThis.fetch=(...args)=>handler(...args);
 globalThis.__repository=repository;
-let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";', 'const isAndroid=()=>false; const shareAndroidBackup=async()=>{throw new Error("Native sharing is unavailable in this web test")};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
+let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";','const isAndroid=()=>false;const shareAndroidBackup=async()=>{};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
 globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
 source=source.replace('import { makeBackup, parseBackup, mergeBackup } from "./backup";','const {makeBackup,parseBackup,mergeBackup}=globalThis.__backup;');
 const engine=await import(compile(source));
@@ -81,4 +81,31 @@ test('interrupted download resumes its cursor, exposes error and never overwrite
  handler=async(_url,init)=>{const body=JSON.parse(init.body);cursors.push(body.cursor);if(body.cursor===250&&fail)throw Error('Network interrupted');return new Response(JSON.stringify({success:true,customers:body.cursor===0?[{recordId:'edit',name:'Cloud old',rowNumber:2},{recordId:'older',name:'Older',rowNumber:3}]:[{recordId:'last',name:'Last',rowNumber:4}],hasNextPage:body.cursor===0,nextCursor:body.cursor===0?250:251}));};
  await assert.rejects(engine.syncNow(),/Network interrupted/);assert.match((await engine.getLocalStatus()).error,/Network interrupted/);assert.equal((await repository.read(scope)).pull.cursor,250);
  fail=false;await engine.syncNow();const state=await repository.read(scope);assert.equal(cursors.at(-1),250);assert.equal(state.records.find(r=>r.recordId==='edit').customer.name,'Unsynced edit');assert.equal(state.records.find(r=>r.recordId==='older').deleted,undefined);assert.equal((await engine.getLocalStatus()).error,'');
+});
+
+test('shared recovery backs off, reconnects immediately, retains queued identity and exposes real activity',async()=>{
+ connect('health-engine');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:health-engine';const original=(await repository.read(scope)).operations[0].operationId;
+ const nativeTimeout=globalThis.setTimeout,nativeClear=globalThis.clearTimeout;
+ const timers=new Map();let id=0;globalThis.setTimeout=(fn,delay)=>{timers.set(++id,{fn,delay});return id};globalThis.clearTimeout=key=>timers.delete(key);
+ let healthy=false,attempts=0,recoveries=0;const activity=[];
+ const changed=()=>{void engine.getLocalStatus().then(status=>activity.push(status.syncing))};window.addEventListener('banksetu-sync-change',changed);
+ engine.configureConnectionRecovery(async()=>{recoveries++});
+ handler=async(_url,init)=>{if(!init?.body)return new Response('{}');const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){attempts++;assert.equal(body.operation.operationId,original);if(!healthy)throw Error('Backend unavailable');return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,photoPreview:'data:image/png;base64,eA=='}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1',photoPreview:'data:image/png;base64,eA=='}],hasNextPage:false}));};
+ const settle=async()=>{for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));};
+ navigator.onLine=true;const stop=engine.startLocalSync();
+ try{
+ await settle();assert.equal(attempts,1);assert([...timers.values()].some(t=>t.delay===5000));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await engine.getLocalStatus()).syncing,false);
+ const retry=[...timers.values()].find(t=>t.delay===5000);retry.fn();await settle();assert.equal(attempts,2);assert([...timers.values()].some(t=>t.delay===10000));
+ healthy=true;window.dispatchEvent(new Event('online'));await settle();assert.equal(attempts,3);assert.equal((await repository.read(scope)).operations.length,0);assert(activity.includes(true));assert.equal(activity.at(-1),false);assert(recoveries>=2);
+ const before=attempts;document.visibilityState='visible';window.dispatchEvent(new Event('focus'));await settle();assert.equal(attempts,before,'focus does not poll an already healthy connection');
+ }finally{stop();engine.configureConnectionRecovery(undefined);window.removeEventListener('banksetu-sync-change',changed);globalThis.setTimeout=nativeTimeout;globalThis.clearTimeout=nativeClear;}
+});
+
+test('online entry survives auth refresh failure; cloud fallback caches customers for later local search',async()=>{
+ connect('fast-entry');navigator.onLine=true;const user=globalThis.__auth.currentUser;const token=user.getIdToken;user.getIdToken=async()=>{throw Error('refresh unavailable')};
+ try{assert.equal(await engine.getDataIdToken(),'');const saved=await request({action:'saveCustomer',customer});assert(saved.queued);assert.equal((await repository.read('user-a:tenant-a:fast-entry')).operations.length,1);}finally{user.getIdToken=token;}
+ connect('fallback');let reads=0;
+ handler=async()=>{reads++;return new Response(JSON.stringify({success:true,rowNumber:2,customer:{recordId:'found',name:'Cloud customer',revision:'r1'}}));};
+ await request({action:'searchCustomer',query:'Cloud customer'});assert.equal(reads,1);assert.equal((await request({action:'searchCustomer',query:'Cloud customer'})).local,true);assert.equal(reads,1);
 });

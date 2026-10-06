@@ -30,10 +30,12 @@ export async function enrollOfflineSession(): Promise<void> {
   await customerRepository.transact(scope(uid),state=>{state.offlineSession=session;});
   sessionStorage.setItem("bankSetuOfflineUntil",String(claims.expiresAt));
 }
-export async function resumeOfflineSession(uid: string): Promise<OfflineClaims> {
+export async function resumeOfflineSession(uid: string, expected?: {role:string;tenantId:string}): Promise<OfflineClaims> {
   const state=await customerRepository.read(scope(uid));
   if(!state.offlineSession)throw new Error("First login must be online. No verified offline session is saved on this device.");
   const claims=await verifyOfflineSession(state.offlineSession,uid);
+  if(auth.currentUser?.uid!==uid)throw new Error("Session changed.");
+  if(expected&&(claims.role!==expected.role||(!["master_owner","admin"].includes(expected.role)&&claims.tenantId!==expected.tenantId)))throw new Error("Offline workspace no longer matches your account.");
   const master=["master_owner","admin"].includes(claims.role);
   if(master){if(claims.tenantId!==`master:${uid}`)throw new Error("Master offline scope is invalid.");sessionStorage.removeItem("bankSetuTenantId");sessionStorage.setItem("bankSetuMasterLocalEnabled","true");}else{sessionStorage.removeItem("bankSetuMasterLocalEnabled");sessionStorage.setItem("bankSetuTenantId",claims.tenantId);}
   sessionStorage.setItem("bankSetuAccountRole",claims.role);sessionStorage.setItem("bankSetuRole",claims.role!=="client_user"?"admin":"user");
