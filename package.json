@@ -1,7 +1,7 @@
 {
   "name": "app",
   "private": true,
-  "version": "1.0.22",
+  "version": "1.0.23",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,8 @@
     "predev": "node scripts/prepare-client-assets.mjs",
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
-    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug"
+    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "test:updates": "node --test scripts/update-notice.test.mjs desktop/testUpdater.test.cjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",

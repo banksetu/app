@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { isAndroid } from "./platform/android/runtime";
+import { startUpdatePolling } from "./platform/updatePolling";
+import { downloadAndroidUpdate, isAndroid } from "./platform/android/runtime";
 import { checkAndroidUpdate } from "./platform/android/updates";
 
 declare const __APP_VERSION__: string;
@@ -87,40 +88,38 @@ async function findUpdate(): Promise<UpdateNoticeState> {
 export default function SoftwareUpdateNotice() {
   const [notice, setNotice] = useState<UpdateNoticeState | null>(null);
   const [message, setMessage] = useState("");
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     let active = true;
-    const timer = window.setTimeout(() => {
-      if (!navigator.onLine) return;
-      void findUpdate()
-        .then((result) => {
-          if (!active || !result.available) return;
-          if (
-            sessionStorage.getItem("bankSetuUpdateDismissed") ===
-            result.latestVersion
-          ) {
-            return;
-          }
-          setNotice(result);
-        })
-        .catch(() => undefined);
-    }, 1500);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
+    const stop = startUpdatePolling(async () => {
+      const result = await findUpdate();
+      if (!active) return;
+      if (!result.available) { setNotice(null); return; }
+      let dismissed = "";
+      try { dismissed = sessionStorage.getItem("bankSetuUpdateDismissed") || ""; } catch { /* Storage is optional. */ }
+      if (dismissed !== result.latestVersion) setNotice(result);
+    });
+    return () => { active = false; stop(); };
   }, []);
 
   if (!notice) return null;
 
   const dismiss = () => {
-    sessionStorage.setItem("bankSetuUpdateDismissed", notice.latestVersion);
+    try { sessionStorage.setItem("bankSetuUpdateDismissed", notice.latestVersion); } catch { /* Storage is optional. */ }
     setNotice(null);
   };
 
   const install = async () => {
+    if (installing) return;
+    setInstalling(true);
     try {
+      if (notice.platform === "android") {
+        setMessage("Downloading Android update…");
+        await downloadAndroidUpdate(notice.downloadUrl, percent => setMessage(`Downloading Android update… ${Math.round(percent)}%`));
+        setMessage("Download ready. Complete installation in the Android installer.");
+        return;
+      }
       if (notice.platform === "windows" && desktopBridge()) {
         setMessage("Downloading and verifying the Windows update…");
         await desktopBridge()!.installUpdate();
@@ -137,7 +136,7 @@ export default function SoftwareUpdateNotice() {
           ? error.message
           : "The update could not be installed. Your local data is retained."
       );
-    }
+    } finally { setInstalling(false); }
   };
 
   return (
@@ -196,6 +195,7 @@ export default function SoftwareUpdateNotice() {
       )}
       <button
         type="button"
+        disabled={installing}
         onClick={() => void install()}
         style={{
           marginTop: 14,
@@ -208,7 +208,7 @@ export default function SoftwareUpdateNotice() {
           cursor: "pointer",
         }}
       >
-        Download / Install update
+        {installing ? "Downloading…" : "Download / Install update"}
       </button>
     </aside>
   );

@@ -13,7 +13,7 @@ export default function UnionAccountOpening({ customer }: { customer: Record<str
   const fields = [...new Map(UNION_AOF_BOXES.map(box=>[box.key,box])).values()];
   return <section className="union-aof-wrap">
     <div className="union-aof-controls">
-      <p><b>Union Bank AOF-5 · Draft preview</b> · नाम के हर अक्षर को अलग बॉक्स में रखा गया है। खाली जानकारी खाली रहेगी।</p>
+      <p><b>Union Bank AOF-5 · Print preview</b> · नाम के हर अक्षर को अलग बॉक्स में रखा गया है। खाली जानकारी खाली रहेगी।</p>
       <p>पूरा पता: {String(customer.fullAddress || customer.address || "उपलब्ध नहीं")}</p>
       <details open><summary>नाम और पता जाँचें / इस प्रिंट के लिए सुधारें</summary>
         <p>House, Street, Village/City, Block, District और State के सही हिस्से भरें। पूरे पते से इन हिस्सों का अनुमान नहीं लगाया गया है।</p>

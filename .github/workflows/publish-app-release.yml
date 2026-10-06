@@ -85,7 +85,7 @@ jobs:
           compgen -G 'release/*.apk' >/dev/null
           compgen -G 'release/*.exe' >/dev/null
           if ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Bank Setu $VERSION" --notes "Signed Android and Windows release. Install over your existing release to retain local data. Use Settings > Check for Update for later releases."
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Bank Setu $VERSION" --notes "Signed Android and Windows release. Install over your existing release to retain local data. This update fixes automatic in-app update notices on resume/reconnect, card color saving, and adds the Union account opening form with editable address review."
           fi
           gh release upload "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --clobber
           gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest

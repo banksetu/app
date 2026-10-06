@@ -31,3 +31,10 @@ The rules now accept an optional string `cardTheme`. Existing master-owner, appr
 Release requirement: deploy the updated `firestore.rules` together with this planned release. A frontend-only deploy cannot fix the server-side rejection. No rules have been deployed in this draft.
 
 Validation: checked the actual dashboard write payload against the allowed keys and reviewed the two-line rules diff. Live Firebase validation is pending the authorized combined release.
+
+
+## Release 1.0.23 — authorized 6 October 2026
+
+The user authorized publishing all accumulated drafts. Card-color rules are included in the hosting deployment. Automatic update checks now retry on reconnect, focus, visibility/resume and every five minutes while visible. Android's notice uses the existing in-app APK downloader; Windows retains its verified updater and backup path. This is an in-app notice, not an OS push service while the app is closed.
+
+Known form limits above remain visible: unstructured addresses require field review and physical printer calibration is not certified. The form's review and overflow checks remain enabled. Existing APKs need this release installed before they gain the new polling behavior.
