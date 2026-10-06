@@ -1,5 +1,4 @@
 import { useSyncStatus } from "./core/useSyncStatus";
-import { syncNow } from "./core/localData";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken } from "./core/localData";
@@ -437,8 +436,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   const syncDashboard = () => {
     if (dashboardSyncing) return;
-    window.dispatchEvent(new Event("banksetu-sync-request"));
-    void syncNow().catch(()=>undefined);
+    window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));
     setBankSettingsRetry((value) => value + 1);
     setDashboardSyncKey((value) => value + 1);
 

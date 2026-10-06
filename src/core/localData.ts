@@ -118,15 +118,15 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
 }
 const running = new Map<string, Promise<void>>();
 const syncErrors = new Map<string, string>();
-export function syncNow(refresh = true): Promise<void> {
+export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   if (!navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
   let scope: string;
   try { scope=identity(); } catch(error) { return Promise.reject(error); }
   const existing=running.get(scope);if(existing)return existing;
-  const task=runSync(refresh).then(()=>{syncErrors.delete(scope);}).catch(error=>{syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
+  const task=runSync(refresh,signal).then(()=>{syncErrors.delete(scope);}).catch(error=>{syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
   running.set(scope,task);announce();return task;
 }
-async function runSync(refresh: boolean) {
+async function runSync(refresh: boolean, signal?:AbortSignal) {
   if (!navigator.onLine || !localModeEnabled()) return;
   const scope = identity();
   const url = sessionStorage.getItem("bankSetuBridgeUrl")!;
@@ -134,9 +134,12 @@ async function runSync(refresh: boolean) {
   const connectionId=sessionStorage.getItem("bankSetuConnectionId");
   const masterLocalSync=sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true";
   const send=async(payload: Record<string,unknown>)=>{
+    if(signal?.aborted)throw signal.reason||new DOMException("Sync stopped.","AbortError");
     let idToken=await user.getIdToken();
+    if(signal?.aborted)throw signal.reason||new DOMException("Sync stopped.","AbortError");
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
-    const perform=()=>networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:AbortSignal.timeout(25000)});
+    const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(25000)]):AbortSignal.timeout(25000);
+    const perform=()=>networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:requestSignal});
     let response=await perform();
     if(response.status===401){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();}
     if(!response.ok)throw new Error("Google sync is temporarily unavailable. Local data retained.");
@@ -219,28 +222,29 @@ export async function getLocalSnapshot() {
   };
 }
 export async function exportLocalBackup() { const state=await repository.read(identity());if(isAndroid()){await shareAndroidBackup(JSON.stringify(makeBackup(identity(),state),null,2));return;}const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
-let recoverWorkspace: (()=>Promise<void>) | undefined;
+let recoverWorkspace: ((signal?:AbortSignal)=>Promise<void>) | undefined;
 let healthError="";
 let lastBackendCheck=0,lastHostingCheck=0,nextRetryAt=0;
-export function configureConnectionRecovery(recover: (()=>Promise<void>) | undefined){recoverWorkspace=recover;lastBackendCheck=0;}
+export function configureConnectionRecovery(recover: ((signal?:AbortSignal)=>Promise<void>) | undefined){recoverWorkspace=recover;lastBackendCheck=0;}
 export function getConnectionHealth(){return {online:navigator.onLine,error:healthError,lastBackendCheck,lastHostingCheck,nextRetryAt};}
 let syncUsers=0;
 let stopScheduler: (()=>void) | undefined;
 export function startLocalSync() {
   syncUsers++;
   if(!stopScheduler){
-    let stopped=false,busy=false,failures=0,wakePending=false;
+    let stopped=false,busy=false,failures=0,wakePending=false,refreshRequested=false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let activeController:AbortController|undefined;
     const tick=async()=>{
       if(stopped)return;if(busy){wakePending=true;return;}
-      clearTimeout(timer);busy=true;let delay=60000;
+      clearTimeout(timer);busy=true;let delay=60000;activeController=new AbortController();const signal=activeController.signal;
       try{
         if(navigator.onLine){
           if(recoverWorkspace && (!lastBackendCheck||Date.now()-lastBackendCheck>=5*60000||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")){
-            await recoverWorkspace();if(stopped)return;lastBackendCheck=Date.now();
+            await recoverWorkspace(signal);if(stopped||signal.aborted)return;lastBackendCheck=Date.now();
           }
           if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"){
-            const scope=identity();await syncNow(false);if(stopped)return;
+            const scope=identity();const refresh=refreshRequested;refreshRequested=false;await syncNow(refresh,signal);if(stopped||signal.aborted)return;
             if(identity()===scope){const state=await repository.read(scope);if(state.pull?.cursor||state.operations.some(op=>op.state==="pending")||state.records.some(needsPhoto))delay=250;}
           }
           if(!lastHostingCheck||Date.now()-lastHostingCheck>=15*60000){
@@ -250,19 +254,21 @@ export function startLocalSync() {
           }
           failures=0;healthError="";
         }
-      }catch(error){healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}
+      }catch(error){if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}}
       finally{
-        busy=false;if(!stopped){if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
+        if(activeController===activeController&&signal.aborted)activeController=undefined;else activeController=undefined;
+        busy=false;if(!stopped){if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
       }
     };
-    const wake=()=>{failures=0;healthError="";void tick();};
+    const wake=(event?:Event)=>{if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};
     const reconnect=()=>{lastBackendCheck=0;wake();};
-    const offline=()=>{clearTimeout(timer);healthError="Offline — local changes remain pending.";announce();};
-    const visibility=()=>{if(document.visibilityState==="visible"&&(!nextRetryAt||Date.now()>=nextRetryAt))wake();};
+    const offline=()=>{clearTimeout(timer);activeController?.abort(new DOMException("Network connection lost.","AbortError"));healthError="Offline — local changes remain pending.";announce();};
+    const visibility=()=>{if(document.visibilityState==="visible"&&navigator.onLine)wake();};
+    const focus=()=>{if(navigator.onLine)wake();};
     const workspace=()=>{if(!busy)wake();};
-    window.addEventListener("online",reconnect);window.addEventListener("offline",offline);window.addEventListener("focus",visibility);window.addEventListener("banksetu-workspace-change",workspace);window.addEventListener("banksetu-sync-request",wake);
+    window.addEventListener("online",reconnect);window.addEventListener("offline",offline);window.addEventListener("focus",focus);window.addEventListener("banksetu-workspace-change",workspace);window.addEventListener("banksetu-sync-request",wake);
     document.addEventListener("visibilitychange",visibility);wake();
-    stopScheduler=()=>{stopped=true;clearTimeout(timer);window.removeEventListener("online",reconnect);window.removeEventListener("offline",offline);window.removeEventListener("focus",visibility);window.removeEventListener("banksetu-workspace-change",workspace);window.removeEventListener("banksetu-sync-request",wake);document.removeEventListener("visibilitychange",visibility);};
+    stopScheduler=()=>{stopped=true;clearTimeout(timer);activeController?.abort(new DOMException("Sync engine stopped.","AbortError"));window.removeEventListener("online",reconnect);window.removeEventListener("offline",offline);window.removeEventListener("focus",focus);window.removeEventListener("banksetu-workspace-change",workspace);window.removeEventListener("banksetu-sync-request",wake);document.removeEventListener("visibilitychange",visibility);};
   }
   let released=false;
   return()=>{if(released)return;released=true;if(--syncUsers===0){stopScheduler?.();stopScheduler=undefined;healthError="";lastBackendCheck=0;}};

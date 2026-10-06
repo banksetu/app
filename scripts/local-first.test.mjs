@@ -102,6 +102,43 @@ test('shared recovery backs off, reconnects immediately, retains queued identity
  }finally{stop();engine.configureConnectionRecovery(undefined);window.removeEventListener('banksetu-sync-change',changed);globalThis.setTimeout=nativeTimeout;globalThis.clearTimeout=nativeClear;}
 });
 
+test('foreground resume immediately reconciles queued work through the shared engine',async()=>{
+ connect('resume-on-return');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='hidden';
+ const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:resume-on-return';
+ let writes=0,recoveries=0;
+ engine.configureConnectionRecovery(async()=>{recoveries++;});
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){writes++;return new Response(JSON.stringify({success:true,rowNumber:8,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:8,revision:'r1'}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,rowNumber:8,revision:'r1'}],hasNextPage:false}));};
+ const stop=engine.startLocalSync();
+ try{
+   await new Promise(resolve=>setTimeout(resolve,10));assert.equal(writes,0);
+   document.visibilityState='visible';navigator.onLine=true;document.dispatchEvent(new Event('visibilitychange'));
+   const deadline=Date.now()+3000;while(Date.now()<deadline&&(await repository.read(scope)).operations.length)await new Promise(resolve=>setTimeout(resolve,10));
+   assert.equal((await repository.read(scope)).operations.length,0);assert.equal(writes,1);assert.equal(recoveries,1);
+ }finally{stop();engine.configureConnectionRecovery(undefined);}
+});
+
+test('manual header refresh forces reconciliation through the same engine state',async()=>{
+ connect('header-refresh');navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';
+ let pulls=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage')pulls++;return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ const stop=engine.startLocalSync();
+ try{
+   const deadline=Date.now()+3000;while(Date.now()<deadline&&!pulls)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(pulls,1);
+   window.dispatchEvent(new CustomEvent('banksetu-sync-request',{detail:{refresh:true}}));
+   while(Date.now()<deadline+3000&&pulls<2)await new Promise(resolve=>setTimeout(resolve,10));
+   assert.equal(pulls,2);
+ }finally{stop();}
+});
+
+test('stopping the lifecycle engine aborts active cloud work and preserves its queue',async()=>{
+ connect('stop-cleanly');navigator.onLine=false;const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:stop-cleanly';
+ navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';engine.configureConnectionRecovery(async()=>{});
+ let observedSignal;let resolveStarted;const started=new Promise(resolve=>{resolveStarted=resolve;});
+ handler=(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){observedSignal=init.signal;resolveStarted();return new Promise((_resolve,reject)=>init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true}));}return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ const stop=engine.startLocalSync();
+ try{await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(new Error('sync did not start')),3000))]);stop();assert.equal(observedSignal.aborted,true);await new Promise(resolve=>setTimeout(resolve,10));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await repository.read(scope)).records[0].recordId,saved.recordId);}
+ finally{stop();engine.configureConnectionRecovery(undefined);}
+});
+
 test('online entry survives auth refresh failure; cloud fallback caches customers for later local search',async()=>{
  connect('fast-entry');navigator.onLine=true;const user=globalThis.__auth.currentUser;const token=user.getIdToken;user.getIdToken=async()=>{throw Error('refresh unavailable')};
  try{assert.equal(await engine.getDataIdToken(),'');const saved=await request({action:'saveCustomer',customer});assert(saved.queued);assert.equal((await repository.read('user-a:tenant-a:fast-entry')).operations.length,1);}finally{user.getIdToken=token;}

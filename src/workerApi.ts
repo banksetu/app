@@ -6,7 +6,8 @@ const workerUrl = String(import.meta.env.VITE_BANKSETU_WORKER_URL || "")
 
 export async function callBankSetuWorker<T>(
   path: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  lifecycleSignal?:AbortSignal
 ): Promise<T> {
   const user = auth.currentUser;
   if (!user) throw new Error("Please sign in again.");
@@ -15,6 +16,8 @@ export async function callBankSetuWorker<T>(
   }
 
   let idToken = await user.getIdToken();
+  if(lifecycleSignal?.aborted)throw lifecycleSignal.reason||new DOMException("Request stopped.","AbortError");
+  const signal=lifecycleSignal?AbortSignal.any([lifecycleSignal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000);
   const send = () => fetch(`${workerUrl}${path}`, {
     method: "POST",
     headers: {
@@ -22,7 +25,7 @@ export async function callBankSetuWorker<T>(
       Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20000),
+    signal,
   });
   let response=await send();
   if(response.status===401){idToken=await user.getIdToken(true);if(auth.currentUser?.uid!==user.uid)throw new Error("Session changed.");response=await send();}
