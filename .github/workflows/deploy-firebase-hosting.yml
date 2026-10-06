@@ -103,6 +103,8 @@ jobs:
             console.error('::error::Use a complete service-account JSON key for project banksetu-69e2f.');
             process.exit(1);
           }
+          // Publish only the non-secret account identity, never the key.
+          if (/^[a-zA-Z0-9._@-]+$/.test(account.client_email)) console.log('Deployment principal: ' + account.client_email);
           NODE
 
       - name: Wait for native release assets before announcing update

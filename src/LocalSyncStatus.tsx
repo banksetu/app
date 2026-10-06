@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, startLocalSync, syncNow } from "./core/localData";
+import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, syncNow } from "./core/localData";
 import type { QueueOperation } from "./core/schema";
 import { callBankSetuWorker } from "./workerApi";
 
-type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean };
-const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false };
+type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean; syncing: boolean; lastCompletedAt: number; error: string; mediaPending: number };
+const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false, syncing:false,lastCompletedAt:0,error:"",mediaPending:0 };
 
 export default function LocalSyncStatus({ visible = true }: { visible?: boolean }) {
   const [conflicts, setConflicts] = useState<QueueOperation[]>([]);
@@ -18,6 +18,7 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
   const [nativeStorage, setNativeStorage] = useState<{ path: string; databasePath: string; usedBytes: number; freeBytes: number | null; totalBytes: number | null } | null>(null);
 
   const refresh = () => {
+    if(!localModeEnabled()||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")return;
     void Promise.all([getLocalStatus(), getConflicts(), getLocalSnapshot()]).then(([nextStatus, nextConflicts, nextSnapshot]) => {
       setStatus(nextStatus); setConflicts(nextConflicts); setSnapshot(nextSnapshot);
     }).catch(reason => setError(reason instanceof Error ? reason.message : "Local database could not be read."));
@@ -28,7 +29,7 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
     else if (navigator.storage?.estimate) void navigator.storage.estimate().then(result => setStorage({ used: result.usage || 0, quota: result.quota || 0 }));
   };
 
-  useEffect(() => { if (!localModeEnabled()) return; const stop = startLocalSync(); const timer = window.setInterval(refresh, 5000); window.addEventListener("banksetu-sync-change", refresh); refresh(); return () => { stop(); clearInterval(timer); window.removeEventListener("banksetu-sync-change", refresh); }; }, []);
+  useEffect(() => { const timer = window.setInterval(refresh, 5000); window.addEventListener("banksetu-sync-change", refresh); window.addEventListener("banksetu-workspace-change", refresh); refresh(); return () => { clearInterval(timer); window.removeEventListener("banksetu-sync-change", refresh); window.removeEventListener("banksetu-workspace-change", refresh); }; }, []);
   if (!visible) return null;
   if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
 
@@ -37,7 +38,7 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
   const cards = [
     { key: "local" as const, label: "Local data", value: String(status.records), hint: "इस device के local database में records", action: "Click here to see" },
     { key: "pending" as const, label: "Upload pending", value: String(status.pending), hint: "Google Sheet पर भेजने के लिए बाकी", action: "Click here to see" },
-    { key: "sheet" as const, label: "Google Sheet data", value: status.downloading ? "Syncing…" : "Connected", hint: sheetUrl ? "Sheet खोलकर cloud data देखें" : "Google Sheet connection उपलब्ध नहीं", action: "Click here to see" },
+    { key: "sheet" as const, label: "Google Sheet data", value: status.syncing || status.downloading ? "Syncing…" : status.lastCompletedAt ? "Downloaded" : "Waiting for sync", hint: status.mediaPending ? `${status.mediaPending} customer photos बाकी हैं` : status.lastCompletedAt ? `Last download: ${new Date(status.lastCompletedAt).toLocaleString()}` : "पुराना डेटा इस device पर अपने-आप डाउनलोड होगा", action: "Click here to see" },
     { key: "storage" as const, label: "Local storage", value: nativeStorage?.freeBytes ? formatBytes(nativeStorage.freeBytes) + " free" : storage.quota ? `${Math.max(0, Math.round((storage.quota - storage.used) / 1024 / 1024))} MB free` : "Device storage", hint: nativeStorage ? "SQLite local database · " + formatBytes(nativeStorage.usedBytes) + " used" : storage.quota ? `${Math.round(storage.used / 1024 / 1024)} MB browser database used` : "Local database storage", action: "Click here to see" },
   ];
   const viewerTitle = viewer === "local" ? "Local database records" : viewer === "pending" ? "Upload pending queue" : viewer === "storage" ? "Local storage status" : "Google Sheet data";
@@ -45,7 +46,7 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
   return <aside aria-label="Local database sync" style={styles.shell}>
     <div style={styles.headingRow}><div><p style={styles.eyebrow}>DATA CONTROL CENTER</p><h2 style={styles.title}>Sync &amp; Backup</h2><p style={styles.sub}>Local-first storage · Google Sheet sync · backup and restore</p></div><div style={styles.headingActions}><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Code.gs</a><button disabled={busy} onClick={runSync} style={styles.primary}>{busy ? "Syncing…" : "Sync now"}</button></div></div>
     <div style={styles.grid}>{cards.map(card => <div key={card.key} style={styles.card}><div style={styles.cardTop}><span style={styles.cardLabel}>{card.label}</span><strong style={styles.value}>{card.value}</strong></div><p style={styles.hint}>{card.hint}</p><button style={styles.viewButton} onClick={() => card.key === "sheet" && sheetUrl ? window.open(sheetUrl, "_blank", "noopener,noreferrer") : setViewer(card.key)}>{card.action} ↗</button></div>)}</div>
-    {(error || status.conflicts > 0) && <div style={styles.errorCard}><strong>Sync attention needed</strong><p>{error || `${status.conflicts} record(s) need review.`}</p></div>}
+    {(error || status.error || status.conflicts > 0) && <div style={styles.errorCard}><strong>Sync attention needed</strong><p>{error || status.error || `${status.conflicts} record(s) need review.`}</p></div>}
     <div style={{...styles.actions,marginTop:18}}><button type="button" style={styles.primary} onClick={() => void exportLocalBackup().catch(reason => setError(reason.message))}>Backup</button><label style={styles.restore}>Restore backup<input aria-label="Restore local backup" type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (!window.confirm("Merge this backup into the current workspace?")) return; void file.text().then(restoreLocalBackup).then(report => setError(`Restored ${report.records} records and ${report.operations} operations.`)).catch(reason => setError(reason.message)); }} /></label></div>
     {status.cacheLimited && <p style={styles.notice}>Offline cache limit reached. Pending edits remain saved; older cloud records can still be searched online.</p>}
     {viewer && <div role="dialog" aria-modal="true" style={styles.modal}><div style={styles.modalBox}><div style={styles.headingRow}><h3 style={{ margin: 0 }}>{viewerTitle}</h3><button onClick={() => setViewer(null)} style={styles.close}>×</button></div>{viewer === "sheet" ? <p>Google Sheet को नए tab में खोलने के लिए ऊपर वाला button इस्तेमाल करें।</p> : viewer === "storage" ? <p>{nativeStorage ? <>SQLite local database: <code>{nativeStorage.databasePath}</code><br />Drive free: {formatBytes(nativeStorage.freeBytes)}{nativeStorage.totalBytes ? ` of ${formatBytes(nativeStorage.totalBytes)}` : ""}<br />Database used: {formatBytes(nativeStorage.usedBytes)}</> : storage.quota ? `${Math.round(storage.used / 1024 / 1024)} MB browser database used of ${Math.round(storage.quota / 1024 / 1024)} MB quota.` : "Storage estimate इस device पर उपलब्ध नहीं है।"}</p> : viewerItems.length ? <div style={styles.list}>{viewerItems.map(item => <pre key={"recordId" in item ? item.recordId : item.operationId}>{JSON.stringify(item, null, 2)}</pre>)}</div> : <p>इस समय कोई data नहीं है।</p>}<button onClick={() => setViewer(null)} style={styles.secondary}>Close</button></div></div>}

@@ -280,7 +280,7 @@ function App() {
   },[isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return;
+    if (!isLoggedIn) return;
     const stop = startLocalSync();
     return stop;
   }, [isLoggedIn]);

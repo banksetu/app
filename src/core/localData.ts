@@ -39,10 +39,6 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if (hits.length || !navigator.onLine) {
       if (!hits.length) return resultResponse({success:false,message:"Customer is not in this device's offline cache."});
       const first = hits[0];
-      if (navigator.onLine && hits.length===1 && !first.pending && first.customer.photoUrl && !first.customer.photoPreview && action!=="getAllCustomers") {
-        const response=await networkFetch(input,{...init,body:JSON.stringify({...payload,action:"getCustomerByRowNumber",rowNumber:first.rowNumber,recordId:first.recordId})});
-        const value=await response.clone().json();if(value.success){await cacheResponse(scope,value);return response;}
-      }
       const page = Math.max(1,Number(payload.page)||1);const pageSize=Math.min(250,Math.max(1,Number(payload.pageSize)||50));
       const visible=action==="getAllCustomers"?hits.slice((page-1)*pageSize,page*pageSize):hits;
       const matches = visible.map(record => ({...record.customer, rowNumber:record.rowNumber, recordId:record.recordId, revision:record.revision}));
@@ -89,7 +85,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
   announce();
-  if (navigator.onLine) void syncNow().catch(() => undefined);
+  if (navigator.onLine) void syncNow(false).catch(() => undefined);
   return resultResponse({success:true,queued:true,rowNumber:localRow,recordId,message:"Saved on this device. Pending Google sync; keep this device's data until sync completes.",photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
@@ -102,7 +98,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending) continue;
-      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},pending:false};
+      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},photoCheckedAt:previous?.customer.photoUrl===customer.photoUrl?previous?.photoCheckedAt:undefined,pending:false};
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
     const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
@@ -111,24 +107,39 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
   });
   announce();
 }
-let running: Promise<void> | undefined;
-export function syncNow(): Promise<void> {
-  return running ||= runSync().finally(() => { running = undefined; announce(); });
+const running = new Map<string, Promise<void>>();
+const syncErrors = new Map<string, string>();
+export function syncNow(refresh = true): Promise<void> {
+  if (!navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
+  let scope: string;
+  try { scope=identity(); } catch(error) { return Promise.reject(error); }
+  const existing=running.get(scope);if(existing)return existing;
+  const task=runSync(refresh).then(()=>{syncErrors.delete(scope);}).catch(error=>{syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
+  running.set(scope,task);announce();return task;
 }
-async function runSync() {
+async function runSync(refresh: boolean) {
   if (!navigator.onLine || !localModeEnabled()) return;
   const scope = identity();
   const url = sessionStorage.getItem("bankSetuBridgeUrl")!;
   const user = auth.currentUser!;
+  const connectionId=sessionStorage.getItem("bankSetuConnectionId");
+  const masterLocalSync=sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true";
+  const send=async(payload: Record<string,unknown>)=>{
+    const idToken=await user.getIdToken();
+    if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
+    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:AbortSignal.timeout(25000)});
+    if(!response.ok)throw new Error("Google sync is temporarily unavailable. Local data retained.");
+    const value=await response.json();
+    if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
+    return value;
+  };
   const initial = await repository.read(scope);
   for (const op of initial.operations.filter(operation => operation.state === "pending").slice(0,25)) {
     if (identity() !== scope || auth.currentUser?.uid !== user.uid) return;
     const current = await repository.read(scope);
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
-    const response = await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"syncCustomerOperation",masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",operation:{...op,baseRevision:record?.revision || op.baseRevision},connectionId:sessionStorage.getItem("bankSetuConnectionId"),idToken:await user.getIdToken() }),signal:AbortSignal.timeout(25000)});
-    if (!response.ok) throw new Error("Google sync is temporarily unavailable. Local queue retained.");
-    const value = await response.json();
+    const value=await send({action:"syncCustomerOperation",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
     await repository.transact(scope, state => {
       const queued = state.operations.find(item => item.operationId === op.operationId);
       if (!queued) return;
@@ -141,29 +152,43 @@ async function runSync() {
   }
   // At most four 250-row pages per sync; resume the cursor on the next tick.
   const started=Date.now();
-  for(let page=0;page<4 && Date.now()-started<20000;page++) {
+  const shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=60000;
+  for(let page=0;shouldPull && page<4 && Date.now()-started<20000;page++) {
     if(identity()!==scope)return;
     const state=await repository.read(scope);
     const pull=state.pull || {cursor:0,seen:[],startedAt:Date.now()};
-    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getCustomerPage",masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",cursor:pull.cursor,pageSize:250,idToken:await user.getIdToken()}),signal:AbortSignal.timeout(25000)});
-    if(!response.ok)throw new Error("Google download interrupted; sync cursor and pending records retained.");
-    const value=await response.json();
+    const value=await send({action:"getCustomerPage",cursor:pull.cursor,pageSize:250});
     if(!value.success)throw new Error(value.message || "Google download rejected; local data retained.");
     // An old bridge without page support must be upgraded; never infer a complete snapshot.
     if(!Array.isArray(value.customers))throw new Error("Deploy the current client bridge to enable paged sync.");
+    if(value.customers.some((customer:Customer)=>!customer.recordId))throw new Error("The Google bridge must return stable customer IDs before automatic download can continue.");
+    if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
     await cacheResponse(scope,value);
     await repository.transact(scope,current=>{
       const seen=new Set([...pull.seen,...value.customers.map((customer:Customer)=>String(customer.recordId))]);
       if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
       if(value.hasNextPage)current.pull={...pull,cursor:value.nextCursor,seen:[...seen]};
       else {
-        current.records.forEach(record => { if (!record.pending && (record.cachedAt||0)<=pull.startedAt && !seen.has(record.recordId)) record.deleted = true; });
+        // Only explicit server tombstones delete records: rows can move during pagination.
         current.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:current.pull?.cacheLimited};
       }
     });
     if(!value.hasNextPage)break;
   }
+  const downloaded=await repository.read(scope);
+  // Hydrate linked Drive photos in the background, never on the search path.
+  if(!downloaded.pull?.cursor){
+    const photos=downloaded.records.filter(needsPhoto).slice(0,10);
+    for(const record of photos){
+      const value=await send({action:"getCustomerByRowNumber",recordId:record.recordId,rowNumber:record.rowNumber});
+      if(!value.success)throw new Error(value.message || "Drive photo download failed; will retry.");
+      await cacheResponse(scope,value);
+      await repository.transact(scope,state=>{const saved=state.records.find(item=>item.recordId===record.recordId);if(saved&&!saved.pending)saved.photoCheckedAt=Date.now();});
+    }
+  }
+
 }
+function needsPhoto(record: CachedRecord) {return !record.deleted&&!record.pending&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.
   // Only transient previews are eligible for cache cleanup.
@@ -172,16 +197,7 @@ function trimCache(state: import("./schema").LocalState) {
     state.pull.cacheLimited = true;
   }
 }
-async function pruneTransientCache(scope: string) {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  await repository.transact(scope, state => {
-    for (const record of state.records) {
-      if (!record.pending && (record.cachedAt || 0) < cutoff) delete record.customer.photoPreview;
-    }
-  });
-}
-
-export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.filter(record=>!record.deleted).length,syncing:running.has(identity()),lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(needsPhoto).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {
@@ -190,7 +206,33 @@ export async function getLocalSnapshot() {
   };
 }
 export async function exportLocalBackup() { const state=await repository.read(identity());if(isAndroid()){await shareAndroidBackup(JSON.stringify(makeBackup(identity(),state),null,2));return;}const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
-export function startLocalSync() { const cleanup=()=>{try{void pruneTransientCache(identity()).catch(()=>undefined);}catch{}}; const listener=()=>{void syncNow().catch(()=>undefined);cleanup();}; window.addEventListener("online",listener); window.addEventListener("pagehide",()=>{listener();cleanup();}); const visibility=()=>{if(document.visibilityState==="hidden")listener();}; document.addEventListener("visibilitychange",visibility); const timer=setInterval(listener,60000); listener(); return ()=>{window.removeEventListener("online",listener);document.removeEventListener("visibilitychange",visibility);clearInterval(timer);}; }
+let syncUsers=0;
+let stopScheduler: (()=>void) | undefined;
+export function startLocalSync() {
+  syncUsers++;
+  if(!stopScheduler){
+    let stopped=false,busy=false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick=async()=>{
+      if(stopped||busy)return;
+      clearTimeout(timer);busy=true;let delay=60000;
+      try{
+        if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"&&navigator.onLine){
+          const scope=identity();await syncNow(false);
+          if(identity()===scope){const state=await repository.read(scope);if(state.pull?.cursor||state.operations.some(op=>op.state==="pending")||state.records.some(needsPhoto))delay=250;}
+        }
+      }catch{/* syncNow records the actionable error for the status panel; retry later. */}
+      finally{busy=false;if(!stopped)timer=setTimeout(()=>void tick(),delay);}
+    };
+    const wake=()=>{void tick();};
+    const visibility=()=>{if(document.visibilityState==="visible")wake();};
+    window.addEventListener("online",wake);window.addEventListener("focus",wake);window.addEventListener("banksetu-workspace-change",wake);
+    document.addEventListener("visibilitychange",visibility);wake();
+    stopScheduler=()=>{stopped=true;clearTimeout(timer);window.removeEventListener("online",wake);window.removeEventListener("focus",wake);window.removeEventListener("banksetu-workspace-change",wake);document.removeEventListener("visibilitychange",visibility);};
+  }
+  let released=false;
+  return()=>{if(released)return;released=true;if(--syncUsers===0){stopScheduler?.();stopScheduler=undefined;}};
+}
 
 export async function getConflicts() { return (await repository.read(identity())).operations.filter(op=>op.state!=="pending"); }
 export async function resolveConflict(operationId: string, choice: "local" | "cloud") {
