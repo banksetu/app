@@ -38,3 +38,9 @@ Validation: checked the actual dashboard write payload against the allowed keys 
 The user authorized publishing all accumulated drafts. Card-color rules are included in the hosting deployment. Automatic update checks now retry on reconnect, focus, visibility/resume and every five minutes while visible. Android's notice uses the existing in-app APK downloader; Windows retains its verified updater and backup path. This is an in-app notice, not an OS push service while the app is closed.
 
 Known form limits above remain visible: unstructured addresses require field review and physical printer calibration is not certified. The form's review and overflow checks remain enabled. Existing APKs need this release installed before they gain the new polling behavior.
+
+## 1.0.24 release (2026-10-06)
+
+User authorized publishing the accumulated draft and print repair. Cached WebContents references prevent destroyed-window getters in close callbacks. Snapshot lifetime extends through active print callbacks, cancellation is a normal outcome, concurrent preview/print requests are deduplicated, and printer failures remain visible inline. A modal preview offers page view and printer settings; selected printers receive the job directly without a second chooser. Packaged custom-origin resources use filesystem responses with MIME types; secondary instances no longer initialize the app.
+
+The supplied Bank Setu logo is applied to app branding, favicon, Windows icon and Android launcher/splash assets. No bank-specific logos or customer data were changed. Automated Windows Electron smoke tests cover resource loading, PDF generation and repeated cancel/reopen. A physical printer and installed-user-device verification are not available in this environment. Firestore card-theme rules still require the deployment service account's IAM access; hosting success alone does not establish rules deployment.

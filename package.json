@@ -1,7 +1,7 @@
 {
   "name": "app",
   "private": true,
-  "version": "1.0.23",
+  "version": "1.0.24",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,7 @@
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --win nsis --publish never",
     "desktop:pack:unsigned": "npm run build && electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false",
-    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs scripts/union-passbook.test.mjs",
+    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs scripts/union-passbook.test.mjs desktop/app-protocol.test.cjs",
     "test:bridge": "node --test scripts/bridge.test.mjs",
     "predev": "node scripts/prepare-client-assets.mjs",
     "android:sync": "npm run build && cap sync android",
@@ -64,7 +64,8 @@
       "dist/**",
       "desktop/*.cjs",
       "!desktop/*.test.cjs",
-      "package.json"
+      "package.json",
+      "!desktop/*smoke.cjs"
     ],
     "asar": true,
     "win": {
@@ -77,7 +78,8 @@
           ]
         }
       ],
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": false,
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

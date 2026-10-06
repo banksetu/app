@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.23",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.22/BankSetu-Setup-1.0.22-x64.exe",
-  "notes": "Automatic update notices on reconnect/resume, Android in-app download, card color save fix, and Union AOF with editable address review.",
-  "version": "1.0.23",
-  "releaseTag": "v1.0.23",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.23",
-  "androidBuild": 1000023,
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.23/BankSetu-Android-1000023.apk",
-  "windowsVersion": "1.0.23",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.23/BankSetu-Setup-1.0.23-x64.exe"
+  "latestVersion": "1.0.24",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.24/BankSetu-Setup-1.0.24-x64.exe",
+  "notes": "Print preview lifecycle and cancellation fixes, packaged Windows startup resource loading, and Bank Setu branding.",
+  "version": "1.0.24",
+  "releaseTag": "v1.0.24",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.24",
+  "androidBuild": 1000024,
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.24/BankSetu-Android-1000024.apk",
+  "windowsVersion": "1.0.24",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.24/BankSetu-Setup-1.0.24-x64.exe"
 }

@@ -5,7 +5,7 @@ const {installPrintPreview}=require('./print-preview.cjs');
 test('Windows preview freezes print HTML, isolates IPC, validates settings and keeps passbook size',async()=>{
   const handlers=new Map(),windows=[],pdfOptions=[],printOptions=[];
   class FakeWindow extends EventEmitter{
-    constructor(options){super();this.options=options;this.destroyed=false;this.webContents=new EventEmitter();this.webContents.mainFrame={};this.webContents.isDestroyed=()=>false;this.webContents.setWindowOpenHandler=()=>{};this.webContents.executeJavaScript=async()=>{};this.webContents.getPrintersAsync=async()=>[{name:'test-printer',isDefault:true}];this.webContents.printToPDF=async options=>{pdfOptions.push(options);return Buffer.from('%PDF-test')};this.webContents.print=(options,callback)=>{printOptions.push(options);callback(true)};windows.push(this);}
+    constructor(options){super();this.options=options;this.destroyed=false;this.contents=new EventEmitter();Object.defineProperty(this,"webContents",{get:()=>{if(this.destroyed)throw Error("Object has been destroyed");return this.contents}});this.webContents.mainFrame={};this.webContents.isDestroyed=()=>false;this.webContents.setWindowOpenHandler=()=>{};this.webContents.executeJavaScript=async()=>{};this.webContents.getPrintersAsync=async()=>[{name:'test-printer',isDefault:true}];this.webContents.printToPDF=async options=>{pdfOptions.push(options);return Buffer.from('%PDF-test /MediaBox [0 0 360 504]')};this.webContents.print=(options,callback)=>{printOptions.push(options);callback(true)};windows.push(this);}
     async loadURL(url){this.url=url}
     isDestroyed(){return this.destroyed}
     destroy(){this.destroyed=true;this.emit('closed')}
@@ -30,11 +30,31 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   await assert.rejects(handlers.get('print:action')(previewEvent,'print',{...settings,pageRanges:'0-2'}),/page range/);
   await handlers.get('print:action')(previewEvent,'print',settings);
   assert.deepEqual(printOptions[0].pageRanges,[{from:0,to:1},{from:3,to:3}]);
-  assert.equal(printOptions[0].silent,false);
-  assert.equal(printOptions[0].pageSize,undefined);
+  assert.equal(printOptions[0].silent,true);
+  assert.deepEqual(printOptions[0].pageSize,{width:127000,height:177800});
   await handlers.get('print:action')(previewEvent,'preview',{...settings,paper:'A4',landscape:true});
   assert.equal(pdfOptions.at(-1).pageSize,'A4');
   assert.equal(pdfOptions.at(-1).landscape,true);
   assert.equal((await handlers.get('print:action')(previewEvent,'save',settings)).message,'Save cancelled.');
-  preview.close();assert(snapshot.isDestroyed());
+  const originalPrint=snapshot.webContents.print;
+  snapshot.webContents.print=(_options,callback)=>callback(false,'cancelled');
+  assert.equal((await handlers.get('print:action')(previewEvent,'print',settings)).cancelled,true);
+  snapshot.webContents.print=(_options,callback)=>callback(false,'Printer offline');
+  await assert.rejects(handlers.get('print:action')(previewEvent,'print',settings),/Printer offline/);
+  let finishPrint;
+  snapshot.webContents.print=(_options,callback)=>{finishPrint=callback};
+  const pending=handlers.get('print:action')(previewEvent,'print',settings);
+  assert.match((await handlers.get('print:action')(previewEvent,'print',settings)).message,/wait/);
+  source.close(); // document.write source windows may close before the preview.
+  assert(!snapshot.isDestroyed());
+  preview.close();assert(!snapshot.isDestroyed());
+  finishPrint(true);await pending;assert(snapshot.isDestroyed());
+  const next=new FakeWindow({});bridge.attach(next);
+  const nextEvent={sender:next.webContents,senderFrame:next.webContents.mainFrame};
+  const count=windows.length;
+  await Promise.all([handlers.get('print:preview')(nextEvent,'<html/>'),handlers.get('print:preview')(nextEvent,'<html/>')]);
+  assert.equal(windows.length,count+2,'concurrent requests create one snapshot and preview');
+  windows.at(-1).close();
+  await handlers.get('print:preview')(nextEvent,'<html/>');
+  windows.at(-1).close();next.close();
 });
