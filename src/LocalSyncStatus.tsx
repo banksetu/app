@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, startLocalSync, syncNow } from "./core/localData";
+import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, syncNow } from "./core/localData";
 import type { QueueOperation } from "./core/schema";
 import { callBankSetuWorker } from "./workerApi";
 
@@ -17,16 +17,24 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
   const [storage, setStorage] = useState({ used: 0, quota: 0 });
 
   const refresh = () => {
+    if(!localModeEnabled()||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")return;
     void Promise.all([getLocalStatus(), getConflicts(), getLocalSnapshot()]).then(([nextStatus, nextConflicts, nextSnapshot]) => {
       setStatus(nextStatus); setConflicts(nextConflicts); setSnapshot(nextSnapshot);
     }).catch(reason => setError(reason instanceof Error ? reason.message : "Local database could not be read."));
-    void callBankSetuWorker<{ spreadsheetId?: string }>("/get-google-setup", {}).then(config => {
-      const id = String(config.spreadsheetId || ""); setSheetUrl(id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "");
-    }).catch(() => undefined);
     if (navigator.storage?.estimate) void navigator.storage.estimate().then(result => setStorage({ used: result.usage || 0, quota: result.quota || 0 }));
   };
 
-  useEffect(() => { if (!localModeEnabled()) return; const stop = startLocalSync(); const timer = window.setInterval(refresh, 5000); window.addEventListener("banksetu-sync-change", refresh); refresh(); return () => { stop(); clearInterval(timer); window.removeEventListener("banksetu-sync-change", refresh); }; }, []);
+  useEffect(() => {
+    const changed=()=>{if(visible)refresh();};
+    window.addEventListener("banksetu-sync-change",changed);window.addEventListener("banksetu-workspace-change",changed);changed();
+    if(visible){
+    void callBankSetuWorker<{ spreadsheetId?: string }>("/get-google-setup", {}).then(config => {
+      const id = String(config.spreadsheetId || ""); setSheetUrl(id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "");
+    }).catch(() => undefined);
+    }
+    return()=>{window.removeEventListener("banksetu-sync-change",changed);window.removeEventListener("banksetu-workspace-change",changed);};
+  },[visible]);
+
   if (!visible) return null;
   if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
 

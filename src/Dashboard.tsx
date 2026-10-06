@@ -1,3 +1,5 @@
+import { useSyncStatus } from "./core/useSyncStatus";
+import { syncNow } from "./core/localData";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken } from "./core/localData";
@@ -251,6 +253,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   const canControlGlobalDashboard = accountRole === "master_owner";
 
+  const syncStatus=useSyncStatus();
+  const syncDashboard=()=>{window.dispatchEvent(new Event("banksetu-sync-request"));void syncNow().catch(()=>undefined);};
   const [activePage, setActivePage] =
 
     useState<PageName>("dashboard");
@@ -1253,6 +1257,19 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
           </section>
 
           <div className="admin-wrapper" style={styles.adminWrapper}>
+
+            <button
+              type="button"
+              style={{ ...styles.dashboardSyncButton, opacity: syncStatus.syncing ? 0.65 : 1 }}
+              onClick={syncDashboard}
+              disabled={syncStatus.syncing}
+              aria-busy={syncStatus.syncing}
+              title={syncStatus.error || (!syncStatus.online ? "Offline — changes pending" : syncStatus.syncing ? "Syncing Google customer data…" : syncStatus.pending ? `${syncStatus.pending} changes pending` : "Sync customer data")}
+              aria-label="Sync dashboard data"
+            >
+              <span className={syncStatus.syncing ? "banksetu-sync-spinning" : undefined}>{!syncStatus.online || syncStatus.error ? "!" : "↻"}</span>
+            </button>
+
 
             <button
 
@@ -3569,11 +3586,27 @@ function StatusRow({
 
 const styles: Record<
 
+
   string,
 
   CSSProperties
 
 > = {
+  dashboardSyncButton: {
+    width: "38px",
+    height: "38px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: "7px",
+    borderRadius: "12px",
+    border: "1px solid rgba(71,226,200,0.24)",
+    background: "rgba(50,218,192,0.08)",
+    color: "#4ce0c6",
+    cursor: "pointer",
+    fontSize: "22px",
+    lineHeight: 1,
+  },
 
   page: {
 

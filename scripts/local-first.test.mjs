@@ -52,3 +52,60 @@ test('Master local-first save/search/sync stays outside client scope and retains
  await engine.syncNow();state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(writes,1);await engine.syncNow();assert.equal(writes,1);assert.deepEqual(await repository.read('user-a:tenant-a:connection-a'),clientBefore);
  storage.set('bankSetuConnectionId','master-replacement');navigator.onLine=false;assert.equal((await request({action:'searchCustomer',query:'Master customer'})).success,false);
 });
+
+test('fresh installation downloads every page automatically, hydrates photos and searches locally',async()=>{
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};storage.clear();connect('fresh-device');navigator.onLine=true;
+ globalThis.document=new EventTarget();document.visibilityState='visible';
+ const records=Array.from({length:1251},(_,i)=>({recordId:'cloud-'+i,rowNumber:i+2,revision:'v1',name:'Existing '+i,accountNo:String(i),...(i===0?{photoUrl:'drive-photo'}:{})}));
+ const calls=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body.action);assert.equal(body.connectionId,'fresh-device');
+ if(body.action==='getCustomerByRowNumber')return new Response(JSON.stringify({success:true,customer:{...records[0],photoPreview:'data:image/png;base64,cGhvdG8='},rowNumber:2}));
+ assert.equal(body.action,'getCustomerPage');const end=Math.min(body.cursor+250,records.length);return new Response(JSON.stringify({success:true,customers:records.slice(body.cursor,end),nextCursor:end,hasNextPage:end<records.length}));};
+ // Mount before workspace verification completes, then wake when it becomes ready.
+ storage.delete('bankSetuWorkspaceReady');const stop=engine.startLocalSync();
+ try{
+ await new Promise(resolve=>setTimeout(resolve,10));assert.equal(calls.length,0);
+ storage.set('bankSetuWorkspaceReady','true');window.dispatchEvent(new Event('banksetu-workspace-change'));
+ const deadline=Date.now()+10000;
+ while(Date.now()<deadline){const status=await engine.getLocalStatus();if(status.lastCompletedAt&&status.mediaPending===0&&!status.syncing)break;await new Promise(resolve=>setTimeout(resolve,50));}
+ const state=await repository.read('user-a:tenant-a:fresh-device');assert.equal(state.records.length,1251);assert(state.pull.lastCompletedAt);assert.match(state.records.find(record=>record.recordId==='cloud-0').customer.photoPreview,/data:image/);
+ const before=calls.length;const hit=await request({action:'searchCustomer',query:'Existing 0'});assert.equal(hit.local,true);assert.equal(calls.length,before,'local hits never await Google');
+ navigator.onLine=false;assert.equal((await request({action:'searchCustomer',query:'Existing 1250'})).customer.name,'Existing 1250');
+ }finally{stop();}
+});
+
+test('interrupted download resumes its cursor, exposes error and never overwrites a pending local edit',async()=>{
+ connect('resume-device');navigator.onLine=true;const scope='user-a:tenant-a:resume-device';
+ await repository.transact(scope,state=>state.records.push({key:'edit',recordId:'edit',scope,rowNumber:2,revision:'old',customer:{name:'Unsynced edit'},pending:true}));
+ let fail=true;const cursors=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);cursors.push(body.cursor);if(body.cursor===250&&fail)throw Error('Network interrupted');return new Response(JSON.stringify({success:true,customers:body.cursor===0?[{recordId:'edit',name:'Cloud old',rowNumber:2},{recordId:'older',name:'Older',rowNumber:3}]:[{recordId:'last',name:'Last',rowNumber:4}],hasNextPage:body.cursor===0,nextCursor:body.cursor===0?250:251}));};
+ await assert.rejects(engine.syncNow(),/Network interrupted/);assert.match((await engine.getLocalStatus()).error,/Network interrupted/);assert.equal((await repository.read(scope)).pull.cursor,250);
+ fail=false;await engine.syncNow();const state=await repository.read(scope);assert.equal(cursors.at(-1),250);assert.equal(state.records.find(r=>r.recordId==='edit').customer.name,'Unsynced edit');assert.equal(state.records.find(r=>r.recordId==='older').deleted,undefined);assert.equal((await engine.getLocalStatus()).error,'');
+});
+
+test('shared recovery backs off, reconnects immediately, retains queued identity and exposes real activity',async()=>{
+ connect('health-engine');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:health-engine';const original=(await repository.read(scope)).operations[0].operationId;
+ const nativeTimeout=globalThis.setTimeout,nativeClear=globalThis.clearTimeout;
+ const timers=new Map();let id=0;globalThis.setTimeout=(fn,delay)=>{timers.set(++id,{fn,delay});return id};globalThis.clearTimeout=key=>timers.delete(key);
+ let healthy=false,attempts=0,recoveries=0;const activity=[];
+ const changed=()=>{void engine.getLocalStatus().then(status=>activity.push(status.syncing))};window.addEventListener('banksetu-sync-change',changed);
+ engine.configureConnectionRecovery(async()=>{recoveries++});
+ handler=async(_url,init)=>{if(!init?.body)return new Response('{}');const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){attempts++;assert.equal(body.operation.operationId,original);if(!healthy)throw Error('Backend unavailable');return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,photoPreview:'data:image/png;base64,eA=='}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1',photoPreview:'data:image/png;base64,eA=='}],hasNextPage:false}));};
+ const settle=async()=>{for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));};
+ navigator.onLine=true;const stop=engine.startLocalSync();
+ try{
+ await settle();assert.equal(attempts,1);assert([...timers.values()].some(t=>t.delay===5000));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await engine.getLocalStatus()).syncing,false);
+ const retry=[...timers.values()].find(t=>t.delay===5000);retry.fn();await settle();assert.equal(attempts,2);assert([...timers.values()].some(t=>t.delay===10000));
+ healthy=true;window.dispatchEvent(new Event('online'));await settle();assert.equal(attempts,3);assert.equal((await repository.read(scope)).operations.length,0);assert(activity.includes(true));assert.equal(activity.at(-1),false);assert(recoveries>=2);
+ const before=attempts;document.visibilityState='visible';window.dispatchEvent(new Event('focus'));await settle();assert.equal(attempts,before,'focus does not poll an already healthy connection');
+ }finally{stop();engine.configureConnectionRecovery(undefined);window.removeEventListener('banksetu-sync-change',changed);globalThis.setTimeout=nativeTimeout;globalThis.clearTimeout=nativeClear;}
+});
+
+test('online entry survives auth refresh failure; cloud fallback caches customers for later local search',async()=>{
+ connect('fast-entry');navigator.onLine=true;const user=globalThis.__auth.currentUser;const token=user.getIdToken;user.getIdToken=async()=>{throw Error('refresh unavailable')};
+ try{assert.equal(await engine.getDataIdToken(),'');const saved=await request({action:'saveCustomer',customer});assert(saved.queued);assert.equal((await repository.read('user-a:tenant-a:fast-entry')).operations.length,1);}finally{user.getIdToken=token;}
+ connect('fallback');let reads=0;
+ handler=async()=>{reads++;return new Response(JSON.stringify({success:true,rowNumber:2,customer:{recordId:'found',name:'Cloud customer',revision:'r1'}}));};
+ await request({action:'searchCustomer',query:'Cloud customer'});assert.equal(reads,1);assert.equal((await request({action:'searchCustomer',query:'Cloud customer'})).local,true);assert.equal(reads,1);
+});

@@ -3711,3 +3711,6 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 @media (max-width: 900px){
   .mobile-menu-button{background:var(--menu-gradient,linear-gradient(135deg,#735ee8,#927bf5))!important;color:#fff!important;border:1px solid rgba(255,255,255,.34)!important;}
 }
+
+@keyframes banksetu-sync-rotate{to{transform:rotate(360deg)}}
+.banksetu-sync-spinning{display:inline-block;animation:banksetu-sync-rotate 1s linear infinite}

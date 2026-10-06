@@ -24,6 +24,7 @@ export function setTenantApiUrl(value: string): void {
 export function setTenantWorkspaceReady(ready: boolean): void {
   if (ready) sessionStorage.setItem("bankSetuWorkspaceReady", "true");
   else sessionStorage.removeItem("bankSetuWorkspaceReady");
+  window.dispatchEvent(new Event("banksetu-workspace-change"));
 }
 
 export function removeTenantApiUrl(): void {

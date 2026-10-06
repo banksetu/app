@@ -1,7 +1,7 @@
 {
   "name": "app",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.26",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --win nsis --publish never",
-    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs",
+    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/auth-navigation.test.mjs",
     "test:bridge": "node --test scripts/bridge.test.mjs",
     "predev": "node scripts/prepare-client-assets.mjs"
   },
