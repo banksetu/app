@@ -20,3 +20,14 @@ Remaining before release:
 - Aadhaar remains masked, matching existing app behavior.
 
 Validation: `node --test scripts/bank-pdf.test.mjs` (19 passed); `npm run build` passed with existing bundle-size warning. No production access or deploy command was used.
+
+
+## Card color save fix (same draft)
+
+The dashboard writes `cardTheme` to `appSettings/uiTheme`, but the rules' allowed-key list omitted it. This rejects card-color writes; once a document contains that key, it also prevents otherwise valid merged appearance updates.
+
+The rules now accept an optional string `cardTheme`. Existing master-owner, approved/active status, read permissions, required fields and all tenant restrictions are unchanged. Older settings without a card theme remain valid.
+
+Release requirement: deploy the updated `firestore.rules` together with this planned release. A frontend-only deploy cannot fix the server-side rejection. No rules have been deployed in this draft.
+
+Validation: checked the actual dashboard write payload against the allowed keys and reviewed the two-line rules diff. Live Firebase validation is pending the authorized combined release.

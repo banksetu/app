@@ -69,10 +69,11 @@ service cloud.firestore {
     match /appSettings/uiTheme {
       allow get: if approvedUser();
       allow create, update: if isMasterOwner()
-        && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
+        && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'cardTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
         && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
         && request.resource.data.dashboardTheme is string
         && request.resource.data.menuTheme is string
+        && (!('cardTheme' in request.resource.data) || request.resource.data.cardTheme is string)
         && request.resource.data.updatedBy is string
         && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
         && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool);
