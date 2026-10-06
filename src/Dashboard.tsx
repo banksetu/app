@@ -1,5 +1,4 @@
 import { useSyncStatus } from "./core/useSyncStatus";
-import { syncNow } from "./core/localData";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken } from "./core/localData";
@@ -254,7 +253,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   const canControlGlobalDashboard = accountRole === "master_owner";
 
   const syncStatus=useSyncStatus();
-  const syncDashboard=()=>{window.dispatchEvent(new Event("banksetu-sync-request"));void syncNow().catch(()=>undefined);};
+  const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
     useState<PageName>("dashboard");

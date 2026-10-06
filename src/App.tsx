@@ -1,6 +1,6 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 
-import { startLocalSync, configureConnectionRecovery, syncNow } from "./core/localData";
+import { startLocalSync, configureConnectionRecovery } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
@@ -119,7 +119,7 @@ function App() {
     return role;
   }, []);
 
-  const prepareClientWorkspace = useCallback(async () => {
+  const prepareClientWorkspace = useCallback(async (signal?:AbortSignal) => {
     const profile=activeProfile.current;const user=auth.currentUser;
     if(!profile||!user)return;
     const role=normalize(profile.role);
@@ -128,9 +128,9 @@ function App() {
     if(sessionStorage.getItem("bankSetuWorkspaceReady")!=="true"){
       try{await resumeOfflineSession(user.uid,{role,tenantId:String(profile.tenantId||"")});}catch{/* First use needs a verified connection. */}
     }
-    if(!stillCurrent())return;
-    const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string;workspaceStatus?:string;dataApiReady?:boolean;spreadsheetId?:string;photoFolderId?:string;connectionMode?:string;connectionId?:string}>("/get-google-setup",{});
-    if(!stillCurrent())return;
+    if(signal?.aborted||!stillCurrent())return;
+    const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string;workspaceStatus?:string;dataApiReady?:boolean;spreadsheetId?:string;photoFolderId?:string;connectionMode?:string;connectionId?:string}>("/get-google-setup",{},signal);
+    if(signal?.aborted||!stillCurrent())return;
     const master=["master_owner","admin"].includes(role);
     const ready=master?setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl:setup.workspaceStatus==="active"&&setup.dataApiReady&&setup.apiUrl&&setup.spreadsheetId&&setup.photoFolderId;
     if(!ready){
@@ -251,6 +251,8 @@ function App() {
       }
 
       setCheckingSession(true);
+      // Stop the previous account's sync lifecycle before validating a switched user.
+      setIsLoggedIn(false);
       if(!navigator.onLine){
         void resumeOfflineSession(user.uid).then(claims=>{
           if(auth.currentUser?.uid!==user.uid)return;
@@ -362,7 +364,6 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      await Promise.race([syncNow().catch(() => undefined), new Promise(resolve => setTimeout(resolve, 3000))]);
       clearProfileListener();
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
