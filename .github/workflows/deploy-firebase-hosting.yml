@@ -127,6 +127,8 @@ jobs:
           NODE
 
       - name: Deploy appearance permissions
+        id: appearance_rules
+        continue-on-error: true
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/banksetu-firebase-deploy.json
@@ -175,7 +177,13 @@ jobs:
             `Commit: ${process.env.GITHUB_SHA}`,
             `Live app: ${origin}`,
             'The production build contains the Cloudflare Worker URL.',
-            'Firestore rules were deployed; Apps Script is unchanged. Authenticated client-isolation and Google setup tests remain required.',
+            'Rules deployment outcome: ${{ steps.appearance_rules.outcome }}. Apps Script is unchanged.',
             '',
           ].join('\n'));
           NODE
+
+      - name: Report incomplete rules deployment
+        if: steps.appearance_rules.outcome == 'failure'
+        run: |
+          echo '::error::Hosting is live, but Firestore rules were NOT deployed. The deployment service account needs authorized Service Usage and Firebase Rules access. Card-color saving remains pending.'
+          exit 1
