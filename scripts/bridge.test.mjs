@@ -15,3 +15,31 @@ test('delete is tenant-bound, administrator-only, idempotent and leaves a tombst
 test('paged customer downloads preserve cursors and include deletion tombstones without returning the entire Sheet',()=>{const {context,rows}=bridge();for(let i=0;i<600;i++){const row=Array(27).fill('');row[0]=String(i);row[2]='Customer '+i;row[24]=crypto.randomUUID();if(i===2)row[26]='true';rows.push(row);}const first=context.localFirstRead({action:'getCustomerPage',cursor:0,pageSize:250},user);assert.equal(first.customers.length,249);assert.equal(first.deletedIds.length,1);assert.equal(first.nextCursor,250);assert(first.hasNextPage);const last=context.localFirstRead({action:'getCustomerPage',cursor:500,pageSize:250},user);assert.equal(last.customers.length,100);assert.equal(last.hasNextPage,false);assert.throws(()=>context.localFirstRead({action:'getCustomerPage',cursor:-1},user),/Invalid/);});
 
 test('Master sync keeps existing records, assigns stable IDs and replays safely',()=>{const {context,rows}=bridge();rows.push(['old-id','9001','Existing Master']);const master={connectionId:'master-existing',role:'master_owner',email:'master@example.com'};const first=context.localFirstRead({action:'getCustomerPage',cursor:0,pageSize:250},master);assert.equal(first.customers[0].name,'Existing Master');assert(first.customers[0].recordId);const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:master.connectionId,operation:op},master).success);assert(context.syncCustomerOperation({connectionId:master.connectionId,operation:op},master).replayed);assert.equal(rows.length,3);assert.equal(rows[1][2],'Existing Master');});
+
+test('tenant-bound sync delete trashes linked Drive files before confirming Sheet tombstone',()=>{
+ const {context,rows}=bridge();
+ const attached=new Map();
+ const folderId='tenant-folder';
+ const file=(id,parent)=>({trashed:false,getParents:()=>{let used=false;return {hasNext:()=>!used,next:()=>{used=true;return {getId:()=>parent};}};},setTrashed(value){this.trashed=value;}});
+ attached.set('photo-file-id-1234567890',file('photo-file-id-1234567890',folderId));
+ attached.set('pdf-file-id-12345678901',file('pdf-file-id-12345678901',folderId));
+ context.DriveApp={getFileById:id=>{if(!attached.has(id))throw Error('File missing');return attached.get(id);},
+   getFolderById:id=>{assert.equal(id,folderId);return {getFilesByName:()=>({hasNext:()=>false})};}};
+ const admin={...user,photoFolderId:folderId};const op=makeOp(crypto.randomUUID());
+ const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},admin);
+ rows[1][19]='https://drive.google.com/file/d/photo-file-id-1234567890/view';
+ rows[1][20]='https://drive.google.com/file/d/pdf-file-id-12345678901/view';
+ const revision=context.localFirstRead({action:"getAllCustomers"},admin).customers[0].revision;
+ const deletion={...op,operationId:crypto.randomUUID(),action:'deleteCustomer',baseRevision:revision};
+ const result=context.syncCustomerOperation({connectionId:'bound',operation:deletion},admin);
+ assert(result.success&&result.deleted&&result.driveDeleted);assert.equal(rows[1][26],'true');
+ assert(attached.get('photo-file-id-1234567890').trashed);assert(attached.get('pdf-file-id-12345678901').trashed);
+ const replay=context.syncCustomerOperation({connectionId:'bound',operation:deletion},admin);
+ assert(replay.replayed&&replay.deleted&&replay.driveDeleted);
+ const foreign=makeOp(crypto.randomUUID());const other=context.syncCustomerOperation({connectionId:'bound',operation:foreign},admin);
+ rows[2][19]='https://drive.google.com/file/d/foreign-file-123456789012/view';
+ attached.set('foreign-file-123456789012',file('foreign-file-123456789012','another-tenant'));
+ const denied={...foreign,operationId:crypto.randomUUID(),action:'deleteCustomer',baseRevision:context.localFirstRead({action:"getAllCustomers"},admin).customers.find(item=>item.recordId===foreign.recordId).revision};
+ assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:denied},admin),/outside this tenant/);
+ assert.notEqual(rows[2][26],'true');
+});

@@ -76,28 +76,8 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
   if (action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) return resultResponse({success:false,message:"Administrator permission is required."});
   if (action === "saveCustomer" && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
-  if (action === "deleteCustomer") {
-    if (!navigator.onLine) return resultResponse({success:false,message:"Connect to Google Sheets before deleting this customer. No data was deleted."});
-    if (!existing || existing.deleted || existing.pending || state.operations.some(op => op.recordId === existing.recordId)) return resultResponse({success:false,message:"Wait for this customer's pending changes to sync before deleting. No data was deleted."});
-    const operationId = crypto.randomUUID();
-    const operation = {operationId,recordId:existing.recordId,action:"deleteCustomer",customer:existing.customer,baseRevision:existing.revision,rowNumber:existing.rowNumber};
-    try {
-      const response = await cloudRead(input,{...init,body:JSON.stringify({...payload,action:"syncCustomerOperation",connectionId:sessionStorage.getItem("bankSetuConnectionId"),operation})});
-      if (!response.ok) throw new Error("Google Sheet is unavailable.");
-      const result = await response.json();
-      if (!result.success || result.deleted !== true) return resultResponse({success:false,message:result.message || "Google Sheet did not confirm deletion. No local record was deleted."});
-      if (identity() !== scope) throw new Error("Workspace changed after Google Sheet deletion; reload the original workspace to reconcile local data.");
-      await repository.transact(scope,current=>{
-        const record=current.records.find(item=>item.recordId===existing.recordId);
-        if (!record || record.deleted || record.pending || record.revision !== existing.revision) throw new Error("Local record changed during deletion; reconnect and reconcile the Google Sheet before continuing.");
-        record.deleted=true;record.pending=false;record.revision=String(result.revision||record.revision);
-      });
-      announce();
-      return resultResponse({success:true,deleted:true,message:"Customer deleted from Google Sheet and local database."});
-    } catch (error) {
-      return resultResponse({success:false,message:(error instanceof Error ? error.message : "Delete failed.")+" Check the Google Sheet status before retrying; no local success was recorded."});
-    }
-  }
+  if (action === "deleteCustomer" && (existing?.deleted || state.operations.some(op => op.recordId === existing?.recordId && op.state !== "pending")))
+    return resultResponse({success:false,message:"Resolve this customer's pending review before deleting. Local data was unchanged."});
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
   const combined = {...existing?.customer, ...customer};
@@ -116,8 +96,17 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   });
   announce();
   window.dispatchEvent(new Event("banksetu-sync-request"));
-  if (navigator.onLine) void syncNow(false).catch(() => undefined);
-  return resultResponse({success:true,queued:true,rowNumber:localRow,recordId,message:"Saved on this device. Pending Google sync; keep this device's data until sync completes.",photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
+  if (navigator.onLine) void (async () => {
+    // A running sync may have captured its queue before this write.
+    await syncNow(false).catch(() => undefined);
+    if (identity() !== scope) return;
+    const remaining = await repository.read(scope);
+    if (remaining.operations.some(op => op.operationId === operationId && op.state === "pending"))
+      await syncNow(false).catch(() => undefined);
+  })().catch(() => undefined);
+  return resultResponse({success:true,deleted:action==="deleteCustomer",queued:true,rowNumber:localRow,recordId,
+    message:action==="deleteCustomer" ? "Deleted locally. Google Sheet and Drive deletion is pending sync." : "Saved on this device. Pending Google sync; keep this device's data until sync completes.",
+    photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 async function cacheResponse(scope: string, value: Record<string, unknown>) {
@@ -177,6 +166,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
     const value=await send({action:"syncCustomerOperation",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
+    if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true))
+      throw new Error("Google Sheet/Drive deletion is not confirmed. Update this tenant's Apps Script bridge; local deletion remains pending.");
     await repository.transact(scope, state => {
       const queued = state.operations.find(item => item.operationId === op.operationId);
       if (!queued) return;

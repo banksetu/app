@@ -3062,6 +3062,32 @@ function localFirstRead(request, authUser) {
     return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches:customers,multipleMatches:customers.length>1});
   } finally { lock.releaseLock(); }
 }
+function deleteSyncedCustomerDriveFiles(row, authUser) {
+  const folderId = cleanValue(authUser.photoFolderId);
+  const urls = [cleanValue(row[19]), cleanValue(row[20])].filter(Boolean);
+  if (urls.length && !folderId) throw new Error("This tenant has no verified Drive folder for customer deletion.");
+  const ids = [...new Set(urls.map(url => {
+    const id = extractDriveFileId(url);
+    if (!id && /drive.google.com/i.test(url)) throw new Error("Customer Drive file link is invalid; deletion remains pending.");
+    return id;
+  }).filter(Boolean))];
+  for (const id of ids) {
+    const file = DriveApp.getFileById(id);
+    if (!fileBelongsToFolder(file, folderId)) throw new Error("Customer file is outside this tenant's Drive folder.");
+    file.setTrashed(true);
+  }
+  // Older customer photos may have been saved by customer ID instead of URL.
+  if (folderId && cleanValue(row[0])) {
+    const folder = DriveApp.getFolderById(folderId);
+    const base = safeFileName(row[0]);
+    for (const extension of [".jpg",".jpeg",".png",".webp",".JPG",".JPEG",".PNG",".WEBP"]) {
+      const files = folder.getFilesByName(base + extension);
+      while (files.hasNext()) files.next().setTrashed(true);
+    }
+  }
+  return true;
+}
+
 function syncCustomerOperation(request, authUser) {
   const op = request.operation || {};
   if (request.connectionId !== authUser.connectionId || !authUser.connectionId) return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed. Old queue remains on its original connection."});
@@ -3075,7 +3101,11 @@ function syncCustomerOperation(request, authUser) {
     const index = rows.findIndex(row => String(row[24]) === op.recordId);
     const existing = index >= 0 ? rows[index] : null;
     const operations = existing && existing[25] ? JSON.parse(existing[25]) : [];
-    if (operations.includes(op.operationId)) return jsonResponse({success:true,replayed:true,rowNumber:index+2,revision:syncRevision(existing),customer:syncCustomerObject(existing,index+2)});
+    if (operations.includes(op.operationId)) {
+      const deleted = op.action === "deleteCustomer" && existing[26] === "true";
+      if (deleted) deleteSyncedCustomerDriveFiles(existing, authUser);
+      return jsonResponse({success:true,replayed:true,rowNumber:index+2,revision:syncRevision(existing),deleted,driveDeleted:deleted,customer:syncCustomerObject(existing,index+2)});
+    }
     if (existing && (existing[26] === "true" || op.baseRevision !== syncRevision(existing))) return jsonResponse({success:false,code:"CONFLICT",message:"This customer changed in Google Sheets. Both versions are retained for administrator review.",customer:syncCustomerObject(existing,index+2)});
     if (!existing && op.action !== "saveCustomer") return jsonResponse({success:false,code:"CONFLICT",message:"The original customer was removed. No other row was changed."});
     if (!existing && op.baseRevision) return jsonResponse({success:false,code:"CONFLICT",message:"Original record is missing."});
@@ -3093,6 +3123,7 @@ function syncCustomerOperation(request, authUser) {
       const document = saveBoundDocument(customer.pdfDataUrl, customer.pdfFileName || customer.enrolId + ".pdf", authUser.photoFolderId, op.operationId);
       customer.pdfUrl = document.driveUrl;
     }
+    if (op.action === "deleteCustomer") deleteSyncedCustomerDriveFiles(existing, authUser);
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
     if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");
@@ -3101,7 +3132,7 @@ function syncCustomerOperation(request, authUser) {
     if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
     SpreadsheetApp.flush();
     const saved = sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0];
-    return jsonResponse({success:true,rowNumber,revision:syncRevision(saved),deleted:op.action === "deleteCustomer",customer:syncCustomerObject(saved,rowNumber)});
+    return jsonResponse({success:true,rowNumber,revision:syncRevision(saved),deleted:op.action === "deleteCustomer",driveDeleted:op.action === "deleteCustomer",customer:syncCustomerObject(saved,rowNumber)});
   } finally { lock.releaseLock(); }
 }
 function initializeClientWorkspace() {

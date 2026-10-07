@@ -146,3 +146,35 @@ test('online entry survives auth refresh failure; cloud fallback caches customer
  handler=async()=>{reads++;return new Response(JSON.stringify({success:true,rowNumber:2,customer:{recordId:'found',name:'Cloud customer',revision:'r1'}}));};
  await request({action:'searchCustomer',query:'Cloud customer'});assert.equal(reads,1);assert.equal((await request({action:'searchCustomer',query:'Cloud customer'})).local,true);assert.equal(reads,1);
 });
+
+test('customer delete stays local first, syncs immediately on reconnect, and never crosses a tenant scope',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'fresh-firebase-token'};
+ connect('delete-a');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'DELETE-1',accountNo:'9901'}});
+ const deleted=await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
+ assert.equal(deleted.success,true);assert.equal(deleted.deleted,true);assert.equal(deleted.queued,true);
+ assert.equal((await request({action:'searchCustomer',query:'DELETE-1'})).success,false);
+ let state=await repository.read('user-a:tenant-a:delete-a');assert.equal(state.operations.length,2);
+ connect('delete-other');assert.equal((await request({action:'searchCustomer',query:'DELETE-1'})).success,false);
+ connect('delete-a');navigator.onLine=true;let actions=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);actions.push(body.action);
+   if(body.action==='syncCustomerOperation')return new Response(JSON.stringify({
+     success:true,rowNumber:9,revision:body.operation.action==='deleteCustomer'?'r2':'r1',
+     deleted:body.operation.action==='deleteCustomer',driveDeleted:body.operation.action==='deleteCustomer',
+     customer:{...customer,recordId:saved.recordId,rowNumber:9,revision:'r2'}}));
+   return new Response(JSON.stringify({success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:1}));
+ };
+ await engine.syncNow(false);
+ state=await repository.read('user-a:tenant-a:delete-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].deleted,true);
+ assert.equal(actions.filter(item=>item==='syncCustomerOperation').length,2);
+ assert.equal((await repository.read('user-a:tenant-a:delete-other')).records.length,0);
+ navigator.onLine=false;const second=await request({action:'saveCustomer',customer:{...customer,enrolId:'DELETE-2',accountNo:'9902'}});
+ await request({action:'deleteCustomer',rowNumber:second.rowNumber});navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='syncCustomerOperation'?
+   {success:true,rowNumber:10,revision:'r3',deleted:body.operation.action==='deleteCustomer',customer:{...customer,recordId:second.recordId,rowNumber:10,revision:'r3'}}:
+   {success:true,customers:[],hasNextPage:false,nextCursor:1}));};
+ await assert.rejects(engine.syncNow(false),/Drive deletion is not confirmed/);
+ state=await repository.read('user-a:tenant-a:delete-a');assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
+ assert.equal(state.records.find(record=>record.recordId===second.recordId).deleted,true);
+ navigator.onLine=false;
+});

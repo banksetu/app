@@ -28,7 +28,64 @@ async function request(body: Record<string, unknown>) {
   return response.json();
 }
 
-export function snapshot(customer: Customer): Promise<Blob> {
+async function previewImage(card: HTMLElement): Promise<Blob> {
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;z-index:-1;pointer-events:none";
+  const copy = card.cloneNode(true) as HTMLElement;
+  copy.querySelector(".customer-preview-close")?.remove();
+  copy.querySelector(".customer-preview-actions")?.remove();
+  copy.style.cssText += ";width:760px!important;max-height:none!important;overflow:visible!important;border-radius:20px!important";
+  const fixed: [string,string][] = [
+    [".customer-preview-heading","padding:19px 24px!important;gap:18px!important"],
+    [".customer-preview-avatar","width:52px!important;height:52px!important;font-size:34px!important"],
+    [".customer-preview-content","margin:16px 20px 20px!important;padding:20px!important"],
+    [".customer-preview-identity","gap:24px!important;flex-wrap:nowrap!important"],
+    [".customer-preview-identity>img","width:132px!important;height:146px!important"],
+    [".customer-preview-photo-placeholder","width:132px!important;height:146px!important"],
+    [".customer-preview-status","order:0!important"],
+    [".customer-preview-bottom","grid-template-columns:repeat(2,minmax(0,1fr))!important"],
+  ];
+  for (const [selector,css] of fixed) copy.querySelectorAll<HTMLElement>(selector).forEach(node => {node.style.cssText += ";" + css;});
+  copy.querySelectorAll<HTMLElement>(".customer-preview-section dl>div").forEach(node => {node.style.gridTemplateColumns="minmax(130px,34%) 1fr";});
+  host.appendChild(copy);
+  document.body.appendChild(host);
+  let url = "";
+  try {
+    await document.fonts.ready;
+    for (const img of copy.querySelectorAll<HTMLImageElement>("img")) {
+      if (img.src.startsWith("data:")) continue;
+      const response = await fetch(img.src, {mode:"cors"});
+      if (!response.ok) throw new Error("Customer photo could not be included in the share image.");
+      const blob = await response.blob();
+      img.src = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+      await img.decode();
+    }
+    for (const node of [copy,...Array.from(copy.querySelectorAll<HTMLElement>("*"))]) {
+      const computed = getComputedStyle(node);
+      const inline = node.style;
+      for (let i=0;i<computed.length;i++) {
+        const property=computed.item(i);
+        inline.setProperty(property,computed.getPropertyValue(property),"important");
+      }
+    }
+    copy.querySelectorAll("dt").forEach(node => {node.textContent = (node.textContent || "") + " :";});
+    copy.setAttribute("xmlns","http://www.w3.org/1999/xhtml");
+    const height=Math.ceil(copy.scrollHeight);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="760" height="${height}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(copy)}</foreignObject></svg>`;
+    url=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml;charset=utf-8"}));
+    const image=new Image();image.src=url;await image.decode();
+    const canvas=document.createElement("canvas");canvas.width=1520;canvas.height=height*2;
+    const ctx=canvas.getContext("2d");if(!ctx)throw new Error("Share image cannot be created.");
+    ctx.scale(2,2);ctx.drawImage(image,0,0);
+    return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Share image cannot be created.")),"image/png"));
+  } finally {
+    host.remove();
+    if (url) URL.revokeObjectURL(url);
+  }
+}
+
+export function snapshot(customer: Customer, card?: HTMLElement | null): Promise<Blob> {
+  if (card) return previewImage(card);
   return new Promise(async (resolve, reject) => {
     try {
       const fields = visibleFields(customer);
@@ -68,6 +125,7 @@ export function snapshot(customer: Customer): Promise<Blob> {
 
 export default function AllCustomerData() {
   const [query, setQuery] = useState("");
+  const previewCard = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<Customer[]>([]);
   const [selected, setSelected] = useState<Customer | null>(null);
   const [error, setError] = useState("");
@@ -159,7 +217,7 @@ export default function AllCustomerData() {
   const share = async () => {
     if (!selected) return;
     try {
-      const blob = await snapshot(selected);
+      const blob = await snapshot(selected, previewCard.current);
       const name = "BankSetu-customer-preview.png";
       if (isAndroid()) {
         const data = await new Promise<string>((resolve, reject) => {
@@ -209,7 +267,7 @@ export default function AllCustomerData() {
       {!query.trim() && more && <button type="button" disabled={loading} onClick={() => void loadPage()}>Load more customers</button>}
     </div>
     {selected && <div className="customer-preview-overlay" role="presentation" onClick={() => setSelected(null)}>
-      <div className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
+      <div ref={previewCard} className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
         <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
         <div className="customer-preview-content">
           <div className="customer-preview-identity">

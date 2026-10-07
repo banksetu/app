@@ -1,5 +1,5 @@
 import { initializeApp, deleteApp } from "firebase/app";
-import { localDataFetch, getDataIdToken } from "./core/localData";
+import { localDataFetch, getDataIdToken, localModeEnabled } from "./core/localData";
 import {
 
   useRef,
@@ -175,6 +175,8 @@ type SearchCustomerResponse = {
 type ApiResponse = {
 
   success: boolean;
+  deleted?: boolean;
+  queued?: boolean;
 
   message?: string;
 
@@ -4231,7 +4233,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         if (
 
-          !result.success || (result as ApiResponse & {deleted?:boolean; queued?:boolean}).deleted !== true || Boolean((result as ApiResponse & {queued?:boolean}).queued)
+          !result.success || (localModeEnabled() && result.deleted !== true)
 
         ) {
 
@@ -4283,9 +4285,9 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         showMessage(
 
-          "Customer deleted successfully.",
+          result.queued ? "Customer deleted locally. Google Sheet and Drive deletion is pending sync." : "Customer deleted successfully.",
 
-          "success"
+          result.queued ? "info" : "success"
 
         );
 
