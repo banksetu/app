@@ -13,6 +13,7 @@ import { getTenantApiUrl } from "./tenantApi";
 
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
+import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 
 
 
@@ -353,6 +354,8 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
   };
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
   const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
+  const alignmentEnabled = isUnion || isAssamBank(alignmentBank);
 
 
   const [query, setQuery] = useState("");
@@ -378,6 +381,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
   const [loading, setLoading] = useState(false);
 
   const [printing, setPrinting] = useState(false);
+  const [alignmentOpen, setAlignmentOpen] = useState(false);
   const [directPrinting, setDirectPrinting] = useState(false);
 
 
@@ -724,7 +728,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
 
-  const printPassbook = async () => {
+  const printPassbook = async (offset?: PrintOffset, test = false) => {
 
     if (!previewCustomer) {
 
@@ -780,7 +784,18 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
       // A previous "Printed/Delivered" status must never block re-printing.
 
+      if (offset) {
+        const page = document.querySelector<HTMLElement>(".passbook-page");
+        if (!page) throw new Error("Passbook print layout is unavailable.");
+        page.style.setProperty("--alignment-x", `${offset.x}mm`);
+        page.style.setProperty("--alignment-y", `${offset.y}mm`);
+        page.classList.add("alignment-print-active");
+      }
       window.print();
+      if (test) {
+        setMessage("Test print dialog opened.");
+        return;
+      }
 
 
 
@@ -851,6 +866,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
           : "Passbook could not be printed."
 
       );
+      if (offset) throw err instanceof Error ? err : new Error("Passbook could not be printed.");
 
     } finally {
 
@@ -2202,6 +2218,13 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
             .union-fold { top:85mm!important; }
           }
         ` : ""}
+        @media print {
+          .passbook-page.alignment-print-active .union-document,
+          .passbook-page.alignment-print-active .assam-quick-document,
+          .passbook-page.alignment-print-active .passbook-shell {
+            transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) !important;
+          }
+        }
       `}</style>
 
 
@@ -3022,6 +3045,12 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
       )}
 
+      {alignmentOpen && alignmentEnabled && <PrintAlignmentPreview
+        bankName={alignmentBank}
+        sourceSelector={isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
+        onClose={() => setAlignmentOpen(false)}
+        onPrint={(offset, test) => printPassbook(offset, test)}
+      />}
     </div>
 
   );
