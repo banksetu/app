@@ -68,9 +68,22 @@ service cloud.firestore {
     }
     match /appSettings/uiTheme {
       allow get: if approvedUser();
-      allow create, update: if isMasterOwner()
+      // New theme documents use a strict schema. Updates are merge writes from
+      // the dashboard and must remain compatible with older documents that may
+      // contain legacy fields; validate only the fields being changed.
+      allow create: if isMasterOwner()
         && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
         && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
+        && request.resource.data.dashboardTheme is string
+        && request.resource.data.menuTheme is string
+        && request.resource.data.updatedBy is string
+        && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+        && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool);
+      allow update: if isMasterOwner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'dashboardTheme', 'menuTheme', 'customDashboardColor',
+          'useCustomDashboardColor', 'updatedBy'
+        ])
         && request.resource.data.dashboardTheme is string
         && request.resource.data.menuTheme is string
         && request.resource.data.updatedBy is string
