@@ -20,7 +20,6 @@ import {
 
 
   setDoc,
-  serverTimestamp,
 
 } from "firebase/firestore";
 
@@ -224,37 +223,12 @@ type MenuThemeId = string;
 
 const isMenuThemeId = (value: unknown): value is MenuThemeId => MENU_THEMES.some((theme) => theme.id === value);
 
-type CardThemeId = string;
-const CARD_THEMES: Array<{ id: CardThemeId; name: string; preview: string; gradients: string[] }> = [
-  ["coral","Coral","#f76596","#ff7fa6","#f76596"], ["violet","Violet","#866de8","#a889f7","#866de8"],
-  ["emerald","Emerald","#45c58e","#62d7a3","#45c58e"], ["golden","Golden","#f5bd48","#ffd56d","#f5bd48"],
-  ["rose","Rose","#be185d","#fb7185","#e11d48"], ["blue","Ocean Blue","#2563eb","#60a5fa","#1d4ed8"],
-  ["sky","Sky","#0284c7","#38bdf8","#0ea5e9"], ["teal","Teal","#0f766e","#2dd4bf","#14b8a6"],
-  ["lime","Lime","#4d7c0f","#a3e635","#65a30d"], ["orange","Orange","#c2410c","#fb923c","#f97316"],
-  ["red","Ruby","#991b1b","#f87171","#dc2626"], ["indigo","Indigo","#3730a3","#818cf8","#4f46e5"],
-  ["plum","Plum","#701a75","#e879f9","#a21caf"], ["mint","Mint","#047857","#6ee7b7","#10b981"],
-  ["ice","Ice White","#cbd5e1","#f8fafc","#dbeafe"], ["pearl","Pearl White","#d6d3d1","#ffffff","#e7e5e4"],
-  ["silver","Silver","#94a3b8","#f1f5f9","#cbd5e1"], ["lavender-white","Lavender White","#ddd6fe","#ffffff","#ede9fe"],
-  ["aqua-white","Aqua White","#bae6fd","#ffffff","#ccfbf1"], ["warm-white","Warm White","#fed7aa","#fff7ed","#fef3c7"]
-].map(([id,name,a,b,c]) => ({
-  id,
-  name,
-  preview: b,
-  gradients: id === "coral"
-    ? [
-        "linear-gradient(135deg,#ef4444 0%,#fb7185 55%,#f97316 100%)",
-        "linear-gradient(135deg,#7c3aed 0%,#c084fc 55%,#2563eb 100%)",
-        "linear-gradient(135deg,#059669 0%,#34d399 55%,#0ea5e9 100%)",
-        "linear-gradient(135deg,#d97706 0%,#fbbf24 55%,#f97316 100%)",
-      ]
-    : [
-        "linear-gradient(135deg,"+a+","+b+")",
-        "linear-gradient(135deg,"+b+","+c+")",
-        "linear-gradient(135deg,"+a+","+c+")",
-        "linear-gradient(135deg,"+b+","+a+")",
-      ],
-}));
-const isCardThemeId = (value: unknown): value is CardThemeId => CARD_THEMES.some((theme) => theme.id === value);
+const CARD_GRADIENTS = [
+  "linear-gradient(135deg,#ef4444 0%,#fb7185 55%,#f97316 100%)",
+  "linear-gradient(135deg,#7c3aed 0%,#c084fc 55%,#2563eb 100%)",
+  "linear-gradient(135deg,#059669 0%,#34d399 55%,#0ea5e9 100%)",
+  "linear-gradient(135deg,#d97706 0%,#fbbf24 55%,#f97316 100%)",
+];
 
 const isDashboardThemeId = (value: unknown): value is DashboardThemeId =>
 
@@ -336,18 +310,11 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     useState(false);
 
   const [menuThemeModalOpen, setMenuThemeModalOpen] = useState(false);
-  const [cardColorModalOpen, setCardColorModalOpen] = useState(false);
   const [menuTheme, setMenuTheme] = useState<MenuThemeId>(() => {
     const saved = localStorage.getItem(tenantStorageKey("bankSetuMenuTheme"));
     return isMenuThemeId(saved) ? saved : "violet";
   });
   const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
-  const [cardTheme, setCardTheme] = useState<CardThemeId>(() => {
-    const saved = localStorage.getItem(tenantStorageKey("bankSetuCardTheme"));
-    return isCardThemeId(saved) ? saved : "coral";
-  });
-  const selectedCardTheme = CARD_THEMES.find((theme) => theme.id === cardTheme) || CARD_THEMES[0];
-
   const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
   const [clientCreateOpen, setClientCreateOpen] = useState(false);
 
@@ -419,10 +386,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       const cloudData = snapshot.exists() ? snapshot.data() : {};
       const saved = restoreWorkspaceBankSettings(cloudData);
       if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
-      if (accountRole === "client_admin" && isCardThemeId(cloudData.cardTheme)) {
-        setCardTheme(cloudData.cardTheme);
-        localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), cloudData.cardTheme);
-      }
       setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
       setBankSettingsReady(true); setBankSettingsError("");
       // This is only a workspace-scoped cache. It never overrides Firebase.
@@ -555,18 +518,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     );
   };
 
-  const saveCardTheme = async (themeId: CardThemeId) => {
-    const user = getAuth().currentUser;
-    if (!user) return;
-    setCardTheme(themeId);
-    localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), themeId);
-    if (canControlGlobalDashboard) {
-      await setDoc(doc(db, "appSettings", "uiTheme"), { cardTheme: themeId, updatedBy: user.uid }, { merge: true });
-    } else if (accountRole === "client_admin") {
-      await setDoc(doc(db, ...tenantSettingsPath(user.uid)), { cardTheme: themeId, updatedBy: user.uid, updatedAt: serverTimestamp() }, { merge: true });
-    }
-  };
-
   useEffect(() => {
     if (!getAuth().currentUser) return;
     return onSnapshot(doc(db, "appSettings", "uiTheme"), (snap) => {
@@ -586,10 +537,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       if (isMenuThemeId(data.menuTheme)) {
         setMenuTheme(data.menuTheme);
         localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
-      }
-      if (canControlGlobalDashboard && isCardThemeId(data.cardTheme)) {
-        setCardTheme(data.cardTheme);
-        localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), data.cardTheme);
       }
     }, (error) => console.error("Global UI theme listener failed:", error));
   }, [canControlGlobalDashboard]);
@@ -857,7 +804,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   return (
 
-    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": selectedCardTheme.gradients[0], "--card-gradient-2": selectedCardTheme.gradients[1], "--card-gradient-3": selectedCardTheme.gradients[2], "--card-gradient-4": selectedCardTheme.gradients[3] } as CSSProperties}>
+    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
 
       {mobileMenuOpen && (
 
@@ -1417,11 +1364,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
 
-                {canManageBankSettings && <button
-                  type="button" style={styles.adminMenuItem}
-                  onClick={() => { setAdminMenuOpen(false); setCardColorModalOpen(true); }}
-                >🃏 Card Color</button>}
-
                 <button
 
                   type="button"
@@ -1505,7 +1447,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
               openPage={openPage}
               bankSettingsReady={bankSettingsReady}
-              cardTheme={selectedCardTheme}
 
             />
 
@@ -2037,35 +1978,6 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
         </div>
 
-      )}
-
-      {cardColorModalOpen && canManageBankSettings && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setCardColorModalOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
-            <div style={styles.modalHeader}>
-              <div>
-                <p style={styles.passwordEyebrow}>APPEARANCE</p>
-                <h2 style={styles.modalTitle}>Card Color</h2>
-                <p style={styles.passwordHelpText}>Choose the color family used by dashboard statistic and quick-action cards.</p>
-              </div>
-              <button type="button" style={styles.modalClose} onClick={() => setCardColorModalOpen(false)} aria-label="Close card color dialog">×</button>
-            </div>
-            <div style={{ ...styles.themeGrid, overflowY: "auto", paddingRight: "6px", marginTop: "12px", gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
-              {CARD_THEMES.map((theme) => (
-                <button key={theme.id} type="button" style={{ ...styles.themeChoice, ...(cardTheme === theme.id ? styles.themeChoiceActive : {}) }} onClick={() => {
-                  void saveCardTheme(theme.id).then(() => setCardColorModalOpen(false)).catch((error) => {
-                    console.error("Card color save failed:", error);
-                    alert("Card color could not be saved. Please try again.");
-                  });
-                }}>
-                  <span style={{ ...styles.themeSwatch, background: theme.preview }} />
-                  <span>{theme.name}</span>
-                  {cardTheme === theme.id && <strong style={styles.themeSelected}>✓</strong>}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
       )}
 
       {menuThemeModalOpen && canControlGlobalDashboard && (
@@ -2701,7 +2613,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
               display: grid !important;
 
-              grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+              grid-template-columns: 42px minmax(0, 1fr) max-content !important;
 
               align-items: start !important;
 
@@ -2750,6 +2662,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
               grid-row: 1 !important;
 
               justify-self: end !important;
+
+              gap: 4px !important;
 
               padding-left: 0 !important;
 
@@ -2945,13 +2859,11 @@ function DashboardHome({
 
   openPage,
   bankSettingsReady,
-  cardTheme,
 
 }: {
 
   openPage: (page: PageName) => void;
   bankSettingsReady: boolean;
-  cardTheme: { gradients: string[] };
 
 }) {
 
@@ -3405,7 +3317,7 @@ function DashboardHome({
 
             className="dashboard-stat-card"
 
-          style={{ ...styles.statCard, background: cardTheme.gradients[index % cardTheme.gradients.length] }}
+          style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
           >
 
@@ -3474,7 +3386,7 @@ function DashboardHome({
             icon="➕"
 
             title="Add Customer"
-            gradient={cardTheme.gradients[0]}
+            gradient={CARD_GRADIENTS[0]}
 
             text="Create a new customer record"
 
@@ -3491,7 +3403,7 @@ function DashboardHome({
             icon="📄"
 
             title="Upload PDF"
-            gradient={cardTheme.gradients[1]}
+            gradient={CARD_GRADIENTS[1]}
 
             text="Import account opening PDF"
 
@@ -3508,7 +3420,7 @@ function DashboardHome({
             icon="🖨"
 
             title="Passbook Print"
-            gradient={cardTheme.gradients[2]}
+            gradient={CARD_GRADIENTS[2]}
 
             text="Search and print passbook"
 
@@ -3525,7 +3437,7 @@ function DashboardHome({
             icon="🔎"
 
             title="Account Opening PDF"
-            gradient={cardTheme.gradients[3]}
+            gradient={CARD_GRADIENTS[3]}
 
             text="Generate account opening PDF"
 
@@ -3753,7 +3665,7 @@ const styles: Record<
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: "7px",
+    flexShrink: 0,
     borderRadius: "12px",
     border: "1px solid rgba(71,226,200,0.24)",
     background: "rgba(50,218,192,0.08)",
@@ -4083,6 +3995,14 @@ const styles: Record<
   adminWrapper: {
 
     position: "relative",
+
+    display: "flex",
+
+    alignItems: "center",
+
+    gap: "8px",
+
+    whiteSpace: "nowrap",
 
     flexShrink: 0,
 
