@@ -243,6 +243,7 @@ type PageName =
   | "customer-entry"
 
   | "customers"
+  | "all-customer-data"
 
   | "passbook"
 
