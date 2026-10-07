@@ -8,6 +8,7 @@ import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 const SERVICE_EMAIL = "bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com";
 export default function OptionBConnection({tenantId, disabled}: {tenantId: string; disabled: boolean}) {
   const [downloading,setDownloading]=useState(false);
+  const [setupDownloaded,setSetupDownloaded]=useState(false);
   const [sheetLink,setSheetLink]=useState("");const [folderLink,setFolderLink]=useState("");const [bridgeUrl,setBridgeUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");
   const downloadSetup=async()=>{
     setMessage("");setDownloading(true);
@@ -17,16 +18,21 @@ export default function OptionBConnection({tenantId, disabled}: {tenantId: strin
       if(!sheet||!folder||!tenantId)throw new Error("पहले अपनी Sheet और folder के valid links डालें।");
       const response=await fetch("/client-bridge/Code.gs",{cache:"no-store"});if(!response.ok)throw new Error("Setup source is unavailable. Rebuild the app before client setup.");
       const source=await response.text();
-      if(!source.includes("function syncCustomerOperation"))throw new Error("Client setup source is incomplete.");
+      if(!source.includes("function syncCustomerOperation")||!source.includes("SYNC_DELETIONS_SHEET")||!source.includes("rowDeleted:true"))throw new Error("Client setup source is outdated. Refresh the app and download again.");
       const properties={BANKSETU_FIREBASE_API_KEY:FIREBASE_WEB_API_KEY,BANKSETU_CLIENT_TENANT_ID:tenantId,BANKSETU_CLIENT_SPREADSHEET_ID:sheet[1],BANKSETU_CLIENT_FOLDER_ID:folder[1]};
       const setup=`\n\n// Run this function once in your own Google account.\nfunction setupBankSetuClient() {\n  PropertiesService.getScriptProperties().setProperties(${JSON.stringify(properties)});\n  initializeClientWorkspace();\n}\n`;
       const url=URL.createObjectURL(new Blob([source,setup],{type:"text/plain;charset=utf-8"}));const link=document.createElement("a");link.href=url;link.download="BankSetuClientSetup.gs";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      setSetupDownloaded(true);
       setMessage("Setup file तैयार है। अपनी Sheet → Extensions → Apps Script में file का पूरा text लगाएँ। setupBankSetuClient Run/authorize करें, फिर Web app deploy करें और /exec URL यहाँ रखें।");
     }catch(error){setMessage(error instanceof Error?error.message:"Setup download failed.");}finally{setDownloading(false);}
   };
   const connect=async()=>{
     setBusy(true);setMessage("");
     try {
+      if(!setupDownloaded && sessionStorage.getItem("bankSetuConnectionMode")!=="option-b") {
+        await downloadSetup();
+        return;
+      }
       await callBankSetuWorker("/connect-option-b",{sheetLink,folderLink,bridgeUrl});
       const config=await callBankSetuWorker<{dataApiReady:boolean;apiUrl:string;connectionId:string}>("/get-google-setup",{});
       if (!config.dataApiReady) throw new Error("Connection saved, but the upload bridge is not ready. Ask your administrator to verify it.");
@@ -49,7 +55,7 @@ export default function OptionBConnection({tenantId, disabled}: {tenantId: strin
       <div className="option-b-setup-download">
         <strong>पहली बार जरूरी: Client setup file</strong>
         <p>दोनों links भरने के बाद file डाउनलोड करें। इसे अपनी Google Sheet के Apps Script में लगाकर authorize करेंगे।</p>
-        <button className="option-b-download-button" type="button" disabled={busy||downloading} onClick={()=>void downloadSetup()}>{downloading?"Setup file तैयार हो रही है…":"Download ready client setup"}</button>
+        <button className="option-b-download-button" type="button" disabled={busy||downloading} onClick={()=>void downloadSetup()}>{downloading?"Setup file तैयार हो रही है…":"Download latest client setup"}</button>
       </div>
       {disabled&&<p role="status">Setup file अभी डाउनलोड कर सकते हैं। Test &amp; Connect चालू करने के लिए नीचे bank/branch details भरकर Save bank details करें। Workspace inactive हो तो Master से activate करवाएँ।</p>}
       <label>Client-owned upload bridge URL<input required type="url" value={bridgeUrl} onChange={event=>setBridgeUrl(event.target.value)} style={inputStyle}/></label>

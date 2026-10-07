@@ -40,7 +40,7 @@ function Settings(props: AdvancedAdminProps) {
   return <ConnectionSettings {...props} />;
 }
 
-function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = false }: AdvancedAdminProps) {
+function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = false, isClientAdmin = false }: AdvancedAdminProps) {
 
   const [apiUrl, setApiUrl] = useState("");
 
@@ -996,6 +996,11 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
           <StatusBadge status={status} />
 
         </div>
+
+        {isMasterOwner && <p style={styles.securityText}>
+          Master Apps Script के existing project में updated code लगाकर उसी Web App deployment का नया version प्रकाशित करें।{" "}
+          <a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={{ color: "#8de3c8", fontWeight: 700 }}>Download updated Master Code.gs</a>
+        </p>}
 
         {savedUrl && !unlocked && (
 
