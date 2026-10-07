@@ -1,7 +1,7 @@
 import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
-import { localDataFetch, getDataIdToken } from "./core/localData";
+import { localDataFetch, getDataIdToken, getLocalSnapshot, localModeEnabled } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -2991,6 +2991,35 @@ function DashboardHome({
       setStatsError("");
 
       try {
+
+        // Use the local cache for dashboard counters when available. The existing
+        // reconciliation engine keeps it current in the background; cloud remains
+        // the fallback for a fresh install with no local records.
+        if (localModeEnabled() && sessionStorage.getItem("banksetuWorkspaceReady") === "true") {
+          try {
+            const localState = await getLocalSnapshot();
+            const records = localState.records
+              .filter((record) => !record.deleted)
+              .map((record) => record.customer as Record<string, unknown>);
+            if (records.length > 0) {
+              const text = (value: unknown) => String(value ?? "").trim().toLowerCase();
+              const localStats = {
+                totalCustomers: records.length,
+                kycPending: records.filter((customer) => /pending|kyc/.test(text(customer.kycStatus || customer.status)) && !/complete|approved|done/.test(text(customer.kycStatus || customer.status))).length,
+                passbookPending: records.filter((customer) => /pending/.test(text(customer.passbookStatus))).length,
+                inactiveAccounts: records.filter((customer) => /inactive|blocked|closed/.test(text(customer.status))).length,
+              };
+              if (!cancelled) {
+                setDashboardStats(localStats);
+                setStatsLoading(false);
+                setStatsError("");
+              }
+              return;
+            }
+          } catch (localError) {
+            console.warn("Local dashboard stats unavailable; using cloud fallback:", localError);
+          }
+        }
 
         const apiUrl = getTenantApiUrl();
 
