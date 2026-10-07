@@ -20,6 +20,7 @@ import {
 
 
   setDoc,
+  serverTimestamp,
 
 } from "firebase/firestore";
 
@@ -223,13 +224,19 @@ type MenuThemeId = string;
 
 const isMenuThemeId = (value: unknown): value is MenuThemeId => MENU_THEMES.some((theme) => theme.id === value);
 
-type CardThemeId = "coral" | "violet" | "emerald" | "golden";
+type CardThemeId = string;
 const CARD_THEMES: Array<{ id: CardThemeId; name: string; preview: string; gradients: string[] }> = [
-  { id: "coral", name: "Coral", preview: "#f76596", gradients: ["linear-gradient(135deg,#ff7fa6,#f76596)", "linear-gradient(135deg,#ff8ab0,#f36d99)", "linear-gradient(135deg,#ff9bba,#ef7299)", "linear-gradient(135deg,#ffb36c,#f28b4b)"] },
-  { id: "violet", name: "Violet", preview: "#866de8", gradients: ["linear-gradient(135deg,#a889f7,#866de8)", "linear-gradient(135deg,#b18cff,#795fdf)", "linear-gradient(135deg,#9c8df7,#6a66d8)", "linear-gradient(135deg,#c084fc,#8b5cf6)"] },
-  { id: "emerald", name: "Emerald", preview: "#45c58e", gradients: ["linear-gradient(135deg,#62d7a3,#45c58e)", "linear-gradient(135deg,#71dfb2,#38b982)", "linear-gradient(135deg,#52d6bb,#21af91)", "linear-gradient(135deg,#a3e635,#22c55e)"] },
-  { id: "golden", name: "Golden", preview: "#f5bd48", gradients: ["linear-gradient(135deg,#ffd56d,#f5bd48)", "linear-gradient(135deg,#f9c978,#f29d38)", "linear-gradient(135deg,#fbbf24,#f97316)", "linear-gradient(135deg,#fde68a,#f59e0b)"] },
-];
+  ["coral","Coral","#f76596","#ff7fa6","#f76596"], ["violet","Violet","#866de8","#a889f7","#866de8"],
+  ["emerald","Emerald","#45c58e","#62d7a3","#45c58e"], ["golden","Golden","#f5bd48","#ffd56d","#f5bd48"],
+  ["rose","Rose","#be185d","#fb7185","#e11d48"], ["blue","Ocean Blue","#2563eb","#60a5fa","#1d4ed8"],
+  ["sky","Sky","#0284c7","#38bdf8","#0ea5e9"], ["teal","Teal","#0f766e","#2dd4bf","#14b8a6"],
+  ["lime","Lime","#4d7c0f","#a3e635","#65a30d"], ["orange","Orange","#c2410c","#fb923c","#f97316"],
+  ["red","Ruby","#991b1b","#f87171","#dc2626"], ["indigo","Indigo","#3730a3","#818cf8","#4f46e5"],
+  ["plum","Plum","#701a75","#e879f9","#a21caf"], ["mint","Mint","#047857","#6ee7b7","#10b981"],
+  ["ice","Ice White","#cbd5e1","#f8fafc","#dbeafe"], ["pearl","Pearl White","#d6d3d1","#ffffff","#e7e5e4"],
+  ["silver","Silver","#94a3b8","#f1f5f9","#cbd5e1"], ["lavender-white","Lavender White","#ddd6fe","#ffffff","#ede9fe"],
+  ["aqua-white","Aqua White","#bae6fd","#ffffff","#ccfbf1"], ["warm-white","Warm White","#fed7aa","#fff7ed","#fef3c7"]
+].map(([id,name,a,b,c]) => ({ id, name, preview: b, gradients: ["linear-gradient(135deg,"+a+","+b+")", "linear-gradient(135deg,"+b+","+c+")", "linear-gradient(135deg,"+a+","+c+")", "linear-gradient(135deg,"+b+","+a+")"] }));
 const isCardThemeId = (value: unknown): value is CardThemeId => CARD_THEMES.some((theme) => theme.id === value);
 
 const isDashboardThemeId = (value: unknown): value is DashboardThemeId =>
@@ -395,6 +402,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       const cloudData = snapshot.exists() ? snapshot.data() : {};
       const saved = restoreWorkspaceBankSettings(cloudData);
       if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
+      if (accountRole === "client_admin" && isCardThemeId(cloudData.cardTheme)) {
+        setCardTheme(cloudData.cardTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), cloudData.cardTheme);
+      }
       setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
       setBankSettingsReady(true); setBankSettingsError("");
       // This is only a workspace-scoped cache. It never overrides Firebase.
@@ -409,7 +420,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
       console.error("Workspace bank settings listener failed:", error);
     });
     return () => { window.clearTimeout(timeout); unsubscribe(); };
-  }, [bankSettingsRetry]);
+  }, [bankSettingsRetry, accountRole]);
 
   const hasBankInfo =
 
@@ -527,6 +538,18 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     );
   };
 
+  const saveCardTheme = async (themeId: CardThemeId) => {
+    const user = getAuth().currentUser;
+    if (!user) return;
+    setCardTheme(themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), themeId);
+    if (canControlGlobalDashboard) {
+      await setDoc(doc(db, "appSettings", "uiTheme"), { cardTheme: themeId, updatedBy: user.uid }, { merge: true });
+    } else if (accountRole === "client_admin") {
+      await setDoc(doc(db, ...tenantSettingsPath(user.uid)), { cardTheme: themeId, updatedBy: user.uid, updatedAt: serverTimestamp() }, { merge: true });
+    }
+  };
+
   useEffect(() => {
     if (!getAuth().currentUser) return;
     return onSnapshot(doc(db, "appSettings", "uiTheme"), (snap) => {
@@ -547,8 +570,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
         setMenuTheme(data.menuTheme);
         localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
       }
+      if (canControlGlobalDashboard && isCardThemeId(data.cardTheme)) {
+        setCardTheme(data.cardTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), data.cardTheme);
+      }
     }, (error) => console.error("Global UI theme listener failed:", error));
-  }, []);
+  }, [canControlGlobalDashboard]);
 
   const changeDashboardTheme = async (themeId: DashboardThemeId) => {
     setDashboardTheme(themeId);
@@ -2009,9 +2036,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             <div style={{ ...styles.themeGrid, overflowY: "auto", paddingRight: "6px", marginTop: "12px", gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
               {CARD_THEMES.map((theme) => (
                 <button key={theme.id} type="button" style={{ ...styles.themeChoice, ...(cardTheme === theme.id ? styles.themeChoiceActive : {}) }} onClick={() => {
-                  setCardTheme(theme.id);
-                  localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), theme.id);
-                  setCardColorModalOpen(false);
+                  void saveCardTheme(theme.id).then(() => setCardColorModalOpen(false)).catch((error) => {
+                    console.error("Card color save failed:", error);
+                    alert("Card color could not be saved. Please try again.");
+                  });
                 }}>
                   <span style={{ ...styles.themeSwatch, background: theme.preview }} />
                   <span>{theme.name}</span>
