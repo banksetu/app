@@ -89,7 +89,7 @@ jobs:
           NODE
 
       - name: Deploy Firestore rules when changed
-        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.modified, 'firestore.rules') || contains(github.event.head_commit.added, 'firestore.rules')
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
         run: |
