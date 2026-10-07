@@ -1,7 +1,7 @@
 import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
-import { localDataFetch, getDataIdToken, getLocalSnapshot, localModeEnabled } from "./core/localData";
+import { localDataFetch, getDataIdToken, getLocalSnapshot } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -236,7 +236,24 @@ const CARD_THEMES: Array<{ id: CardThemeId; name: string; preview: string; gradi
   ["ice","Ice White","#cbd5e1","#f8fafc","#dbeafe"], ["pearl","Pearl White","#d6d3d1","#ffffff","#e7e5e4"],
   ["silver","Silver","#94a3b8","#f1f5f9","#cbd5e1"], ["lavender-white","Lavender White","#ddd6fe","#ffffff","#ede9fe"],
   ["aqua-white","Aqua White","#bae6fd","#ffffff","#ccfbf1"], ["warm-white","Warm White","#fed7aa","#fff7ed","#fef3c7"]
-].map(([id,name,a,b,c]) => ({ id, name, preview: b, gradients: ["linear-gradient(135deg,"+a+","+b+")", "linear-gradient(135deg,"+b+","+c+")", "linear-gradient(135deg,"+a+","+c+")", "linear-gradient(135deg,"+b+","+a+")"] }));
+].map(([id,name,a,b,c]) => ({
+  id,
+  name,
+  preview: b,
+  gradients: id === "coral"
+    ? [
+        "linear-gradient(135deg,#ef4444 0%,#fb7185 55%,#f97316 100%)",
+        "linear-gradient(135deg,#7c3aed 0%,#c084fc 55%,#2563eb 100%)",
+        "linear-gradient(135deg,#059669 0%,#34d399 55%,#0ea5e9 100%)",
+        "linear-gradient(135deg,#d97706 0%,#fbbf24 55%,#f97316 100%)",
+      ]
+    : [
+        "linear-gradient(135deg,"+a+","+b+")",
+        "linear-gradient(135deg,"+b+","+c+")",
+        "linear-gradient(135deg,"+a+","+c+")",
+        "linear-gradient(135deg,"+b+","+a+")",
+      ],
+}));
 const isCardThemeId = (value: unknown): value is CardThemeId => CARD_THEMES.some((theme) => theme.id === value);
 
 const isDashboardThemeId = (value: unknown): value is DashboardThemeId =>
@@ -2995,7 +3012,7 @@ function DashboardHome({
         // Use the local cache for dashboard counters when available. The existing
         // reconciliation engine keeps it current in the background; cloud remains
         // the fallback for a fresh install with no local records.
-        if (localModeEnabled() && sessionStorage.getItem("banksetuWorkspaceReady") === "true") {
+        if (sessionStorage.getItem("banksetuWorkspaceReady") === "true") {
           try {
             const localState = await getLocalSnapshot();
             const records = localState.records
@@ -3003,11 +3020,18 @@ function DashboardHome({
               .map((record) => record.customer as Record<string, unknown>);
             if (records.length > 0) {
               const text = (value: unknown) => String(value ?? "").trim().toLowerCase();
+              const field = (customer: Record<string, unknown>, names: string[]) => {
+                const key = Object.keys(customer).find((candidate) => names.includes(candidate.toLowerCase().replace(/[ _-]/g, "")));
+                return key ? customer[key] : "";
+              };
               const localStats = {
                 totalCustomers: records.length,
-                kycPending: records.filter((customer) => /pending|kyc/.test(text(customer.kycStatus || customer.status)) && !/complete|approved|done/.test(text(customer.kycStatus || customer.status))).length,
-                passbookPending: records.filter((customer) => /pending/.test(text(customer.passbookStatus))).length,
-                inactiveAccounts: records.filter((customer) => /inactive|blocked|closed/.test(text(customer.status))).length,
+                kycPending: records.filter((customer) => {
+                  const value = text(field(customer, ["kycstatus", "kyc", "kycstate"]) || field(customer, ["status", "accountstatus"]));
+                  return /pending|kyc|incomplete|review/.test(value) && !/complete|approved|done|verified/.test(value);
+                }).length,
+                passbookPending: records.filter((customer) => /pending|notprinted|due/.test(text(field(customer, ["passbookstatus", "passbook", "passbookstate"])))).length,
+                inactiveAccounts: records.filter((customer) => /inactive|blocked|closed|dormant/.test(text(field(customer, ["status", "accountstatus", "accountstate"])))).length,
               };
               if (!cancelled) {
                 setDashboardStats(localStats);
