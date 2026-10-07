@@ -46,8 +46,19 @@ jobs:
             return response.json();
           }
 
-          const hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}`);
-          assert.equal(hosting.commit, process.env.FRONTEND_COMMIT, 'Live Hosting does not serve the latest frontend source commit');
+          let hosting;
+          let hostingCommit = '';
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}&attempt=${attempt}`);
+              hostingCommit = String(hosting.commit || '');
+              if (hostingCommit === process.env.FRONTEND_COMMIT) break;
+            } catch (error) {
+              if (attempt === 5) throw error;
+            }
+            if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+          assert.equal(hostingCommit, process.env.FRONTEND_COMMIT, `Live Hosting serves commit ${hostingCommit || 'unknown'}, expected ${process.env.FRONTEND_COMMIT}`);
 
           const worker = await getJson('Cloudflare Worker', 'https://banksetu-client-api.banksetu2026.workers.dev/health');
           assert.equal(worker.success, true);
