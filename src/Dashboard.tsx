@@ -2892,6 +2892,14 @@ function DashboardHome({
 
   useEffect(() => {
 
+    // Workspace/API hydration completes after the dashboard mounts on a fresh
+    // session. Do not report a false sync error while that configuration is
+    // still being restored from Firebase/local session state.
+    if (!bankSettingsReady) {
+      setStatsLoading(true);
+      return;
+    }
+
     let cancelled = false;
 
     const loadDashboardStats = async () => {
@@ -3166,7 +3174,7 @@ function DashboardHome({
 
     };
 
-  }, []);
+  }, [bankSettingsReady]);
 
   const stats = [
 
