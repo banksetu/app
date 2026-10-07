@@ -3010,6 +3010,23 @@ function migrateOldPhotoNames() {
  * Revision fingerprints include legacy edits and manual spreadsheet changes.
  */
 const SYNC_HEADERS = ["BANKSETU RECORD ID", "BANKSETU OPERATIONS", "BANKSETU DELETED"];
+const SYNC_DELETIONS_SHEET = "BANKSETU_DELETIONS";
+function syncDeletionSheet(sheet, create) {
+  const book = sheet.getParent();
+  let ledger = book.getSheetByName(SYNC_DELETIONS_SHEET);
+  if (!ledger && create) {
+    ledger = book.insertSheet(SYNC_DELETIONS_SHEET);
+    ledger.getRange(1, 1, 1, 3).setValues([["RECORD ID", "OPERATION ID", "CONNECTION ID"]]);
+    ledger.hideSheet();
+  }
+  if (ledger && ledger.getRange(1, 1, 1, 3).getDisplayValues()[0].join("|") !== "RECORD ID|OPERATION ID|CONNECTION ID")
+    throw new Error("Deletion ledger name is already in use. No customer was deleted.");
+  return ledger;
+}
+function syncDeletionRows(sheet, connectionId) {
+  const ledger = syncDeletionSheet(sheet, false);
+  return ledger && ledger.getLastRow() > 1 ? ledger.getRange(2, 1, ledger.getLastRow() - 1, 3).getDisplayValues().filter(row => row[2] === connectionId) : [];
+}
 function ensureSyncMetadata(sheet) {
   if (sheet.getMaxColumns() < HEADERS.length + SYNC_HEADERS.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), HEADERS.length + SYNC_HEADERS.length - sheet.getMaxColumns());
   const actual = sheet.getRange(1, 25, 1, 3).getDisplayValues()[0];
@@ -3034,6 +3051,7 @@ function localFirstRead(request, authUser) {
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
     if (["getCustomerPage","getAllCustomers"].includes(request.action)) {
+      const deletions=syncDeletionRows(sheet,authUser.connectionId);
       const total=Math.max(0,sheet.getLastRow()-1);
       const size=Math.min(250,Math.max(1,Number(request.pageSize)||250));
       const cursor=request.action==="getCustomerPage"?Number(request.cursor||0):((Math.max(1,Number(request.page)||1)-1)*size);
@@ -3041,7 +3059,9 @@ function localFirstRead(request, authUser) {
       const count=Math.min(size,Math.max(0,total-cursor));
       const batch=count?sheet.getRange(cursor+2,1,count,27).getDisplayValues():[];
       const customers=batch.map((row,i)=>row[26]==="true"?null:syncCustomerObject(row,cursor+i+2)).filter(Boolean);
-      return jsonResponse({success:true,customers,deletedIds:batch.filter(row=>row[26]==="true").map(row=>String(row[24])),nextCursor:cursor+count,hasNextPage:cursor+count<total,totalRows:total});
+      const deletedIds=deletions.slice(cursor,cursor+size).map(row=>String(row[0])).concat(batch.filter(row=>row[26]==="true").map(row=>String(row[24])));
+      const nextCursor=cursor+size;
+      return jsonResponse({success:true,customers,deletedIds,nextCursor,hasNextPage:nextCursor<Math.max(total,deletions.length),totalRows:total});
     }
     const values = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, 27).getDisplayValues() : [];
     let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, i+2)).filter(Boolean);
@@ -3100,11 +3120,17 @@ function syncCustomerOperation(request, authUser) {
     const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,27).getDisplayValues() : [];
     const index = rows.findIndex(row => String(row[24]) === op.recordId);
     const existing = index >= 0 ? rows[index] : null;
+    const deleted = syncDeletionRows(sheet,authUser.connectionId).find(row => row[0] === op.recordId);
+    if (deleted) {
+      if (op.action !== "deleteCustomer" || deleted[1] !== op.operationId) return jsonResponse({success:false,code:"CONFLICT",message:"This customer was already deleted."});
+      if (existing) { deleteSyncedCustomerDriveFiles(existing, authUser); sheet.deleteRow(index+2); SpreadsheetApp.flush(); }
+      return jsonResponse({success:true,replayed:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
+    }
     const operations = existing && existing[25] ? JSON.parse(existing[25]) : [];
     if (operations.includes(op.operationId)) {
-      const deleted = op.action === "deleteCustomer" && existing[26] === "true";
-      if (deleted) deleteSyncedCustomerDriveFiles(existing, authUser);
-      return jsonResponse({success:true,replayed:true,rowNumber:index+2,revision:syncRevision(existing),deleted,driveDeleted:deleted,customer:syncCustomerObject(existing,index+2)});
+      const wasDeleted = op.action === "deleteCustomer" && existing[26] === "true";
+      if (wasDeleted) deleteSyncedCustomerDriveFiles(existing, authUser);
+      return jsonResponse({success:true,replayed:true,rowNumber:index+2,revision:syncRevision(existing),deleted:wasDeleted,driveDeleted:wasDeleted,customer:syncCustomerObject(existing,index+2)});
     }
     if (existing && (existing[26] === "true" || op.baseRevision !== syncRevision(existing))) return jsonResponse({success:false,code:"CONFLICT",message:"This customer changed in Google Sheets. Both versions are retained for administrator review.",customer:syncCustomerObject(existing,index+2)});
     if (!existing && op.action !== "saveCustomer") return jsonResponse({success:false,code:"CONFLICT",message:"The original customer was removed. No other row was changed."});
@@ -3123,7 +3149,15 @@ function syncCustomerOperation(request, authUser) {
       const document = saveBoundDocument(customer.pdfDataUrl, customer.pdfFileName || customer.enrolId + ".pdf", authUser.photoFolderId, op.operationId);
       customer.pdfUrl = document.driveUrl;
     }
-    if (op.action === "deleteCustomer") deleteSyncedCustomerDriveFiles(existing, authUser);
+    if (op.action === "deleteCustomer") {
+      deleteSyncedCustomerDriveFiles(existing, authUser);
+      const ledger=syncDeletionSheet(sheet,true);
+      ledger.appendRow([op.recordId,op.operationId,authUser.connectionId]);
+      SpreadsheetApp.flush();
+      sheet.deleteRow(index+2);
+      SpreadsheetApp.flush();
+      return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
+    }
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
     if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");

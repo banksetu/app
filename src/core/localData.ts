@@ -96,16 +96,40 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   });
   announce();
   window.dispatchEvent(new Event("banksetu-sync-request"));
-  if (navigator.onLine) void (async () => {
-    // A running sync may have captured its queue before this write.
-    await syncNow(false).catch(() => undefined);
-    if (identity() !== scope) return;
+  if (navigator.onLine) {
+    try {
+      // A running sync may have captured its queue before this write.
+      await syncNow(false);
+      if (identity() !== scope) throw new Error("Workspace changed.");
+      let remaining = await repository.read(scope);
+      if (remaining.operations.some(op => op.operationId === operationId && op.state === "pending")) {
+        await syncNow(false);
+        remaining = await repository.read(scope);
+      }
+      if (action === "deleteCustomer" && !remaining.operations.some(op => op.operationId === operationId)) {
+        const deleted = remaining.records.find(record => record.recordId === recordId);
+        if (deleted?.deleted && !deleted.pending) {
+          announce();
+          return resultResponse({success:true,deleted:true,driveDeleted:true,rowNumber:localRow,recordId,message:"Customer deleted from this device, Google Sheet and Drive."});
+        }
+      }
+    } catch (error) {
+      if (action === "deleteCustomer") {
+        const remaining = await repository.read(scope);
+        const record = remaining.records.find(item => item.recordId === recordId);
+        if (record?.deleted && !record.pending && !remaining.operations.some(op => op.operationId === operationId))
+          return resultResponse({success:true,deleted:true,driveDeleted:true,rowNumber:localRow,recordId,message:"Customer deleted from this device, Google Sheet and Drive."});
+        return resultResponse({success:false,deleted:true,queued:true,rowNumber:localRow,recordId,message:`Deleted locally; Google deletion is pending: ${error instanceof Error ? error.message : String(error)}`});
+      }
+    }
+  }
+  if (action === "deleteCustomer") {
     const remaining = await repository.read(scope);
-    if (remaining.operations.some(op => op.operationId === operationId && op.state === "pending"))
-      await syncNow(false).catch(() => undefined);
-  })().catch(() => undefined);
-  return resultResponse({success:true,deleted:action==="deleteCustomer",queued:true,rowNumber:localRow,recordId,
-    message:action==="deleteCustomer" ? "Deleted locally. Google Sheet and Drive deletion is pending sync." : "Saved on this device. Pending Google sync; keep this device's data until sync completes.",
+    const operation = remaining.operations.find(op => op.operationId === operationId);
+    return resultResponse({success:false,deleted:true,queued:true,rowNumber:localRow,recordId,message:operation?.error || "Deleted locally; Google Sheet and Drive deletion is pending sync."});
+  }
+  return resultResponse({success:true,queued:true,rowNumber:localRow,recordId,
+    message:"Saved on this device. Google sync starts immediately; keep this device's data until sync completes.",
     photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
 }
 async function hideLocallyDeleted(scope: string, value: Record<string, unknown>, response: Response): Promise<Response> {
@@ -182,8 +206,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
     const value=await send({action:"syncCustomerOperation",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
-    if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true))
-      throw new Error("Google Sheet/Drive deletion is not confirmed. Update this tenant's Apps Script bridge; local deletion remains pending.");
+    if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true || value.rowDeleted !== true))
+      throw new Error("Google Sheet row and Drive deletion are not confirmed. Update this tenant's Apps Script bridge; local deletion remains pending.");
     await repository.transact(scope, state => {
       const queued = state.operations.find(item => item.operationId === op.operationId);
       if (!queued) return;
@@ -192,7 +216,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       state.operations=state.operations.filter(item => item.operationId !== op.operationId);
       const saved=state.records.find(item => item.recordId === op.recordId);
       if (value.deleted) { const deletedRecord=state.records.find(item=>item.recordId===op.recordId); if (deletedRecord) deletedRecord.deleted=true; }
-      if (saved) { saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer={...value.customer,photoDataUrl:saved.customer.photoDataUrl || value.customer.photoDataUrl,pdfDataUrl:saved.customer.pdfDataUrl || value.customer.pdfDataUrl}; }
+      if (saved) { if (!value.deleted) {saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);}saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer={...value.customer,photoDataUrl:saved.customer.photoDataUrl || value.customer.photoDataUrl,pdfDataUrl:saved.customer.pdfDataUrl || value.customer.pdfDataUrl}; }
     });
   }
   // At most four 250-row pages per sync; resume the cursor on the next tick.
@@ -216,10 +240,21 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       else {
         // Only explicit server tombstones delete records: rows can move during pagination.
         current.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:current.pull?.cacheLimited};
+        // Unsynced local-only records use the existing save queue. A previously
+        // synced row missing from a page is never recreated automatically.
+        for (const record of current.records) {
+          if (record.deleted || record.pending || record.revision || seen.has(record.recordId) || current.operations.some(op=>op.recordId===record.recordId)) continue;
+          const operationId=crypto.randomUUID();
+          current.operations.push({key:operationId,scope,operationId,recordId:record.recordId,action:"saveCustomer",customer:record.customer,baseRevision:"",rowNumber:record.rowNumber,createdAt:Date.now(),state:"pending"});
+          record.pending=true;
+        }
       }
     });
     if(!value.hasNextPage)break;
   }
+  const afterPull=await repository.read(scope);
+  if(afterPull.operations.some(op=>op.state==="pending" && !initial.operations.some(previous=>previous.operationId===op.operationId)))
+    queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
   const downloaded=await repository.read(scope);
   // Hydrate linked Drive photos in the background, never on the search path.
   if(!downloaded.pull?.cursor){

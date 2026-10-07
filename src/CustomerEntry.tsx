@@ -4243,13 +4243,13 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
               "Delete failed.",
 
-            "error"
+            result.queued && result.deleted ? "info" : "error"
 
           );
 
 
 
-          return;
+          if (!(result.queued && result.deleted)) return;
 
         }
 

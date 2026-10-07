@@ -152,7 +152,7 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  connect('delete-a');navigator.onLine=false;
  const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'DELETE-1',accountNo:'9901'}});
  const deleted=await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
- assert.equal(deleted.success,true);assert.equal(deleted.deleted,true);assert.equal(deleted.queued,true);
+ assert.equal(deleted.success,false);assert.equal(deleted.deleted,true);assert.equal(deleted.queued,true);
  assert.equal((await request({action:'searchCustomer',query:'DELETE-1'})).success,false);
  let state=await repository.read('user-a:tenant-a:delete-a');assert.equal(state.operations.length,2);
  connect('delete-other');assert.equal((await request({action:'searchCustomer',query:'DELETE-1'})).success,false);
@@ -160,7 +160,7 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  handler=async(_url,init)=>{const body=JSON.parse(init.body);actions.push(body.action);
    if(body.action==='syncCustomerOperation')return new Response(JSON.stringify({
      success:true,rowNumber:9,revision:body.operation.action==='deleteCustomer'?'r2':'r1',
-     deleted:body.operation.action==='deleteCustomer',driveDeleted:body.operation.action==='deleteCustomer',
+     deleted:body.operation.action==='deleteCustomer',driveDeleted:body.operation.action==='deleteCustomer',rowDeleted:body.operation.action==='deleteCustomer',
      customer:{...customer,recordId:saved.recordId,rowNumber:9,revision:'r2'}}));
    return new Response(JSON.stringify({success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:1}));
  };
@@ -173,9 +173,39 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='syncCustomerOperation'?
    {success:true,rowNumber:10,revision:'r3',deleted:body.operation.action==='deleteCustomer',customer:{...customer,recordId:second.recordId,rowNumber:10,revision:'r3'}}:
    {success:true,customers:[],hasNextPage:false,nextCursor:1}));};
- await assert.rejects(engine.syncNow(false),/Drive deletion is not confirmed/);
+ await assert.rejects(engine.syncNow(false),/row and Drive deletion are not confirmed/);
  state=await repository.read('user-a:tenant-a:delete-a');assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
  assert.equal(state.records.find(record=>record.recordId===second.recordId).deleted,true);
+ navigator.onLine=false;
+});
+
+test('online add waits for the existing sync and delete reports success only after row and Drive confirmation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('immediate-actions');navigator.onLine=true;
+ const sent=[];let confirmDelete=false;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   sent.push(body.operation.action);
+   if(body.operation.action==='deleteCustomer')return new Response(JSON.stringify({success:true,deleted:true,driveDeleted:true,rowDeleted:confirmDelete}));
+   return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...body.operation.customer,recordId:body.operation.recordId,rowNumber:2,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false,nextCursor:0}));};
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'IMMEDIATE',accountNo:'7722'}});
+ assert(saved.success);assert(sent.includes('saveCustomer'));assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,0);
+ const pending=await request({action:'deleteCustomer',rowNumber:2});assert.equal(pending.success,false);assert.equal(pending.queued,true);
+ assert.equal((await request({action:'searchCustomer',query:'IMMEDIATE'})).success,false);
+ confirmDelete=true;await engine.syncNow(false);
+ assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,0);
+ assert(sent.filter(action=>action==='deleteCustomer').length>=2);
+ navigator.onLine=false;
+});
+
+test('sheet-only records download and revisionless local-only records use the existing save queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('two-way');navigator.onLine=true;
+ const scope='user-a:tenant-a:two-way';const localId=crypto.randomUUID();
+ await repository.transact(scope,state=>state.records.push({key:localId,scope,recordId:localId,rowNumber:1000000001,revision:'',customer:{...customer,enrolId:'LOCAL',accountNo:'9001'},pending:false}));
+ let saves=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   saves++;return new Response(JSON.stringify({success:true,rowNumber:3,revision:'r1',customer:{...body.operation.customer,recordId:localId,rowNumber:3,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[{...customer,enrolId:'SHEET',accountNo:'9002',recordId:'cloud-only',rowNumber:2,revision:'r1'}],hasNextPage:false,nextCursor:1}));};
+ await engine.syncNow();let state=await repository.read(scope);assert.equal(state.records.find(row=>row.recordId==='cloud-only').customer.enrolId,'SHEET');assert(state.operations.some(op=>op.recordId===localId&&op.action==='saveCustomer'));
+ await engine.syncNow(false);state=await repository.read(scope);assert.equal(saves,1);assert.equal(state.records.find(row=>row.recordId===localId).revision,'r1');
  navigator.onLine=false;
 });
 
