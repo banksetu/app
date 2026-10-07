@@ -3135,6 +3135,15 @@ function syncCustomerOperation(request, authUser) {
     if (existing && (existing[26] === "true" || op.baseRevision !== syncRevision(existing))) return jsonResponse({success:false,code:"CONFLICT",message:"This customer changed in Google Sheets. Both versions are retained for administrator review.",customer:syncCustomerObject(existing,index+2)});
     if (!existing && op.action !== "saveCustomer") return jsonResponse({success:false,code:"CONFLICT",message:"The original customer was removed. No other row was changed."});
     if (!existing && op.baseRevision) return jsonResponse({success:false,code:"CONFLICT",message:"Original record is missing."});
+    if (op.action === "deleteCustomer") {
+      deleteSyncedCustomerDriveFiles(existing, authUser);
+      const ledger=syncDeletionSheet(sheet,true);
+      ledger.appendRow([op.recordId,op.operationId,authUser.connectionId]);
+      SpreadsheetApp.flush();
+      sheet.deleteRow(index+2);
+      SpreadsheetApp.flush();
+      return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
+    }
     const customer = Object.assign(existing ? rowToCustomer(existing) : {}, op.customer || {});
     if (!cleanValue(customer.name) || !cleanValue(customer.accountNo) || !cleanValue(customer.enrolId) || normalizeDigits(customer.uidaiNo).length !== 12) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
     if (op.action !== "deleteCustomer") {
@@ -3148,15 +3157,6 @@ function syncCustomerOperation(request, authUser) {
     if (customer.pdfDataUrl && op.action !== "deleteCustomer") {
       const document = saveBoundDocument(customer.pdfDataUrl, customer.pdfFileName || customer.enrolId + ".pdf", authUser.photoFolderId, op.operationId);
       customer.pdfUrl = document.driveUrl;
-    }
-    if (op.action === "deleteCustomer") {
-      deleteSyncedCustomerDriveFiles(existing, authUser);
-      const ledger=syncDeletionSheet(sheet,true);
-      ledger.appendRow([op.recordId,op.operationId,authUser.connectionId]);
-      SpreadsheetApp.flush();
-      sheet.deleteRow(index+2);
-      SpreadsheetApp.flush();
-      return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);

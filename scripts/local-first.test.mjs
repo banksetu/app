@@ -197,6 +197,26 @@ test('online add waits for the existing sync and delete reports success only aft
  navigator.onLine=false;
 });
 
+test('DELETE sends only stable identity, retains pending on cloud rejection, and keeps Firebase session',async()=>{
+ storage.clear();const user={uid:'user-a',getIdToken:async()=> 'authenticated-token'};globalThis.__auth.currentUser=user;connect('delete-retry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'RETRY-1',accountNo:'7788'}});
+ const deleted=await request({action:'deleteCustomer',rowNumber:saved.rowNumber});assert.equal(deleted.success,false);
+ const scope='user-a:tenant-a:delete-retry';let state=await repository.read(scope);
+ const operation=state.operations.find(op=>op.action==='deleteCustomer');assert.deepEqual(operation.customer,{});assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ let reject=true;const sent=[];navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.idToken,'authenticated-token');if(body.action==='syncCustomerOperation'){
+   sent.push(body.operation.action);
+   if(body.operation.action==='deleteCustomer'&&reject)return new Response(JSON.stringify({success:false,code:'SERVER_ERROR',message:'Google temporarily unavailable'}));
+   return new Response(JSON.stringify(body.operation.action==='deleteCustomer'?{success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:saved.recordId}:{success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:1}));};
+ await assert.rejects(engine.syncNow(false),/temporarily unavailable/);state=await repository.read(scope);
+ assert(state.operations.some(op=>op.operationId===operation.operationId&&op.state==='pending'));assert.equal(globalThis.__auth.currentUser,user);
+ reject=false;await engine.syncNow(false);state=await repository.read(scope);
+ assert.equal(state.operations.length,0);assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ assert.equal((await request({action:'searchCustomer',query:'RETRY-1'})).success,false);assert.equal(globalThis.__auth.currentUser,user);
+ assert.deepEqual(sent,['saveCustomer','deleteCustomer','deleteCustomer']);navigator.onLine=false;
+});
+
 test('sheet-only records download and revisionless local-only records use the existing save queue',async()=>{
  storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('two-way');navigator.onLine=true;
  const scope='user-a:tenant-a:two-way';const localId=crypto.randomUUID();

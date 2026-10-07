@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.39",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.39/BankSetu-Setup-1.0.39-x64.exe",
+  "latestVersion": "1.0.40",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.40/BankSetu-Setup-1.0.40-x64.exe",
   "notes": "Customer add syncs immediately; delete confirms local, Sheet row and Drive files. First-time setup downloads the latest Apps Script bridge.",
-  "version": "1.0.39",
-  "releaseTag": "v1.0.39",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.39",
-  "windowsVersion": "1.0.39",
-  "androidBuild": 1000039,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.39/BankSetu-Setup-1.0.39-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.39/BankSetu-Android-1000039.apk"
+  "version": "1.0.40",
+  "releaseTag": "v1.0.40",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.40",
+  "windowsVersion": "1.0.40",
+  "androidBuild": 1000040,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.40/BankSetu-Setup-1.0.40-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.40/BankSetu-Android-1000040.apk"
 }

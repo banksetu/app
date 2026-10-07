@@ -23,7 +23,10 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
   const url = String(input);
-  if (url !== sessionStorage.getItem("bankSetuBridgeUrl")) return networkFetch(input, init);
+  if (url !== sessionStorage.getItem("bankSetuBridgeUrl")) {
+    if (!payload.idToken) throw new Error("Workspace bridge changed. Reconnect before accessing Google data.");
+    return networkFetch(input, init);
+  }
   if(sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true"){payload.masterLocalSync=true;init={...init,body:JSON.stringify(payload)};}
   const action = String(payload.action || "");
   const scope = identity();
@@ -90,7 +93,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if (!localRow) localRow = Math.max(0,...current.records.map(record => record.rowNumber)) + 1000000000;
     const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:localRow,revision:previous?.revision || "",customer:combined,pending:true,deleted:action === "deleteCustomer"};
     current.records = current.records.filter(item => item.recordId !== recordId);current.records.push(record);
-    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending"};
+    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending"};
     current.operations.push(operation);
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
@@ -206,6 +209,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
     const value=await send({action:"syncCustomerOperation",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
+    if (op.action === "deleteCustomer" && !value.success)
+      throw new Error(String(value.message || "Google deletion was rejected; pending delete retained for retry."));
     if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true || value.rowDeleted !== true))
       throw new Error("Google Sheet row and Drive deletion are not confirmed. Update this tenant's Apps Script bridge; local deletion remains pending.");
     await repository.transact(scope, state => {
