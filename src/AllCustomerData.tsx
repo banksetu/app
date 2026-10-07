@@ -210,27 +210,74 @@ export default function AllCustomerData() {
     </div>
     {selected && <div className="customer-preview-overlay" role="presentation" onClick={() => setSelected(null)}>
       <div className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
-        <div className="customer-preview-heading"><span>BANK SETU · CUSTOMER DETAILS</span><h2>Customer Preview</h2><p>{value(selected.name)} · {value(selected.enrolId)}</p></div>
-        {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl) && <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" style={{width:110,height:120,objectFit:"cover",borderRadius:10}} />}
-        <div className="customer-preview-fields">{visibleFields(selected).map(([key,item]) =>
-          <div key={key}><strong>{title(key)}</strong><span>{value(item)}</span></div>)}</div>
-        <div className="customer-preview-actions">
-          <button type="button" onClick={() => void share()}>Share</button>
-          <button type="button" onClick={() => window.print()}>Print</button>
-          <button type="button" onClick={() => setSelected(null)}>Close</button>
+        <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
+        <div className="customer-preview-content">
+          <div className="customer-preview-identity">
+            {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)
+              ? <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" />
+              : <div className="customer-preview-photo-placeholder" aria-label="No customer photograph">●</div>}
+            <div className="customer-preview-account">
+              <div className="customer-preview-name">{value(selected.name) || "Customer"}</div>
+              {value(selected.accountType || selected.acType || selected.accountCategory) && <span className="customer-preview-type">{value(selected.accountType || selected.acType || selected.accountCategory)}</span>}
+              <span className="customer-preview-account-label">Account No.</span>
+              <div className="customer-preview-account-number">{value(selected.accountNo) || "—"}
+                {value(selected.accountNo) && <button type="button" title="Copy account number" aria-label="Copy account number" onClick={async () => {try {if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(value(selected.accountNo)); else await navigator.clipboard.writeText(value(selected.accountNo));setCopyMessage("Account number copied.");} catch {setError("Clipboard unavailable.");}}}>▣</button>}
+              </div>
+            </div>
+            {value(selected.status) && <span className="customer-preview-status">{/active/i.test(value(selected.status)) && !/inactive/i.test(value(selected.status)) ? "✓ " : ""}{value(selected.status)}</span>}
+          </div>
+          <div className="customer-preview-sections">
+            <section className="customer-preview-section"><h3>♟ &nbsp;Personal Information</h3><dl>
+              {([["Customer Name",selected.name],["Father's / C/O Name",selected.fatherName || selected.coName],["Date of Birth",selected.dateOfBirth || selected.dob],["Gender",selected.gender],["Customer ID",selected.enrolId]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
+            </dl></section>
+            <section className="customer-preview-section"><h3>☎ &nbsp;Contact Information</h3><dl>
+              {([["Mobile Number",selected.contact || selected.mobile],["Email",selected.email]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
+            </dl></section>
+            {(value(selected.fullAddress || selected.address || selected.postOffice || selected.pinCode)) && <section className="customer-preview-section"><h3>● &nbsp;Address</h3><p className="customer-preview-address">{value(selected.fullAddress || selected.address)}{selected.postOffice && !value(selected.fullAddress).includes(value(selected.postOffice)) ? ` · PO: ${value(selected.postOffice)}` : ""}{selected.pinCode && !value(selected.fullAddress || selected.address).includes(value(selected.pinCode)) ? ` · ${value(selected.pinCode)}` : ""}</p></section>}
+            <div className="customer-preview-bottom">
+              {(value(selected.branch || selected.branchName || selected.ifsc || selected.ifscCode)) && <section className="customer-preview-section"><h3>▤ &nbsp;Branch Details</h3><dl>
+                {([["Branch",selected.branch || selected.branchName],["IFSC",selected.ifsc || selected.ifscCode]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
+              </dl></section>}
+              <section className="customer-preview-section"><h3>▦ &nbsp;Account Details</h3><dl>
+                {([["A/C Type",selected.accountType || selected.acType || selected.accountCategory],["Open Date",selected.accountOpeningDate],["AOF No.",selected.aofNo]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
+              </dl></section>
+            </div>
+            {visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo"].includes(key)).length > 0 && <section className="customer-preview-section"><h3>▤ &nbsp;Additional Details</h3><dl>{visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo"].includes(key)).map(([key,item]) => <div key={key}><dt>{title(key)}</dt><dd>{value(item)}</dd></div>)}</dl></section>}
+          </div>
+          <div className="customer-preview-actions">
+            <button type="button" onClick={() => void share()}>Share</button>
+            <button type="button" onClick={() => window.print()}>Print</button>
+            <button type="button" onClick={() => setSelected(null)}>Close</button>
+          </div>
         </div>
       </div>
     </div>}
     <style>{`
       .all-customer-data tbody tr:hover,.all-customer-data tbody tr:focus {background:#fbd9e3!important;outline:2px solid #d17a9c}
-      .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#442330a6;display:grid;place-items:center;padding:16px}
-      .customer-preview-card {background:linear-gradient(145deg,#fff6f7,#f9dce5);color:#35232c;border:2px solid #eeb9ca;border-radius:20px;box-shadow:0 22px 65px #3813226b;padding:24px;width:min(760px,95vw);max-height:88vh;overflow:auto}
-      .customer-preview-heading {background:linear-gradient(120deg,#8f2448,#d24b72);color:white;padding:20px 24px;border-radius:15px}.customer-preview-heading h2 {margin:7px 0;font-size:clamp(23px,4vw,34px)}.customer-preview-heading p {margin:0;overflow-wrap:anywhere}.customer-preview-heading span {font-size:12px;letter-spacing:.12em;font-weight:700}.customer-preview-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:16px 0}
-      .customer-preview-fields>div {background:#fff9facc;padding:9px;border-radius:8px;overflow-wrap:anywhere}
-      .customer-preview-fields strong {display:block;color:#853550;font-size:12px;margin-bottom:4px}
-      .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end}
-      .customer-preview-actions button:first-child {background:#a42451;color:white}.customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #c77493;background:#fff;cursor:pointer}
-      @media(max-width:600px){.customer-preview-card{padding:12px;width:100%;max-height:94dvh}.customer-preview-fields{grid-template-columns:1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
+      .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:grid;place-items:center;padding:14px;overflow:auto}
+      .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:94dvh;overflow:auto}
+      .customer-preview-heading {background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px}
+      .customer-preview-heading h2 {color:white;margin:0;font-size:clamp(21px,3.5vw,30px)}.customer-preview-heading p{margin:3px 0 0;font-size:15px}
+      .customer-preview-avatar {width:52px;height:52px;flex:none;border-radius:50%;background:white;color:#ee2160;display:grid;place-items:center;font-size:34px}
+      .customer-preview-close {margin-left:auto;background:transparent;border:0;color:white;font-size:30px;cursor:pointer}
+      .customer-preview-content {margin:16px 20px 20px;padding:20px;border:1px solid #ffd5df;border-radius:14px;background:#fff9fb}
+      .customer-preview-identity {display:flex;gap:24px;align-items:flex-start;position:relative;margin-bottom:20px}
+      .customer-preview-identity>img,.customer-preview-photo-placeholder {width:132px;height:146px;object-fit:cover;border-radius:10px;flex:none;background:#dfe5ec}
+      .customer-preview-photo-placeholder {display:grid;place-items:center;color:#8090a0;font-size:60px}
+      .customer-preview-account {min-width:0;flex:1}.customer-preview-name {font-weight:800;font-size:clamp(24px,4vw,32px);line-height:1.1;overflow-wrap:anywhere}
+      .customer-preview-type {display:inline-block;margin:9px 0;color:#d71957;border:1px solid #ff91b0;border-radius:14px;padding:5px 14px;background:#fff0f5}
+      .customer-preview-account-label {display:block;margin-top:9px}.customer-preview-account-number {display:flex;align-items:center;gap:16px;font-size:clamp(23px,4vw,32px);font-weight:800;overflow-wrap:anywhere}
+      .customer-preview-account-number button {background:#fff0f5;color:#d31352;border:1px solid #ffbad0;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:23px}
+      .customer-preview-status {background:#d9f8e8;border:1px solid #8ce7b7;color:#078350;border-radius:13px;padding:7px 14px;font-weight:700;white-space:nowrap}
+      .customer-preview-sections {display:grid;gap:14px}.customer-preview-section {border:1px solid #f8d4df;border-radius:12px;background:white;overflow:hidden;box-shadow:0 2px 8px #e483a21a}
+      .customer-preview-section h3 {color:#12254d;background:#fff0f4;margin:0;padding:10px 17px;font-size:18px}
+      .customer-preview-section dl {margin:0;padding:11px 18px}.customer-preview-section dl>div {display:grid;grid-template-columns:minmax(130px,34%) 1fr;gap:8px;line-height:1.55;overflow-wrap:anywhere}
+      .customer-preview-section dt::after {content:":";float:right;padding-right:5px}.customer-preview-section dd {margin:0}.customer-preview-address {margin:0;padding:12px 18px;white-space:pre-wrap;overflow-wrap:anywhere}
+      .customer-preview-bottom {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.customer-preview-bottom>.customer-preview-section:only-child{grid-column:1/-1}
+      .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+      .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #d57c99;background:#fff;cursor:pointer}
+      .customer-preview-actions button:first-child {background:#d51c57;color:white}
+      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl>div{grid-template-columns:minmax(115px,43%) 1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
       @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}}
     `}</style>
   </section>;
