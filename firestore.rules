@@ -72,10 +72,11 @@ service cloud.firestore {
       // the dashboard and must remain compatible with older documents that may
       // contain legacy fields; validate only the fields being changed.
       allow create: if (isMasterOwner() || isLegacyAdmin())
-        && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
+        && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'cardTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
         && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
         && request.resource.data.dashboardTheme is string
         && request.resource.data.menuTheme is string
+        && (!('cardTheme' in request.resource.data) || request.resource.data.cardTheme is string)
         && request.resource.data.updatedBy is string
         && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
         && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool);
@@ -116,7 +117,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'tenantId', 'bankName', 'apiUrl', 'spreadsheetId', 'googleEmail', 'bankInfo',
           'photoFolderId', 'bankLogo', 'bankFormats', 'passbookBank', 'branchName', 'cspCode', 'operatorName',
-          'address', 'dashboardTheme', 'menuTheme', 'customDashboardColor',
+          'address', 'dashboardTheme', 'menuTheme', 'cardTheme', 'customDashboardColor',
           'useCustomDashboardColor', 'updatedAt', 'updatedBy'
         ])
         && request.resource.data.updatedAt == request.time
@@ -135,6 +136,7 @@ service cloud.firestore {
         && (!('address' in request.resource.data) || request.resource.data.address is string)
         && (!('dashboardTheme' in request.resource.data) || request.resource.data.dashboardTheme is string)
         && (!('menuTheme' in request.resource.data) || request.resource.data.menuTheme is string)
+        && (!('cardTheme' in request.resource.data) || request.resource.data.cardTheme is string)
         && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
         && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
         || (isClientAdmin()
@@ -144,7 +146,7 @@ service cloud.firestore {
           && request.resource.data.updatedAt == request.time
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'bankName', 'bankInfo', 'bankLogo', 'passbookBank', 'branchName',
-            'cspCode', 'operatorName', 'address', 'dashboardTheme', 'menuTheme',
+            'cspCode', 'operatorName', 'address', 'dashboardTheme', 'menuTheme', 'cardTheme',
             'customDashboardColor', 'useCustomDashboardColor', 'updatedAt', 'updatedBy'
           ])
           && request.resource.data.bankInfo is map
