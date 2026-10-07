@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.28",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.28/BankSetu-Setup-1.0.28-x64.exe",
-  "notes": "Production dashboard and local-first sync with Android and Windows app updates.",
-  "version": "1.0.28",
-  "windowsVersion": "1.0.28",
-  "androidBuild": 1000028,
-  "releaseTag": "v1.0.28",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.28",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.28/BankSetu-Setup-1.0.28-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.28/BankSetu-Android-1000028.apk"
+  "latestVersion": "1.0.29",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.29/BankSetu-Setup-1.0.29-x64.exe",
+  "notes": "Header Sync alignment and fixed dashboard card colors across all roles.",
+  "version": "1.0.29",
+  "windowsVersion": "1.0.29",
+  "androidBuild": 1000029,
+  "releaseTag": "v1.0.29",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.29",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.29/BankSetu-Setup-1.0.29-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.29/BankSetu-Android-1000029.apk"
 }
