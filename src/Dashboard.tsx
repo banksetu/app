@@ -3,6 +3,7 @@ import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import { localDataFetch, getDataIdToken, getLocalSnapshot } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   EmailAuthProvider,
@@ -275,6 +276,24 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   const [adminMenuOpen, setAdminMenuOpen] =
 
     useState(false);
+  const adminTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [adminMenuPosition, setAdminMenuPosition] = useState({ top: 0, right: 0 });
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const positionMenu = () => {
+      const rect = adminTriggerRef.current?.getBoundingClientRect();
+      if (rect) setAdminMenuPosition({
+        top: rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    };
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [adminMenuOpen]);
 
   const [systemStatusOpen, setSystemStatusOpen] =
 
@@ -1285,17 +1304,20 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
               className="admin-trigger"
 
+              ref={adminTriggerRef}
+
               style={styles.adminBox}
 
-              onClick={() =>
-
-                setAdminMenuOpen(
-
-                  !adminMenuOpen
-
-                )
-
-              }
+              onClick={() => {
+                if (!adminMenuOpen) {
+                  const rect = adminTriggerRef.current?.getBoundingClientRect();
+                  if (rect) setAdminMenuPosition({
+                    top: rect.bottom + 8,
+                    right: Math.max(8, window.innerWidth - rect.right),
+                  });
+                }
+                setAdminMenuOpen(!adminMenuOpen);
+              }}
 
             >
 
@@ -1335,9 +1357,9 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
             </button>
 
-            {adminMenuOpen && (
+            {adminMenuOpen && createPortal(
 
-              <div style={styles.adminMenu}>
+              <div style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
 
                 <button
 
@@ -1425,7 +1447,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
               </div>
 
-            )}
+            , document.body)}
 
           </div>
 
