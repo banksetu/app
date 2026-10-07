@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.37",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.37/BankSetu-Setup-1.0.37-x64.exe",
-  "notes": "Immediate local-first customer sync and reference-matched customer preview sharing.",
-  "version": "1.0.37",
-  "windowsVersion": "1.0.37",
-  "androidBuild": 1000037,
-  "releaseTag": "v1.0.37",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.37",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.37/BankSetu-Setup-1.0.37-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.37/BankSetu-Android-1000037.apk"
+  "latestVersion": "1.0.38",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.38/BankSetu-Setup-1.0.38-x64.exe",
+  "notes": "Keep pending customer deletions hidden from cloud search until tenant Sheet and Drive sync confirms deletion.",
+  "version": "1.0.38",
+  "windowsVersion": "1.0.38",
+  "androidBuild": 1000038,
+  "releaseTag": "v1.0.38",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.38",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.38/BankSetu-Setup-1.0.38-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.38/BankSetu-Android-1000038.apk"
 }

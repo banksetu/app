@@ -178,3 +178,19 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  assert.equal(state.records.find(record=>record.recordId===second.recordId).deleted,true);
  navigator.onLine=false;
 });
+
+test('a pending local delete cannot reappear through cloud search or paged customer listing',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'fresh-firebase-token'};
+ connect('delete-tombstone');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'TOMB-1',accountNo:'9911'}});
+ await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
+ navigator.onLine=true;
+ const stale={...customer,enrolId:'TOMB-1',accountNo:'9911',recordId:saved.recordId,rowNumber:7,revision:'r1'};
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation')throw Error('cloud unavailable');return new Response(JSON.stringify({success:true,customer:stale,customers:[stale],matches:[stale],rowNumber:7}));};
+ assert.equal((await request({action:'searchCustomer',query:'TOMB-1'})).success,false);
+ assert.equal((await request({action:'getAllCustomers',page:1,pageSize:15})).success,false);
+ const state=await repository.read('user-a:tenant-a:delete-tombstone');
+ assert.equal(state.records.find(record=>record.recordId===saved.recordId).deleted,true);
+ assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
+ navigator.onLine=false;
+});

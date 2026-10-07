@@ -40,7 +40,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     // Bulk online export must read every cloud page, even when only part is cached.
     if(action === "getAllCustomers" && navigator.onLine){
       const response=await cloudRead(input,init);const value=await response.clone().json();
-      if(value.success)await cacheResponse(scope,value);return response;
+      if(value.success)await cacheResponse(scope,value);return await hideLocallyDeleted(scope,value,response);
     }
     const query = fold(payload.query);
     const hits = state.records.filter(record => !record.deleted && (action === "getAllCustomers" || (action === "getCustomerByRowNumber" ? record.rowNumber === Number(payload.rowNumber) : query && ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(field => fold(record.customer[field]).includes(query)))));
@@ -55,7 +55,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     const response = await cloudRead(input, init);
     const value = await response.clone().json();
     if (value.success) await cacheResponse(scope, value);
-    return response;
+    return await hideLocallyDeleted(scope,value,response);
   }
   if (action === "getBankFormatPreview") {
     const key=String(payload.formatType || "");
@@ -107,6 +107,22 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   return resultResponse({success:true,deleted:action==="deleteCustomer",queued:true,rowNumber:localRow,recordId,
     message:action==="deleteCustomer" ? "Deleted locally. Google Sheet and Drive deletion is pending sync." : "Saved on this device. Pending Google sync; keep this device's data until sync completes.",
     photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
+}
+async function hideLocallyDeleted(scope: string, value: Record<string, unknown>, response: Response): Promise<Response> {
+  if (!value.success) return response;
+  const state = await repository.read(scope);
+  const tombstones = new Set(state.records.filter(record => record.deleted).map(record => record.recordId));
+  if (!tombstones.size) return response;
+  const visible = (items: unknown) => Array.isArray(items)
+    ? items.filter(item => !tombstones.has(String((item as Customer)?.recordId || ""))) : items;
+  const customer = value.customer as Customer | undefined;
+  const customers = visible(value.customers);
+  const matches = visible(value.matches);
+  const masked = {...value, customers, matches};
+  if (customer && tombstones.has(String(customer.recordId || ""))) masked.customer = (Array.isArray(matches) ? matches[0] : undefined) || (Array.isArray(customers) ? customers[0] : undefined);
+  if (!masked.customer && (!Array.isArray(customers) || !customers.length) && (!Array.isArray(matches) || !matches.length))
+    return resultResponse({success:false,message:"This customer was deleted locally; Google deletion is pending sync."});
+  return resultResponse(masked);
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 async function cacheResponse(scope: string, value: Record<string, unknown>) {
