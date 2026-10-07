@@ -37,7 +37,7 @@ export default function Reports() {
       customerId: String(customer.enrolId || ""), details: action === "Customer Deleted" ? "Deleted" : "Customer record",
       user: String(customer.updatedBy || ""), email: "",
     });
-    const recent = (items: ActivityItem[]) => [...new Map(items.map(item => [item.id,item])).values()]
+    const recent = (items: ActivityItem[]) => [...new Map(items.map(item => [item.id,item] as const)).values()]
       .sort((a,b) => (Date.parse(b.dateTime)||0)-(Date.parse(a.dateTime)||0)).slice(0,10);
     let local: ActivityItem[] = [];
     try {
