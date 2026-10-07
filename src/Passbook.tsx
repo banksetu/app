@@ -2985,7 +2985,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
               className="passbook-button print-button"
 
-              onClick={printPassbook}
+              onClick={() => { if (alignmentEnabled) setAlignmentOpen(true); else void printPassbook(); }}
 
               disabled={printing}
 
