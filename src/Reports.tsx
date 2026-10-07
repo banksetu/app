@@ -45,8 +45,10 @@ export default function Reports() {
       if (localModeEnabled()) {
         const snapshot = await getLocalSnapshot();
         local = recent([
-          ...snapshot.records.filter(record => !record.deleted).map(record =>
-            entry(record.customer, `customer:${record.recordId}`, "Customer Saved", record.customer.updatedAt || record.customer.createdAt || record.cachedAt)),
+          ...snapshot.records.filter(record => !record.deleted).map(record => {
+            const customer = record.customer as Record<string, unknown>;
+            return entry(customer, `customer:${record.recordId}`, "Customer Saved", customer.updatedAt || customer.createdAt || record.cachedAt);
+          }),
           ...snapshot.operations.map(operation =>
             entry(operation.customer, `operation:${operation.operationId}`, operation.action, operation.createdAt)),
         ]);

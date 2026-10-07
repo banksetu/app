@@ -2376,6 +2376,7 @@ export default function Customers() {
               🖨 Print
 
             </button>
+            <button type="button" className="action-button whatsapp-button" onClick={() => void shareCustomer()}>↗ Share Image</button>
 
             <button
 
