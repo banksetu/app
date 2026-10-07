@@ -15,7 +15,6 @@ on:
       - tsconfig*.json
       - firebase.json
       - .firebaserc
-      - firestore.rules
       - .github/workflows/deploy-firebase-hosting.yml
   workflow_dispatch:
 
@@ -87,17 +86,6 @@ jobs:
             process.exit(1);
           }
           NODE
-
-      - name: Deploy Firestore rules when changed
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-        env:
-          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
-        run: |
-          key="$RUNNER_TEMP/firebase-service-account.json"
-          trap 'rm -f "$key"' EXIT
-          printf '%s' "$FIREBASE_DEPLOY_ACCOUNT" > "$key"
-          GOOGLE_APPLICATION_CREDENTIALS="$key" npx firebase-tools@15.31.0 deploy --only firestore:rules --project banksetu-69e2f --non-interactive
-          echo "Firestore rules deployment completed."
 
       - name: Deploy Firebase Hosting live
         uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0
