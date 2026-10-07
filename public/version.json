@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.31",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.31/BankSetu-Setup-1.0.31-x64.exe",
-  "notes": "Restore the full Profile popup above dashboard content while keeping fixed card colors.",
-  "version": "1.0.31",
-  "windowsVersion": "1.0.31",
-  "androidBuild": 1000031,
-  "releaseTag": "v1.0.31",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.31",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.31/BankSetu-Setup-1.0.31-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.31/BankSetu-Android-1000031.apk"
+  "latestVersion": "1.0.32",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.32/BankSetu-Setup-1.0.32-x64.exe",
+  "notes": "Customer data list, confirmed deletion, update progress, print feedback, A4 passbook layouts and Bank Setu icons.",
+  "version": "1.0.32",
+  "windowsVersion": "1.0.32",
+  "androidBuild": 1000032,
+  "releaseTag": "v1.0.32",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.32",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.32/BankSetu-Setup-1.0.32-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.32/BankSetu-Android-1000032.apk"
 }

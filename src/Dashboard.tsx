@@ -49,6 +49,7 @@ import BankFormats from "./BankFormats";
 import SelectedBankDocument from "./SelectedBankDocument";
 
 import Customers from "./Customers";
+import AllCustomerData from "./AllCustomerData";
 
 import Reports from "./Reports";
 
@@ -971,6 +972,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           />
 
+          <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
+
           <NavButton
 
             icon="🖨"
@@ -1493,6 +1496,8 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             <Customers />
 
           )}
+
+          {activePage === "all-customer-data" && <AllCustomerData />}
 
           {bankSettingsReady && activePage === "passbook" && (
 

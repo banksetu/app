@@ -76,6 +76,27 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
   if (action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) return resultResponse({success:false,message:"Administrator permission is required."});
   if (action === "saveCustomer" && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
+  if (action === "deleteCustomer") {
+    if (!navigator.onLine) return resultResponse({success:false,message:"Connect to Google Sheets before deleting this customer. No data was deleted."});
+    if (!existing || existing.deleted || existing.pending || state.operations.some(op => op.recordId === existing.recordId)) return resultResponse({success:false,message:"Wait for this customer's pending changes to sync before deleting. No data was deleted."});
+    const operationId = crypto.randomUUID();
+    const operation = {operationId,recordId:existing.recordId,action:"deleteCustomer",customer:existing.customer,baseRevision:existing.revision,rowNumber:existing.rowNumber};
+    try {
+      const response = await cloudRead(input,{...init,body:JSON.stringify({...payload,action:"syncCustomerOperation",connectionId:sessionStorage.getItem("bankSetuConnectionId"),operation})});
+      if (!response.ok) throw new Error("Google Sheet is unavailable.");
+      const result = await response.json();
+      if (!result.success || result.deleted !== true) return resultResponse({success:false,message:result.message || "Google Sheet did not confirm deletion. No local record was deleted."});
+      if (identity() !== scope) throw new Error("Workspace changed after Google Sheet deletion; reload the original workspace to reconcile local data.");
+      await repository.transact(scope,current=>{
+        const record=current.records.find(item=>item.recordId===existing.recordId);
+        if (record) {record.deleted=true;record.pending=false;record.revision=String(result.revision||record.revision);}
+      });
+      announce();
+      return resultResponse({success:true,deleted:true,message:"Customer deleted from Google Sheet and local database."});
+    } catch (error) {
+      return resultResponse({success:false,message:(error instanceof Error ? error.message : "Delete failed.")+" Check the Google Sheet status before retrying; no local success was recorded."});
+    }
+  }
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
   const combined = {...existing?.customer, ...customer};

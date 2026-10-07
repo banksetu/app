@@ -2184,6 +2184,24 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
         }
 
+        ${isAssamBank(bankInfo?.passbookBank) ? `
+          @page { size: 210mm 297mm; margin: 0; }
+          @media print {
+            html, body { width:210mm!important; height:297mm!important; }
+            .passbook-shell { width:210mm!important; height:170mm!important; overflow:visible!important; }
+            .passbook-cover-space { height:85mm!important; }
+            .passbook-print-area { top:85mm!important; height:85mm!important; }
+          }
+        ` : ""}
+        ${isUnion ? `
+          @page { size: 210mm 297mm; margin: 0; }
+          @media print {
+            html, body { width:210mm!important; height:297mm!important; }
+            .union-document { width:210mm!important; height:170mm!important; }
+            .union-lower { top:85mm!important; height:85mm!important; }
+            .union-fold { top:85mm!important; }
+          }
+        ` : ""}
       `}</style>
 
 

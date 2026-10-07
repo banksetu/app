@@ -9,6 +9,7 @@ type DesktopBridge = {
   version(): Promise<string>;
   checkUpdate(): Promise<unknown>;
   installUpdate(): Promise<void>;
+  onUpdateProgress(callback: (progress: { percent?: number }) => void): () => void;
 };
 
 type UpdateNoticeState = {
@@ -89,6 +90,16 @@ export default function SoftwareUpdateNotice() {
   const [notice, setNotice] = useState<UpdateNoticeState | null>(null);
   const [message, setMessage] = useState("");
   const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+
+  useEffect(() => {
+    const bridge = desktopBridge();
+    return bridge?.onUpdateProgress?.(event => {
+      const percent = Math.min(100, Math.max(0, Number(event.percent || 0)));
+      setProgress(percent);
+      setMessage(`Downloading Windows update… ${Math.round(percent)}%`);
+    });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -113,16 +124,23 @@ export default function SoftwareUpdateNotice() {
   const install = async () => {
     if (installing) return;
     setInstalling(true);
+    setProgress(0);
+    let handedToInstaller = false;
     try {
       if (notice.platform === "android") {
         setMessage("Downloading Android update…");
-        await downloadAndroidUpdate(notice.downloadUrl, percent => setMessage(`Downloading Android update… ${Math.round(percent)}%`));
-        setMessage("Download ready. Complete installation in the Android installer.");
+        await downloadAndroidUpdate(notice.downloadUrl, percent => { setProgress(percent); setMessage(`Downloading Android update… ${Math.round(percent)}%`); });
+        setProgress(100);
+        setMessage("Download complete. Android installer opened; approve the system installation prompt.");
+        handedToInstaller = true;
         return;
       }
       if (notice.platform === "windows" && desktopBridge()) {
         setMessage("Downloading and verifying the Windows update…");
         await desktopBridge()!.installUpdate();
+        setProgress(100);
+        setMessage("Update downloaded. Installing and restarting Bank Setu…");
+        handedToInstaller = true;
         return;
       }
       if (notice.downloadUrl) {
@@ -136,7 +154,7 @@ export default function SoftwareUpdateNotice() {
           ? error.message
           : "The update could not be installed. Your local data is retained."
       );
-    } finally { setInstalling(false); }
+    } finally { if (!handedToInstaller) setInstalling(false); }
   };
 
   return (
@@ -193,6 +211,8 @@ export default function SoftwareUpdateNotice() {
           {message}
         </p>
       )}
+      {progress !== null && installing && <div role="progressbar" aria-label="Update download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} style={{marginTop:12,height:12,borderRadius:8,background:"#ffffff44",overflow:"hidden"}}><div style={{width:`${progress}%`,height:"100%",background:"#d7ff75",transition:"width .2s"}} /></div>}
+      {progress !== null && installing && <strong style={{display:"block",marginTop:4,fontSize:12}}>{Math.round(progress)}%</strong>}
       <button
         type="button"
         disabled={installing}
