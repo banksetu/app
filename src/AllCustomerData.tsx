@@ -127,6 +127,9 @@ export default function AllCustomerData() {
     if (!query.trim()) {
       setError("");
       if (navigator.onLine) void loadPage(true);
+      else void getLocalSnapshot().then(snapshot => {
+        if (id === generation.current) setRows(snapshot.records.filter(record => !record.deleted).sort((a,b) => b.rowNumber - a.rowNumber).map(record => ({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})));
+      }).catch(cause => { if (id === generation.current) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });
       return;
     }
     const timer = setTimeout(async () => {

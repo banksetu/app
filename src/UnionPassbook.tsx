@@ -61,7 +61,7 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
       .union-edit { display:block; margin:12px auto; }
       @media print {
         @page { size:210mm 297mm; margin:0; }
-        .union-document { margin:0; box-shadow:none; background:transparent; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+        .union-document { margin:0; box-shadow:none; background:transparent; overflow:visible; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
         .union-edit { display:none!important; }
       }
     `}</style>

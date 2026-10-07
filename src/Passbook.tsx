@@ -2197,7 +2197,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
           @page { size: 210mm 297mm; margin: 0; }
           @media print {
             html, body { width:210mm!important; height:297mm!important; }
-            .union-document { width:210mm!important; height:170mm!important; }
+            .union-document { width:210mm!important; height:170mm!important; overflow:visible!important; }
             .union-lower { top:85mm!important; height:85mm!important; }
             .union-fold { top:85mm!important; }
           }
