@@ -3,7 +3,7 @@
 const crypto=require('node:crypto');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const REPO='https://api.github.com/repos/banksetu/app/releases/latest';
+const REPO='https://api.github.com/repos/banksetu/app/releases?per_page=30';
 function newer(next,current){
   const parse=value=>/^\d+\.\d+\.\d+$/.test(value)?value.split('.').map(Number):null;
   const a=parse(next),b=parse(current);if(!a||!b)return false;
@@ -12,22 +12,48 @@ function newer(next,current){
 function selectAsset(release,current){
   const version=String(release.tag_name||'').replace(/^v/,'');
   if(release.draft||release.prerelease||!newer(version,current))return null;
-  const assets=release.assets?.filter(asset=>asset.state==='uploaded'&&/^Bank.Setu.*\.exe$/i.test(asset.name)&&asset.name.includes(version));
-  if(!assets||assets.length!==1)throw new Error('A unique Bank Setu test installer is required.');
+  const assets=release.assets?.filter(asset=>asset.state==='uploaded'&&/^Bank[ ._-]?Setu.*\.exe$/i.test(asset.name)&&asset.name.includes(version)) || [];
+  // Android-only releases are valid and must not make the Windows updater fail.
+  if(!assets.length)return null;
+  if(assets.length!==1)throw new Error('A unique Bank Setu Windows installer is required.');
   const asset=assets[0];
   if(!/^sha256:[a-f0-9]{64}$/i.test(asset.digest||'')||!Number.isSafeInteger(asset.size)||asset.size<1000000||asset.size>400*1024*1024)throw new Error('GitHub installer checksum or size is missing.');
   const url=new URL(asset.browser_download_url);
   if(url.origin!=='https://github.com'||!url.pathname.startsWith('/banksetu/app/releases/download/')||url.search||url.hash)throw new Error('Unexpected installer source.');
   return {version,url:url.href,digest:asset.digest.slice(7).toLowerCase(),size:asset.size};
 }
-function createTestUpdater({fetch,current,directory,backup,launch}){
+function findLatestWindowsAsset(releases,current){
+  return releases.map(release=>selectAsset(release,current)).filter(Boolean).sort((a,b)=>{
+    const parse=value=>String(value).split('.').map(Number);
+    const av=parse(a.version),bv=parse(b.version);
+    for(let i=0;i<3;i++)if(av[i]!==bv[i])return bv[i]-av[i];
+    return 0;
+  })[0] || null;
+}
+function createTestUpdater({fetch,current,directory,backup,launch,manifestUrl}){
   let selected;
   return {
     async check(){
+      if (manifestUrl) {
+        const manifestResponse=await fetch(`${manifestUrl}?t=${Date.now()}`,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(15000)}).catch(()=>null);
+        if (manifestResponse?.ok) {
+          const manifest=await manifestResponse.json().catch(()=>null);
+          if (manifest?.windowsVersion && newer(String(manifest.windowsVersion),current)) {
+            // Firebase announces the update; GitHub remains the verified binary source.
+            const releaseResponse=await fetch(REPO,{headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
+            if (releaseResponse.ok) {
+              const releases=await releaseResponse.json();
+              selected=findLatestWindowsAsset(Array.isArray(releases)?releases:[releases],current);
+            }
+            return {latestVersion:String(manifest.windowsVersion),notes:manifest.notes||'New Bank Setu update is available.'};
+          }
+        }
+      }
       const response=await fetch(REPO,{headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
       if(response.status===404){selected=null;return {latestVersion:current,notes:'No newer test installer is published.'};}
       if(!response.ok)throw new Error('Could not check the Bank Setu test release.');
-      selected=selectAsset(await response.json(),current);
+      const payload=await response.json();
+      selected=findLatestWindowsAsset(Array.isArray(payload)?payload:[payload],current);
       return {latestVersion:selected?.version||current,notes:'Internal test channel: GitHub repository and SHA-256 checksum. Database backup is made before installation.'};
     },
     async install(){
@@ -46,4 +72,4 @@ function createTestUpdater({fetch,current,directory,backup,launch}){
     }
   };
 }
-module.exports={newer,selectAsset,createTestUpdater};
+module.exports={newer,selectAsset,findLatestWindowsAsset,createTestUpdater};

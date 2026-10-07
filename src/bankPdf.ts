@@ -31,6 +31,7 @@ export function validateExtractedCustomer(input:Record<string,string>) {
   for (const [field,raw] of Object.entries(input)) {
     const value=cleanExtractedValue(raw);
     if (!value || /\b(?:date of birth|relationship|age|customer id|account no|aadhaar|aadhar)\b/i.test(value)) continue;
+    if (/^(?:proof|signature(?:\s|$)|gbpa\b|pf\s*no\b|date\s*$|declaration\b|for office use\b)/i.test(value)) continue;
     if (field === "accountNo" && !/^\d{6,20}$/.test(value)) continue;
     if (field === "enrolId" && !/^[a-z0-9/-]{2,30}$/i.test(value)) continue;
     if (field === "contact" && !/^(?:\+91[ -]?)?[6-9]\d{9}$/.test(value)) continue;

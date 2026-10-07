@@ -15,6 +15,7 @@ import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
 import PublicPages from "./PublicPages";
+import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
@@ -416,6 +417,7 @@ function App() {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
         <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
+        <SoftwareUpdateNotice />
       </div>
     );
   }

@@ -1,3 +1,5 @@
+import { downloadAndroidUpdate, isAndroid } from './platform/android/runtime';
+import { checkAndroidUpdate } from './platform/android/updates';
 import { useEffect, useState } from "react";
 
 import type { CSSProperties } from "react";
@@ -67,6 +69,8 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
 
   const [updateChecking, setUpdateChecking] =
     useState(false);
+  const [currentVersion, setCurrentVersion] =
+    useState(CURRENT_APP_VERSION);
   const [latestVersion, setLatestVersion] =
     useState(CURRENT_APP_VERSION);
   const [updateAvailable, setUpdateAvailable] =
@@ -77,6 +81,41 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     useState("");
   const [updateMessage, setUpdateMessage] =
     useState("Check for a new Bank Setu version.");
+  const [downloadProgress, setDownloadProgress] =
+    useState<number | null>(null);
+
+  useEffect(() => {
+    const desktop = (window as typeof window & { bankSetuDesktop?: { onUpdateProgress?: (callback: (payload: { percent?: number }) => void) => (() => void) } }).bankSetuDesktop;
+    if (!desktop?.onUpdateProgress) return;
+    return desktop.onUpdateProgress(payload => {
+      const percent = Math.max(0, Math.min(100, Number(payload?.percent || 0)));
+      setDownloadProgress(percent);
+      if (percent >= 100) setUpdateMessage("Update downloaded. The installer is ready.");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isAndroid()) return;
+    let active = true;
+    void (async () => {
+      try {
+        const result = await Promise.race([
+          checkAndroidUpdate(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("update-timeout")), 4000)),
+        ]) as Awaited<ReturnType<typeof checkAndroidUpdate>>;
+        if (!active) return;
+        setCurrentVersion(result.currentVersion || CURRENT_APP_VERSION);
+        setLatestVersion(result.latestVersion);
+        setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl);
+        setUpdateNotes(result.notes);
+        setUpdateMessage(result.available ? `New Android version ${result.latestVersion} is available.` : "This app is already using the latest published Android build.");
+      } catch {
+        // Startup must not be blocked by update-server latency.
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -580,9 +619,24 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     );
 
     try {
+      if (isAndroid()) {
+        const result = await checkAndroidUpdate();
+        setCurrentVersion(result.currentVersion || CURRENT_APP_VERSION);
+        setLatestVersion(result.latestVersion);
+        setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl);
+        setUpdateNotes(result.notes);
+        setUpdateMessage(
+          result.available
+            ? 'New Android APK available. Download it and install over the existing app to retain local data.'
+            : 'This app is already using the latest published Android build.'
+        );
+        return;
+      }
       if (window.bankSetuDesktop) {
         const manifest = await window.bankSetuDesktop.checkUpdate() as {latestVersion: string; notes?: string};
         const current = await window.bankSetuDesktop.version();
+        setCurrentVersion(current);
         const available = compareVersions(manifest.latestVersion, current) > 0;
         setLatestVersion(manifest.latestVersion);setUpdateAvailable(available);setUpdateNotes(manifest.notes || "");
         setUpdateMessage(available ? `New Windows version ${manifest.latestVersion} is available.` : "Bank Setu is already up to date.");
@@ -642,25 +696,37 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
     }
   };
 
-  const installUpdate = () => {
+  const installUpdate = async () => {
     if (window.bankSetuDesktop) {
+      setDownloadProgress(0);
       setUpdateMessage("Downloading and verifying the signed Windows update…");
-      void window.bankSetuDesktop.installUpdate().catch(error => setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."));
+      void window.bankSetuDesktop.installUpdate().catch(error => { setDownloadProgress(null); setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."); });
       return;
     }
     if (!updateAvailable) {
-      setUpdateMessage(
-        "No new update is available."
-      );
+      setUpdateMessage("No new update is available.");
+      return;
+    }
+
+    if (isAndroid() && updateDownloadUrl) {
+      setDownloadProgress(0);
+      setUpdateMessage("Downloading the Android update inside Bank Setu…");
+      try {
+        await downloadAndroidUpdate(updateDownloadUrl, (percent) => {
+          setDownloadProgress(percent);
+          setUpdateMessage(`Downloading Android update… ${percent}%`);
+        });
+        setDownloadProgress(100);
+        setUpdateMessage("Download complete. Android installer opened; tap Install to finish.");
+      } catch (error) {
+        setDownloadProgress(null);
+        setUpdateMessage(error instanceof Error ? error.message : "Android update download failed.");
+      }
       return;
     }
 
     if (updateDownloadUrl) {
-      window.open(
-        updateDownloadUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
+      window.open(updateDownloadUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
@@ -1208,7 +1274,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
             CURRENT VERSION
           </span>
           <strong style={styles.versionValue}>
-            v{CURRENT_APP_VERSION}
+            v{currentVersion}
           </strong>
         </div>
 
@@ -1225,6 +1291,15 @@ function ConnectionSettings({ allowConnectionSettings = false, isClientAdmin = f
       <p style={styles.updateText}>
         {updateMessage}
       </p>
+
+      {downloadProgress !== null && (
+        <div style={{ margin: "14px 0", width: "100%" }}>
+          <div style={{ height: "10px", borderRadius: "999px", background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+            <div style={{ width: `${downloadProgress}%`, height: "100%", borderRadius: "999px", background: "linear-gradient(90deg,#35dec0,#29a8e8)", transition: "width .2s ease" }} />
+          </div>
+          <div style={{ marginTop: "6px", textAlign: "center", color: "#8eeede", fontSize: "11px" }}>{downloadProgress}%</div>
+        </div>
+      )}
 
       {updateNotes && (
         <div style={styles.updateNotes}>

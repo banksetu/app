@@ -62,7 +62,10 @@ if (fs.existsSync(packageLockPath)) {
 let versionData = {
   latestVersion: newVersion,
   downloadUrl: "",
-  notes: "Bank Setu new update."
+  notes: "Bank Setu new update.",
+  version: newVersion,
+  releaseTag: `v${newVersion}`,
+  releaseUrl: `https://github.com/banksetu/app/releases/tag/v${newVersion}`
 };
 
 if (fs.existsSync(versionPath)) {
@@ -72,7 +75,14 @@ if (fs.existsSync(versionPath)) {
       ...JSON.parse(
         fs.readFileSync(versionPath, "utf8")
       ),
-      latestVersion: newVersion
+      latestVersion: newVersion,
+      version: newVersion,
+      releaseTag: `v${newVersion}`,
+      releaseUrl: `https://github.com/banksetu/app/releases/tag/v${newVersion}`,
+      androidBuild: major * 1000000 + minor * 1000 + patch + 1,
+      androidDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Android-${major * 1000000 + minor * 1000 + patch + 1}.apk`,
+      windowsVersion: newVersion,
+      windowsDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Setup-${newVersion}-x64.exe`
     };
   } catch {
     // Keep default values

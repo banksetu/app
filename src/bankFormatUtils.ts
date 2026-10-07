@@ -73,8 +73,58 @@ export const BANK_TEMPLATE_FIELD_OPTIONS = [
   ["customerPhoto", "Customer photo"],
 ] as const;
 
-export function bankTemplateValue(customer: Record<string, unknown>, field: string): string {
+// Derived print fields only: the original customer/extraction data stays intact.
+export const BANK_PRINT_FIELD_OPTIONS = [
+  ...BANK_TEMPLATE_FIELD_OPTIONS,
+  ["firstName", "First name"], ["middleName", "Middle name"], ["lastName", "Last name"],
+  ["addressLine1", "Address line 1"], ["addressLine2", "Address line 2"], ["addressLine3", "Address line 3"],
+] as const;
+
+export function splitPrintName(value: unknown) {
+  const words = String(value ?? "").trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: words.length > 1 ? words[0] : "",
+    middleName: words.length > 2 ? words.slice(1, -1).join(" ") : "",
+    lastName: words.at(-1) || "",
+  };
+}
+
+export function splitPrintAddress(value: unknown, lineCount = 3): string[] {
+  const count = Math.max(1, Math.min(3, Math.trunc(lineCount) || 3));
+  const text = String(value ?? "").trim();
+  const existing = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (existing.length > 1 && existing.length <= count) {
+    return [...existing, ...Array(count - existing.length).fill("")];
+  }
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  for (let index = 0; index < count; index++) {
+    const target = Math.ceil(words.join(" ").length / (count - index));
+    let line = "";
+    while (words.length && (index === count - 1 || !line || (line + " " + words[0]).length <= target)) {
+      line += (line ? " " : "") + words.shift();
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+export function mergeAccountOpeningPrintMap(automatic: BankFieldPlacement[], manual: BankFieldPlacement[]) {
+  const remaining = automatic.filter(item => !manual.some(saved => {
+    if ((saved.page || 1) !== (item.page || 1)) return false;
+    return saved.field === item.field ||
+      (item.field === "name" && ["firstName", "middleName", "lastName"].includes(saved.field)) ||
+      (["address", "village", "postOffice", "pinCode"].includes(item.field) && /^addressLine[123]$/.test(saved.field));
+  }));
+  // Legacy automatic layouts keep their fallback behavior. Explicit saved boxes are authoritative.
+  return [...accountOpeningPrintMap(remaining), ...manual.map(item => ({ ...item }))];
+}
+
+export function bankTemplateValue(customer: Record<string, unknown>, field: string, addressLineCount = 3): string {
+  const addressLines = splitPrintAddress(String(customer.fullAddress ?? "").trim() || customer.address, addressLineCount);
   const values: Record<string, unknown> = {
+    ...splitPrintName(customer.name),
+    addressLine1: addressLines[0], addressLine2: addressLines[1], addressLine3: addressLines[2],
     dateOfBirth: customer.dateOfBirth ?? customer.dob,
     religion: customer.religion, category: customer.category, village: customer.address,
     name: customer.name,

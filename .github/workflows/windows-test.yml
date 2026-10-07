@@ -1,0 +1,46 @@
+name: Build Windows testing installer
+on:
+  push:
+    branches:
+      - codex/android-live-base
+      - codex/windows-production
+      - codex/windows-production-preview
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/**
+      - public/**
+      - desktop/**
+      - scripts/**
+      - package.json
+      - package-lock.json
+      - vite.config.*
+      - tsconfig*.json
+      - .github/workflows/windows-test.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:local && npm run test:bridge && npm run check:schema
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Build testing installer (not a signed production release)
+        run: npx electron-builder --win nsis --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Windows-UNSIGNED-TEST
+          path: desktop-release/*.exe
+          if-no-files-found: error
+          retention-days: 14

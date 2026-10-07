@@ -42,7 +42,7 @@ test('text spanning another column is not copied wholesale into a reading box',a
 });
 const formatSource=fs.readFileSync('src/bankFormatUtils.ts','utf8').replace(/^import .*;$/gm,'').replace('GlobalWorkerOptions.workerSrc = pdfWorker;','');
 const formatOutput=ts.transpileModule(formatSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText;
-const {clearSampleRegions,sourceSectionsToPrint,accountOpeningPrintMap,bankTemplateValue}=await import('data:text/javascript;base64,'+Buffer.from(formatOutput).toString('base64'));
+const {clearSampleRegions,sourceSectionsToPrint,accountOpeningPrintMap,bankTemplateValue,splitPrintName,splitPrintAddress,mergeAccountOpeningPrintMap}=await import('data:text/javascript;base64,'+Buffer.from(formatOutput).toString('base64'));
 test('filled sample cleanup clears only mapped value/photo boxes on their own page',()=>{
  const rectangles=[];const context={fillStyle:'',fillRect:(...args)=>rectangles.push(args)};
  const source=[{field:'name',page:1,x:10,y:20,width:30,height:2,fontSize:10},{field:'customerPhoto',page:2,x:70,y:10,width:15,height:20,fontSize:10}];
@@ -83,4 +83,66 @@ test('address block removes old C/O Vill P.O. labels and duplicate Care Of place
  const pages=globalThis.__semantic.clearAddressTemplate([{width:600,height:800,fields:[],runs:[run('Flat No / Bldg',30,320),run('C/O:',210,320),run('Vill:',300,320),run('P.O.:',400,320),run('Customer Name',30,100)]}],mapping);
  assert.deepEqual(pages[0].runs.map(run=>run.text),['Flat No / Bldg','Customer Name']);
  assert.equal(bankTemplateValue({fullAddress:'C/O Ali, Vill- Bundashil, P.O.- Badarpur, 788806'},'address'),'C/O Ali, Vill- Bundashil, P.O.- Badarpur, 788806');
+});
+
+test('AOF footer signature and address proof headings are never customer values',()=>{
+ assert.deepEqual(validateExtractedCustomer({name:'Signature GBPA / PF No Date',fullAddress:'Proof',coName:'Abdul Kalam'}),{coName:'Abdul Kalam'});
+ const entry=fs.readFileSync('src/CustomerEntry.tsx','utf8');
+ assert(entry.indexOf('...bankSpecific,')>entry.indexOf('...await extractBankCustomer(pdf, extractionMap'));
+});
+
+
+test('print names obey single, two, three and longer word rules without changing the source', () => {
+ assert.deepEqual(splitPrintName('  RAVI  '), {firstName:'', middleName:'', lastName:'RAVI'});
+ assert.deepEqual(splitPrintName('RAVI   SHARMA'), {firstName:'RAVI', middleName:'', lastName:'SHARMA'});
+ assert.deepEqual(splitPrintName('RAVI KUMAR SHARMA'), {firstName:'RAVI', middleName:'KUMAR', lastName:'SHARMA'});
+ assert.deepEqual(splitPrintName('RAVI KUMAR DEV SHARMA'), {firstName:'RAVI', middleName:'KUMAR DEV', lastName:'SHARMA'});
+ assert.deepEqual(splitPrintName(''), {firstName:'', middleName:'', lastName:''});
+ assert.equal(bankTemplateValue({name:'  RAVI  SHARMA'}, 'lastName'), 'SHARMA');
+});
+
+test('address print lines retain all words, punctuation and PIN in two or three boxes', () => {
+ const address='House 12, Village Road, Post Office Dispur, Assam 781001';
+ for (const count of [1,2,3]) {
+  const lines=splitPrintAddress(address,count);
+  assert.equal(lines.length,count);assert.equal(lines.filter(Boolean).join(' '),address);
+ }
+ assert.deepEqual(splitPrintAddress('House 12\nVillage Road\nAssam 781001',3),['House 12','Village Road','Assam 781001']);
+ assert.deepEqual(splitPrintAddress('',3),['','','']);
+ assert.equal(bankTemplateValue({fullAddress:'Road\nTown'},'addressLine2',2),'Town');
+});
+
+test('explicit name/address boxes retain page, coordinates, size and alignment', () => {
+ const box=(field,x,page=1)=>({field,page,x,y:40,width:18,height:3,fontSize:11,align:'center',uppercase:true});
+ const automatic=[box('name',10),box('address',10),box('pinCode',10),box('name',15,2)];
+ const manual=[box('firstName',20),box('lastName',65),box('addressLine1',24),box('addressLine2',48)];
+ const before=JSON.stringify(manual);
+ const result=mergeAccountOpeningPrintMap(automatic,manual);
+ assert.deepEqual(result.slice(-manual.length),manual);
+ assert.equal(JSON.stringify(manual),before);
+ assert(!result.some(item=>item.page===1&&['name','address','pinCode'].includes(item.field)));
+ assert(result.some(item=>item.page===2&&item.field==='name'));
+});
+
+
+globalThis.__aofName = splitPrintName;
+const unionSource=fs.readFileSync('src/unionAofLayout.ts','utf8').replace('import { splitPrintName } from "./bankFormatUtils";', 'const splitPrintName = globalThis.__aofName;');
+const unionOutput=ts.transpileModule(unionSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText;
+const {unionAofValues,unionAofOverflow,UNION_AOF_BOXES}=await import('data:text/javascript;base64,'+Buffer.from(unionOutput).toString('base64'));
+test('Union AOF maps applicant, guardian and nominee separately and preserves unknown address fields',()=>{
+ const source={name:'RAVI',coName:'MOHAN LAL DAS',nominee:'ASHA DAS',enrolId:'00123',contact:'9876543210',address:'DISPUR',fullAddress:'Dispur Kamrup Assam 781001'};
+ const result=unionAofValues(source);
+ assert.equal(result.firstName,'');assert.equal(result.lastName,'RAVI');
+ assert.equal(result.fatherMiddleName,'LAL');assert.equal(result.nomineeFirstName,'ASHA');assert.equal(result.nomineeLastName,'DAS');
+ assert.equal(result.customerId,'00123');assert.equal(result.mobile,'9876543210');
+ assert.equal(result.village,'DISPUR');assert.equal(result.houseNo,'');assert.equal(result.nomineeVillage,'');
+ assert(UNION_AOF_BOXES.every(box=>box.x>=0&&box.y>=0&&box.x+(box.width||box.cells*24.8)<=1132&&box.y+24<=1600));
+ assert.equal(source.name,'RAVI');
+});
+test('Union AOF reports long boxed values instead of silently dropping characters',()=>{
+ const value='ABCDEFGHIJKLMNOP';
+ const result=unionAofValues({name:value});
+ assert.equal(result.lastName,value);
+ assert(unionAofOverflow(result).some(box=>box.key==='lastName'));
+ assert.equal(unionAofOverflow(unionAofValues({name:'RAVI KUMAR DAS'})).length,0);
 });

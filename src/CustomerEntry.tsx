@@ -1303,7 +1303,15 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
           if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
         }
       }
-      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf, extractionMap, !isAssamBank(bankName)) };
+      const bankSpecific = isAssamBank(bankName)
+        ? Object.fromEntries(Object.entries(parseCustomerPdf(text)).filter(([, value]) => String(value || "").trim()))
+        : {};
+      // AOF footers contain generic Name/Address labels. Never let those
+      // overwrite the Assam bank parser's customer identity/address.
+      const extracted: Partial<CustomerForm> = {
+        ...await extractBankCustomer(pdf, extractionMap, !isAssamBank(bankName)),
+        ...bankSpecific,
+      };
       if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
       const extractedCount = Object.values(extracted).filter(value => String(value || "").trim()).length;
       const extractionMessage = extractedCount

@@ -1,3 +1,4 @@
+import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";
 import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
 import { customerRepository as repository } from "./customerRepository";
@@ -220,7 +221,7 @@ export async function getLocalSnapshot() {
     operations: state.operations.map(operation => ({ ...operation, customer: { ...operation.customer, photoDataUrl: undefined, pdfDataUrl: undefined, photoPreview: undefined } })),
   };
 }
-export async function exportLocalBackup() { const state=await repository.read(identity());const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
+export async function exportLocalBackup() { const state=await repository.read(identity());if(isAndroid()){await shareAndroidBackup(JSON.stringify(makeBackup(identity(),state),null,2));return;}const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 let recoverWorkspace: ((signal?:AbortSignal)=>Promise<void>) | undefined;
 let healthError="";
 let lastBackendCheck=0,lastHostingCheck=0,nextRetryAt=0;

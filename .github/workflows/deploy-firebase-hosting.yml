@@ -4,18 +4,6 @@ on:
   push:
     branches:
       - codex/spark-client-workspace-20261001
-    paths:
-      - src/**
-      - public/**
-      - scripts/check-sheet-schema.mjs
-      - index.html
-      - package.json
-      - package-lock.json
-      - vite.config.*
-      - tsconfig*.json
-      - firebase.json
-      - .firebaserc
-      - .github/workflows/deploy-firebase-hosting.yml
   workflow_dispatch:
 
 permissions:
@@ -29,7 +17,7 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout the selected commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -44,6 +32,9 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Check update notification recovery
+        run: npm run test:updates
 
       - name: Check client sheet column layout
         run: npm run check:schema
@@ -62,6 +53,16 @@ jobs:
             builtAt: new Date().toISOString(),
             workerUrl: 'https://banksetu-client-api.banksetu2026.workers.dev',
           }, null, 2) + '\n');
+          NODE
+
+      - name: Keep the last published release manifest until installers exist
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const manifest = JSON.parse(readFileSync('dist/version.json', 'utf8'));
+          if (!/^\d+\.\d+\.\d+$/.test(manifest.latestVersion) || !manifest.androidDownloadUrl || !manifest.windowsDownloadUrl) {
+            throw new Error('public/version.json must point to an existing published release.');
+          }
           NODE
 
       - name: Check Firebase deployment credential
@@ -85,6 +86,8 @@ jobs:
             console.error('::error::Use a complete service-account JSON key for project banksetu-69e2f.');
             process.exit(1);
           }
+          // Publish only the non-secret account identity, never the key.
+          if (/^[a-zA-Z0-9._@-]+$/.test(account.client_email)) console.log('Deployment principal: ' + account.client_email);
           NODE
 
       - name: Deploy Firebase Hosting live
@@ -119,7 +122,6 @@ jobs:
             `Commit: ${process.env.GITHUB_SHA}`,
             `Live app: ${origin}`,
             'The production build contains the Cloudflare Worker URL.',
-            'Apps Script and Firestore rules are not deployed by this workflow. Authenticated client-isolation and Google setup tests remain required.',
             '',
           ].join('\n'));
           NODE
