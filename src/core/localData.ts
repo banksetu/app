@@ -118,7 +118,7 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
   const customer = value.customer as Customer | undefined;
   const customers = visible(value.customers);
   const matches = visible(value.matches);
-  const masked = {...value, customers, matches};
+  const masked: Record<string, unknown> = {...value, customers, matches};
   if (customer && tombstones.has(String(customer.recordId || ""))) masked.customer = (Array.isArray(matches) ? matches[0] : undefined) || (Array.isArray(customers) ? customers[0] : undefined);
   if (!masked.customer && (!Array.isArray(customers) || !customers.length) && (!Array.isArray(matches) || !matches.length))
     return resultResponse({success:false,message:"This customer was deleted locally; Google deletion is pending sync."});
