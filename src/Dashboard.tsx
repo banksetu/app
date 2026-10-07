@@ -250,7 +250,10 @@ type PageName =
 function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   useEffect(()=>startPresence(),[]);
 
-  const canControlGlobalDashboard = accountRole === "master_owner";
+  // The verified legacy Master Admin is represented as `admin` for backward
+  // compatibility. It has the same global appearance permissions as the
+  // newer `master_owner` role; client roles remain excluded.
+  const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
 
   const syncStatus=useSyncStatus();
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
