@@ -2989,6 +2989,16 @@ function DashboardHome({
 
     useState("");
 
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+
+  useEffect(() => {
+    const refreshDashboardAfterWorkspaceReady = () => {
+      setWorkspaceVersion((version) => version + 1);
+    };
+    window.addEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+    return () => window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+  }, []);
+
   useEffect(() => {
 
     // Workspace/API hydration completes after the dashboard mounts on a fresh
@@ -3012,7 +3022,7 @@ function DashboardHome({
         // Use the local cache for dashboard counters when available. The existing
         // reconciliation engine keeps it current in the background; cloud remains
         // the fallback for a fresh install with no local records.
-        if (sessionStorage.getItem("banksetuWorkspaceReady") === "true") {
+        {
           try {
             const localState = await getLocalSnapshot();
             const records = localState.records
@@ -3309,7 +3319,7 @@ function DashboardHome({
 
     };
 
-  }, [bankSettingsReady]);
+  }, [bankSettingsReady, workspaceVersion]);
 
   const stats = [
 
