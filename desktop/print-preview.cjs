@@ -49,7 +49,7 @@ function previewHtml(pdf,printers) {
     '<details><summary>More settings</summary><label>Paper size<select id="paper"><option value="document">Document / passbook size</option><option value="A4">A4</option><option value="Letter">Letter</option></select></label></details>'+
     '<label>Copies<input id="copies" type="number" min="1" max="99" value="1"></label>'+
     '<label>Scale (%)<input id="scale" type="number" min="25" max="200" value="100"></label>'+
-    '<div id="status">Preview uses the document print layout. Print sends directly to the selected printer. Cancel closes this preview.</div>'+
+    '<div id="status" role="status" aria-live="polite">Preview uses the document print layout. Print sends directly to the selected printer. Cancel closes this preview.</div>'+
     '<div class="buttons"><button id="print">Print</button><button class="secondary" id="cancel">Cancel</button></div></aside>'+
     '<script>const $=id=>document.getElementById(id);const settings=()=>({deviceName:$("destination").value,color:$("color").value==="color",pageRanges:$("pages").value,landscape:$("layout").value==="landscape",paper:$("paper").value,copies:Number($("copies").value),scale:Number($("scale").value)});'+
     '$("destination").onchange=()=>{$("print").textContent=$("destination").value==="pdf"?"Save":"Print"};'+
