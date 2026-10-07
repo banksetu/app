@@ -70,7 +70,9 @@ jobs:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
         run: |
           node --input-type=module <<'NODE'
-          import { appendFileSync } from 'node:fs';
+          import { appendFileSync, writeFileSync } from 'node:fs';
+          import { createPrivateKey } from 'node:crypto';
+          import { join } from 'node:path';
           const value = process.env.FIREBASE_DEPLOY_ACCOUNT;
           if (!value) {
             console.error('::error::Add repository Actions secret FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F with the deployment service-account JSON, then re-run this failed job.');
@@ -86,19 +88,27 @@ jobs:
             console.error('::error::Use a complete service-account JSON key for project banksetu-69e2f.');
             process.exit(1);
           }
+          // Some JSON secret editors double-escape PEM line breaks. Verify the
+          // existing key before calling Firebase and normalize only that case.
+          let privateKey = account.private_key;
+          try { createPrivateKey(privateKey); }
+          catch {
+            privateKey = privateKey.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+            try { createPrivateKey(privateKey); }
+            catch {
+              console.error('::error::The configured Firebase service-account private_key is not a decodable PEM key. Replace the invalid repository secret; do not paste the key into logs.');
+              process.exit(1);
+            }
+          }
+          const credentialPath = join(process.env.RUNNER_TEMP, 'banksetu-firebase-credentials.json');
+          writeFileSync(credentialPath, JSON.stringify({ ...account, private_key: privateKey }), { mode: 0o600 });
+          appendFileSync(process.env.GITHUB_ENV, `GOOGLE_APPLICATION_CREDENTIALS=${credentialPath}\n`);
           // Publish only the non-secret account identity, never the key.
           if (/^[a-zA-Z0-9._@-]+$/.test(account.client_email)) console.log('Deployment principal: ' + account.client_email);
           NODE
 
       - name: Deploy Firebase Hosting live
-        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0
-        with:
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
-          projectId: banksetu-69e2f
-          target: banksetu-app
-          channelId: live
-          firebaseToolsVersion: '15.31.0'
-          disableComment: true
+        run: npx --yes firebase-tools@15.31.0 deploy --only hosting:banksetu-app --project banksetu-69e2f --non-interactive
 
       - name: Verify live frontend commit
         run: |
