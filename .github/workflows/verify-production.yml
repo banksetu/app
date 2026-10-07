@@ -1,0 +1,79 @@
+name: Verify Bank Setu production services
+
+on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/**
+      - cloudflare/**
+      - apps-script/Code.gs
+      - .github/workflows/verify-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find the latest frontend source commit
+        run: |
+          frontend_commit=$(git log -1 --format='%H' "$GITHUB_SHA" -- src public scripts/check-sheet-schema.mjs index.html package.json package-lock.json vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json firebase.json .firebaserc)
+          if [ -z "$frontend_commit" ]; then
+            echo '::error::Could not identify the last frontend source commit.'
+            exit 1
+          fi
+          echo "FRONTEND_COMMIT=$frontend_commit" >> "$GITHUB_ENV"
+
+      - name: Check live Hosting commit, Worker health, and Apps Script isolation version
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+
+          async function getJson(label, url) {
+            const response = await fetch(url, { redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(30000) });
+            if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+            return response.json();
+          }
+
+          let hosting;
+          let hostingCommit = '';
+          for (let attempt = 1; attempt <= 5; attempt++) {
+            try {
+              hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}&attempt=${attempt}`);
+              hostingCommit = String(hosting.commit || '');
+              if (hostingCommit === process.env.FRONTEND_COMMIT) break;
+            } catch (error) {
+              if (attempt === 5) throw error;
+            }
+            if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+          assert.equal(hostingCommit, process.env.FRONTEND_COMMIT, `Live Hosting serves commit ${hostingCommit || 'unknown'}, expected ${process.env.FRONTEND_COMMIT}`);
+
+          const worker = await getJson('Cloudflare Worker', 'https://banksetu-client-api.banksetu2026.workers.dev/health');
+          assert.equal(worker.success, true);
+          assert.equal(worker.protected, true);
+
+          const script = await getJson('Apps Script', 'https://script.google.com/macros/s/AKfycbxq3oN4nwfOQfiPs3NgaeBzxoWU2-JPFSZ4o-J5WLZrCF7wyflJwdPjyJ_QjFRHFBIT/exec?action=status');
+          assert.equal(script.success, true);
+          assert.equal(script.tenantIsolationVersion, 'v2', 'Apps Script is not deployed with tenant isolation v2');
+
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Production smoke checks passed',
+            `Verified frontend commit: ${process.env.FRONTEND_COMMIT}`,
+            'Firebase Hosting: live commit verified',
+            'Cloudflare Worker: health endpoint verified',
+            'Apps Script: tenant isolation v2 verified',
+            '',
+          ].join('\n'));
+          NODE

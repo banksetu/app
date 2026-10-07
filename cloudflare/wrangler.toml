@@ -1,0 +1,11 @@
+name = "banksetu-client-api"
+main = "worker.js"
+compatibility_date = "2026-10-02"
+
+[vars]
+ALLOW_LOCAL_FIRST_PREVIEW = "true"
+FIREBASE_PROJECT_ID = "banksetu-69e2f"
+ALLOWED_ORIGINS = "banksetu://app,https://banksetu-app.web.app,https://banksetu-app.firebaseapp.com,https://banksetu-app--spark-client-test-om37fzmr.web.app"
+BANKSETU_GOOGLE_OAUTH_CLIENT_ID = "806744371163-c9ic7m0mjvsgfnn46bi6en1mgo68uh1s.apps.googleusercontent.com"
+BANKSETU_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxq3oN4nwfOQfiPs3NgaeBzxoWU2-JPFSZ4o-J5WLZrCF7wyflJwdPjyJ_QjFRHFBIT/exec"
+BANKSETU_APPS_SCRIPT_EXECUTOR_EMAIL = "banksetu2026@gmail.com"

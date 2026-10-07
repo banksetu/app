@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
   useState,
@@ -7,6 +8,7 @@ import {
 } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 /* =========================================================
 
@@ -204,13 +206,7 @@ export default function Customers() {
 
   ) => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem("bankSetuApiUrl")
-
-        ?.trim() || "";
+      const apiUrl = getTenantApiUrl();
 
     if (!apiUrl) {
 
@@ -238,11 +234,11 @@ export default function Customers() {
 
     const idToken =
 
-      await user.getIdToken();
+      await getDataIdToken();
 
     const response =
 
-      await fetch(apiUrl, {
+      await localDataFetch(apiUrl, {
 
         method: "POST",
 

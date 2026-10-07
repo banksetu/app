@@ -1,3 +1,4 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
   useRef,
@@ -25,6 +26,7 @@ import {
   reauthenticateWithCredential,
 
 } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 
 
@@ -34,7 +36,7 @@ import {
 
   GlobalWorkerOptions,
 
-} from "pdfjs-dist";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 
 
 
@@ -42,17 +44,20 @@ import type {
 
   PDFDocumentProxy,
 
-} from "pdfjs-dist";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 
 
 
 import pdfWorker from
 
-  "pdfjs-dist/build/pdf.worker.min.mjs?url";
+  "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 
 
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { doc, getDocFromServer } from "firebase/firestore";
+import { isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { extractBankCustomer } from "./bankPdf";
 
 
 
@@ -195,12 +200,6 @@ type ApiResponse = {
    CONSTANTS
 
 \========================================================= */
-
-
-
-const API_STORAGE_KEY =
-
-  "bankSetuApiUrl";
 
 
 
@@ -408,7 +407,7 @@ function createEmptyForm(): CustomerForm {
 
 
 
-function CustomerEntry() {
+function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
   const [form, setForm] =
 
@@ -581,6 +580,8 @@ function CustomerEntry() {
   ] =
 
     useState("");
+
+
 
 
 
@@ -812,17 +813,7 @@ function CustomerEntry() {
 
   const getApiUrl = () => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem(
-
-          API_STORAGE_KEY
-
-        )
-
-        ?.trim();
+    const apiUrl = getTenantApiUrl();
 
 
 
@@ -872,11 +863,7 @@ function CustomerEntry() {
 
 
 
-      return user.getIdToken(
-
-        forceRefresh
-
-      );
+      return getDataIdToken(forceRefresh);
 
     };
 
@@ -920,7 +907,7 @@ function CustomerEntry() {
 
       const response =
 
-        await fetch(
+        await localDataFetch(
 
           apiUrl,
 
@@ -1242,6 +1229,8 @@ function CustomerEntry() {
 
 
 
+    if (file.size > 5 * 1024 * 1024) { showMessage("PDF must be smaller than 5 MB.", "error"); return; }
+
     setSelectedPdfName(
 
       file.name
@@ -1268,6 +1257,7 @@ function CustomerEntry() {
 
 
 
+    let importedPdfTask: ReturnType<typeof getDocument> | undefined;
     try {
 
       const buffer =
@@ -1276,13 +1266,9 @@ function CustomerEntry() {
 
 
 
-      const pdf =
+      importedPdfTask = getDocument({ data: buffer });
+      const pdf = await importedPdfTask.promise;
 
-        await getDocument({
-
-          data: buffer,
-
-        }).promise;
 
 
 
@@ -1308,13 +1294,21 @@ function CustomerEntry() {
 
 
 
-      const extracted =
-
-        parseCustomerPdf(
-
-          text
-
-        );
+      let extractionMap: import("./bankFormatUtils").BankFieldPlacement[] = [];
+      if (!isAssamBank(bankName)) {
+        const tenantId = sessionStorage.getItem("bankSetuTenantId");
+        if (tenantId) {
+          const settings = await getDocFromServer(doc(db, "tenantSettings", tenantId));
+          const sample = settings.data()?.bankFormats?.accountOpening;
+          if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
+        }
+      }
+      const extracted: Partial<CustomerForm> = { ...(isAssamBank(bankName) ? parseCustomerPdf(text) : {}), ...await extractBankCustomer(pdf, extractionMap, !isAssamBank(bankName)) };
+      if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
+      const extractedCount = Object.values(extracted).filter(value => String(value || "").trim()).length;
+      const extractionMessage = extractedCount
+        ? `${extractedCount} PDF fields extracted. Please check the values before saving. Aadhaar remains manual.`
+        : "No customer values detected. For this bank, check Account Opening sample → Edit field layout. Scanned PDFs require manual entry.";
 
 
 
@@ -1426,7 +1420,7 @@ function CustomerEntry() {
 
           accountOpeningDate:
 
-            previous.accountOpeningDate ||
+            extracted.accountOpeningDate || previous.accountOpeningDate ||
 
             getTodayLocalDate(),
 
@@ -1564,7 +1558,7 @@ function CustomerEntry() {
 
         showMessage(
 
-          "PDF data and customer photo extracted successfully. Aadhaar has been left blank for manual entry.",
+          `${extractionMessage} Photo crop prepared; please check it.`,
 
           "success"
 
@@ -1576,7 +1570,7 @@ function CustomerEntry() {
 
         showMessage(
 
-          "PDF data extracted successfully. Photo crop could not be generated. Aadhaar has been left blank.",
+          `${extractionMessage} Photo crop could not be generated.`,
 
           "success"
 
@@ -1611,6 +1605,7 @@ function CustomerEntry() {
 
 
     } finally {
+      if (importedPdfTask) await importedPdfTask.destroy();
 
       setExtractingPdf(
 
@@ -1772,11 +1767,26 @@ function CustomerEntry() {
 
 
 
+      let region = PDF_PHOTO_REGION;
+      let photoPage = 1;
+      if (!isAssamBank(bankName)) {
+        const tenantId = sessionStorage.getItem("bankSetuTenantId") || "";
+        if (!tenantId) return "";
+        const settings = (await getDocFromServer(doc(db, "tenantSettings", tenantId))).data();
+        const sample = settings?.bankFormats?.accountOpening;
+        if (!templateMatchesBank(sample, bankName)) return "";
+        const photo = sample.extractionMap?.find((field: { field: string }) => field.field === "customerPhoto");
+        if (!photo) return "";
+        photoPage = photo.page || 1;
+        if (photoPage > pdf.numPages) return "";
+        region = {x:photo.x/100,y:photo.y/100,width:photo.width/100,height:(photo.height || photo.width*0.8)/100};
+      }
+
       const page =
 
         await pdf.getPage(
 
-          1
+          photoPage
 
         );
 
@@ -1952,7 +1962,7 @@ function CustomerEntry() {
 
           pageCanvas.width *
 
-            PDF_PHOTO_REGION.x
+            region.x
 
         );
 
@@ -1964,7 +1974,7 @@ function CustomerEntry() {
 
           pageCanvas.height *
 
-            PDF_PHOTO_REGION.y
+            region.y
 
         );
 
@@ -1976,7 +1986,7 @@ function CustomerEntry() {
 
           pageCanvas.width *
 
-            PDF_PHOTO_REGION.width
+            region.width
 
         );
 
@@ -1988,7 +1998,7 @@ function CustomerEntry() {
 
           pageCanvas.height *
 
-            PDF_PHOTO_REGION.height
+            region.height
 
         );
 
@@ -2228,7 +2238,7 @@ function CustomerEntry() {
 
 
 
-          /Customer\s*Name\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
+          /Customer\s*Name\s*[:-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
 
         ]
 
@@ -2312,7 +2322,7 @@ function CustomerEntry() {
 
 
 
-          /Customer\s*Id\s*[:\-]?\s*([A-Z0-9]+)/i,
+          /Customer\s*Id\s*[:-]?\s*([A-Z0-9]+)/i,
 
         ]
 
@@ -2406,7 +2416,7 @@ function CustomerEntry() {
 
         [
 
-          /C\/O\s*[:\-]\s*([^,]+)/i,
+          /C\/O\s*[:-]\s*([^,]+)/i,
 
 
 
@@ -3314,6 +3324,7 @@ function CustomerEntry() {
 
 
 
+
               photoDataUrl,
 
 
@@ -3886,6 +3897,7 @@ function CustomerEntry() {
 
 
 
+
               photoDataUrl,
 
 
@@ -4170,7 +4182,7 @@ function CustomerEntry() {
 
         const response =
 
-          await fetch(
+          await localDataFetch(
 
             apiUrl,
 
@@ -4431,6 +4443,7 @@ function CustomerEntry() {
         ""
 
       );
+
 
 
 
@@ -6377,7 +6390,7 @@ function normalizeDateForInput(
 
     clean.match(
 
-      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+      /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/
 
     );
 

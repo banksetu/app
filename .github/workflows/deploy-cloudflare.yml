@@ -1,0 +1,78 @@
+name: Deploy Bank Setu Cloudflare Worker
+
+on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - cloudflare/**
+      - .github/workflows/deploy-cloudflare.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: banksetu-client-api-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the selected commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Test Worker request checks
+        run: node --test cloudflare/worker.test.js
+
+      - name: Check deployment credential is configured
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo '::error::Add the repository Actions secret CLOUDFLARE_API_TOKEN, then re-run this failed job.'
+            printf '%s\n' '## Deployment needs one repository secret' 'Add CLOUDFLARE_API_TOKEN under Settings > Secrets and variables > Actions, then re-run this failed job. Do not paste the token into code, chat, issues, or logs.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Deploy banksetu-client-api
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: c67c1c38d8481b01e9b9fbca5cb0f9b5
+          wranglerVersion: '4.146.0'
+          command: deploy --config cloudflare/wrangler.toml
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+
+      - name: Check live Worker health
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 15 \
+            https://banksetu-client-api.banksetu2026.workers.dev/health \
+            --output "$RUNNER_TEMP/banksetu-worker-health.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const health = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/banksetu-worker-health.json`, 'utf8'));
+          assert.equal(health.success, true);
+          assert.equal(health.protected, true);
+          assert.equal(health.message, 'Bank Setu API is running');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Cloudflare Worker deployment succeeded',
+            `Commit: ${process.env.GITHUB_SHA}`,
+            'Worker: https://banksetu-client-api.banksetu2026.workers.dev',
+            'Public health check passed. Authenticated account and tenant-isolation checks are still required.',
+            'This workflow deploys the Worker only. Firebase Hosting, Firestore rules and Apps Script are separate deployments.',
+            '',
+          ].join('\n'));
+          NODE

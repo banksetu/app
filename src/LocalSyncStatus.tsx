@@ -1,0 +1,64 @@
+import { useEffect, useState } from "react";
+import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, syncNow } from "./core/localData";
+import type { QueueOperation } from "./core/schema";
+import { callBankSetuWorker } from "./workerApi";
+
+type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean };
+const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false };
+
+export default function LocalSyncStatus({ visible = true }: { visible?: boolean }) {
+  const [conflicts, setConflicts] = useState<QueueOperation[]>([]);
+  const [status, setStatus] = useState<Status>(emptyStatus);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [viewer, setViewer] = useState<"local" | "pending" | "sheet" | "storage" | null>(null);
+  const [snapshot, setSnapshot] = useState<{ records: Array<{ recordId: string; customer: Record<string, unknown> }>; operations: Array<{ operationId: string; customer: Record<string, unknown>; state: string; error?: string }> }>({ records: [], operations: [] });
+  const [sheetUrl, setSheetUrl] = useState("");
+  const [storage, setStorage] = useState({ used: 0, quota: 0 });
+
+  const refresh = () => {
+    if(!localModeEnabled()||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")return;
+    void Promise.all([getLocalStatus(), getConflicts(), getLocalSnapshot()]).then(([nextStatus, nextConflicts, nextSnapshot]) => {
+      setStatus(nextStatus); setConflicts(nextConflicts); setSnapshot(nextSnapshot);
+    }).catch(reason => setError(reason instanceof Error ? reason.message : "Local database could not be read."));
+    if (navigator.storage?.estimate) void navigator.storage.estimate().then(result => setStorage({ used: result.usage || 0, quota: result.quota || 0 }));
+  };
+
+  useEffect(() => {
+    const changed=()=>{if(visible)refresh();};
+    window.addEventListener("banksetu-sync-change",changed);window.addEventListener("banksetu-workspace-change",changed);changed();
+    if(visible){
+    void callBankSetuWorker<{ spreadsheetId?: string }>("/get-google-setup", {}).then(config => {
+      const id = String(config.spreadsheetId || ""); setSheetUrl(id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "");
+    }).catch(() => undefined);
+    }
+    return()=>{window.removeEventListener("banksetu-sync-change",changed);window.removeEventListener("banksetu-workspace-change",changed);};
+  },[visible]);
+
+  if (!visible) return null;
+  if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
+
+  const runSync = () => { setBusy(true); setError(""); void syncNow().catch(reason => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => { setBusy(false); refresh(); }); };
+  const cards = [
+    { key: "local" as const, label: "Local data", value: String(status.records), hint: "इस device के local database में records", action: "Click here to see" },
+    { key: "pending" as const, label: "Upload pending", value: String(status.pending), hint: "Google Sheet पर भेजने के लिए बाकी", action: "Click here to see" },
+    { key: "sheet" as const, label: "Google Sheet data", value: status.downloading ? "Syncing…" : "Connected", hint: sheetUrl ? "Sheet खोलकर cloud data देखें" : "Google Sheet connection उपलब्ध नहीं", action: "Click here to see" },
+    { key: "storage" as const, label: "Local storage", value: storage.quota ? `${Math.max(0, Math.round((storage.quota - storage.used) / 1024 / 1024))} MB free` : "Device storage", hint: storage.quota ? `${Math.round(storage.used / 1024 / 1024)} MB used` : "Browser/desktop local storage", action: "Click here to see" },
+  ];
+  const viewerTitle = viewer === "local" ? "Local database records" : viewer === "pending" ? "Upload pending queue" : viewer === "storage" ? "Local storage status" : "Google Sheet data";
+  const viewerItems = viewer === "local" ? snapshot.records : viewer === "pending" ? snapshot.operations : [];
+  return <aside aria-label="Local database sync" style={styles.shell}>
+    <div style={styles.headingRow}><div><p style={styles.eyebrow}>DATA CONTROL CENTER</p><h2 style={styles.title}>Sync &amp; Backup</h2><p style={styles.sub}>Local-first storage · Google Sheet sync · backup and restore</p></div><button disabled={busy} onClick={runSync} style={styles.primary}>{busy ? "Syncing…" : "Sync now"}</button></div>
+    <div style={styles.grid}>{cards.map(card => <div key={card.key} style={styles.card}><div style={styles.cardTop}><span style={styles.cardLabel}>{card.label}</span><strong style={styles.value}>{card.value}</strong></div><p style={styles.hint}>{card.hint}</p><button style={styles.viewButton} onClick={() => card.key === "sheet" && sheetUrl ? window.open(sheetUrl, "_blank", "noopener,noreferrer") : setViewer(card.key)}>{card.action} ↗</button></div>)}</div>
+    {(error || status.conflicts > 0) && <div style={styles.errorCard}><strong>Sync attention needed</strong><p>{error || `${status.conflicts} record(s) need review.`}</p></div>}
+    <div style={{...styles.actions,marginTop:18}}><button type="button" style={styles.primary} onClick={() => void exportLocalBackup().catch(reason => setError(reason.message))}>Backup</button><label style={styles.restore}>Restore backup<input aria-label="Restore local backup" type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (!window.confirm("Merge this backup into the current workspace?")) return; void file.text().then(restoreLocalBackup).then(report => setError(`Restored ${report.records} records and ${report.operations} operations.`)).catch(reason => setError(reason.message)); }} /></label></div>
+    {status.cacheLimited && <p style={styles.notice}>Offline cache limit reached. Pending edits remain saved; older cloud records can still be searched online.</p>}
+    {viewer && <div role="dialog" aria-modal="true" style={styles.modal}><div style={styles.modalBox}><div style={styles.headingRow}><h3 style={{ margin: 0 }}>{viewerTitle}</h3><button onClick={() => setViewer(null)} style={styles.close}>×</button></div>{viewer === "sheet" ? <p>Google Sheet को नए tab में खोलने के लिए ऊपर वाला button इस्तेमाल करें।</p> : viewer === "storage" ? <p>{storage.quota ? `${Math.round(storage.used / 1024 / 1024)} MB used of ${Math.round(storage.quota / 1024 / 1024)} MB available.` : "Storage estimate इस device पर उपलब्ध नहीं है।"}</p> : viewerItems.length ? <div style={styles.list}>{viewerItems.map(item => <pre key={"recordId" in item ? item.recordId : item.operationId}>{JSON.stringify(item, null, 2)}</pre>)}</div> : <p>इस समय कोई data नहीं है।</p>}<button onClick={() => setViewer(null)} style={styles.secondary}>Close</button></div></div>}
+    {conflicts.length > 0 && ["client_admin", "master_owner", "admin"].includes(sessionStorage.getItem("bankSetuAccountRole") || "") && <details style={{ marginTop: 12 }}><summary>{conflicts.length} conflict/review item(s)</summary>{conflicts.map(op => <div key={op.operationId} style={styles.conflict}><strong>{String(op.customer.name || op.recordId)}</strong><span>{op.error}</span><button onClick={() => { if (window.confirm("Keep this local version and retry?")) void resolveConflict(op.operationId, "local").then(refresh).catch(reason => setError(reason.message)); }}>Keep local / retry</button>{op.remoteCustomer && <button onClick={() => { if (window.confirm("Use the Google version?")) void resolveConflict(op.operationId, "cloud").then(refresh).catch(reason => setError(reason.message)); }}>Use Google version</button>}</div>)}</details>}
+  </aside>;
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  shell: { background: "linear-gradient(135deg,#09212b,#103744)", color: "#eef7f7", padding: 22, borderRadius: 18, boxShadow: "0 18px 50px rgba(0,0,0,.18)" },
+  headingRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }, eyebrow: { margin: 0, color: "#7de7d0", fontSize: 11, letterSpacing: 1.6, fontWeight: 800 }, title: { margin: "5px 0", color: "#fff", fontSize: 26 }, sub: { margin: 0, opacity: .78 }, grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14, marginTop: 22 }, card: { background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, padding: 16, minHeight: 130 }, cardTop: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start" }, cardLabel: { fontWeight: 800 }, value: { color: "#84efd1", fontSize: 24 }, hint: { minHeight: 38, opacity: .78, fontSize: 13 }, primary: { background: "#62e2c4", color: "#06242a", border: 0, borderRadius: 9, padding: "11px 18px", fontWeight: 800 }, viewButton: { width: "100%", border: "1px solid #66ddc3", color: "#b7f8e8", background: "transparent", borderRadius: 8, padding: 9, cursor: "pointer" }, errorCard: { marginTop: 18, padding: 16, borderRadius: 12, background: "rgba(168,55,63,.35)", border: "1px solid #f28a8a" }, actions: { display: "flex", gap: 10, flexWrap: "wrap" }, restore: { display: "inline-flex", gap: 8, alignItems: "center", background: "#f0c674", color: "#2d1d00", padding: "8px 12px", borderRadius: 8, fontWeight: 700 }, link: { color: "#84efd1" }, notice: { opacity: .8 }, modal: { position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,.6)", display: "grid", placeItems: "center", padding: 20 }, modalBox: { background: "#102d38", borderRadius: 16, padding: 20, width: "min(800px,100%)", maxHeight: "85vh", overflow: "auto" }, close: { background: "transparent", border: 0, color: "#fff", fontSize: 24 }, secondary: { marginTop: 16, padding: "9px 14px", borderRadius: 8 }, list: { display: "grid", gap: 8 }, conflict: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,.12)" }
+};

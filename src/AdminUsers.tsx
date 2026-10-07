@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
-  serverTimestamp,
-  updateDoc,
+  query,
+  where,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
 import "./AdminUsers.css";
 
 type UserStatus =
@@ -21,8 +23,12 @@ type ManagedUser = {
   email: string;
   name?: string;
   role?: string;
+  tenantId?: string;
+  clientId?: string;
+  bankName?: string;
   status?: UserStatus;
   subscriptionStatus?: string;
+  tenantStatus?: string;
   disabled?: boolean;
   createdAt?: string | null;
 };
@@ -38,9 +44,6 @@ type Props = {
   embedded?: boolean;
 };
 
-const DELETE_API =
-  "https://banksetu-admin-api.banksetu2026.workers.dev/delete-user";
-
 function AdminUsers({ embedded = false }: Props) {
   const [open, setOpen] = useState(embedded);
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -49,24 +52,62 @@ function AdminUsers({ embedded = false }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [currentRole, setCurrentRole] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const currentAuthUser = auth.currentUser;
+  const isMasterAdmin = currentRole === "master_owner" || (
+    currentRole === "admin" &&
+    currentAuthUser?.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+    currentAuthUser.emailVerified
+  );
 
   const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
-      const snapshot = await getDocs(collection(db, "users"));
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Please sign in again.");
+      const profileSnapshot = await getDoc(doc(db, "users", currentUser.uid));
+      const currentProfile = profileSnapshot.data();
+      setCurrentRole(String(currentProfile?.role || "").toLowerCase());
+      const usersRef = collection(db, "users");
+      const usersQuery = currentProfile?.role === "client_admin"
+        ? currentProfile.tenantId
+          ? query(usersRef, where("tenantId", "==", currentProfile.tenantId))
+          : null
+        : usersRef;
+      if (!usersQuery) throw new Error("This client account has no workspace assignment.");
+      const snapshot = await getDocs(usersQuery);
+      const masterRole = String(currentProfile?.role || "").toLowerCase();
+      const isVerifiedLegacyOwner = masterRole === "admin" &&
+        currentUser.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+        currentUser.emailVerified;
+      const tenantStatuses = new Map<string, string>();
+      if (masterRole === "master_owner" || isVerifiedLegacyOwner) {
+        const tenants = await getDocs(collection(db, "tenants"));
+        tenants.docs.forEach((tenant) => tenantStatuses.set(tenant.id, String(tenant.data().status || "unknown")));
+      }
+
+      if (masterRole === "client_admin" && currentProfile?.tenantId) {
+        const tenant = await getDoc(doc(db, "tenants", String(currentProfile.tenantId)));
+        tenantStatuses.set(String(currentProfile.tenantId), String(tenant.data()?.status || "not-found"));
+      }
 
       setUsers(
-        snapshot.docs.map(
-          (item) =>
-            ({
-              uid: item.id,
-              ...item.data(),
-            } as ManagedUser)
-        )
+        snapshot.docs.map((item) => {
+          const data = item.data();
+          return {
+            uid: item.id,
+            ...data,
+            ...(data.tenantId ? { tenantStatus: tenantStatuses.get(String(data.tenantId)) || "not-found" } : {}),
+          } as ManagedUser;
+        })
       );
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string };
       console.error("Admin user list failed:", err);
 
       setError(
@@ -77,32 +118,68 @@ function AdminUsers({ embedded = false }: Props) {
     }
   }, []);
 
+  const createClientUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setBusyUid("create-client-user");
+    try {
+      await callBankSetuWorker<{ success: boolean }>("/create-client-user", {
+        name: newUserName,
+        email: newUserEmail,
+        password: newUserPassword,
+      });
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setMessage("Client user account created for this workspace.");
+      await loadUsers();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to create the client user.");
+    } finally {
+      setBusyUid("");
+    }
+  };
+
   useEffect(() => {
     if (open || embedded) {
-      void loadUsers();
+      const timer = window.setTimeout(() => void loadUsers(), 0);
+      const refresh = () => void loadUsers();
+      window.addEventListener("banksetu-client-created", refresh);
+      return () => { window.clearTimeout(timer); window.removeEventListener("banksetu-client-created", refresh); };
     }
+    return undefined;
   }, [open, embedded, loadUsers]);
 
   const counts = useMemo(() => {
-    const normalUsers = users.filter(
-      (u) =>
-        String(u.role || "user").toLowerCase() !== "admin"
-    );
+    const isMaster = isMasterAdmin;
+    // The Master Admin needs totals for the complete client tree. A Client
+    // Admin sees only the two operational users in their own tenant, not their
+    // own administrator account.
+    const countedUsers = users.filter((u) => {
+      const role = String(u.role || "user").toLowerCase();
+      if (["admin", "master_owner"].includes(role)) return false;
+      return isMaster || role !== "client_admin";
+    });
 
     const countStatus = (status: string) =>
-      normalUsers.filter(
+      countedUsers.filter(
         (u) =>
           String(u.status || "pending").toLowerCase() ===
           status
       ).length;
 
     return {
-      total: normalUsers.length,
+      total: countedUsers.length,
+      active: countedUsers.filter((user) => String(user.status || "").toLowerCase() === "approved" && String(user.subscriptionStatus || "").toLowerCase() === "active" && !user.disabled && (!user.tenantStatus || user.tenantStatus === "active")).length,
       pending: countStatus("pending"),
       approved: countStatus("approved"),
       denied: countStatus("denied"),
+      clientAdmins: isMaster
+        ? users.filter((u) => String(u.role || "").toLowerCase() === "client_admin").length
+        : 0,
     };
-  }, [users]);
+  }, [currentRole, isMasterAdmin, users]);
 
   const visibleUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -116,6 +193,8 @@ function AdminUsers({ embedded = false }: Props) {
         user.uid,
         user.status,
         user.role,
+        user.tenantId,
+        user.bankName,
       ]
         .filter(Boolean)
         .some((value) =>
@@ -124,54 +203,30 @@ function AdminUsers({ embedded = false }: Props) {
     );
   }, [search, users]);
 
-  const permanentlyDeleteUser = async (
-    user: ManagedUser
-  ) => {
-    const currentUser = auth.currentUser;
+  const orderedVisibleUsers = useMemo(() => [...visibleUsers].sort((left, right) => {
+    const leftGroup = String(left.tenantId || "~legacy");
+    const rightGroup = String(right.tenantId || "~legacy");
+    if (leftGroup !== rightGroup) return leftGroup.localeCompare(rightGroup);
+    const roleOrder: Record<string, number> = { client_admin: 0, client_user: 1 };
+    const leftRole = String(left.role || "user").toLowerCase();
+    const rightRole = String(right.role || "user").toLowerCase();
+    return (roleOrder[leftRole] ?? 2) - (roleOrder[rightRole] ?? 2) ||
+      String(left.email || "").localeCompare(String(right.email || ""));
+  }), [visibleUsers]);
 
-    if (!currentUser) {
-      throw new Error(
-        "Administrator session not found. Please log in again."
-      );
+  const workspaceGroups = useMemo(() => {
+    const groups = new Map<string, ManagedUser[]>();
+    for (const user of users) {
+      if (["admin", "master_owner"].includes(String(user.role || "").toLowerCase())) continue;
+      const id = user.tenantId || `unassigned:${user.uid}`;
+      groups.set(id, [...(groups.get(id) || []), user]);
     }
-
-    /*
-     * Force-refresh the Firebase ID token.
-     * This token proves to the Worker who is requesting
-     * the deletion.
-     */
-    const idToken = await currentUser.getIdToken(true);
-
-    const response = await fetch(DELETE_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        uid: user.uid,
-      }),
-    });
-
-    let data: any = {};
-
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error(
-        `Delete API returned an invalid response (${response.status}).`
-      );
-    }
-
-    if (!response.ok || !data?.success) {
-      throw new Error(
-        data?.message ||
-          `Unable to permanently delete user (${response.status}).`
-      );
-    }
-
-    return data;
-  };
+    const matches = new Set(visibleUsers.map((user) => user.uid));
+    return [...groups.entries()]
+      .filter(([, members]) => members.some((user) => matches.has(user.uid)))
+      .map(([id, members]) => ({ id, members }))
+      .sort((left, right) => String(left.members.find((user) => user.role === "client_admin")?.bankName || "").localeCompare(String(right.members.find((user) => user.role === "client_admin")?.bankName || "")));
+  }, [users, visibleUsers]);
 
   const runAction = async (
     user: ManagedUser,
@@ -186,22 +241,20 @@ function AdminUsers({ embedded = false }: Props) {
       return;
     }
 
-    const isAdmin =
-      String(user.role || "").toLowerCase() === "admin";
-
-    if (isAdmin) {
+    const targetRole = String(user.role || "user").toLowerCase();
+    const canManageClientAdmin = targetRole === "client_admin" && isMasterAdmin;
+    const canManageRegularUser = !["admin", "master_owner"].includes(targetRole) &&
+      (targetRole !== "client_admin" || isMasterAdmin);
+    if (!canManageClientAdmin && !canManageRegularUser) {
       setError(
         "Administrator accounts cannot be changed from User Management."
       );
       return;
     }
 
-    const confirmText =
-      action === "delete"
-        ? `Permanently delete ${user.email || "this user"}?\n\nThis will remove the Firebase Authentication account and Bank Setu user profile.`
-        : `Do you want to ${action} ${
-            user.email || "this user"
-          }?`;
+    const confirmText = action === "delete" && targetRole === "client_admin"
+      ? `Remove ${user.email || "this Client Admin"} and deactivate every login in this client workspace? Their Google Drive folder and Sheet will remain in the owner's Drive.`
+      : `Do you want to ${action} ${user.email || "this user"}?`;
 
     if (!window.confirm(confirmText)) {
       return;
@@ -211,83 +264,23 @@ function AdminUsers({ embedded = false }: Props) {
       setBusyUid(user.uid);
       setError("");
       setMessage("");
-
-      /*
-       * DELETE:
-       * Cloudflare Worker securely deletes Firebase Auth
-       * account + Firestore profile.
-       */
       if (action === "delete") {
-        const result = await permanentlyDeleteUser(user);
-
-        setMessage(
-          result?.message ||
-            `${user.email || "User"} permanently deleted successfully.`
-        );
-
-        await loadUsers();
-        return;
-      }
-
-      /*
-       * All other actions stay on Firestore.
-       */
-      const userRef = doc(db, "users", user.uid);
-
-      if (action === "approve") {
-        await updateDoc(userRef, {
-          status: "approved",
-          subscriptionStatus: "active",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
+        if (currentRole !== "master_owner" && currentRole !== "admin") {
+          throw new Error("Only the Master Admin can delete accounts.");
+        }
+        await callBankSetuWorker<{ success: boolean }>("/delete-user", { uid: user.uid });
+      } else {
+        await callBankSetuWorker<{ success: boolean }>("/account-action", {
+          uid: user.uid,
+          action,
         });
-
-        setMessage(
-          `${user.email || "User"} approved successfully.`
-        );
       }
-
-      if (action === "deny") {
-        await updateDoc(userRef, {
-          status: "denied",
-          subscriptionStatus: "inactive",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} denied successfully.`
-        );
-      }
-
-      if (action === "block") {
-        await updateDoc(userRef, {
-          status: "blocked",
-          subscriptionStatus: "inactive",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} blocked successfully.`
-        );
-      }
-
-      if (action === "unblock") {
-        await updateDoc(userRef, {
-          status: "approved",
-          subscriptionStatus: "active",
-          updatedAt: serverTimestamp(),
-          updatedBy: auth.currentUser?.uid || "",
-        });
-
-        setMessage(
-          `${user.email || "User"} unblocked successfully.`
-        );
-      }
-
+      setMessage(action === "delete" && targetRole === "client_admin"
+        ? `${user.email || "Client Admin"} and all workspace login accounts were removed. Their Google Drive folder and Sheet were retained.`
+        : `${user.email || "User"} ${action} successful.`);
       await loadUsers();
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
       console.error(
         `Admin ${action} user failed:`,
         err
@@ -308,6 +301,146 @@ function AdminUsers({ embedded = false }: Props) {
     }
   };
 
+  const isActiveUser = (user: ManagedUser) =>
+    String(user.status || "").toLowerCase() === "approved" &&
+    String(user.subscriptionStatus || "").toLowerCase() === "active" &&
+    !user.disabled && (!user.tenantStatus || user.tenantStatus === "active");
+
+  const renderUserCard = (user: ManagedUser) => {
+    const status = String(user.status || "pending").toLowerCase();
+    const isBusy = busyUid === user.uid;
+    const role = String(user.role || "user").toLowerCase();
+    const isAdmin = ["admin", "master_owner", "client_admin"].includes(role);
+    const isActive = isActiveUser(user);
+    const canManage = !["admin", "master_owner"].includes(role) &&
+      (role !== "client_admin" || isMasterAdmin) &&
+      (currentRole !== "client_admin" || role === "client_user");
+    return (<article className="admin-user-card" key={user.uid}>
+                <div className="admin-user-main">
+                  <div className="admin-user-avatar">
+                    {(user.email || "U")
+                      .slice(0, 1)
+                      .toUpperCase()}
+                  </div>
+
+                  <div className="admin-user-info">
+                    <strong>
+                      {user.name && !/^role\s/i.test(user.name) ? user.name : user.email || "Client User"}
+                    </strong>
+
+                    <span>{user.email}</span>
+                  </div>
+                </div>
+
+                <div className="admin-user-meta">
+                  <span className={`admin-user-status status-${status}`}>{isActive ? "Active" : status}</span>
+                  <span>{role === "client_admin" ? "Client Admin" : "Client User"}</span>
+                  {role === "client_admin" && user.tenantStatus && user.tenantStatus !== "active" && <span>Workspace: {user.tenantStatus}</span>}
+                </div>
+
+                <div className="admin-user-actions">
+                  {((canManage && !isAdmin) || (role === "client_admin" && isMasterAdmin && status === "pending")) && (
+                      <button
+                        className="approve"
+                        disabled={isBusy}
+                        onClick={() =>
+                          void runAction(
+                            user,
+                            "approve"
+                          )
+                        }
+                      >
+                        Approve
+                      </button>
+                    )}
+
+                  {((canManage && !isAdmin) || (role === "client_admin" && isMasterAdmin && status === "pending")) && status !== "denied" && (
+                      <button
+                        className="delete"
+                        disabled={isBusy}
+                        onClick={() =>
+                          void runAction(
+                            user,
+                            "deny"
+                          )
+                        }
+                      >
+                        Deny
+                      </button>
+                    )}
+
+                  {status !== "blocked" &&
+                    status !== "pending" &&
+                    canManage && (role === "client_admin" || !isAdmin) && (
+                      <button
+                        className="block"
+                        disabled={isBusy}
+                        onClick={() =>
+                          void runAction(
+                            user,
+                            "block"
+                          )
+                        }
+                      >
+                        Block
+                      </button>
+                    )}
+
+                  {status === "blocked" &&
+                    canManage && (role === "client_admin" || !isAdmin) && (
+                      <button
+                        className="unblock"
+                        disabled={isBusy}
+                        onClick={() =>
+                          void runAction(
+                            user,
+                            "unblock"
+                          )
+                        }
+                      >
+                        Unblock
+                      </button>
+                    )}
+
+                  {isMasterAdmin && role === "client_admin" &&
+                    user.tenantStatus !== "active" &&
+                    user.tenantStatus !== "offboarding" &&
+                    user.tenantStatus !== "offboarded" &&
+                    user.tenantStatus !== "not-found" &&
+                    status !== "blocked" && (
+                    <button
+                      className="unblock"
+                      disabled={isBusy}
+                      onClick={() => void runAction(user, "unblock")}
+                    >
+                      {isBusy ? "Restoring…" : "Restore Workspace"}
+                    </button>
+                  )}
+
+                  {isMasterAdmin && role === "client_admin" && (
+                    <button
+                      className="delete"
+                      disabled={isBusy}
+                      onClick={() => void runAction(user, "delete")}
+                    >
+                      Delete Client
+                    </button>
+                  )}
+
+                  {isMasterAdmin && role !== "master_owner" && role !== "admin" && role !== "client_admin" && (
+                      <button
+                        className="delete"
+                        disabled={isBusy}
+                        onClick={() => void runAction(user, "delete")}
+                      >
+                        Delete
+                      </button>
+                    )}
+
+                </div>
+              </article>);
+  };
+
   const panel = (
     <section
       className={
@@ -325,8 +458,9 @@ function AdminUsers({ embedded = false }: Props) {
           <h2>User Management</h2>
 
           <p>
-            Approve, deny, block, unblock or permanently
-            delete Bank Setu users.
+            {currentRole === "client_admin"
+              ? "Manage the two users in your workspace. You can approve, deny, block or unblock their access."
+              : "Search and manage client workspaces, Client Admins, and their users."}
           </p>
         </div>
 
@@ -341,6 +475,23 @@ function AdminUsers({ embedded = false }: Props) {
         )}
       </header>
 
+      {currentRole === "client_admin" && (
+        <form onSubmit={(event) => void createClientUser(event)} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, padding: "14px 0" }}>
+          <input required aria-label="Client user name" placeholder="User name" value={newUserName} onChange={(event) => setNewUserName(event.target.value)} />
+          <input required type="email" aria-label="Client user email" placeholder="User email" value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} />
+          <input required type="password" minLength={8} aria-label="Client user password" placeholder="Temporary password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} />
+          <button type="submit" disabled={busyUid === "create-client-user"}>
+            {busyUid === "create-client-user" ? "Creating…" : "Add Client User"}
+          </button>
+        </form>
+      )}
+
+      {isMasterAdmin && <section className="admin-owner-summary">
+        <div className="admin-owner-avatar" aria-hidden="true">A</div>
+        <div><span className="admin-owner-label">MASTER ADMIN</span><h3>Admin</h3><p>{currentAuthUser?.email}</p></div>
+        <span className="admin-owner-active">Active</span>
+      </section>}
+
       <div className="admin-user-stats">
         <div>
           <strong>{counts.total}</strong>
@@ -353,21 +504,24 @@ function AdminUsers({ embedded = false }: Props) {
         </div>
 
         <div>
-          <strong>{counts.approved}</strong>
-          <span>Approved</span>
+          <strong>{counts.active}</strong>
+          <span>Active Users</span>
         </div>
 
-        <div>
-          <strong>{counts.denied}</strong>
-          <span>Denied</span>
-        </div>
+
+        {isMasterAdmin && (
+          <div>
+            <strong>{counts.clientAdmins}</strong>
+            <span>Client Admins</span>
+          </div>
+        )}
       </div>
 
       <div className="admin-users-toolbar">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search email, name, UID or status..."
+          placeholder={isMasterAdmin ? "Search client, admin, user, email or workspace..." : "Search email, name, UID or status..."}
         />
 
         <button
@@ -401,150 +555,21 @@ function AdminUsers({ embedded = false }: Props) {
             No users found.
           </div>
         ) : (
-          visibleUsers.map((user) => {
-            const status = String(
-              user.status || "pending"
-            ).toLowerCase();
-
-            const isBusy = busyUid === user.uid;
-
-            const isAdmin =
-              String(user.role || "").toLowerCase() ===
-              "admin";
-
-            return (
-              <article
-                className="admin-user-card"
-                key={user.uid}
-              >
-                <div className="admin-user-main">
-                  <div className="admin-user-avatar">
-                    {(user.email || "U")
-                      .slice(0, 1)
-                      .toUpperCase()}
-                  </div>
-
-                  <div className="admin-user-info">
-                    <strong>
-                      {user.name ||
-                        user.email ||
-                        "Bank Setu User"}
-                    </strong>
-
-                    {user.name && (
-                      <span>{user.email}</span>
-                    )}
-
-                    <small>{user.uid}</small>
-                  </div>
-                </div>
-
-                <div className="admin-user-meta">
-                  <span
-                    className={`admin-user-status status-${status}`}
-                  >
-                    {status}
-                  </span>
-
-                  <span>
-                    {isAdmin ? "Admin" : "User"}
-                  </span>
-
-                  <span>
-                    {user.subscriptionStatus ||
-                      "inactive"}
-                  </span>
-                </div>
-
-                <div className="admin-user-actions">
-                  {(status === "pending" ||
-                    status === "denied" ||
-                    (status === "approved" &&
-                      String(user.subscriptionStatus || "inactive").toLowerCase() !== "active")) &&
-                    !isAdmin && (
-                      <button
-                        className="approve"
-                        disabled={isBusy}
-                        onClick={() =>
-                          void runAction(
-                            user,
-                            "approve"
-                          )
-                        }
-                      >
-                        Approve
-                      </button>
-                    )}
-
-                  {status === "pending" &&
-                    !isAdmin && (
-                      <button
-                        className="delete"
-                        disabled={isBusy}
-                        onClick={() =>
-                          void runAction(
-                            user,
-                            "deny"
-                          )
-                        }
-                      >
-                        Deny
-                      </button>
-                    )}
-
-                  {status !== "blocked" &&
-                    status !== "pending" &&
-                    !isAdmin && (
-                      <button
-                        className="block"
-                        disabled={isBusy}
-                        onClick={() =>
-                          void runAction(
-                            user,
-                            "block"
-                          )
-                        }
-                      >
-                        Block
-                      </button>
-                    )}
-
-                  {status === "blocked" &&
-                    !isAdmin && (
-                      <button
-                        className="unblock"
-                        disabled={isBusy}
-                        onClick={() =>
-                          void runAction(
-                            user,
-                            "unblock"
-                          )
-                        }
-                      >
-                        Unblock
-                      </button>
-                    )}
-
-                  {!isAdmin && (
-                    <button
-                      className="delete"
-                      disabled={isBusy}
-                      onClick={() =>
-                        void runAction(
-                          user,
-                          "delete"
-                        )
-                      }
-                    >
-                      {isBusy
-                        ? "Working..."
-                        : "Delete"}
-                    </button>
-                  )}
-                </div>
-              </article>
-            );
-          })
+          isMasterAdmin ? (workspaceGroups.length === 0 ? <div className="admin-users-empty">No Client Admins found. Create a client account to get started.</div> : workspaceGroups.map((group) => {
+            const admins = group.members.filter((user) => user.role === "client_admin");
+            const children = group.members.filter((user) => user.role !== "client_admin");
+            return <section className="admin-client-workspace" key={group.id} aria-label={admins[0]?.bankName || "Client workspace"}>
+              <header className="admin-client-workspace-header">
+                <div><span>CLIENT ADMIN</span><h3>{admins[0]?.bankName || "Client workspace"}</h3></div>
+                <span className="admin-client-seat-count">{children.length} {children.length === 1 ? "user" : "users"}</span>
+              </header>
+              {admins.map(renderUserCard)}
+              <div className="admin-client-children">
+                <div className="admin-client-children-heading"><strong>Client users</strong><span>Users assigned to this client</span></div>
+                {children.length ? children.map(renderUserCard) : <p className="admin-client-empty">No users yet. This Client Admin can add users after signing in.</p>}
+              </div>
+            </section>;
+          })) : orderedVisibleUsers.filter((user) => user.role === "client_user").map(renderUserCard)
         )}
       </div>
     </section>
