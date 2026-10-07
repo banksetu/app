@@ -1,3 +1,4 @@
+// Bank Setu production rules — card theme create/update path deployed via CI.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
