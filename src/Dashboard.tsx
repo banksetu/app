@@ -1440,6 +1440,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
             <DashboardHome
 
               openPage={openPage}
+              bankSettingsReady={bankSettingsReady}
 
             />
 
@@ -2849,10 +2850,12 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 function DashboardHome({
 
   openPage,
+  bankSettingsReady,
 
 }: {
 
   openPage: (page: PageName) => void;
+  bankSettingsReady: boolean;
 
 }) {
 
