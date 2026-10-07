@@ -223,6 +223,15 @@ type MenuThemeId = string;
 
 const isMenuThemeId = (value: unknown): value is MenuThemeId => MENU_THEMES.some((theme) => theme.id === value);
 
+type CardThemeId = "coral" | "violet" | "emerald" | "golden";
+const CARD_THEMES: Array<{ id: CardThemeId; name: string; preview: string; gradients: string[] }> = [
+  { id: "coral", name: "Coral", preview: "#f76596", gradients: ["linear-gradient(135deg,#ff7fa6,#f76596)", "linear-gradient(135deg,#ff8ab0,#f36d99)", "linear-gradient(135deg,#ff9bba,#ef7299)", "linear-gradient(135deg,#ffb36c,#f28b4b)"] },
+  { id: "violet", name: "Violet", preview: "#866de8", gradients: ["linear-gradient(135deg,#a889f7,#866de8)", "linear-gradient(135deg,#b18cff,#795fdf)", "linear-gradient(135deg,#9c8df7,#6a66d8)", "linear-gradient(135deg,#c084fc,#8b5cf6)"] },
+  { id: "emerald", name: "Emerald", preview: "#45c58e", gradients: ["linear-gradient(135deg,#62d7a3,#45c58e)", "linear-gradient(135deg,#71dfb2,#38b982)", "linear-gradient(135deg,#52d6bb,#21af91)", "linear-gradient(135deg,#a3e635,#22c55e)"] },
+  { id: "golden", name: "Golden", preview: "#f5bd48", gradients: ["linear-gradient(135deg,#ffd56d,#f5bd48)", "linear-gradient(135deg,#f9c978,#f29d38)", "linear-gradient(135deg,#fbbf24,#f97316)", "linear-gradient(135deg,#fde68a,#f59e0b)"] },
+];
+const isCardThemeId = (value: unknown): value is CardThemeId => CARD_THEMES.some((theme) => theme.id === value);
+
 const isDashboardThemeId = (value: unknown): value is DashboardThemeId =>
 
   DASHBOARD_THEMES.some((theme) => theme.id === value);
@@ -303,11 +312,17 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
     useState(false);
 
   const [menuThemeModalOpen, setMenuThemeModalOpen] = useState(false);
+  const [cardColorModalOpen, setCardColorModalOpen] = useState(false);
   const [menuTheme, setMenuTheme] = useState<MenuThemeId>(() => {
     const saved = localStorage.getItem(tenantStorageKey("bankSetuMenuTheme"));
     return isMenuThemeId(saved) ? saved : "violet";
   });
   const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
+  const [cardTheme, setCardTheme] = useState<CardThemeId>(() => {
+    const saved = localStorage.getItem(tenantStorageKey("bankSetuCardTheme"));
+    return isCardThemeId(saved) ? saved : "coral";
+  });
+  const selectedCardTheme = CARD_THEMES.find((theme) => theme.id === cardTheme) || CARD_THEMES[0];
 
   const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
   const [clientCreateOpen, setClientCreateOpen] = useState(false);
@@ -798,7 +813,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
   return (
 
-    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background } as CSSProperties}>
+    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": selectedCardTheme.gradients[0], "--card-gradient-2": selectedCardTheme.gradients[1], "--card-gradient-3": selectedCardTheme.gradients[2], "--card-gradient-4": selectedCardTheme.gradients[3] } as CSSProperties}>
 
       {mobileMenuOpen && (
 
@@ -1358,6 +1373,11 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
 
+                {canManageBankSettings && <button
+                  type="button" style={styles.adminMenuItem}
+                  onClick={() => { setAdminMenuOpen(false); setCardColorModalOpen(true); }}
+                >🃏 Card Color</button>}
+
                 <button
 
                   type="button"
@@ -1441,6 +1461,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
               openPage={openPage}
               bankSettingsReady={bankSettingsReady}
+              cardTheme={selectedCardTheme}
 
             />
 
@@ -1972,6 +1993,34 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
         </div>
 
+      )}
+
+      {cardColorModalOpen && canManageBankSettings && (
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setCardColorModalOpen(false); }}>
+          <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
+            <div style={styles.modalHeader}>
+              <div>
+                <p style={styles.passwordEyebrow}>APPEARANCE</p>
+                <h2 style={styles.modalTitle}>Card Color</h2>
+                <p style={styles.passwordHelpText}>Choose the color family used by dashboard statistic and quick-action cards.</p>
+              </div>
+              <button type="button" style={styles.modalClose} onClick={() => setCardColorModalOpen(false)} aria-label="Close card color dialog">×</button>
+            </div>
+            <div style={{ ...styles.themeGrid, overflowY: "auto", paddingRight: "6px", marginTop: "12px", gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
+              {CARD_THEMES.map((theme) => (
+                <button key={theme.id} type="button" style={{ ...styles.themeChoice, ...(cardTheme === theme.id ? styles.themeChoiceActive : {}) }} onClick={() => {
+                  setCardTheme(theme.id);
+                  localStorage.setItem(tenantStorageKey("bankSetuCardTheme"), theme.id);
+                  setCardColorModalOpen(false);
+                }}>
+                  <span style={{ ...styles.themeSwatch, background: theme.preview }} />
+                  <span>{theme.name}</span>
+                  {cardTheme === theme.id && <strong style={styles.themeSelected}>✓</strong>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {menuThemeModalOpen && canControlGlobalDashboard && (
@@ -2851,11 +2900,13 @@ function DashboardHome({
 
   openPage,
   bankSettingsReady,
+  cardTheme,
 
 }: {
 
   openPage: (page: PageName) => void;
   bankSettingsReady: boolean;
+  cardTheme: { gradients: string[] };
 
 }) {
 
@@ -3255,7 +3306,7 @@ function DashboardHome({
 
       <section className="dashboard-stats-grid" style={styles.statsGrid}>
 
-        {stats.map(([icon, title, value]) => (
+        {stats.map(([icon, title, value], index) => (
 
           <article
 
@@ -3263,7 +3314,7 @@ function DashboardHome({
 
             className="dashboard-stat-card"
 
-          style={styles.statCard}
+          style={{ ...styles.statCard, background: cardTheme.gradients[index % cardTheme.gradients.length] }}
 
           >
 
@@ -3332,7 +3383,7 @@ function DashboardHome({
             icon="➕"
 
             title="Add Customer"
-            gradient="linear-gradient(135deg,#ec4899 0%,#f43f5e 48%,#fb7185 100%)"
+            gradient={cardTheme.gradients[0]}
 
             text="Create a new customer record"
 
@@ -3349,7 +3400,7 @@ function DashboardHome({
             icon="📄"
 
             title="Upload PDF"
-            gradient="linear-gradient(135deg,#7c3aed 0%,#8b5cf6 48%,#c084fc 100%)"
+            gradient={cardTheme.gradients[1]}
 
             text="Import account opening PDF"
 
@@ -3366,7 +3417,7 @@ function DashboardHome({
             icon="🖨"
 
             title="Passbook Print"
-            gradient="linear-gradient(135deg,#059669 0%,#10b981 48%,#2dd4bf 100%)"
+            gradient={cardTheme.gradients[2]}
 
             text="Search and print passbook"
 
@@ -3383,7 +3434,7 @@ function DashboardHome({
             icon="🔎"
 
             title="Account Opening PDF"
-            gradient="linear-gradient(135deg,#f59e0b 0%,#f97316 52%,#ef4444 100%)"
+            gradient={cardTheme.gradients[3]}
 
             text="Generate account opening PDF"
 
