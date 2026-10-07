@@ -122,7 +122,12 @@ service cloud.firestore {
     match /tenantSettings/{tenantId} {
       allow get: if sameTenant(tenantId);
       allow list: if false;
-      allow create: if false;
+      allow create: if isClientAdmin()
+        && request.resource.data.tenantId == tenantId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly(['tenantId', 'cardTheme', 'updatedAt', 'updatedBy'])
+        && request.resource.data.cardTheme is string;
       allow update: if (isMasterOwner()
         && sameTenant(tenantId)
         && request.resource.data.tenantId == tenantId
