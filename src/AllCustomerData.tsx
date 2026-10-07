@@ -6,6 +6,7 @@ import { isAndroid } from "./platform/android/runtime";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 
+const desktopBridge = () => (window as Window & {bankSetuDesktop?: {copyText?: (text:string)=>Promise<void>;shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
 type Customer = Record<string, unknown> & { rowNumber?: number; recordId?: string };
 const value = (item: unknown) => String(item ?? "").trim();
 const title = (key: string) => key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
@@ -27,7 +28,7 @@ async function request(body: Record<string, unknown>) {
   return response.json();
 }
 
-function snapshot(customer: Customer): Promise<Blob> {
+export function snapshot(customer: Customer): Promise<Blob> {
   return new Promise(async (resolve, reject) => {
     try {
       const fields = visibleFields(customer);
@@ -166,6 +167,10 @@ export default function AllCustomerData() {
         });
         const saved = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
         await Share.share({title:"Bank Setu Customer Preview",files:[saved.uri],dialogTitle:"Share customer preview"});
+      } else if (desktopBridge()?.shareImage) {
+        const dataUrl = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+        await desktopBridge()!.shareImage!(dataUrl);
+        setCopyMessage("Preview image copied. Paste it into the WhatsApp chat.");
       } else if (navigator.share && navigator.canShare?.({files:[new File([blob],name,{type:"image/png"})]})) {
         await navigator.share({files:[new File([blob],name,{type:"image/png"})],title:"Bank Setu Customer Preview"});
       } else {
@@ -187,15 +192,15 @@ export default function AllCustomerData() {
       if (!query.trim() && more && !loading && node.scrollTop + node.clientHeight >= node.scrollHeight - 200) void loadPage();
     }}>
       <table style={{borderCollapse:"collapse",width:"100%",minWidth:680,textAlign:"left"}}>
-        <thead><tr>{["Customer ID","Name","Account Number","Mobile","Bank","Opening Date"].map(label =>
+        <thead><tr>{["Customer ID","Name","Account Number","Mobile Number","Aadhaar Number","Account Opening Date"].map(label =>
           <th key={label} style={{position:"sticky",top:0,background:"#f9e8ee",padding:10}}>{label}</th>)}</tr></thead>
         <tbody>{rows.map((customer,index) => <tr key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
           onKeyDown={event => { if (event.key === "Enter") void open(customer); }}
           style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee"}}>
           <td style={{padding:9}}>{value(customer.enrolId)}</td><td style={{padding:9}}>{value(customer.name)}</td>
           <td style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
-            onClick={async event => {event.stopPropagation();try{await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
-          <td style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td style={{padding:9}}>{value(customer.bankName)}</td>
+            onClick={async event => {event.stopPropagation();try{if (window.bankSetuDesktop?.copyText) await desktopBridge()!.copyText!(String(customer.accountNo ?? "")); else await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
+          <td style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td style={{padding:9}}>{value(customer.uidaiNo || customer.aadhaarNo || customer.aadharNo)}</td>
           <td style={{padding:9}}>{value(customer.accountOpeningDate)}</td>
         </tr>)}</tbody>
       </table>
@@ -205,7 +210,7 @@ export default function AllCustomerData() {
     </div>
     {selected && <div className="customer-preview-overlay" role="presentation" onClick={() => setSelected(null)}>
       <div className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
-        <h2>Customer Preview</h2>
+        <div className="customer-preview-heading"><span>BANK SETU · CUSTOMER DETAILS</span><h2>Customer Preview</h2><p>{value(selected.name)} · {value(selected.enrolId)}</p></div>
         {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl) && <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" style={{width:110,height:120,objectFit:"cover",borderRadius:10}} />}
         <div className="customer-preview-fields">{visibleFields(selected).map(([key,item]) =>
           <div key={key}><strong>{title(key)}</strong><span>{value(item)}</span></div>)}</div>
@@ -220,11 +225,12 @@ export default function AllCustomerData() {
       .all-customer-data tbody tr:hover,.all-customer-data tbody tr:focus {background:#fbd9e3!important;outline:2px solid #d17a9c}
       .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#442330a6;display:grid;place-items:center;padding:16px}
       .customer-preview-card {background:linear-gradient(145deg,#fff6f7,#f9dce5);color:#35232c;border:2px solid #eeb9ca;border-radius:20px;box-shadow:0 22px 65px #3813226b;padding:24px;width:min(760px,95vw);max-height:88vh;overflow:auto}
-      .customer-preview-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:16px 0}
+      .customer-preview-heading {background:linear-gradient(120deg,#8f2448,#d24b72);color:white;padding:20px 24px;border-radius:15px}.customer-preview-heading h2 {margin:7px 0;font-size:clamp(23px,4vw,34px)}.customer-preview-heading p {margin:0;overflow-wrap:anywhere}.customer-preview-heading span {font-size:12px;letter-spacing:.12em;font-weight:700}.customer-preview-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:16px 0}
       .customer-preview-fields>div {background:#fff9facc;padding:9px;border-radius:8px;overflow-wrap:anywhere}
       .customer-preview-fields strong {display:block;color:#853550;font-size:12px;margin-bottom:4px}
       .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end}
-      .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #c77493;background:#fff;cursor:pointer}
+      .customer-preview-actions button:first-child {background:#a42451;color:white}.customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #c77493;background:#fff;cursor:pointer}
+      @media(max-width:600px){.customer-preview-card{padding:12px;width:100%;max-height:94dvh}.customer-preview-fields{grid-template-columns:1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
       @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}}
     `}</style>
   </section>;

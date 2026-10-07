@@ -89,7 +89,8 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
       if (identity() !== scope) throw new Error("Workspace changed after Google Sheet deletion; reload the original workspace to reconcile local data.");
       await repository.transact(scope,current=>{
         const record=current.records.find(item=>item.recordId===existing.recordId);
-        if (record) {record.deleted=true;record.pending=false;record.revision=String(result.revision||record.revision);}
+        if (!record || record.deleted || record.pending || record.revision !== existing.revision) throw new Error("Local record changed during deletion; reconnect and reconcile the Google Sheet before continuing.");
+        record.deleted=true;record.pending=false;record.revision=String(result.revision||record.revision);
       });
       announce();
       return resultResponse({success:true,deleted:true,message:"Customer deleted from Google Sheet and local database."});
@@ -127,7 +128,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
       const recordId = String(customer.recordId || "");
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
-      if (previous?.pending) continue;
+      if (previous?.pending || previous?.deleted) continue;
       const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},photoCheckedAt:previous?.customer.photoUrl===customer.photoUrl?previous?.photoCheckedAt:undefined,pending:false};
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }

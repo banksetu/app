@@ -1,3 +1,7 @@
+import { snapshot } from "./AllCustomerData";
+import { isAndroid } from "./platform/android/runtime";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
@@ -9,6 +13,8 @@ import {
 
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
+
+const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
 
 /* =========================================================
 
@@ -476,6 +482,27 @@ export default function Customers() {
 
     window.open(`https://wa.me/${mobile}`, "_blank", "noopener,noreferrer");
 
+  };
+
+  const shareCustomer = async () => {
+    if (!customer) return;
+    try {
+      const blob = await snapshot(customer as unknown as Record<string, unknown>);
+      const name = "BankSetu-customer-preview.png";
+      if (isAndroid()) {
+        const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",")[1]);reader.onerror=reject;reader.readAsDataURL(blob);});
+        const file = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
+        await Share.share({title:"Bank Setu Customer Preview",files:[file.uri],dialogTitle:"Share customer preview"});
+      } else if (desktopBridge()?.shareImage) {
+        const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+        await desktopBridge()!.shareImage!(data);
+        setMessage("Preview image copied. Paste it into the WhatsApp chat.");
+      } else if (navigator.share && navigator.canShare?.({files:[new File([blob],name,{type:"image/png"})]})) {
+        await navigator.share({files:[new File([blob],name,{type:"image/png"})],title:"Bank Setu Customer Preview"});
+      } else {
+        const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setMessage("Preview image downloaded for sharing.");
+      }
+    } catch (cause) {setError(cause instanceof Error?cause.message:"Could not share preview image.");}
   };
 
   /* =======================================================

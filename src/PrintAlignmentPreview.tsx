@@ -60,6 +60,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { setPreview(sourceDocument(sourceSelector)); }, [sourceSelector]);
+  useEffect(() => { const previous=document.body.style.overflow; document.body.style.overflow="hidden"; return () => {document.body.style.overflow=previous;}; }, []);
   const move = (dx: number, dy: number) => setOffset(current => clean({x:current.x+dx*step,y:current.y+dy*step}));
   const print = async (test: boolean) => {
     if (busy) return;
@@ -120,8 +121,8 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
       </div>
     </section>
     <style>{`
-      .print-alignment-overlay{position:fixed;inset:0;z-index:5000;background:#2229;display:grid;place-items:center;padding:12px;color:#272b32;font-family:Arial,sans-serif}
-      .print-alignment-window{width:min(1536px,98vw);max-height:97vh;background:#f6f5f5;border-radius:13px;box-shadow:0 24px 70px #0007;overflow:auto}
+      .print-alignment-overlay{position:fixed;inset:0;z-index:5000;background:#2229;display:grid;place-items:center;padding:12px;overflow-y:auto;overscroll-behavior:contain;color:#272b32;font-family:Arial,sans-serif}
+      .print-alignment-window{width:min(1536px,98vw);max-height:96dvh;background:#f6f5f5;border-radius:13px;box-shadow:0 24px 70px #0007;overflow:auto}
       .print-alignment-window>header{background:linear-gradient(105deg,#c50f43,#df204a);color:white;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:clamp(18px,2vw,29px)}
       .print-alignment-window>header button{border:0;background:none;color:white;font-size:36px;line-height:1;cursor:pointer}
       .print-alignment-columns{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(360px,1fr);gap:16px;padding:14px}
@@ -130,7 +131,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
       .print-alignment-measured{display:flex;width:100%;min-height:0;align-items:stretch;gap:8px}
       .print-alignment-measures{display:flex;flex-direction:column;width:85px;flex:none;color:#95052e;font-weight:800;text-align:center;font-size:15px}
       .print-alignment-measures span{flex:1;border-left:3px solid #b40d43;display:grid;place-items:center;background:#fff2f4;border-radius:6px;margin:3px 0}
-      .print-alignment-paper{flex:1;min-width:0;background:#aaa;padding:8px;border-radius:7px;overflow:auto}
+      .print-alignment-paper{flex:1;min-width:0;background:#aaa;padding:8px;border-radius:7px;overflow:auto;max-height:min(72dvh,740px);overscroll-behavior:contain;touch-action:pan-x pan-y}
       .print-alignment-frame{width:210mm;height:170mm;transform:scale(var(--alignment-zoom,1));transform-origin:top left;background:white;outline:2px dashed #c2144d;outline-offset:-12px;overflow:hidden;box-shadow:0 2px 10px #3338}
       .print-alignment-zoom{display:flex;justify-content:space-around;gap:10px;width:100%;background:#fafafa;padding:12px;border-radius:10px}
       .print-alignment-zoom button{background:#fff;border:1px solid #ccc;border-radius:6px;padding:6px 10px;cursor:pointer}
@@ -156,8 +157,8 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
       .print-alignment-tip{background:#e0f1ff;border-radius:8px;padding:14px;line-height:1.4}
       .print-alignment-final button:first-child{background:#f6f6f6;border:1px solid #bbb;color:#2c3b42}
       .print-alignment-final button:last-child{background:#d71848}.print-alignment-error{color:#a50031}
-      @media(max-width:1000px){.print-alignment-columns{grid-template-columns:1fr}.print-alignment-window{max-height:98vh}.print-alignment-measured{overflow:auto}.print-alignment-settings{width:100%}}
-      @media(max-width:540px){.print-alignment-control-row{flex-wrap:wrap}.print-alignment-measures{width:65px;font-size:12px}.print-alignment-panel{padding:10px}.print-alignment-arrows output{min-width:95px}.print-alignment-arrows button{width:45px;height:45px}}
+      @media(max-width:1000px){.print-alignment-columns{grid-template-columns:1fr}.print-alignment-window{max-height:98vh}.print-alignment-measured{overflow:auto}.print-alignment-settings{width:100%;box-sizing:border-box}.print-alignment-paper{max-height:56dvh}}
+      @media(max-width:540px){.print-alignment-overlay{padding:0}.print-alignment-window{width:100%;max-height:100dvh;border-radius:0}.print-alignment-window>header{padding:12px;font-size:18px}.print-alignment-columns{padding:8px;gap:8px}.print-alignment-paper{max-height:48dvh}.print-alignment-control-row{flex-wrap:wrap}.print-alignment-measures{width:65px;font-size:12px}.print-alignment-panel{padding:10px}.print-alignment-arrows output{min-width:95px}.print-alignment-arrows button{width:45px;height:45px}.print-alignment-inputs{grid-template-columns:1fr}.print-alignment-actions button,.print-alignment-final button{font-size:14px}.print-alignment-measured{width:100%}}
       @media print{.print-alignment-overlay{display:none!important}}
     `}</style>
   </div>;

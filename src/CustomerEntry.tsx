@@ -1,3 +1,4 @@
+import { initializeApp, deleteApp } from "firebase/app";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
@@ -21,9 +22,11 @@ import type {
 
 import {
 
-  EmailAuthProvider,
-
-  reauthenticateWithCredential,
+  getAuth,
+  setPersistence,
+  inMemoryPersistence,
+  signInWithEmailAndPassword,
+  signOut,
 
 } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
@@ -4140,44 +4143,20 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       try {
 
-        const credential =
-
-          EmailAuthProvider
-
-            .credential(
-
-              user.email,
-
-              deletePassword
-
-            );
-
-
-
-
-
-        await reauthenticateWithCredential(
-
-          user,
-
-          credential
-
-        );
-
-
-
-
-
-        const freshToken =
-
-          await user.getIdToken(
-
-            true
-
-          );
-
-
-
+        // Verify the administrator password in an isolated Firebase Auth instance.
+        // Reauthenticating the primary app can replace its token and break the active workspace.
+        const verifierApp = initializeApp(auth.app.options, `delete-verifier-${crypto.randomUUID()}`);
+        try {
+          const verifier = getAuth(verifierApp);
+          await setPersistence(verifier, inMemoryPersistence);
+          const verified = await signInWithEmailAndPassword(verifier, user.email, deletePassword);
+          if (verified.user.uid !== user.uid) throw new Error("Administrator account does not match the active workspace.");
+          await signOut(verifier);
+        } finally {
+          await deleteApp(verifierApp);
+        }
+        if (auth.currentUser?.uid !== user.uid) throw new Error("Administrator session changed. Reload and try again.");
+        const freshToken = await user.getIdToken();
 
 
         const apiUrl =
@@ -4252,7 +4231,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         if (
 
-          !result.success
+          !result.success || (result as ApiResponse & {deleted?:boolean; queued?:boolean}).deleted !== true || Boolean((result as ApiResponse & {queued?:boolean}).queued)
 
         ) {
 
@@ -4324,7 +4303,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         showMessage(
 
-          "Administrator verification failed or delete permission denied.",
+          getErrorMessage(error),
 
           "error"
 

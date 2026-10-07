@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.34",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.34/BankSetu-Setup-1.0.34-x64.exe",
-  "notes": "Bank-wise Print Alignment Preview for Union Bank and Assam Gramin passbooks.",
-  "version": "1.0.34",
-  "windowsVersion": "1.0.34",
-  "androidBuild": 1000034,
-  "releaseTag": "v1.0.34",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.34",
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.34/BankSetu-Setup-1.0.34-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.34/BankSetu-Android-1000034.apk"
+  "latestVersion": "1.0.35",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.35/BankSetu-Setup-1.0.35-x64.exe",
+  "notes": "Customer data, alignment scrolling, sharing, deletion, and recent reports fixes.",
+  "version": "1.0.35",
+  "windowsVersion": "1.0.35",
+  "androidBuild": 1000035,
+  "releaseTag": "v1.0.35",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.35",
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.35/BankSetu-Setup-1.0.35-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.35/BankSetu-Android-1000035.apk"
 }
