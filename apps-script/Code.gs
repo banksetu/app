@@ -78,6 +78,7 @@ function doGet(e) {
         masterLocalSyncVersion: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "master-v1" : "",
         masterConnectionId: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? masterLocalConnectionId() : "",
         tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
+        syncProtectionVersion: 1,
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
         photoFolderId: getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID"),
@@ -144,9 +145,10 @@ function doPost(e) {
       });
     }
 
-    if (["syncCustomerOperation", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
+    if (["syncCustomerOperation", "getSyncProtection", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
       const authUser = requireAuthorizedUser(idToken, false);
       if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
+      if (action === "getSyncProtection" || action === "publishLocalReset") return syncProtection(request, authUser);
       if (action === "markPassbookPrinted") {
         if (authUser.tenantId && authUser.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
         return markPassbookDelivered(request.rowNumber, authUser);
@@ -3034,6 +3036,46 @@ function syncDeletionRows(sheet, connectionId) {
   const ledger = syncDeletionSheet(sheet, false);
   return ledger && ledger.getLastRow() > 1 ? ledger.getRange(2, 1, ledger.getLastRow() - 1, 3).getDisplayValues().filter(row => row[2] === connectionId) : [];
 }
+const SYNC_RESET_SHEET = "BANKSETU_SYNC_RESETS";
+function syncResetSheet(sheet, create) {
+  const book = sheet.getParent();
+  let ledger = book.getSheetByName(SYNC_RESET_SHEET);
+  if (!ledger && create) {
+    ledger = book.insertSheet(SYNC_RESET_SHEET);
+    ledger.getRange(1,1,1,3).setValues([["CONNECTION ID","RESET ID","UPDATED AT"]]);
+    ledger.hideSheet();
+  }
+  if (ledger && ledger.getRange(1,1,1,3).getDisplayValues()[0].join("|") !== "CONNECTION ID|RESET ID|UPDATED AT")
+    throw new Error("Reset ledger name is already in use. No local reset was published.");
+  return ledger;
+}
+function syncProtection(request, authUser) {
+  if (request.connectionId !== authUser.connectionId || !authUser.connectionId)
+    return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed."});
+  if (request.action === "publishLocalReset" && !["client_admin","master_owner","admin"].includes(authUser.role))
+    throw new Error("Administrator permission is required.");
+  const lock=LockService.getScriptLock();lock.waitLock(20000);
+  try {
+    const sheet=getSheet(authUser);ensureSyncMetadata(sheet);
+    let ledger=syncResetSheet(sheet,request.action === "publishLocalReset");
+    let resetId="";
+    if (ledger) {
+      const rows=ledger.getLastRow()>1?ledger.getRange(2,1,ledger.getLastRow()-1,3).getDisplayValues():[];
+      const index=rows.findIndex(row=>row[0]===authUser.connectionId);
+      if (request.action === "publishLocalReset") {
+        if (!/^[a-f0-9-]{36}$/i.test(request.resetId||"")) throw new Error("Invalid reset identity.");
+        resetId=String(request.resetId);
+        if (index>=0) ledger.getRange(index+2,1,1,3).setValues([[authUser.connectionId,resetId,new Date().toISOString()]]);
+        else ledger.appendRow([authUser.connectionId,resetId,new Date().toISOString()]);
+        SpreadsheetApp.flush();
+      } else if (index>=0) resetId=rows[index][1];
+    }
+    const rows=sheet.getLastRow()>1?sheet.getRange(2,25,sheet.getLastRow()-1,3).getDisplayValues():[];
+    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,
+      activeIds:rows.filter(row=>row[2]!=="true").map(row=>String(row[0])).filter(Boolean),
+      deletedIds:syncDeletionRows(sheet,authUser.connectionId).map(row=>String(row[0]))});
+  } finally {lock.releaseLock();}
+}
 function ensureSyncMetadata(sheet) {
   if (sheet.getMaxColumns() < HEADERS.length + SYNC_HEADERS.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), HEADERS.length + SYNC_HEADERS.length - sheet.getMaxColumns());
   const actual = sheet.getRange(1, 25, 1, 3).getDisplayValues()[0];
@@ -3124,6 +3166,11 @@ function syncCustomerOperation(request, authUser) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
+    const resetLedger=syncResetSheet(sheet,false);
+    const resetRows=resetLedger&&resetLedger.getLastRow()>1?resetLedger.getRange(2,1,resetLedger.getLastRow()-1,3).getDisplayValues():[];
+    const resetRow=resetRows.find(row=>row[0]===authUser.connectionId);
+    if (resetRow && resetRow[1] !== String(request.protectionResetId||""))
+      return jsonResponse({success:false,code:"RESET_REQUIRED",message:"Another device reset this workspace. Reconcile local data before uploading."});
     const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,27).getDisplayValues() : [];
     const index = rows.findIndex(row => String(row[24]) === op.recordId);
     const existing = index >= 0 ? rows[index] : null;

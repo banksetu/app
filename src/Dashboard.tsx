@@ -2525,6 +2525,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           }
 
+          .dashboard-count-transition { display:inline-block; animation:banksetu-count-enter .2s ease-out; }
+          @keyframes banksetu-count-enter { from { opacity:.5; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+          @media (prefers-reduced-motion:reduce) { .dashboard-count-transition { animation:none; } }
+
           @media (max-width: 620px) {
 
             .bank-info-form-grid {
@@ -2930,6 +2934,7 @@ function DashboardHome({
   const [statsError, setStatsError] =
 
     useState("");
+  const statsLoadedOnce = useRef(false);
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
 
@@ -2948,7 +2953,7 @@ function DashboardHome({
     // session. Do not report a false sync error while that configuration is
     // still being restored from Firebase/local session state.
     if (!bankSettingsReady) {
-      setStatsLoading(true);
+      if(!statsLoadedOnce.current)setStatsLoading(true);
       return;
     }
 
@@ -2956,7 +2961,7 @@ function DashboardHome({
 
     const loadDashboardStats = async () => {
 
-      setStatsLoading(true);
+      if(!statsLoadedOnce.current)setStatsLoading(true);
 
       setStatsError("");
 
@@ -2982,6 +2987,7 @@ function DashboardHome({
               };
               if (!cancelled) {
                 setDashboardStats(localStats);
+                statsLoadedOnce.current=true;
                 setStatsLoading(false);
                 setStatsError("");
               }
@@ -3222,6 +3228,7 @@ function DashboardHome({
             ),
 
           });
+          statsLoadedOnce.current=true;
 
         }
 
@@ -3377,7 +3384,7 @@ function DashboardHome({
 
             <div className="dashboard-stat-value" style={styles.statValue}>
 
-              {statsLoading ? "…" : value}
+              {statsLoading ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 

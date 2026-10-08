@@ -9,7 +9,18 @@ const {indexedDbRepository: repository}=await import(compile(fs.readFileSync('sr
 const storage=new Map();globalThis.sessionStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};
 globalThis.window=new EventTarget();globalThis.__auth={currentUser:{uid:'user-a',getIdToken:async()=> 'fresh-firebase-token'}};
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
-let handler=async()=>{throw new Error('offline');};globalThis.fetch=(...args)=>handler(...args);
+let handler=async()=>{throw new Error('offline');};
+let protectionOverride;
+globalThis.fetch=async(...args)=>{
+ const body=args[1]?.body?JSON.parse(args[1].body):{};
+ if(body.action==='getSyncProtection'){
+   const connectionId=storage.get('bankSetuConnectionId');
+   const scope=`${globalThis.__auth.currentUser.uid}:${storage.get('bankSetuMasterLocalEnabled')==='true'?`master:${globalThis.__auth.currentUser.uid}`:storage.get('bankSetuTenantId')}:${connectionId}`;
+   const state=await repository.read(scope);
+   return new Response(JSON.stringify(protectionOverride||{success:true,protectionVersion:1,connectionId,resetId:'',activeIds:state.records.filter(r=>r.revision).map(r=>r.recordId),deletedIds:[]}));
+ }
+ return handler(...args);
+};
 globalThis.__repository=repository;
 let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";','const isAndroid=()=>false;const shareAndroidBackup=async()=>{};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
 globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
@@ -260,15 +271,20 @@ test('another device removes a cloud-deleted customer on next refresh and never 
  navigator.onLine=false;
 });
 
-test('sheet-only records download and revisionless local-only records use the existing save queue',async()=>{
- storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('two-way');navigator.onLine=true;
- const scope='user-a:tenant-a:two-way';const localId=crypto.randomUUID();
- await repository.transact(scope,state=>state.records.push({key:localId,scope,recordId:localId,rowNumber:1000000001,revision:'',customer:{...customer,enrolId:'LOCAL',accountNo:'9001'},pending:false}));
+test('sheet-only records download, queued local saves upload, and orphan cache rows stay hidden',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('two-way');navigator.onLine=false;
+ const scope='user-a:tenant-a:two-way';
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'LOCAL',accountNo:'9001'}});
+ const localId=saved.recordId,orphanId=crypto.randomUUID();
+ await repository.transact(scope,state=>state.records.push({key:orphanId,scope,recordId:orphanId,rowNumber:1000000002,revision:'',customer:{...customer,enrolId:'STALE',accountNo:'9003'},pending:false}));
+ navigator.onLine=true;
  let saves=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
    saves++;return new Response(JSON.stringify({success:true,rowNumber:3,revision:'r1',customer:{...body.operation.customer,recordId:localId,rowNumber:3,revision:'r1'}}));
  }return new Response(JSON.stringify({success:true,customers:[{...customer,enrolId:'SHEET',accountNo:'9002',recordId:'cloud-only',rowNumber:2,revision:'r1'}],hasNextPage:false,nextCursor:1}));};
- await engine.syncNow();let state=await repository.read(scope);assert.equal(state.records.find(row=>row.recordId==='cloud-only').customer.enrolId,'SHEET');assert(state.operations.some(op=>op.recordId===localId&&op.action==='saveCustomer'));
- await engine.syncNow(false);state=await repository.read(scope);assert.equal(saves,1);assert.equal(state.records.find(row=>row.recordId===localId).revision,'r1');
+ await engine.syncNow();let state=await repository.read(scope);assert.equal(state.records.find(row=>row.recordId==='cloud-only').customer.enrolId,'SHEET');
+ assert.equal(saves,1);assert.equal(state.records.find(row=>row.recordId===localId).revision,'r1');
+ assert.equal(state.operations.length,0);assert.equal((await engine.getActiveLocalCustomers()).length,2);
+ assert(state.records.some(row=>row.recordId===orphanId),'orphan remains recoverable in local backup');
  navigator.onLine=false;
 });
 
@@ -286,4 +302,57 @@ test('a pending local delete cannot reappear through cloud search or paged custo
  assert.equal(state.records.find(record=>record.recordId===saved.recordId).deleted,true);
  assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
  navigator.onLine=false;
+});
+
+test('remote delete and direct Sheet removal block stale uploads before normal reconciliation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('shared-delete');navigator.onLine=true;
+ const scope='user-a:tenant-a:shared-delete';
+ const ids=['keep','deleted','manual'];
+ await repository.transact(scope,state=>ids.forEach((recordId,i)=>state.records.push({key:recordId,scope,recordId,rowNumber:i+2,revision:'r1',customer:{name:recordId},pending:false})));
+ await repository.transact(scope,state=>state.operations.push({key:'pending-edit',scope,operationId:'pending-edit',recordId:'deleted',action:'updateCustomer',customer:{name:'Stale edit'},baseRevision:'r1',rowNumber:3,createdAt:1,state:'pending'}));
+ protectionOverride={success:true,protectionVersion:1,connectionId:'shared-delete',resetId:'',activeIds:['keep'],deletedIds:['deleted']};
+ let writes=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation')writes++;return new Response(JSON.stringify({success:true,customers:[{recordId:'keep',rowNumber:2,revision:'r1',name:'Valid'}],hasNextPage:false,nextCursor:1}));};
+ try{
+ await engine.syncNow(true);const state=await repository.read(scope);
+ assert.equal(writes,0);assert(state.records.find(r=>r.recordId==='deleted').deleted);assert(state.records.find(r=>r.recordId==='manual').deleted);
+ assert.equal(state.operations[0].state,'conflict');assert.deepEqual((await engine.getActiveLocalCustomers()).map(r=>r.recordId),['keep']);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('shared reset clears only the current tenant cache, restores valid cloud rows, and blocks unsynced changes',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('reset-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:reset-device';
+ await repository.transact(scope,state=>{for(let i=0;i<3;i++)state.records.push({key:'old-'+i,scope,recordId:'old-'+i,rowNumber:i+2,revision:'r1',customer:{name:'Old '+i},pending:false});state.documents={mapping:{safe:true}};});
+ protectionOverride={success:true,protectionVersion:1,connectionId:'reset-device',resetId:'reset-from-other-device',activeIds:['cloud-valid'],deletedIds:[]};
+ handler=async()=>new Response(JSON.stringify({success:true,customers:[{recordId:'cloud-valid',rowNumber:2,revision:'r2',name:'Valid cloud'}],hasNextPage:false,nextCursor:1}));
+ try{
+ await engine.syncNow(true);let state=await repository.read(scope);assert.equal(state.resetId,'reset-from-other-device');assert.equal(state.records.length,1);assert.equal((await engine.getActiveLocalCustomers()).length,1);assert.deepEqual(state.documents,{mapping:{safe:true}});
+ connect('other-reset-tenant');assert.equal((await engine.getActiveLocalCustomers()).length,0);
+ connect('reset-device');navigator.onLine=false;await request({action:'saveCustomer',customer:{...customer,enrolId:'PENDING-RESET',accountNo:'9009'}});
+ protectionOverride={...protectionOverride,resetId:'newer-reset'};navigator.onLine=true;
+ await assert.rejects(engine.syncNow(true),/shared reset is pending/);
+ state=await repository.read(scope);assert.equal(state.operations.length,1);assert(state.records.some(r=>r.customer.enrolId==='PENDING-RESET'));
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('admin reset publishes a shared marker only after safety checks and downloads Sheet data',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('admin-reset');navigator.onLine=true;
+ const scope='user-a:tenant-a:admin-reset';
+ await repository.transact(scope,state=>state.records.push({key:'old',scope,recordId:'old',rowNumber:2,revision:'r1',customer:{name:'Old'},pending:false}));
+ let published=0,sharedResetId='';
+ protectionOverride={success:true,protectionVersion:1,connectionId:'admin-reset',resetId:'',activeIds:['old','new'],deletedIds:[]};
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+   if(body.action==='publishLocalReset'){
+     published++;sharedResetId=body.resetId;protectionOverride={...protectionOverride,resetId:sharedResetId};
+     return new Response(JSON.stringify(protectionOverride));
+   }
+   return new Response(JSON.stringify({success:true,customers:[{recordId:'new',rowNumber:3,revision:'r2',name:'Cloud valid'}],hasNextPage:false,nextCursor:1}));
+ };
+ try{
+  assert.equal(await engine.resetLocalDatabase(),1);
+  assert.equal(published,1);assert.equal((await repository.read(scope)).resetId,sharedResetId);
+  assert.deepEqual((await engine.getActiveLocalCustomers()).map(r=>r.recordId),['new']);
+  navigator.onLine=false;await request({action:'saveCustomer',customer:{...customer,enrolId:'UNSYNCED',accountNo:'9090'}});
+  navigator.onLine=true;await assert.rejects(engine.resetLocalDatabase(),/resolve every pending/);assert.equal(published,1);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
