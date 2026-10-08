@@ -25,14 +25,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Find the latest frontend source commit
+      - name: Verify the pushed Hosting deployment commit
         run: |
-          frontend_commit=$(git log -1 --format='%H' "$GITHUB_SHA" -- src public scripts/check-sheet-schema.mjs index.html package.json package-lock.json vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json firebase.json .firebaserc)
-          if [ -z "$frontend_commit" ]; then
-            echo '::error::Could not identify the last frontend source commit.'
-            exit 1
-          fi
-          echo "FRONTEND_COMMIT=$frontend_commit" >> "$GITHUB_ENV"
+          echo "FRONTEND_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
 
       - name: Check live Hosting commit, Worker health, and Apps Script isolation version
         run: |
