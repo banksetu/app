@@ -256,6 +256,18 @@ test('DELETE sends only stable identity, retains pending on cloud rejection, and
  assert.equal((await request({action:'searchCustomer',query:'RETRY-1'})).success,false);assert.equal(globalThis.__auth.currentUser,user);
  assert.deepEqual(sent,['saveCustomer','deleteCustomer','deleteCustomer']);navigator.onLine=false;
 });
+test('sync protection reports the actual bridge rejection and retains the pending operation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('protection-diagnostic');navigator.onLine=false;
+ await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:protection-diagnostic';
+ navigator.onLine=true;let uploads=0;handler=async(_url,init)=>{if(JSON.parse(init.body).action==='syncCustomerOperation')uploads++;return new Response('{}');};
+ try{
+   protectionOverride={success:false,code:'SERVER_ERROR',message:'Firebase authentication required.'};
+   await assert.rejects(engine.syncNow(false),/Firebase authentication required/);
+   protectionOverride={success:false,code:'CONNECTION_CHANGED',message:'Workspace connection changed.'};
+   await assert.rejects(engine.syncNow(false),/Reconnect this tenant/);
+   assert.equal(uploads,0);assert.equal((await repository.read(scope)).operations[0].state,'pending');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
 
 test('another device removes a cloud-deleted customer on next refresh and never recreates it',async()=>{
  storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('shared-tenant');navigator.onLine=false;
