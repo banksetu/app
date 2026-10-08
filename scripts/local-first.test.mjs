@@ -179,7 +179,7 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  navigator.onLine=false;
 });
 
-test('online add waits for the existing sync and delete reports success only after row and Drive confirmation',async()=>{
+test('online add and delete respond after local commit while cloud confirmation clears the queue',async()=>{
  storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('immediate-actions');navigator.onLine=true;
  const sent=[];let confirmDelete=false;
  handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
@@ -188,9 +188,11 @@ test('online add waits for the existing sync and delete reports success only aft
    return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...body.operation.customer,recordId:body.operation.recordId,rowNumber:2,revision:'r1'}}));
  }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false,nextCursor:0}));};
  const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'IMMEDIATE',accountNo:'7722'}});
- assert(saved.success);assert(sent.includes('saveCustomer'));assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,0);
+ assert(saved.success&&saved.queued);assert.equal(sent.length,0);assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,1);
+ await engine.syncNow(false);assert(sent.includes('saveCustomer'));
  const pending=await request({action:'deleteCustomer',rowNumber:2});assert.equal(pending.success,false);assert.equal(pending.queued,true);
  assert.equal((await request({action:'searchCustomer',query:'IMMEDIATE'})).success,false);
+ await assert.rejects(engine.syncNow(false),/row and Drive deletion are not confirmed/);
  confirmDelete=true;await engine.syncNow(false);
  assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,0);
  assert(sent.filter(action=>action==='deleteCustomer').length>=2);
@@ -215,6 +217,20 @@ test('DELETE sends only stable identity, retains pending on cloud rejection, and
  assert.equal(state.operations.length,0);assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
  assert.equal((await request({action:'searchCustomer',query:'RETRY-1'})).success,false);assert.equal(globalThis.__auth.currentUser,user);
  assert.deepEqual(sent,['saveCustomer','deleteCustomer','deleteCustomer']);navigator.onLine=false;
+});
+
+test('another device removes a cloud-deleted customer on next refresh and never recreates it',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('shared-tenant');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'CROSS-DEVICE',accountNo:'9921'}});
+ const scope='user-a:tenant-a:shared-tenant';await repository.transact(scope,state=>{state.records[0].pending=false;state.records[0].revision='cloud-r1';state.operations=[];});
+ navigator.onLine=true;handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='getCustomerPage'?{success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:250}:{success:false,message:'Customer not found.'}));};
+ await engine.syncNow(true);let state=await repository.read(scope);
+ assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ assert.equal(state.operations.length,0);
+ await engine.syncNow(true);state=await repository.read(scope);
+ assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ assert.equal((await request({action:'searchCustomer',query:'CROSS-DEVICE'})).success,false);
+ navigator.onLine=false;
 });
 
 test('sheet-only records download and revisionless local-only records use the existing save queue',async()=>{

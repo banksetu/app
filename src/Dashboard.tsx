@@ -1,6 +1,7 @@
 import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
+import SlideNotifications from "./SlideNotifications";
 import { localDataFetch, getDataIdToken, getLocalSnapshot } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -826,6 +827,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   return (
 
     <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
+      <SlideNotifications />
 
       {mobileMenuOpen && (
 

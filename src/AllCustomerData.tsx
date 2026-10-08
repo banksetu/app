@@ -51,14 +51,14 @@ async function previewImage(card: HTMLElement): Promise<Blob> {
   document.body.appendChild(host);
   let url = "";
   try {
-    await document.fonts.ready;
+    await Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,1500))]);
     for (const img of copy.querySelectorAll<HTMLImageElement>("img")) {
       if (img.src.startsWith("data:")) continue;
-      const response = await fetch(img.src, {mode:"cors"});
+      const response = await fetch(img.src, {mode:"cors",signal:AbortSignal.timeout(3000)});
       if (!response.ok) throw new Error("Customer photo could not be included in the share image.");
       const blob = await response.blob();
       img.src = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
-      await img.decode();
+      await Promise.race([img.decode(),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Photo capture timed out.")),3000))]);
     }
     for (const node of [copy,...Array.from(copy.querySelectorAll<HTMLElement>("*"))]) {
       const computed = getComputedStyle(node);
@@ -73,7 +73,7 @@ async function previewImage(card: HTMLElement): Promise<Blob> {
     const height=Math.ceil(copy.scrollHeight);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="760" height="${height}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(copy)}</foreignObject></svg>`;
     url=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml;charset=utf-8"}));
-    const image=new Image();image.src=url;await image.decode();
+    const image=new Image();image.src=url;await Promise.race([image.decode(),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Preview capture timed out.")),5000))]);
     const canvas=document.createElement("canvas");canvas.width=1520;canvas.height=height*2;
     const ctx=canvas.getContext("2d");if(!ctx)throw new Error("Share image cannot be created.");
     ctx.scale(2,2);ctx.drawImage(image,0,0);
@@ -112,7 +112,8 @@ export function snapshot(customer: Customer, card?: HTMLElement | null): Promise
         try {
           const image = new Image(); image.crossOrigin = "anonymous";
           await new Promise<void>((done, fail) => {
-            image.onload = () => done(); image.onerror = () => fail();
+            const timer=setTimeout(()=>fail(new Error("Photo unavailable.")),3000);
+            image.onload = () => {clearTimeout(timer);done();}; image.onerror = () => {clearTimeout(timer);fail(new Error("Photo unavailable."));};
             image.src = photo;
           });
           ctx.drawImage(image, width - 155, 15, 95, 95);
@@ -181,6 +182,23 @@ export default function AllCustomerData() {
   }, []);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const reconcile = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!localModeEnabled()) return;
+        void getLocalSnapshot().then(snapshot => {
+          const deleted = new Set(snapshot.records.filter(record => record.deleted).map(record => record.recordId));
+          setRows(previous => previous.filter(row => !deleted.has(value(row.recordId))));
+          setSelected(previous => previous && deleted.has(value(previous.recordId)) ? null : previous);
+        }).catch(() => undefined);
+      }, 120);
+    };
+    window.addEventListener("banksetu-sync-change", reconcile);
+    return () => {clearTimeout(timer);window.removeEventListener("banksetu-sync-change", reconcile);};
+  }, []);
+
+  useEffect(() => {
     const id = ++generation.current;
     setLoading(false);
     if (!query.trim()) {
@@ -216,27 +234,42 @@ export default function AllCustomerData() {
 
   const share = async () => {
     if (!selected) return;
+    const notice = (type: "success" | "error",message: string) => {
+      const event = new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};
+      event.detail={type,title:type==="error"?"Share unavailable":"Preview ready to share",message};window.dispatchEvent(event);
+    };
     try {
-      const blob = await snapshot(selected, previewCard.current);
+      let blob: Blob;
+      try { blob = await Promise.race([snapshot(selected, previewCard.current),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Preview capture timed out.")),8000))]); }
+      catch { blob = await snapshot(selected); }
       const name = "BankSetu-customer-preview.png";
       if (isAndroid()) {
         const data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(",")[1]); reader.onerror = reject; reader.readAsDataURL(blob);
         });
         const saved = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
-        await Share.share({title:"Bank Setu Customer Preview",files:[saved.uri],dialogTitle:"Share customer preview"});
+        try { await Promise.race([Share.share({title:"Bank Setu Customer Preview",files:[saved.uri],dialogTitle:"Share customer preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Android sharing did not open.")),20000))]); }
+        catch (error) {
+          const image = new File([blob],name,{type:"image/png"});
+          if (!navigator.share || !navigator.canShare?.({files:[image]})) throw error;
+          await Promise.race([navigator.share({files:[image],title:"Bank Setu Customer Preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Sharing is unavailable. The preview remains open; please try again.")),15000))]);
+        }
+        notice("success","Android share options opened; choose the recipient.");
       } else if (desktopBridge()?.shareImage) {
         const dataUrl = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
         await desktopBridge()!.shareImage!(dataUrl);
         setCopyMessage("Preview image copied. Paste it into the WhatsApp chat.");
+        notice("success","Image copied. Paste it into WhatsApp or another app.");
       } else if (navigator.share && navigator.canShare?.({files:[new File([blob],name,{type:"image/png"})]})) {
         await navigator.share({files:[new File([blob],name,{type:"image/png"})],title:"Bank Setu Customer Preview"});
+        notice("success","Share options opened; choose the recipient.");
       } else {
         const link = document.createElement("a"); const url = URL.createObjectURL(blob);
         link.href=url; link.download=name; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
         setCopyMessage("Preview image downloaded for sharing.");
+        notice("success","Preview image downloaded for sharing.");
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not share preview image."); }
+    } catch (cause) { const message=cause instanceof Error ? cause.message : "Could not share preview image.";setError(message);notice("error",message); }
   };
 
   return <section className="all-customer-data" style={{background:"#fff",borderRadius:16,padding:20}}>
@@ -324,8 +357,8 @@ export default function AllCustomerData() {
       .customer-preview-photo-placeholder {display:grid;place-items:center;color:#8090a0;font-size:60px}
       .customer-preview-account {min-width:0;flex:1}.customer-preview-name {font-weight:800;font-size:clamp(24px,4vw,32px);line-height:1.1;overflow-wrap:anywhere}
       .customer-preview-type {display:inline-block;margin:9px 0;color:#d71957;border:1px solid #ff91b0;border-radius:14px;padding:5px 14px;background:#fff0f5}
-      .customer-preview-account-label {display:block;margin-top:9px}.customer-preview-account-number {display:flex;align-items:center;gap:16px;font-size:clamp(23px,4vw,32px);font-weight:800;overflow-wrap:anywhere}
-      .customer-preview-account-number button {background:#fff0f5;color:#d31352;border:1px solid #ffbad0;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:23px}
+      .customer-preview-account-label {display:block;margin-top:9px}.customer-preview-account-number {display:flex;align-items:center;gap:16px;font-size:clamp(23px,4vw,32px);font-weight:800;min-width:0;overflow-wrap:anywhere}
+      .customer-preview-account-number button {background:#fff0f5;color:#d31352;border:1px solid #ffbad0;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:23px;flex:none}
       .customer-preview-status {background:#d9f8e8;border:1px solid #8ce7b7;color:#078350;border-radius:13px;padding:7px 14px;font-weight:700;white-space:nowrap}
       .customer-preview-sections {display:grid;gap:14px}.customer-preview-section {border:1px solid #f8d4df;border-radius:12px;background:white;overflow:hidden;box-shadow:0 2px 8px #e483a21a}
       .customer-preview-section h3 {color:#12254d;background:#fff0f4;margin:0;padding:10px 17px;font-size:18px}
@@ -335,7 +368,7 @@ export default function AllCustomerData() {
       .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
       .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #d57c99;background:#fff;cursor:pointer}
       .customer-preview-actions button:first-child {background:#d51c57;color:white}
-      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl>div{grid-template-columns:minmax(115px,43%) 1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
+      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:calc(100% - 112px)}.customer-preview-account-number{font-size:clamp(17px,5vw,25px);gap:5px}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl>div{grid-template-columns:minmax(115px,43%) 1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
       @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}}
     `}</style>
   </section>;

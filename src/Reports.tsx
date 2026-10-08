@@ -49,8 +49,11 @@ export default function Reports() {
             const customer = record.customer as Record<string, unknown>;
             return entry(customer, `customer:${record.recordId}`, "Customer Saved", customer.updatedAt || customer.createdAt || record.cachedAt);
           }),
-          ...snapshot.operations.map(operation =>
-            entry(operation.customer, `operation:${operation.operationId}`, operation.action, operation.createdAt)),
+          ...snapshot.operations.map(operation => {
+            const customer = snapshot.records.find(record => record.recordId === operation.recordId)?.customer || operation.customer;
+            const name = operation.action === "deleteCustomer" ? "Customer Delete Pending" : operation.action === "markPassbookPrinted" ? "Passbook Print Pending" : operation.action === "updateCustomer" ? "Customer Update Pending" : "Customer Sync Pending";
+            return {...entry(customer, `operation:${operation.operationId}`, name, operation.createdAt),details:"Google sync pending"};
+          }),
         ]);
         if (sameWorkspace()) setActivities(local);
       }
@@ -181,7 +184,7 @@ export default function Reports() {
                       <th style={styles.th}>ACTIVITY</th>
                       <th style={styles.th}>CUSTOMER</th>
                       <th style={styles.th}>ACCOUNT / CIF</th>
-                      <th style={styles.th}>DETAILS</th>
+                      <th style={styles.th}>CHANGE / ACTION DETAILS</th>
                       <th style={styles.th}>USER</th>
                     </tr>
                   </thead>
@@ -250,7 +253,7 @@ export default function Reports() {
                     value={item.customerId || "—"}
                   />
                   <MobileRow
-                    label="Details"
+                    label="Change / Action Details"
                     value={item.details || "—"}
                   />
                   <MobileRow

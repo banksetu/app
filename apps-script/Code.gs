@@ -1186,7 +1186,7 @@ function updateCustomer(
         )
       ]);
 
-    recordActivity(authUser, "UPDATE", updatedCustomer, "Customer record updated.");
+    recordActivity(authUser, "UPDATE", updatedCustomer, activityChanges(rowToCustomer(existingRow), updatedCustomer));
 
 
     return jsonResponse({
@@ -2660,6 +2660,13 @@ function recordActivity(authUser, action, customer, details) {
   ]);
 }
 
+function activityChanges(before, after) {
+  const fields = {name:"Name",accountNo:"Account Number",enrolId:"Customer ID",contact:"Mobile Number",address:"Address",gender:"Gender",dateOfBirth:"Date of Birth"};
+  const changes = Object.keys(fields).filter(key => cleanValue(before[key]) !== cleanValue(after[key])).map(key =>
+    fields[key] + ": " + (cleanValue(before[key]) || "(blank)") + " → " + (cleanValue(after[key]) || "(blank)"));
+  return changes.length ? changes.join("; ").slice(0,500) : "Customer record updated.";
+}
+
 
 function getRecentActivities(authUser, requestedLimit) {
   const spreadsheet = SpreadsheetApp.openById(authUser.spreadsheetId);
@@ -3142,6 +3149,7 @@ function syncCustomerOperation(request, authUser) {
       SpreadsheetApp.flush();
       sheet.deleteRow(index+2);
       SpreadsheetApp.flush();
+      try { recordActivity(authUser,"DELETE",rowToCustomer(existing),"Customer deleted from Google Sheet and Drive."); } catch (error) { console.error(error); }
       return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
     const customer = Object.assign(existing ? rowToCustomer(existing) : {}, op.customer || {});
@@ -3166,6 +3174,9 @@ function syncCustomerOperation(request, authUser) {
     if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
     SpreadsheetApp.flush();
     const saved = sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0];
+    const action = op.action === "markPassbookPrinted" ? "PASSBOOK_PRINTED" : op.action === "markPassbookDelivered" ? "PASSBOOK_DELIVERED" : existing ? "UPDATE" : "CREATE";
+    const details = action === "UPDATE" ? activityChanges(rowToCustomer(existing),customer) : action === "PASSBOOK_PRINTED" ? "Passbook print was requested." : action === "PASSBOOK_DELIVERED" ? "Passbook marked delivered." : "Customer record created.";
+    try { recordActivity(authUser,action,customer,details); } catch (error) { console.error(error); }
     return jsonResponse({success:true,rowNumber,revision:syncRevision(saved),deleted:op.action === "deleteCustomer",driveDeleted:op.action === "deleteCustomer",customer:syncCustomerObject(saved,rowNumber)});
   } finally { lock.releaseLock(); }
 }

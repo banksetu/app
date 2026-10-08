@@ -115,7 +115,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     store.commit(scope,before,after);
   });
   ipcMain.handle('clipboard:write-text',(event,value)=>{trusted(event);if(typeof value!=='string'||value.length>10000)throw new Error('Invalid clipboard text.');clipboard.writeText(value);});
-  ipcMain.handle('clipboard:share-image',async(event,value)=>{trusted(event);if(typeof value!=='string'||value.length>8*1024*1024||!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value))throw new Error('Invalid preview image.');const image=nativeImage.createFromDataURL(value);if(image.isEmpty())throw new Error('Preview image is unavailable.');clipboard.writeImage(image);await shell.openExternal('https://web.whatsapp.com/');});
+  ipcMain.handle('clipboard:share-image',(event,value)=>{trusted(event);if(typeof value!=='string'||value.length>8*1024*1024||!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value))throw new Error('Invalid preview image.');const image=nativeImage.createFromDataURL(value);if(image.isEmpty())throw new Error('Preview image is unavailable.');clipboard.writeImage(image);void shell.openExternal('https://web.whatsapp.com/').catch(()=>{});});
   const {autoUpdater}=require('electron-updater');
   autoUpdater.autoDownload=false;autoUpdater.autoInstallOnAppQuit=false;autoUpdater.allowDowngrade=false;
   autoUpdater.on('error',()=>{});autoUpdater.on('download-progress',progress=>{!window?.isDestroyed()&&window?.webContents.send('update:progress',{percent:Number(progress?.percent||0),transferred:Number(progress?.transferred||0),total:Number(progress?.total||0),bytesPerSecond:Number(progress?.bytesPerSecond||0)});});autoUpdater.on('update-downloaded',()=>{downloaded=true;!window?.isDestroyed()&&window?.webContents.send('update:ready',{ready:true});});

@@ -492,7 +492,7 @@ export default function Customers() {
       if (isAndroid()) {
         const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",")[1]);reader.onerror=reject;reader.readAsDataURL(blob);});
         const file = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
-        await Share.share({title:"Bank Setu Customer Preview",files:[file.uri],dialogTitle:"Share customer preview"});
+        await Promise.race([Share.share({title:"Bank Setu Customer Preview",files:[file.uri],dialogTitle:"Share customer preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Android sharing did not open. Please try again.")),20000))]);
       } else if (desktopBridge()?.shareImage) {
         const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
         await desktopBridge()!.shareImage!(data);

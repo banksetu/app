@@ -4475,6 +4475,11 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
       type
 
     );
+    if (text && !/sync pending|deleted locally|saved on this device/i.test(text)) {
+      const event = new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};
+      event.detail={type:type === "info" ? "progress" : type,title:type === "error" ? "Action failed" : type === "success" ? "Action completed" : "In progress",message:text};
+      window.dispatchEvent(event);
+    }
 
   };
 
