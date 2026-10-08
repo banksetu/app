@@ -138,7 +138,9 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending || previous?.deleted) continue;
-      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},photoCheckedAt:previous?.customer.photoUrl===customer.photoUrl?previous?.photoCheckedAt:undefined,pending:false};
+      const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId;
+      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (samePhoto?previous?.customer.photoPreview:"") || ""},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,pending:false};
+      if(value.photoNotFound===true&&!record.customer.photoPreview)record.photoMissingRef=photoRef(record);
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
     const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
@@ -269,12 +271,13 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       const value=await send({action:"getCustomerByRowNumber",recordId:record.recordId,rowNumber:record.rowNumber});
       if(!value.success)throw new Error(value.message || "Drive photo download failed; will retry.");
       await cacheResponse(scope,value);
-      await repository.transact(scope,state=>{const saved=state.records.find(item=>item.recordId===record.recordId);if(saved&&!saved.pending)saved.photoCheckedAt=Date.now();});
+      await repository.transact(scope,state=>{const saved=state.records.find(item=>item.recordId===record.recordId);if(saved&&!saved.pending){saved.photoCheckedAt=Date.now();if(value.photoNotFound===true&&!saved.customer.photoPreview)saved.photoMissingRef=photoRef(saved);}});
     }
   }
 
 }
-function needsPhoto(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
+function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
+function needsPhoto(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.
   // Only transient previews are eligible for cache cleanup.

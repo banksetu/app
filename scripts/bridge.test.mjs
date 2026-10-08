@@ -75,3 +75,12 @@ test('tenant-bound sync delete trashes linked Drive files before confirming Shee
  assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:denied},admin),/outside this tenant/);
  assert.equal(rows.length,2);
 });
+test('photo lookup confirms absence only after a successful tenant-folder search',()=>{
+ const {context}=bridge();const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
+ context.DriveApp={getFolderById:()=>({getFilesByName:()=>({hasNext:()=>false})})};
+ const actor={...user,photoFolderId:'tenant-folder'};
+ const missing=context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},actor);
+ assert.equal(missing.photoNotFound,true);
+ context.DriveApp={getFolderById:()=>{throw Error('Temporary Drive failure');}};
+ assert.throws(()=>context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},actor),/Temporary Drive failure/);
+});

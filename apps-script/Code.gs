@@ -3126,9 +3126,10 @@ function localFirstRead(request, authUser) {
     else {
       const photo = findPhotoByCustomerId(customer.enrolId, authUser.photoFolderId);
       if (photo) { customer.photoUrl = photo.driveUrl; customer.photoPreview = getPhotoPreviewFromFileId(photo.fileId, authUser.photoFolderId); }
+      else customer.photoNotFound = true; // Verified folder lookup; temporary Drive errors throw and remain retryable.
     }
     customer.passbookDisplay = getPassbookDisplay(customer.passbookStatus);
-    return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches:customers,multipleMatches:customers.length>1});
+    return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches:customers,multipleMatches:customers.length>1,photoNotFound:customer.photoNotFound===true});
   } finally { lock.releaseLock(); }
 }
 function deleteSyncedCustomerDriveFiles(row, authUser) {

@@ -359,3 +359,18 @@ test('admin reset publishes a shared marker only after safety checks and downloa
   navigator.onLine=true;await assert.rejects(engine.resetLocalDatabase(),/resolve every pending/);assert.equal(published,1);
  }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
+
+test('verified missing photo stays out of repeated sync; changed reference resumes existing photo download',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('photo-status');navigator.onLine=true;
+ const scope='user-a:tenant-a:photo-status',recordId='missing-photo';
+ await repository.transact(scope,state=>{state.records.push({key:recordId,scope,recordId,rowNumber:2,revision:'r1',customer:{name:'Photo customer',enrolId:'PHOTO-1'},pending:false});state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let downloads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');downloads++;return new Response(JSON.stringify(downloads===1?{success:true,photoNotFound:true,customer:{recordId,rowNumber:2,revision:'r1',name:'Photo customer',enrolId:'PHOTO-1'}}:{success:true,customer:{recordId,rowNumber:2,revision:'r2',name:'Photo customer',enrolId:'PHOTO-1',photoUrl:'new-photo',photoPreview:'data:image/png;base64,cGhvdG8='}}));};
+ try{
+  await engine.syncNow(false);assert.equal(downloads,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  await engine.syncNow(false);assert.equal(downloads,1);
+  await repository.transact(scope,state=>{state.records[0].customer.photoUrl='new-photo';state.records[0].photoCheckedAt=undefined;});
+  await engine.syncNow(false);assert.equal(downloads,2);
+  assert.match((await repository.read(scope)).records[0].customer.photoPreview,/data:image/);
+ }finally{navigator.onLine=false;}
+});
