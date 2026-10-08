@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.44",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.44/BankSetu-Setup-1.0.44-x64.exe",
-  "notes": "Customer Preview Share uses the visible preview PNG; Windows Save PNG fallback.",
-  "version": "1.0.44",
-  "releaseTag": "v1.0.44",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.44",
-  "windowsVersion": "1.0.44",
-  "androidBuild": 1000044,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.44/BankSetu-Setup-1.0.44-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.44/BankSetu-Android-1000044.apk"
+  "latestVersion": "1.0.45",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.45/BankSetu-Setup-1.0.45-x64.exe",
+  "notes": "Dashboard customer count matches tenant-scoped customer list; safe temporary photo cache clearing.",
+  "version": "1.0.45",
+  "releaseTag": "v1.0.45",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.45",
+  "windowsVersion": "1.0.45",
+  "androidBuild": 1000045,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.45/BankSetu-Setup-1.0.45-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.45/BankSetu-Android-1000045.apk"
 }

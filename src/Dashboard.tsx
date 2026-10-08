@@ -2,7 +2,7 @@ import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import SlideNotifications from "./SlideNotifications";
-import { localDataFetch, getDataIdToken, getLocalSnapshot } from "./core/localData";
+import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -2938,7 +2938,8 @@ function DashboardHome({
       setWorkspaceVersion((version) => version + 1);
     };
     window.addEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
-    return () => window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+    window.addEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);
+    return () => {window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);window.removeEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);};
   }, []);
 
   useEffect(() => {
@@ -2961,16 +2962,10 @@ function DashboardHome({
 
       try {
 
-        // Use the local cache for dashboard counters when available. The existing
-        // reconciliation engine keeps it current in the background; cloud remains
-        // the fallback for a fresh install with no local records.
-        {
-          try {
-            const localState = await getLocalSnapshot();
-            const records = localState.records
-              .filter((record) => !record.deleted)
-              .map((record) => record.customer as Record<string, unknown>);
-            if (records.length > 0) {
+        // The customer list and dashboard use the same scoped local records;
+        // the existing sync engine refreshes them from Google in the background.
+        if (localModeEnabled()) {
+            const records = await getActiveLocalCustomers();
               const text = (value: unknown) => String(value ?? "").trim().toLowerCase();
               const field = (customer: Record<string, unknown>, names: string[]) => {
                 const key = Object.keys(customer).find((candidate) => names.includes(candidate.toLowerCase().replace(/[ _-]/g, "")));
@@ -2990,11 +2985,7 @@ function DashboardHome({
                 setStatsLoading(false);
                 setStatsError("");
               }
-              return;
-            }
-          } catch (localError) {
-            console.warn("Local dashboard stats unavailable; using cloud fallback:", localError);
-          }
+            return;
         }
 
         const apiUrl = getTenantApiUrl();
@@ -3185,15 +3176,32 @@ function DashboardHome({
 
         const liveStats = result.stats || {};
 
+        // Legacy cloud-only workspaces must count the same filtered rows that
+        // All Customer Data displays; the aggregate endpoint can include
+        // tombstoned Sheet rows.
+        const customerIds = new Set<string>();
+        for (let page = 1; page <= 100; page++) {
+          const idToken = await getDataIdToken();
+          const response = await localDataFetch(apiUrl, {
+            method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"},
+            body: JSON.stringify({action: "getAllCustomers", page, pageSize: 250, idToken}),
+          });
+          if (!response.ok) throw new Error("Customer count could not be loaded.");
+          const listing = await response.json() as {success?: boolean; message?: string; customers?: Array<Record<string, unknown>>; hasNextPage?: boolean};
+          if (!listing.success || !Array.isArray(listing.customers)) throw new Error(listing.message || "Customer count could not be loaded.");
+          for (const customer of listing.customers) {
+            const key = String(customer.recordId || customer.rowNumber || customer.accountNo || "").trim();
+            if (key) customerIds.add(key);
+          }
+          if (!listing.hasNextPage) break;
+          if (page === 100) throw new Error("Customer count exceeds the available page limit.");
+        }
+
         if (!cancelled) {
 
           setDashboardStats({
 
-            totalCustomers: Number(
-
-              liveStats.totalCustomers || 0
-
-            ),
+            totalCustomers: customerIds.size,
 
             kycPending: Number(
 

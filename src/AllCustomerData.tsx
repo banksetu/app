@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getAuth } from "firebase/auth";
-import { localDataFetch, getDataIdToken, getLocalSnapshot, localModeEnabled } from "./core/localData";
+import { localDataFetch, getDataIdToken, getLocalSnapshot, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { getTenantApiUrl } from "./tenantApi";
 import { isAndroid } from "./platform/android/runtime";
 import { registerPlugin } from "@capacitor/core";
@@ -115,10 +115,15 @@ export default function AllCustomerData() {
   const generation = useRef(0);
 
   const loadPage = async (replace = false) => {
-    if ((loading && !replace) || !navigator.onLine) return;
+    if ((loading && !replace) || (!navigator.onLine && !localModeEnabled())) return;
     setLoading(true);
     const id = generation.current;
     try {
+      if (localModeEnabled()) {
+        const customers = await getActiveLocalCustomers();
+        if (id === generation.current) {setRows(customers);setMore(false);}
+        return;
+      }
       if (replace) {
         const first = await request({action:"getAllCustomers",page:1,pageSize:1});
         if (!first.success) throw new Error(first.message || "Could not load customers.");
@@ -147,11 +152,9 @@ export default function AllCustomerData() {
   useEffect(() => {
     let active = true;
     // The current verified user's local scope supplies an immediate local-first list.
-    if (localModeEnabled()) void getLocalSnapshot().then(snapshot => {
+    if (localModeEnabled()) void getActiveLocalCustomers().then(customers => {
       if (!active) return;
-      setRows(previous => previous.length ? previous : snapshot.records.filter(record => !record.deleted).sort((a,b) => b.rowNumber - a.rowNumber).map(record =>
-        ({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})
-      ));
+      setRows(customers);
     }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });
     return () => { active = false; generation.current += 1; };
     // The workspace remounts this page on navigation.
@@ -164,23 +167,23 @@ export default function AllCustomerData() {
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (!localModeEnabled()) return;
-        void getLocalSnapshot().then(snapshot => {
-          const deleted = new Set(snapshot.records.filter(record => record.deleted).map(record => record.recordId));
-          setRows(previous => previous.filter(row => !deleted.has(value(row.recordId))));
-          setSelected(previous => previous && deleted.has(value(previous.recordId)) ? null : previous);
+        void getActiveLocalCustomers().then(customers => {
+          if (!query.trim()) setRows(customers);
+          else {const visible=new Set(customers.map(customer=>value(customer.recordId)));setRows(previous=>previous.filter(row=>visible.has(value(row.recordId))));}
+          setSelected(previous => previous && !customers.some(customer=>identity(customer)===identity(previous)) ? null : previous);
         }).catch(() => undefined);
       }, 120);
     };
     window.addEventListener("banksetu-sync-change", reconcile);
     return () => {clearTimeout(timer);window.removeEventListener("banksetu-sync-change", reconcile);};
-  }, []);
+  }, [query]);
 
   useEffect(() => {
     const id = ++generation.current;
     setLoading(false);
     if (!query.trim()) {
       setError("");
-      if (navigator.onLine) void loadPage(true);
+      if (navigator.onLine || localModeEnabled()) void loadPage(true);
       else void getLocalSnapshot().then(snapshot => {
         if (id === generation.current) setRows(snapshot.records.filter(record => !record.deleted).sort((a,b) => b.rowNumber - a.rowNumber).map(record => ({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})));
       }).catch(cause => { if (id === generation.current) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });

@@ -69,6 +69,8 @@ test('fresh installation downloads every page automatically, hydrates photos and
  const deadline=Date.now()+10000;
  while(Date.now()<deadline){const status=await engine.getLocalStatus();if(status.lastCompletedAt&&status.mediaPending===0&&!status.syncing)break;await new Promise(resolve=>setTimeout(resolve,50));}
  const state=await repository.read('user-a:tenant-a:fresh-device');assert.equal(state.records.length,1251);assert(state.pull.lastCompletedAt);assert.match(state.records.find(record=>record.recordId==='cloud-0').customer.photoPreview,/data:image/);
+ assert.equal((await engine.getActiveLocalCustomers()).length,1251);
+ assert.equal((await engine.getLocalStatus()).records,1251);
  const before=calls.length;const hit=await request({action:'searchCustomer',query:'Existing 0'});assert.equal(hit.local,true);assert.equal(calls.length,before,'local hits never await Google');
  navigator.onLine=false;assert.equal((await request({action:'searchCustomer',query:'Existing 1250'})).customer.name,'Existing 1250');
  }finally{stop();}
@@ -166,6 +168,7 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  };
  await engine.syncNow(false);
  state=await repository.read('user-a:tenant-a:delete-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].deleted,true);
+ assert.equal((await engine.getActiveLocalCustomers()).length,0);
  assert.equal(actions.filter(item=>item==='syncCustomerOperation').length,2);
  assert.equal((await repository.read('user-a:tenant-a:delete-other')).records.length,0);
  navigator.onLine=false;const second=await request({action:'saveCustomer',customer:{...customer,enrolId:'DELETE-2',accountNo:'9902'}});
@@ -177,6 +180,30 @@ test('customer delete stays local first, syncs immediately on reconnect, and nev
  state=await repository.read('user-a:tenant-a:delete-a');assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
  assert.equal(state.records.find(record=>record.recordId===second.recordId).deleted,true);
  navigator.onLine=false;
+});
+
+test('dashboard and list share active scoped records; temporary cleanup preserves customers and queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};
+ connect('count-view');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'COUNT-1',accountNo:'9911'}});
+ const scope='user-a:tenant-a:count-view';
+ await repository.transact(scope,state=>{
+   state.records.push({key:'cloud',scope,recordId:'cloud',rowNumber:2,revision:'r1',pending:false,
+     customer:{name:'Cloud only',accountNo:'9912',photoUrl:'drive-photo',photoPreview:'data:image/png;base64,cGhvdG8='}});
+   state.records.push({key:'duplicate',scope,recordId:'cloud',rowNumber:2,revision:'r1',pending:false,customer:{name:'Duplicate cloud row'}});
+   state.records.push({key:'deleted',scope,recordId:'deleted',rowNumber:3,revision:'r1',pending:false,deleted:true,customer:{name:'Deleted'}});
+ });
+ assert.deepEqual((await engine.getActiveLocalCustomers()).map(item=>item.recordId),[saved.recordId,'cloud']);
+ assert.equal((await engine.getLocalStatus()).records,2);
+ assert.equal(await engine.clearTemporaryLocalData(),1);
+ const state=await repository.read(scope);
+ assert.equal(state.records.find(item=>item.recordId==='cloud').customer.photoPreview,undefined);
+ assert.equal(state.records.find(item=>item.recordId==='cloud').customer.photoUrl,'drive-photo');
+ assert.equal(state.operations.length,1);
+ await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
+ assert.deepEqual((await engine.getActiveLocalCustomers()).map(item=>item.recordId),['cloud']);
+ assert.equal((await engine.getLocalStatus()).records,1);
+ connect('other-count-view');assert.equal((await engine.getActiveLocalCustomers()).length,0);
 });
 
 test('online add and delete respond after local commit while cloud confirmation clears the queue',async()=>{

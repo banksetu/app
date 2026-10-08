@@ -260,7 +260,33 @@ function trimCache(state: import("./schema").LocalState) {
     state.pull.cacheLimited = true;
   }
 }
-export async function getLocalStatus() { const state=await repository.read(identity());return {records:state.records.filter(record=>!record.deleted).length,syncing:running.has(identity()),lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(needsPhoto).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+function activeRecords(records: CachedRecord[]) {
+  const seen=new Set<string>();
+  return records.filter(record=>{
+    if(record.deleted || !record.recordId || seen.has(record.recordId))return false;
+    seen.add(record.recordId);return true;
+  });
+}
+export async function getActiveLocalCustomers() {
+  const state=await repository.read(identity());
+  return activeRecords(state.records).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({
+    ...record.customer,rowNumber:record.rowNumber,recordId:record.recordId,
+    photoDataUrl:undefined,pdfDataUrl:undefined,photoPreview:undefined,
+  }));
+}
+export async function clearTemporaryLocalData() {
+  const scope=identity();let cleared=0;
+  await repository.transact(scope,state=>{
+    for(const record of state.records){
+      // Only downloaded Drive thumbnails are disposable. Originals, customer
+      // records, tombstones, the sync cursor and every queued edit stay intact.
+      if(record.pending || !record.customer.photoUrl || !record.customer.photoPreview)continue;
+      delete record.customer.photoPreview;delete record.photoCheckedAt;cleared++;
+    }
+  });
+  announce();return cleared;
+}
+export async function getLocalStatus() { const state=await repository.read(identity());return {records:activeRecords(state.records).length,syncing:running.has(identity()),lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(needsPhoto).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {
