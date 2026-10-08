@@ -2,6 +2,7 @@ import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import SlideNotifications from "./SlideNotifications";
+import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -256,7 +257,8 @@ type PageName =
   | "reports"
 
   | "settings"
-  | "sync-backup";
+  | "sync-backup"
+  | "support";
 
 function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   useEffect(()=>startPresence(),[]);
@@ -267,6 +269,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
 
   const syncStatus=useSyncStatus();
+  const supportUnread=useSupportUnread(accountRole);
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
@@ -1067,6 +1070,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
           {(accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
         </nav>
 
+        <button type="button" className={activePage === "support" ? "banksetu-nav-item banksetu-support-button active" : "banksetu-nav-item banksetu-support-button"} onClick={() => openPage("support")}>
+          <span>🎧</span><span>Support</span>{supportUnread > 0 && <b className="banksetu-support-badge">{supportUnread > 99 ? "99+" : supportUnread}</b>}
+        </button>
+
       </aside>
 
       {/* MAIN AREA */}
@@ -1467,6 +1474,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} />
+          {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && (
