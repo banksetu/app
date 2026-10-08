@@ -3097,6 +3097,7 @@ function syncCustomerObject(row, rowNumber) {
 }
 function localFirstRead(request, authUser) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  let detail;
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
     if (["getCustomerPage","getAllCustomers"].includes(request.action)) {
@@ -3121,16 +3122,19 @@ function localFirstRead(request, authUser) {
       customers = query ? customers.filter(customer => ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(key => normalize(customer[key]).includes(query))) : [];
     }
     if (!customers.length) return jsonResponse({success:false,message:"Customer not found."});
-    const customer = customers[0];
-    if (customer.photoUrl) customer.photoPreview = getPhotoPreviewDataUrl(customer.photoUrl, authUser.photoFolderId);
-    else {
-      const photo = findPhotoByCustomerId(customer.enrolId, authUser.photoFolderId);
-      if (photo) { customer.photoUrl = photo.driveUrl; customer.photoPreview = getPhotoPreviewFromFileId(photo.fileId, authUser.photoFolderId); }
-      else customer.photoNotFound = true; // Verified folder lookup; temporary Drive errors throw and remain retryable.
-    }
-    customer.passbookDisplay = getPassbookDisplay(customer.passbookStatus);
-    return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches:customers,multipleMatches:customers.length>1,photoNotFound:customer.photoNotFound===true});
+    detail = {customer:customers[0],matches:customers};
   } finally { lock.releaseLock(); }
+  // Sheet identity and revision are captured under the lock. Drive reads can
+  // run concurrently without blocking the next tenant-scoped photo request.
+  const {customer,matches}=detail;
+  if (customer.photoUrl) customer.photoPreview = getPhotoPreviewDataUrl(customer.photoUrl, authUser.photoFolderId);
+  else {
+    const photo = findPhotoByCustomerId(customer.enrolId, authUser.photoFolderId);
+    if (photo) { customer.photoUrl = photo.driveUrl; customer.photoPreview = getPhotoPreviewFromFileId(photo.fileId, authUser.photoFolderId); }
+    else customer.photoNotFound = true; // Verified folder lookup; temporary Drive errors throw and remain retryable.
+  }
+  customer.passbookDisplay = getPassbookDisplay(customer.passbookStatus);
+  return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches,multipleMatches:matches.length>1,photoNotFound:customer.photoNotFound===true});
 }
 function deleteSyncedCustomerDriveFiles(row, authUser) {
   const folderId = cleanValue(authUser.photoFolderId);

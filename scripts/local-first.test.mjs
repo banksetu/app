@@ -386,3 +386,51 @@ test('verified missing photo stays out of repeated sync; changed reference resum
   assert.match((await repository.read(scope)).records[0].customer.photoPreview,/data:image/);
  }finally{navigator.onLine=false;}
 });
+
+test('legacy photo hydration uses bounded parallel reads, skips cached photos and duplicate jobs',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('parallel-photos');navigator.onLine=true;
+ const scope='user-a:tenant-a:parallel-photos';
+ await repository.transact(scope,state=>{
+   for(let i=0;i<6;i++)state.records.push({key:`photo-${i}`,scope,recordId:`photo-${i}`,rowNumber:i+2,revision:'r1',customer:{enrolId:`P-${i}`,photoUrl:`drive-${i}`},pending:false});
+   state.records.push({key:'cached',scope,recordId:'cached',rowNumber:8,revision:'r1',customer:{enrolId:'CACHED',photoUrl:'drive-cached',photoPreview:'data:image/jpeg;base64,eA=='},pending:false});
+   state.records.push({key:'discovery',scope,recordId:'discovery',rowNumber:9,revision:'r1',customer:{enrolId:'DISCOVERY'},pending:false});
+   state.records.push({...state.records[0],key:'duplicate'});
+   state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};
+ });
+ let active=0,maxActive=0;const calls=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');calls.push(body.recordId);active++;maxActive=Math.max(maxActive,active);
+   await new Promise(resolve=>setTimeout(resolve,12));active--;
+   return new Response(JSON.stringify({success:true,photoNotFound:body.recordId==='discovery',customer:{recordId:body.recordId,rowNumber:body.rowNumber,revision:'r1',enrolId:body.recordId==='discovery'?'DISCOVERY':`P-${body.recordId.split('-')[1]}`,photoUrl:body.recordId==='discovery'?'':`drive-${body.recordId.split('-')[1]}`,photoPreview:body.recordId==='discovery'?'':'data:image/jpeg;base64,eA=='}}));
+ };
+ try{
+   await engine.syncNow(false);assert.equal(calls.length,7);assert.equal(new Set(calls).size,7);assert(maxActive>1&&maxActive<=3);
+   assert.equal(calls.at(-1),'discovery');assert.equal((await engine.getLocalStatus()).mediaPending,0);
+   await engine.syncNow(false);assert.equal(calls.length,7);
+ }finally{navigator.onLine=false;}
+});
+
+test('photo failure retries later without blocking new photo upload; new save preempts legacy reads',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('photo-priority');navigator.onLine=true;
+ const scope='user-a:tenant-a:photo-priority';
+ await repository.transact(scope,state=>{state.records.push({key:'old',scope,recordId:'old',rowNumber:2,revision:'r1',customer:{enrolId:'OLD',photoUrl:'old-photo'},pending:false});state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let started;const inFlight=new Promise(resolve=>started=resolve);let aborted=0,uploads=0,reads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+   if(body.action==='syncCustomerOperation'){uploads++;assert(body.operation.customer.photoDataUrl);return new Response(JSON.stringify({success:true,rowNumber:3,revision:'r2',customer:{...body.operation.customer,recordId:body.operation.recordId,rowNumber:3,revision:'r2',photoUrl:'new-drive-photo',photoPreview:body.operation.customer.photoDataUrl}}));}
+   reads++;
+   if(reads===1){started();return new Promise((_resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Photo request did not yield')),3000);init.signal.addEventListener('abort',()=>{clearTimeout(timer);aborted++;reject(init.signal.reason);},{once:true});});}
+   if(reads===2)return new Response(JSON.stringify({success:false,message:'Temporary Drive error'}));
+   return new Response(JSON.stringify({success:true,customer:{recordId:'old',rowNumber:2,revision:'r1',enrolId:'OLD',photoUrl:'old-photo',photoPreview:'data:image/jpeg;base64,eA=='}}));
+ };
+ try{
+   const first=engine.syncNow(false);await inFlight;
+   await request({action:'saveCustomer',customer:{...customer,enrolId:'NEW-PHOTO',accountNo:'8800',photoDataUrl:'data:image/jpeg;base64,eA=='}});
+   await first;assert.equal(aborted,1);
+   await engine.syncNow(false);assert.equal(uploads,1);
+   let state=await repository.read(scope);assert.equal(state.operations.length,0);assert(state.records.find(item=>item.customer.enrolId==='NEW-PHOTO').customer.photoUrl);
+   assert(state.records.find(item=>item.recordId==='old').photoRetryAt>Date.now());
+   const before=reads;await engine.syncNow(false);assert.equal(reads,before);
+   navigator.onLine=false;await engine.syncNow(false);assert.equal(reads,before);navigator.onLine=true;
+   await repository.transact(scope,current=>{current.records.find(item=>item.recordId==='old').photoRetryAt=Date.now()-1;});
+   await engine.syncNow(false);state=await repository.read(scope);assert.match(state.records.find(item=>item.recordId==='old').customer.photoPreview,/data:image/);
+ }finally{navigator.onLine=false;}
+});
