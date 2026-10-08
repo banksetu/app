@@ -73,7 +73,13 @@ if(primaryInstance)app.whenReady().then(async()=>{
     child.webContents.on('will-navigate',(event,url)=>{if(url!=='about:blank')event.preventDefault();});
   });
   window.webContents.on('will-navigate',(event,url)=>{if (!url.startsWith(ORIGIN+'/')) event.preventDefault();});
-  window.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+  const cameraAllowed=(contents,permission,requestingUrl)=>
+    permission==='media' && contents===window.webContents &&
+    (requestingUrl===ORIGIN || requestingUrl.startsWith(ORIGIN+'/'));
+  window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>
+    callback(cameraAllowed(contents,permission,details.requestingUrl||contents.getURL())));
+  window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>
+    cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
   const directoryBytes = directory => {
     let total = 0;
     try {

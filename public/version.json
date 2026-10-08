@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.46",
+  "latestVersion": "1.0.47",
   "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.46/BankSetu-Setup-1.0.46-x64.exe",
-  "notes": "Tenant-scoped sync protection, safe local reset and reactive dashboard overview.",
-  "version": "1.0.46",
-  "releaseTag": "v1.0.46",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.46",
-  "windowsVersion": "1.0.46",
-  "androidBuild": 1000046,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.46/BankSetu-Setup-1.0.46-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.46/BankSetu-Android-1000046.apk"
+  "notes": "Customer camera capture and 15 KB photo optimization for local-first photo sync.",
+  "version": "1.0.47",
+  "releaseTag": "v1.0.47",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.47",
+  "windowsVersion": "1.0.47",
+  "androidBuild": 1000047,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.47/BankSetu-Setup-1.0.47-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.47/BankSetu-Android-1000047.apk"
 }
