@@ -3715,3 +3715,19 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 
 @keyframes banksetu-sync-rotate{to{transform:rotate(360deg)}}
 .banksetu-sync-spinning{display:inline-block;animation:banksetu-sync-rotate 1s linear infinite}
+.customer-camera-overlay{position:fixed;inset:0;z-index:11000;display:grid;place-items:center;padding:12px;background:rgba(3,18,27,.78)}
+.customer-camera-dialog{width:min(470px,100%);max-height:calc(100dvh - 24px);overflow-y:auto;box-sizing:border-box;border:1px solid rgba(55,220,195,.4);border-radius:16px;background:#0c2934;color:#eefafa;box-shadow:0 16px 45px #0008}
+.customer-camera-dialog header,.customer-camera-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px}
+.customer-camera-dialog header button{border:0;background:transparent;color:#eefafa;font-size:24px;cursor:pointer}
+.customer-camera-preview{position:relative;margin:0 12px;display:grid;place-items:center;max-height:56dvh;min-height:180px;overflow:hidden;background:#071d27;border-radius:10px}
+.customer-camera-preview video,.customer-camera-preview img{display:block;width:100%;height:auto;max-height:56dvh;object-fit:contain}
+.customer-camera-preview span{position:absolute;bottom:12px;background:#102d3cee;padding:6px;border-radius:6px}
+.customer-camera-dialog footer{flex-wrap:wrap;justify-content:flex-end}
+.customer-camera-dialog footer button,.customer-camera-devices button{min-height:40px;padding:8px 12px;border:1px solid #37646c;border-radius:8px;background:#14505b;color:#f0ffff;cursor:pointer}
+.customer-camera-dialog footer button:last-child{background:#34cdb4;color:#07272a;font-weight:800}
+.customer-camera-dialog button:disabled{opacity:.55;cursor:wait}
+.customer-camera-devices{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px}
+.customer-camera-devices select{max-width:180px;margin-left:8px;padding:7px;border-radius:7px;background:#173c48;color:#fff}
+.customer-camera-error{margin:10px 14px;color:#ffb7b7}
+.customer-photo-review{margin-top:10px;font-size:12px}.customer-photo-review button{margin:4px;padding:7px 9px;border:1px solid #2a7a79;border-radius:7px;background:#e7f7f2;color:#104b49;cursor:pointer}
+@media(max-width:480px){.customer-camera-overlay{padding:6px}.customer-camera-dialog{max-height:calc(100dvh - 12px)}.customer-camera-preview{max-height:48dvh}.customer-camera-preview video,.customer-camera-preview img{max-height:48dvh}.customer-camera-dialog footer button{flex:1 1 auto}}

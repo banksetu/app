@@ -1,5 +1,7 @@
 import { initializeApp, deleteApp } from "firebase/app";
 import { localDataFetch, getDataIdToken, localModeEnabled } from "./core/localData";
+import { CUSTOMER_PHOTO_MAX_BYTES, optimizeCustomerPhoto } from "./customerPhoto";
+import CustomerCamera from "./CustomerCamera";
 import {
 
   useRef,
@@ -586,6 +588,10 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
     useState("");
 
+  const [cameraOpen,setCameraOpen]=useState(false);
+  const [photoReview,setPhotoReview]=useState("");
+  const [photoOptimizing,setPhotoOptimizing]=useState(false);
+
 
 
 
@@ -990,178 +996,42 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-  const handlePhotoSelect = (
-
-    event:
-
-      ChangeEvent<HTMLInputElement>
-
-  ) => {
-
-    const file =
-
-      event.target.files?.[0];
-
-
-
-    if (!file) {
-
-      return;
-
+  const acceptPhoto=async (file:Blob) => {
+    const optimized=await optimizeCustomerPhoto(file);
+    setPhotoPreview(optimized.dataUrl);
+    if(optimized.qualityWarning){
+      setPhotoReview(optimized.dataUrl);setPhotoDataUrl("");
+      showMessage("Photo is under 15 KB but may be unclear. Check the preview, then use it or retake/choose another.","info");
+    }else{
+      setPhotoReview("");setPhotoDataUrl(optimized.dataUrl);
+      showMessage(`Photo ready (${(optimized.bytes/1024).toFixed(1)} KB).`,"info");
     }
-
-
-
-    const allowedTypes = [
-
-      "image/jpeg",
-
-      "image/jpg",
-
-      "image/png",
-
-      "image/webp",
-
-    ];
-
-
-
-    if (
-
-      !allowedTypes.includes(
-
-        file.type
-
-      )
-
-    ) {
-
-      showMessage(
-
-        "Only JPG, PNG or WEBP photos are allowed.",
-
-        "error"
-
-      );
-
-
-
-      event.target.value =
-
-        "";
-
-
-
-      return;
-
-    }
-
-
-
-    if (
-
-      file.size >
-
-      5 * 1024 * 1024
-
-    ) {
-
-      showMessage(
-
-        "Customer photo must be smaller than 5 MB.",
-
-        "error"
-
-      );
-
-
-
-      event.target.value =
-
-        "";
-
-
-
-      return;
-
-    }
-
-
-
-    const reader =
-
-      new FileReader();
-
-
-
-    reader.onload = () => {
-
-      if (
-
-        typeof reader.result !==
-
-        "string"
-
-      ) {
-
-        return;
-
-      }
-
-
-
-      setPhotoPreview(
-
-        reader.result
-
-      );
-
-
-
-      setPhotoDataUrl(
-
-        reader.result
-
-      );
-
-
-
-      setPhotoFileName(
-
-        file.name
-
-      );
-
-
-
-      showMessage(
-
-        "Customer photo selected.",
-
-        "info"
-
-      );
-
-    };
-
-
-
-    reader.readAsDataURL(
-
-      file
-
-    );
-
-
-
-    event.target.value =
-
-      "";
-
+    setPhotoFileName("customer-photo.jpg");
   };
 
+  const handlePhotoSelect = async (event:ChangeEvent<HTMLInputElement>) => {
+    const file=event.target.files?.[0];event.target.value="";
+    if(!file)return;
+    if(!["image/jpeg","image/jpg","image/png","image/webp"].includes(file.type)){
+      showMessage("Only JPG, PNG or WEBP photos are allowed.","error");return;
+    }
+    if(file.size>20*1024*1024){showMessage("Choose a photo smaller than 20 MB.","error");return;}
+    setPhotoOptimizing(true);
+    try{await acceptPhoto(file);}catch(error){showMessage(error instanceof Error?error.message:"Photo could not be optimized.","error");}
+    finally{setPhotoOptimizing(false);}
+  };
 
-
+  const photoIsReady = () => {
+    if(photoOptimizing || photoReview){
+      showMessage("Review the optimized photo before saving, or choose another photo.","error");return false;
+    }
+    if(photoDataUrl){
+      const payload=photoDataUrl.split(",")[1]||"";
+      const bytes=Math.floor(payload.length*3/4)-(payload.endsWith("==")?2:payload.endsWith("=")?1:0);
+      if(bytes>CUSTOMER_PHOTO_MAX_BYTES){showMessage("Photo must be 15 KB or smaller. Choose another photo.","error");return false;}
+    }
+    return true;
+  };
 
 
   /* =========================================================
@@ -1526,20 +1396,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
         extractedPhoto
 
       ) {
-
-        setPhotoPreview(
-
-          extractedPhoto
-
-        );
-
-
-
-        setPhotoDataUrl(
-
-          extractedPhoto
-
-        );
+        try { await acceptPhoto(await (await fetch(extractedPhoto)).blob()); }
+        catch(error){showMessage(error instanceof Error?error.message:"Extracted photo could not fit under 15 KB.","error");}
 
 
 
@@ -1569,13 +1427,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-        showMessage(
-
-          `${extractionMessage} Photo crop prepared; please check it.`,
-
-          "success"
-
-        );
+        // acceptPhoto shows the size/clarity review in the existing preview.
 
 
 
@@ -3261,7 +3113,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       if (
 
-        !validateForm()
+        !validateForm() || !photoIsReady()
 
       ) {
 
@@ -3754,6 +3606,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         );
 
+        setPhotoReview("");
+
 
 
 
@@ -3838,7 +3692,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       if (
 
-        !validateForm()
+        !validateForm() || !photoIsReady()
 
       ) {
 
@@ -3974,6 +3828,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
           ""
 
         );
+
+        setPhotoReview("");
 
 
 
@@ -4425,6 +4281,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       );
 
+      setPhotoReview("");
+
 
 
       setPhotoFileName(
@@ -4738,6 +4596,22 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
               : "Upload Photo"}
 
           </button>
+
+          <button type="button" style={{...styles.smallButton,marginLeft:8}} aria-label="Open camera"
+            disabled={photoOptimizing} onClick={()=>setCameraOpen(true)}>📷 Camera</button>
+
+          {photoOptimizing && <p role="status">Optimizing photo…</p>}
+          {photoReview && <div className="customer-photo-review" role="status">
+            <p>Check the photo clarity before saving.</p>
+            <button type="button" onClick={()=>{setPhotoDataUrl(photoReview);setPhotoReview("");}}>Use this photo</button>
+            <button type="button" onClick={()=>setCameraOpen(true)}>Retake</button>
+            <button type="button" onClick={()=>photoInputRef.current?.click()}>Choose another</button>
+          </div>}
+
+          {cameraOpen && <CustomerCamera onClose={()=>setCameraOpen(false)} onUse={async photo=>{
+            setPhotoOptimizing(true);
+            try {await acceptPhoto(photo);setCameraOpen(false);} finally {setPhotoOptimizing(false);}
+          }} />}
 
 
 
