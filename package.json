@@ -1,7 +1,7 @@
 {
   "name": "app",
   "private": true,
-  "version": "1.0.43",
+  "version": "1.0.44",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,7 @@
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --win nsis --publish never",
     "desktop:pack:unsigned": "npm run build && electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false",
-    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs scripts/union-passbook.test.mjs desktop/app-protocol.test.cjs scripts/auth-navigation.test.mjs",
+    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs desktop/share-preview.test.cjs scripts/union-passbook.test.mjs desktop/app-protocol.test.cjs scripts/auth-navigation.test.mjs",
     "test:bridge": "node --test scripts/bridge.test.mjs",
     "predev": "node scripts/prepare-client-assets.mjs",
     "android:sync": "npm run build && cap sync android",
@@ -30,6 +30,7 @@
     "@capacitor/share": "8.0.3",
     "electron-updater": "^6.8.9",
     "firebase": "^12.19.0",
+    "html2canvas": "^1.4.1",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

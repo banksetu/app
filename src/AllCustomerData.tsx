@@ -4,10 +4,11 @@ import { localDataFetch, getDataIdToken, getLocalSnapshot, localModeEnabled } fr
 import { getTenantApiUrl } from "./tenantApi";
 import { isAndroid } from "./platform/android/runtime";
 import { registerPlugin } from "@capacitor/core";
+import html2canvas from "html2canvas";
 
 const nativeShare = registerPlugin<{shareImage(options:{base64:string}):Promise<void>}>("BankSetuShare");
 
-const desktopBridge = () => (window as Window & {bankSetuDesktop?: {copyText?: (text:string)=>Promise<void>;shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
+const desktopBridge = () => (window as Window & {bankSetuDesktop?: {copyText?: (text:string)=>Promise<void>;shareImage?: (image:string)=>Promise<{saved:boolean;canceled?:boolean}>}}).bankSetuDesktop;
 type Customer = Record<string, unknown> & { rowNumber?: number; recordId?: string };
 const value = (item: unknown) => String(item ?? "").trim();
 const title = (key: string) => key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
@@ -30,58 +31,32 @@ async function request(body: Record<string, unknown>) {
 }
 
 async function previewImage(card: HTMLElement): Promise<Blob> {
+  const width = Math.ceil(card.getBoundingClientRect().width);
+  if (!width) throw new Error("Customer preview is not visible. Open it again and retry.");
   const host = document.createElement("div");
-  host.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;z-index:-1;pointer-events:none";
+  host.style.cssText = `position:fixed;left:0;top:0;width:${width}px;z-index:-1;pointer-events:none`;
   const copy = card.cloneNode(true) as HTMLElement;
   copy.querySelector(".customer-preview-close")?.remove();
   copy.querySelector(".customer-preview-actions")?.remove();
-  copy.style.cssText += ";width:760px!important;max-height:none!important;overflow:visible!important;border-radius:20px!important";
-  const fixed: [string,string][] = [
-    [".customer-preview-heading","padding:19px 24px!important;gap:18px!important"],
-    [".customer-preview-avatar","width:52px!important;height:52px!important;font-size:34px!important"],
-    [".customer-preview-content","margin:16px 20px 20px!important;padding:20px!important"],
-    [".customer-preview-identity","gap:24px!important;flex-wrap:nowrap!important"],
-    [".customer-preview-identity>img","width:132px!important;height:146px!important"],
-    [".customer-preview-photo-placeholder","width:132px!important;height:146px!important"],
-    [".customer-preview-status","order:0!important"],
-    [".customer-preview-bottom","grid-template-columns:repeat(2,minmax(0,1fr))!important"],
-  ];
-  for (const [selector,css] of fixed) copy.querySelectorAll<HTMLElement>(selector).forEach(node => {node.style.cssText += ";" + css;});
-  copy.querySelectorAll<HTMLElement>(".customer-preview-section dl>div").forEach(node => {node.style.gridTemplateColumns="minmax(130px,34%) 1fr";});
+  copy.style.cssText += `;width:${width}px!important;max-height:none!important;overflow:visible!important`;
   host.appendChild(copy);
   document.body.appendChild(host);
-  let url = "";
   try {
     await Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,1500))]);
     for (const img of copy.querySelectorAll<HTMLImageElement>("img")) {
-      if (img.src.startsWith("data:")) continue;
-      const response = await fetch(img.src, {mode:"cors",signal:AbortSignal.timeout(3000)});
-      if (!response.ok) throw new Error("Customer photo could not be included in the share image.");
-      const blob = await response.blob();
-      img.src = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+      if (!img.src.startsWith("data:")) {
+        const response = await fetch(img.src, {mode:"cors",signal:AbortSignal.timeout(3000)});
+        if (!response.ok) throw new Error("Customer photo could not be included in the share image.");
+        const blob = await response.blob();
+        img.src = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+      }
       await Promise.race([img.decode(),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Photo capture timed out.")),3000))]);
     }
-    for (const node of [copy,...Array.from(copy.querySelectorAll<HTMLElement>("*"))]) {
-      const computed = getComputedStyle(node);
-      const inline = node.style;
-      for (let i=0;i<computed.length;i++) {
-        const property=computed.item(i);
-        inline.setProperty(property,computed.getPropertyValue(property),"important");
-      }
-    }
-    copy.querySelectorAll("dt").forEach(node => {node.textContent = (node.textContent || "") + " :";});
-    copy.setAttribute("xmlns","http://www.w3.org/1999/xhtml");
-    const height=Math.ceil(copy.scrollHeight);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="760" height="${height}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(copy)}</foreignObject></svg>`;
-    url=URL.createObjectURL(new Blob([svg],{type:"image/svg+xml;charset=utf-8"}));
-    const image=new Image();image.src=url;await Promise.race([image.decode(),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Preview capture timed out.")),5000))]);
-    const canvas=document.createElement("canvas");canvas.width=1520;canvas.height=height*2;
-    const ctx=canvas.getContext("2d");if(!ctx)throw new Error("Share image cannot be created.");
-    ctx.scale(2,2);ctx.drawImage(image,0,0);
+    const canvas=await html2canvas(copy,{backgroundColor:null,scale:2,useCORS:true,allowTaint:false,logging:false,
+      width,height:Math.ceil(copy.scrollHeight),scrollX:0,scrollY:0});
     return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Share image cannot be created.")),"image/png"));
   } finally {
     host.remove();
-    if (url) URL.revokeObjectURL(url);
   }
 }
 
@@ -245,9 +220,8 @@ export default function AllCustomerData() {
       notice("progress","Preparing customer preview image.");
       // Let the progress state paint before the image is rendered on mobile.
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      let blob: Blob;
-      try { blob = await Promise.race([snapshot(selected, previewCard.current),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Preview capture timed out.")),8000))]); }
-      catch { blob = await snapshot(selected); }
+      if (!previewCard.current) throw new Error("Customer preview is unavailable. Open it again and retry.");
+      const blob = await Promise.race([previewImage(previewCard.current),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Preview capture timed out. Please retry.")),15000))]);
       const name = "BankSetu-customer-preview.png";
       if (isAndroid()) {
         const data = await new Promise<string>((resolve, reject) => {
@@ -258,9 +232,11 @@ export default function AllCustomerData() {
         notice("success","Android share options opened; choose the recipient.");
       } else if (desktopBridge()?.shareImage) {
         const dataUrl = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
-        await desktopBridge()!.shareImage!(dataUrl);
-        setCopyMessage("Preview image copied. Paste it into the WhatsApp chat.");
-        notice("success","Image copied. Paste it into WhatsApp or another app.");
+        const result=await desktopBridge()!.shareImage!(dataUrl);
+        if (result?.canceled) return;
+        if (!result?.saved) throw new Error("Preview PNG could not be saved.");
+        setCopyMessage("Preview PNG saved. Attach it in WhatsApp Desktop/Web or another app.");
+        notice("success","Preview PNG saved. Attach it in WhatsApp Desktop/Web or another app.");
       } else if (navigator.share && navigator.canShare?.({files:[new File([blob],name,{type:"image/png"})]})) {
         await navigator.share({files:[new File([blob],name,{type:"image/png"})],title:"Bank Setu Customer Preview"});
         notice("success","Share options opened; choose the recipient.");
