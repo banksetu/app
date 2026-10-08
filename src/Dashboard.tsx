@@ -1475,6 +1475,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
               openPage={openPage}
               bankSettingsReady={bankSettingsReady}
+              accountRole={accountRole}
 
             />
 
@@ -2525,6 +2526,10 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
           }
 
+          .dashboard-count-transition { display:inline-block; animation:banksetu-count-enter .2s ease-out; }
+          @keyframes banksetu-count-enter { from { opacity:.5; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+          @media (prefers-reduced-motion:reduce) { .dashboard-count-transition { animation:none; } }
+
           @media (max-width: 620px) {
 
             .bank-info-form-grid {
@@ -2885,15 +2890,111 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
 \========================= */
 
+type StatusPanelType = "kyc" | "passbook" | "inactive";
+type StatusCustomer = Record<string, unknown> & {rowNumber?: number; recordId?: string};
+const statusPanelConfig = {
+  kyc: {title:"KYC Pending Customers", field:"status", current:"Pending", next:"Active"},
+  passbook: {title:"Passbook Pending Customers", field:"passbookStatus", current:"Pending", next:"Printed"},
+  inactive: {title:"Inactive Account Customers", field:"status", current:"Inactive", next:"Active"},
+} as const;
+
+function DashboardStatusPanel({type, accountRole, onClose}: {type:StatusPanelType;accountRole:string;onClose:()=>void}) {
+  const config=statusPanelConfig[type];
+  const [customers,setCustomers]=useState<StatusCustomer[]>([]);
+  const [query,setQuery]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState("");
+  const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+  const canUpdate=["admin","master_owner","client_admin","client_user","user"].includes(accountRole);
+  const refresh=async()=>{
+    if(localModeEnabled())return await getActiveLocalCustomers() as StatusCustomer[];
+    const apiUrl=getTenantApiUrl();
+    if(!apiUrl)throw new Error("Customer workspace is unavailable.");
+    const all:StatusCustomer[]=[];
+    for(let page=1;page<=100;page++){
+      const response=await localDataFetch(apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getAllCustomers",page,pageSize:250,idToken:await getDataIdToken()})});
+      if(!response.ok)throw new Error("Customer list could not be loaded.");
+      const result=await response.json() as {success?:boolean;message?:string;customers?:StatusCustomer[];hasNextPage?:boolean};
+      if(!result.success||!Array.isArray(result.customers))throw new Error(result.message||"Customer list could not be loaded.");
+      all.push(...result.customers);
+      if(!result.hasNextPage)return all;
+    }
+    throw new Error("Customer list is too large to load in this popup.");
+  };
+  useEffect(()=>{
+    let active=true;
+    const load=()=>{void refresh().then(rows=>{if(active){setCustomers(rows);setError("");setLoading(false);}}).catch(cause=>{if(active){setError(cause instanceof Error?cause.message:"Customer list unavailable.");setLoading(false);}});};
+    load();
+    const onSync=()=>{if(localModeEnabled())load();};
+    const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")onClose();};
+    window.addEventListener("banksetu-sync-change",onSync);
+    window.addEventListener("keydown",onKey);
+    return()=>{active=false;window.removeEventListener("banksetu-sync-change",onSync);window.removeEventListener("keydown",onKey);};
+    // The active workspace already scopes the repository and Google bridge.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[type]);
+  const matched=customers.filter(customer=>{
+    const status=String(customer[config.field]??"").trim().toLowerCase();
+    return type==="passbook" ? !status||status==="pending" : status===config.current.toLowerCase();
+  });
+  const visible=matched.filter(customer=>[customer.name,customer.accountNo,customer.enrolId].some(value=>String(value??"").toLowerCase().includes(query.trim().toLowerCase())));
+  const update=async(customer:StatusCustomer,next:string)=>{
+    if(next===String(customer[config.field]||config.current))return;
+    const id=String(customer.recordId||customer.rowNumber||customer.accountNo);
+    setBusy(id);setError("");setNotice("");
+    try{
+      const apiUrl=getTenantApiUrl();if(!apiUrl)throw new Error("Customer workspace is unavailable.");
+      const response=await localDataFetch(apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"updateCustomer",rowNumber:customer.rowNumber,customer:{...customer,[config.field]:next},idToken:await getDataIdToken()})});
+      if(!response.ok)throw new Error("Customer status could not be saved.");
+      const result=await response.json() as {success?:boolean;message?:string;queued?:boolean};
+      if(!result.success)throw new Error(result.message||"Customer status could not be saved.");
+      setCustomers(previous=>previous.map(item=>String(item.recordId||item.rowNumber||item.accountNo)===id?{...item,[config.field]:next}:item));
+      setNotice(result.queued?"Saved locally; Google sync pending.":"Customer status saved.");
+      if(!result.queued)window.dispatchEvent(new Event("banksetu-sync-change"));
+    }catch(cause){setError(cause instanceof Error?cause.message:"Customer status update failed.");}
+    finally{setBusy("");}
+  };
+  const copy=async(account:string)=>{
+    try{
+      const desktop=(window as Window & {bankSetuDesktop?:{copyText?:(value:string)=>Promise<void>}}).bankSetuDesktop;
+      if(desktop?.copyText)await desktop.copyText(account);
+      else await navigator.clipboard.writeText(account);
+      setNotice("Account number copied.");
+    }catch{setError("Clipboard unavailable on this device.");}
+  };
+  return createPortal(<div className="dashboard-status-overlay" onClick={onClose}>
+    <section className="dashboard-status-panel" role="dialog" aria-modal="true" aria-label={config.title} onClick={event=>event.stopPropagation()}>
+      <header><div><h2>{config.title}</h2><p>Total {config.current}: {matched.length}</p></div><button type="button" aria-label="Close" onClick={onClose}>×</button></header>
+      <input type="search" aria-label="Search customers" placeholder="Search customer or account number…" value={query} onChange={event=>setQuery(event.target.value)} />
+      {error&&<p role="alert" className="dashboard-status-error">{error}</p>}
+      {notice&&<p role="status" className="dashboard-status-notice">{notice}</p>}
+      {loading?<p role="status">Loading customers…</p>:<div className="dashboard-status-list">
+        {visible.map(customer=>{const id=String(customer.recordId||customer.rowNumber||customer.accountNo);const account=String(customer.accountNo??"");return <div className="dashboard-status-row" key={id}>
+          <strong>{String(customer.name??"")}</strong>
+          <span className="dashboard-status-account">{account}<button type="button" aria-label={`Copy account number ${account}`} onClick={()=>void copy(account)}>⧉</button></span>
+          <select aria-label={`${config.title} status for ${String(customer.name??"")}`} value={String(customer[config.field]||config.current)} disabled={!canUpdate||busy===id} onChange={event=>void update(customer,event.target.value)}>
+            {[...new Set([String(customer[config.field]||config.current),config.next])].map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </div>;})}
+        {!visible.length&&<p>No matching customers.</p>}
+      </div>}
+      <footer><span>Showing {visible.length} of {matched.length} customers</span><button type="button" onClick={onClose}>Close</button></footer>
+    </section>
+  </div>,document.body);
+}
+
 function DashboardHome({
 
   openPage,
   bankSettingsReady,
+  accountRole,
 
 }: {
 
   openPage: (page: PageName) => void;
   bankSettingsReady: boolean;
+  accountRole: string;
 
 }) {
 
@@ -2930,8 +3031,10 @@ function DashboardHome({
   const [statsError, setStatsError] =
 
     useState("");
+  const statsLoadedOnce = useRef(false);
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
 
   useEffect(() => {
     const refreshDashboardAfterWorkspaceReady = () => {
@@ -2948,7 +3051,7 @@ function DashboardHome({
     // session. Do not report a false sync error while that configuration is
     // still being restored from Firebase/local session state.
     if (!bankSettingsReady) {
-      setStatsLoading(true);
+      if(!statsLoadedOnce.current)setStatsLoading(true);
       return;
     }
 
@@ -2956,7 +3059,7 @@ function DashboardHome({
 
     const loadDashboardStats = async () => {
 
-      setStatsLoading(true);
+      if(!statsLoadedOnce.current)setStatsLoading(true);
 
       setStatsError("");
 
@@ -2973,15 +3076,13 @@ function DashboardHome({
               };
               const localStats = {
                 totalCustomers: records.length,
-                kycPending: records.filter((customer) => {
-                  const value = text(field(customer, ["kycstatus", "kyc", "kycstate"]) || field(customer, ["status", "accountstatus"]));
-                  return /pending|kyc|incomplete|review/.test(value) && !/complete|approved|done|verified/.test(value);
-                }).length,
-                passbookPending: records.filter((customer) => /pending|notprinted|due/.test(text(field(customer, ["passbookstatus", "passbook", "passbookstate"])))).length,
-                inactiveAccounts: records.filter((customer) => /inactive|blocked|closed|dormant/.test(text(field(customer, ["status", "accountstatus", "accountstate"])))).length,
+                kycPending: records.filter((customer) => text(field(customer, ["status"])) === "pending").length,
+                passbookPending: records.filter((customer) => ["", "pending"].includes(text(field(customer, ["passbookstatus"])))).length,
+                inactiveAccounts: records.filter((customer) => text(field(customer, ["status"])) === "inactive").length,
               };
               if (!cancelled) {
                 setDashboardStats(localStats);
+                statsLoadedOnce.current=true;
                 setStatsLoading(false);
                 setStatsError("");
               }
@@ -3174,12 +3275,10 @@ function DashboardHome({
 
         }
 
-        const liveStats = result.stats || {};
-
         // Legacy cloud-only workspaces must count the same filtered rows that
         // All Customer Data displays; the aggregate endpoint can include
         // tombstoned Sheet rows.
-        const customerIds = new Set<string>();
+        const customerIds = new Map<string,Record<string,unknown>>();
         for (let page = 1; page <= 100; page++) {
           const idToken = await getDataIdToken();
           const response = await localDataFetch(apiUrl, {
@@ -3191,37 +3290,25 @@ function DashboardHome({
           if (!listing.success || !Array.isArray(listing.customers)) throw new Error(listing.message || "Customer count could not be loaded.");
           for (const customer of listing.customers) {
             const key = String(customer.recordId || customer.rowNumber || customer.accountNo || "").trim();
-            if (key) customerIds.add(key);
+            if (key) customerIds.set(key,customer);
           }
           if (!listing.hasNextPage) break;
           if (page === 100) throw new Error("Customer count exceeds the available page limit.");
         }
 
         if (!cancelled) {
+          const active=[...customerIds.values()];
+          const status=(customer:Record<string,unknown>,field:string)=>String(customer[field]??"").trim().toLowerCase();
 
           setDashboardStats({
 
             totalCustomers: customerIds.size,
-
-            kycPending: Number(
-
-              liveStats.kycPending || 0
-
-            ),
-
-            passbookPending: Number(
-
-              liveStats.passbookPending || 0
-
-            ),
-
-            inactiveAccounts: Number(
-
-              liveStats.inactiveAccounts || 0
-
-            ),
+            kycPending:active.filter(customer=>status(customer,"status")==="pending").length,
+            passbookPending:active.filter(customer=>["","pending"].includes(status(customer,"passbookStatus"))).length,
+            inactiveAccounts:active.filter(customer=>status(customer,"status")==="inactive").length,
 
           });
+          statsLoadedOnce.current=true;
 
         }
 
@@ -3349,11 +3436,13 @@ function DashboardHome({
 
         {stats.map(([icon, title, value], index) => (
 
-          <article
+          <button type="button"
 
             key={title}
 
             className="dashboard-stat-card"
+            aria-label={`Open ${title}`}
+            onClick={() => index === 0 ? openPage("all-customer-data") : setStatusPanel(index === 1 ? "kyc" : index === 2 ? "passbook" : "inactive")}
 
           style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
@@ -3377,7 +3466,7 @@ function DashboardHome({
 
             <div className="dashboard-stat-value" style={styles.statValue}>
 
-              {statsLoading ? "…" : value}
+              {statsLoading ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
@@ -3387,11 +3476,12 @@ function DashboardHome({
 
             </h3>
 
-          </article>
+          </button>
 
         ))}
 
       </section>
+      {statusPanel && <DashboardStatusPanel type={statusPanel} accountRole={accountRole} onClose={() => setStatusPanel(null)} />}
 
       <section className="dashboard-quick-panel" style={styles.panel}>
 

@@ -78,6 +78,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     return resultResponse({success:true,message:"No duplicate in the local cache. Google duplicate check runs during sync."});
   }
   if (!supportedWrites.has(action)) return cloudRead(input, init);
+  if(resetting.has(scope))return resultResponse({success:false,message:"Local reset is in progress. Retry after the Google download completes."});
   const customer = (payload.customer || {}) as Customer;
   const existing = state.records.find(record => record.rowNumber === Number(payload.rowNumber));
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
@@ -137,7 +138,9 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending || previous?.deleted) continue;
-      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (previous?.customer.photoUrl===customer.photoUrl?previous?.customer.photoPreview:"") || ""},photoCheckedAt:previous?.customer.photoUrl===customer.photoUrl?previous?.photoCheckedAt:undefined,pending:false};
+      const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId;
+      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (samePhoto?previous?.customer.photoPreview:"") || ""},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,pending:false};
+      if(value.photoNotFound===true&&!record.customer.photoPreview)record.photoMissingRef=photoRef(record);
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
     const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
@@ -147,11 +150,37 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
   announce();
 }
 const running = new Map<string, Promise<void>>();
+const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
+type SyncProtection = {success?:boolean;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
+async function applySyncProtection(scope:string, protection:SyncProtection) {
+  if(!protection.success||protection.protectionVersion!==1||protection.connectionId!==sessionStorage.getItem("bankSetuConnectionId")||!Array.isArray(protection.activeIds)||!Array.isArray(protection.deletedIds))
+    throw new Error("Sync protection could not be verified. Deploy the updated tenant Code.gs; local changes remain pending.");
+  const active=new Set(protection.activeIds),deleted=new Set(protection.deletedIds);
+  await repository.transact(scope,state=>{
+    if(protection.resetId && state.resetId!==protection.resetId){
+      if(state.operations.length||state.records.some(hasUnsyncedContent))
+        throw new Error("A shared reset is pending. Back up and resolve this device's unsynced changes before clearing its local database; uploads are paused.");
+      state.records=[];state.operations=[];state.pull=undefined;state.resetId=protection.resetId;
+    }
+    for(const record of state.records){
+      if(!deleted.has(record.recordId)&&!(record.revision&&!active.has(record.recordId)))continue;
+      record.deleted=true;
+      for(const operation of state.operations.filter(op=>op.recordId===record.recordId)){
+        if(operation.action==="deleteCustomer")state.operations=state.operations.filter(op=>op.operationId!==operation.operationId);
+        else {operation.state="conflict";operation.error="This customer was removed from the tenant's Google Sheet. Stale changes were not uploaded.";operation.conflictSource="google";}
+      }
+      record.pending=false;
+    }
+  });
+  announce();
+}
 export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   if (!navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
   let scope: string;
   try { scope=identity(); } catch(error) { return Promise.reject(error); }
+  if(resetting.has(scope))return Promise.reject(new Error("Local reset is in progress. Retry sync when it completes."));
   const existing=running.get(scope);if(existing)return existing;
   const task=runSync(refresh,signal).then(()=>{syncErrors.delete(scope);}).catch(error=>{syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
   running.set(scope,task);announce();return task;
@@ -178,6 +207,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
     return value;
   };
+  const protection=await send({action:"getSyncProtection"}) as SyncProtection;
+  await applySyncProtection(scope,protection);
   const initial = await repository.read(scope);
   if (initial.operations.some(operation => operation.state === "pending")) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
   for (const op of initial.operations.filter(operation => operation.state === "pending").slice(0,25)) {
@@ -185,7 +216,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     const current = await repository.read(scope);
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
-    const value=await send({action:"syncCustomerOperation",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
+    const value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
     if (op.action === "deleteCustomer" && !value.success)
       throw new Error(String(value.message || "Google deletion was rejected; pending delete retained for retry."));
     if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true || value.rowDeleted !== true))
@@ -223,14 +254,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       else {
         // Only explicit server tombstones delete records: rows can move during pagination.
         current.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:current.pull?.cacheLimited};
-        // Unsynced local-only records use the existing save queue. A previously
-        // synced row missing from a page is never recreated automatically.
-        for (const record of current.records) {
-          if (record.deleted || record.pending || record.revision || seen.has(record.recordId) || current.operations.some(op=>op.recordId===record.recordId)) continue;
-          const operationId=crypto.randomUUID();
-          current.operations.push({key:operationId,scope,operationId,recordId:record.recordId,action:"saveCustomer",customer:record.customer,baseRevision:"",rowNumber:record.rowNumber,createdAt:Date.now(),state:"pending"});
-          record.pending=true;
-        }
+        // Only explicit local Save operations enter the existing queue. An
+        // orphan cache row cannot become a new customer after a remote delete.
       }
     });
     if(!value.hasNextPage)break;
@@ -246,12 +271,13 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       const value=await send({action:"getCustomerByRowNumber",recordId:record.recordId,rowNumber:record.rowNumber});
       if(!value.success)throw new Error(value.message || "Drive photo download failed; will retry.");
       await cacheResponse(scope,value);
-      await repository.transact(scope,state=>{const saved=state.records.find(item=>item.recordId===record.recordId);if(saved&&!saved.pending)saved.photoCheckedAt=Date.now();});
+      await repository.transact(scope,state=>{const saved=state.records.find(item=>item.recordId===record.recordId);if(saved&&!saved.pending){saved.photoCheckedAt=Date.now();if(value.photoNotFound===true&&!saved.customer.photoPreview)saved.photoMissingRef=photoRef(saved);}});
     }
   }
 
 }
-function needsPhoto(record: CachedRecord) {return !record.deleted&&!record.pending&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
+function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
+function needsPhoto(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.
   // Only transient previews are eligible for cache cleanup.
@@ -260,16 +286,17 @@ function trimCache(state: import("./schema").LocalState) {
     state.pull.cacheLimited = true;
   }
 }
-function activeRecords(records: CachedRecord[]) {
+function activeRecords(records: CachedRecord[], operations: QueueOperation[]) {
   const seen=new Set<string>();
+  const queued=new Set(operations.map(operation=>operation.recordId));
   return records.filter(record=>{
-    if(record.deleted || !record.recordId || seen.has(record.recordId))return false;
+    if(record.deleted || !record.recordId || seen.has(record.recordId) || (!record.revision&&!record.pending&&!queued.has(record.recordId)))return false;
     seen.add(record.recordId);return true;
   });
 }
 export async function getActiveLocalCustomers() {
   const state=await repository.read(identity());
-  return activeRecords(state.records).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({
+  return activeRecords(state.records,state.operations).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({
     ...record.customer,rowNumber:record.rowNumber,recordId:record.recordId,
     photoDataUrl:undefined,pdfDataUrl:undefined,photoPreview:undefined,
   }));
@@ -286,7 +313,42 @@ export async function clearTemporaryLocalData() {
   });
   announce();return cleared;
 }
-export async function getLocalStatus() { const state=await repository.read(identity());return {records:activeRecords(state.records).length,syncing:running.has(identity()),lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(needsPhoto).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function resetLocalDatabase() {
+  if(!navigator.onLine)throw new Error("Connect to the internet before resetting local data.");
+  if(!["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||""))throw new Error("Administrator permission is required.");
+  const scope=identity();
+  if(resetting.has(scope))throw new Error("A local reset is already in progress.");
+  resetting.add(scope);
+  try {
+    await running.get(scope);
+    const current=await repository.read(scope);
+    if(current.operations.length||current.records.some(hasUnsyncedContent))
+      throw new Error("Back up and resolve every pending or unsynced customer before resetting. Local data was not cleared.");
+    const url=sessionStorage.getItem("bankSetuBridgeUrl")!;
+    const connectionId=sessionStorage.getItem("bankSetuConnectionId");
+    const user=auth.currentUser!;
+    const send=async(action:string,resetId?:string)=>{
+      const idToken=await user.getIdToken();
+      if(identity()!==scope)throw new Error("Workspace changed during reset.");
+      const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action,resetId,connectionId,masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",idToken}),signal:AbortSignal.timeout(25000)});
+      if(!response.ok||identity()!==scope)throw new Error("Shared reset could not be verified. Local data was retained.");
+      return await response.json() as SyncProtection;
+    };
+    await applySyncProtection(scope,await send("getSyncProtection"));
+    const verified=await repository.read(scope);
+    if(verified.operations.length||verified.records.some(hasUnsyncedContent))
+      throw new Error("Unsynced changes remain on this device. Local data was not cleared.");
+    const resetId=crypto.randomUUID();
+    const published=await send("publishLocalReset",resetId);
+    if(published.resetId!==resetId)throw new Error("Shared reset confirmation failed. Retry sync; local records were retained.");
+    await applySyncProtection(scope,published);
+  } finally {resetting.delete(scope);}
+  await syncNow(true);
+  const state=await repository.read(scope);
+  if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
+  return activeRecords(state.records,state.operations).length;
+}
+export async function getLocalStatus() { const state=await repository.read(identity());return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(needsPhoto).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {

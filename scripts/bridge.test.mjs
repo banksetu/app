@@ -13,6 +13,19 @@ test('bridge replays committed operations, uses UUID after row reorder and rejec
 test('sync metadata refuses occupied columns without changing existing data',()=>{const {context,rows}=bridge();rows[0][24]='Client custom column';const before=JSON.stringify(rows);assert.throws(()=>context.localFirstRead({action:'getAllCustomers'},user),/already in use/);assert.equal(JSON.stringify(rows),before);});
 test('delete removes the Sheet row and replays from a scoped tombstone',()=>{const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);const deletion={...op,operationId:crypto.randomUUID(),action:'deleteCustomer',baseRevision:saved.revision};assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:deletion},{...user,role:'client_user'}),/Administrator/);assert(context.syncCustomerOperation({connectionId:'bound',operation:deletion},user).deleted);assert.equal(rows.length,1);assert(context.syncCustomerOperation({connectionId:'bound',operation:deletion},user).replayed);assert.equal(context.localFirstRead({action:'getCustomerPage',cursor:0},user).deletedIds[0],op.recordId);assert.equal(context.localFirstRead({action:'getAllCustomers'},user).customers.length,0);});
 test('deleted record cannot be recreated, and deletion IDs stay in their connection',()=>{const {context}=bridge();const op=makeOp(crypto.randomUUID());const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);const deletion={...op,operationId:crypto.randomUUID(),action:'deleteCustomer',baseRevision:saved.revision};assert(context.syncCustomerOperation({connectionId:'bound',operation:deletion},user).success);assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:{...op,operationId:crypto.randomUUID()}},user).code,'CONFLICT');assert.equal(context.localFirstRead({action:'getCustomerPage',cursor:0},{...user,connectionId:'other'}).deletedIds.length,0);});
+test('shared protection publishes tenant reset without deleting customer data and rejects stale device uploads',()=>{
+ const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
+ const before=JSON.stringify(rows);const resetId=crypto.randomUUID();
+ assert.throws(()=>context.syncProtection({action:'publishLocalReset',connectionId:'bound',resetId},{...user,role:'client_user'}),/Administrator/);
+ const published=context.syncProtection({action:'publishLocalReset',connectionId:'bound',resetId},user);
+ assert.equal(published.resetId,resetId);assert(published.activeIds.includes(op.recordId));assert.equal(JSON.stringify(rows),before);
+ assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound'},user).resetId,resetId);
+ assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'other'}, {...user,connectionId:'other'}).resetId,'');
+ assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:{...op,operationId:crypto.randomUUID(),action:'updateCustomer'}},user).code,'RESET_REQUIRED');
+ const edit={...op,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:context.localFirstRead({action:'getAllCustomers'},user).customers[0].revision};
+ assert(context.syncCustomerOperation({connectionId:'bound',protectionResetId:resetId,operation:edit},user).success);
+});
 test('Master and Client delete incomplete legacy rows by stable ID without customer form validation',()=>{
  for(const role of ['master_owner','client_admin']){
    const {context,rows}=bridge();const actor={...user,role,connectionId:role};
@@ -61,4 +74,13 @@ test('tenant-bound sync delete trashes linked Drive files before confirming Shee
  const denied={...foreign,operationId:crypto.randomUUID(),action:'deleteCustomer',baseRevision:context.localFirstRead({action:"getAllCustomers"},admin).customers.find(item=>item.recordId===foreign.recordId).revision};
  assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:denied},admin),/outside this tenant/);
  assert.equal(rows.length,2);
+});
+test('photo lookup confirms absence only after a successful tenant-folder search',()=>{
+ const {context}=bridge();const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
+ context.DriveApp={getFolderById:()=>({getFilesByName:()=>({hasNext:()=>false})})};
+ const actor={...user,photoFolderId:'tenant-folder'};
+ const missing=context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},actor);
+ assert.equal(missing.photoNotFound,true);
+ context.DriveApp={getFolderById:()=>{throw Error('Temporary Drive failure');}};
+ assert.throws(()=>context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},actor),/Temporary Drive failure/);
 });
