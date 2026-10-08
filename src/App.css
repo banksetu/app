@@ -3623,6 +3623,7 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 .banksetu-app-shell{display:flex!important;align-items:stretch!important;width:100%!important;min-height:100vh!important;background:var(--bs-bg)!important;padding:0!important;gap:0!important;overflow:visible!important}
 /* Desktop sidebar belongs to the same document scroll — no disconnected second scrollbar. */
 .banksetu-sidebar{position:sticky!important;top:0!important;align-self:flex-start!important;width:220px!important;height:auto!important;min-height:100vh!important;max-height:none!important;overflow:visible!important;border-radius:0!important;padding:22px 15px!important;box-sizing:border-box!important;box-shadow:8px 0 28px rgba(71,58,145,.10)!important}
+.banksetu-sidebar{display:flex!important;flex-direction:column!important}
 .banksetu-sidebar nav{gap:5px!important}
 .banksetu-sidebar .banksetu-nav-item{position:relative!important;width:100%!important;min-height:42px!important;padding:10px 12px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:rgba(255,255,255,.88)!important;box-shadow:none!important;font-size:12px!important;font-weight:650!important;transition:background .18s ease,color .18s ease,transform .18s ease!important}
 .banksetu-sidebar .banksetu-nav-item span{color:inherit!important}
@@ -3630,6 +3631,9 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 /* Reference image: active item is a small white rounded selection, not a teal full-width glow. */
 .banksetu-sidebar .banksetu-nav-item.active{background:#fff!important;color:#6955df!important;box-shadow:0 8px 20px rgba(48,34,130,.18)!important;font-weight:800!important}
 .banksetu-sidebar .banksetu-nav-item.active::before{content:"";position:absolute;left:-15px;top:11px;width:3px;height:20px;border-radius:0 4px 4px 0;background:#fff;opacity:.9}
+.banksetu-support-button{margin-top:auto!important;display:flex!important;align-items:center!important;gap:10px!important;text-align:left!important;position:sticky!important;bottom:10px!important;background:rgba(20,18,86,.28)!important;border:1px solid rgba(255,255,255,.22)!important;backdrop-filter:blur(10px)!important}
+.banksetu-support-button.active{background:#fff!important;color:#6955df!important}
+.banksetu-support-badge{margin-left:auto;background:#ef334e;color:#fff;border:2px solid rgba(255,255,255,.85);border-radius:99px;min-width:23px;height:23px;display:grid;place-items:center;padding:0 5px;font-size:10px;line-height:1}
 .banksetu-main-workspace{flex:1!important;width:auto!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--bs-bg)!important;color:var(--bs-text)!important;box-sizing:border-box!important;overflow:visible!important}
 /* No purple footer/strip can show below the dashboard. */
 .banksetu-main-workspace::after{display:none!important}

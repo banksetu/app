@@ -107,6 +107,9 @@ jobs:
           if (/^[a-zA-Z0-9._@-]+$/.test(account.client_email)) console.log('Deployment principal: ' + account.client_email);
           NODE
 
+      - name: Deploy Firestore security rules
+        run: npx --yes firebase-tools@15.31.0 deploy --only firestore:rules --project banksetu-69e2f --non-interactive
+
       - name: Deploy Firebase Hosting live
         run: npx --yes firebase-tools@15.31.0 deploy --only hosting:banksetu-app --project banksetu-69e2f --non-interactive
 

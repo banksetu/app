@@ -42,6 +42,13 @@ service cloud.firestore {
     function admin() {
       return isLegacyAdmin() || isMasterOwner();
     }
+    function supportAdmin() {
+      return admin() || (signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'master_admin'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active');
+    }
     function approvedUser() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -49,9 +56,9 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus == 'active';
     }
     match /users/{userId} {
-      allow get: if signedIn() && (request.auth.uid == userId || admin()
+      allow get: if signedIn() && (request.auth.uid == userId || supportAdmin()
         || (isClientAdmin() && resource.data.tenantId == myTenantId()));
-      allow list: if admin() || (isClientAdmin() && resource.data.tenantId == myTenantId());
+      allow list: if supportAdmin() || (isClientAdmin() && resource.data.tenantId == myTenantId());
       // Account provisioning is performed by trusted server code. Public
       // clients must not be able to assign themselves an application role.
       allow create: if false;
@@ -175,6 +182,96 @@ service cloud.firestore {
           && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
           && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool));
       allow delete: if false;
+    }
+
+    // Support conversations use the client UID as the document ID. A client
+    // can access only its own thread; approved Master Admins can access all.
+    match /supportConversations/{clientUid} {
+      allow get, list: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
+      allow create: if approvedUser()
+        && request.resource.data.clientUid == clientUid
+        && request.resource.data.keys().hasOnly([
+          'clientUid', 'clientName', 'clientEmail', 'tenantId', 'lastMessage',
+          'updatedAt', 'unreadForMaster', 'unreadForClient'
+        ])
+        && request.resource.data.clientName is string
+        && request.resource.data.clientEmail is string
+        && request.resource.data.tenantId is string
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 2000
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.unreadForMaster is bool
+        && request.resource.data.unreadForClient is bool
+        && (supportAdmin() || (request.auth.uid == clientUid && request.resource.data.tenantId == myTenantId()));
+      allow update: if approvedUser()
+        && resource.data.clientUid == clientUid
+        && request.resource.data.clientUid == clientUid
+        && request.resource.data.tenantId == resource.data.tenantId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'clientName', 'clientEmail', 'lastMessage', 'updatedAt',
+          'unreadForMaster', 'unreadForClient'
+        ])
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 2000
+        && request.resource.data.unreadForMaster is bool
+        && request.resource.data.unreadForClient is bool
+        && (supportAdmin() || request.auth.uid == clientUid);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
+        allow create: if approvedUser()
+          && request.resource.data.keys().hasOnly([
+            'text', 'senderUid', 'senderRole', 'clientUid', 'tenantId', 'createdAt'
+          ])
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.clientUid == clientUid
+          && request.resource.data.tenantId == get(/databases/$(database)/documents/supportConversations/$(clientUid)).data.tenantId
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time
+          && (supportAdmin() || request.auth.uid == clientUid);
+        allow update, delete: if false;
+      }
+    }
+
+    match /supportAnnouncements/{announcementId} {
+      allow get, list: if supportAdmin() || (approvedUser()
+        && (resource.data.global == true
+          || request.auth.uid in resource.data.recipientUids
+          || myTenantId() in resource.data.tenantIds));
+      allow create: if supportAdmin()
+        && request.resource.data.keys().hasOnly([
+          'title', 'body', 'global', 'recipientUids', 'tenantIds', 'createdAt', 'createdBy'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 3000
+        && request.resource.data.global is bool
+        && request.resource.data.recipientUids is list
+        && request.resource.data.recipientUids.size() <= 50
+        && request.resource.data.tenantIds is list
+        && request.resource.data.tenantIds.size() <= 50
+        && (request.resource.data.global == true
+          || request.resource.data.recipientUids.size() > 0
+          || request.resource.data.tenantIds.size() > 0)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /supportAnnouncementReads/{receiptId} {
+      allow get, list: if approvedUser() && resource.data.userId == request.auth.uid;
+      allow create: if approvedUser()
+        && request.resource.data.keys().hasOnly(['userId', 'announcementId', 'readAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.announcementId is string
+        && request.resource.data.readAt == request.time;
+      allow update, delete: if false;
     }
   }
 }
