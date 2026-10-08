@@ -3,8 +3,9 @@ import { getAuth } from "firebase/auth";
 import { localDataFetch, getDataIdToken, getLocalSnapshot, localModeEnabled } from "./core/localData";
 import { getTenantApiUrl } from "./tenantApi";
 import { isAndroid } from "./platform/android/runtime";
-import { Filesystem, Directory } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
+import { registerPlugin } from "@capacitor/core";
+
+const nativeShare = registerPlugin<{shareImage(options:{base64:string}):Promise<void>}>("BankSetuShare");
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {copyText?: (text:string)=>Promise<void>;shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
 type Customer = Record<string, unknown> & { rowNumber?: number; recordId?: string };
@@ -133,6 +134,7 @@ export default function AllCustomerData() {
   const [loading, setLoading] = useState(false);
   const [more, setMore] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
+  const [sharing, setSharing] = useState(false);
   const page = useRef(0);
   const total = useRef(0);
   const generation = useRef(0);
@@ -233,12 +235,16 @@ export default function AllCustomerData() {
   };
 
   const share = async () => {
-    if (!selected) return;
-    const notice = (type: "success" | "error",message: string) => {
+    if (!selected || sharing) return;
+    const notice = (type: "success" | "error" | "progress",message: string) => {
       const event = new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};
-      event.detail={type,title:type==="error"?"Share unavailable":"Preview ready to share",message};window.dispatchEvent(event);
+      event.detail={type,title:type==="error"?"Share unavailable":type==="progress"?"Preparing share":"Preview ready to share",message};window.dispatchEvent(event);
     };
+    setSharing(true);setError("");
     try {
+      notice("progress","Preparing customer preview image.");
+      // Let the progress state paint before the image is rendered on mobile.
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       let blob: Blob;
       try { blob = await Promise.race([snapshot(selected, previewCard.current),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Preview capture timed out.")),8000))]); }
       catch { blob = await snapshot(selected); }
@@ -247,13 +253,8 @@ export default function AllCustomerData() {
         const data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(",")[1]); reader.onerror = reject; reader.readAsDataURL(blob);
         });
-        const saved = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
-        try { await Promise.race([Share.share({title:"Bank Setu Customer Preview",files:[saved.uri],dialogTitle:"Share customer preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Android sharing did not open.")),20000))]); }
-        catch (error) {
-          const image = new File([blob],name,{type:"image/png"});
-          if (!navigator.share || !navigator.canShare?.({files:[image]})) throw error;
-          await Promise.race([navigator.share({files:[image],title:"Bank Setu Customer Preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Sharing is unavailable. The preview remains open; please try again.")),15000))]);
-        }
+        notice("progress","Opening Android share options.");
+        await nativeShare.shareImage({base64:data});
         notice("success","Android share options opened; choose the recipient.");
       } else if (desktopBridge()?.shareImage) {
         const dataUrl = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
@@ -269,7 +270,8 @@ export default function AllCustomerData() {
         setCopyMessage("Preview image downloaded for sharing.");
         notice("success","Preview image downloaded for sharing.");
       }
-    } catch (cause) { const message=cause instanceof Error ? cause.message : "Could not share preview image.";setError(message);notice("error",message); }
+    } catch (cause) { const message=cause instanceof Error ? cause.message : "Could not share preview image.";if (!/share canceled/i.test(message)) {setError(message);notice("error",message);} }
+    finally {setSharing(false);}
   };
 
   return <section className="all-customer-data" style={{background:"#fff",borderRadius:16,padding:20}}>
@@ -311,7 +313,7 @@ export default function AllCustomerData() {
               <div className="customer-preview-name">{value(selected.name) || "Customer"}</div>
               {value(selected.accountType || selected.acType || selected.accountCategory) && <span className="customer-preview-type">{value(selected.accountType || selected.acType || selected.accountCategory)}</span>}
               <span className="customer-preview-account-label">Account No.</span>
-              <div className="customer-preview-account-number">{value(selected.accountNo) || "—"}
+              <div className="customer-preview-account-number"><span className="customer-preview-account-value">{value(selected.accountNo) || "—"}</span>
                 {value(selected.accountNo) && <button type="button" title="Copy account number" aria-label="Copy account number" onClick={async () => {try {if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(value(selected.accountNo)); else await navigator.clipboard.writeText(value(selected.accountNo));setCopyMessage("Account number copied.");} catch {setError("Clipboard unavailable.");}}}>▣</button>}
               </div>
             </div>
@@ -336,7 +338,7 @@ export default function AllCustomerData() {
             {visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo"].includes(key)).length > 0 && <section className="customer-preview-section"><h3>▤ &nbsp;Additional Details</h3><dl>{visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo"].includes(key)).map(([key,item]) => <div key={key}><dt>{title(key)}</dt><dd>{value(item)}</dd></div>)}</dl></section>}
           </div>
           <div className="customer-preview-actions">
-            <button type="button" onClick={() => void share()}>Share</button>
+            <button type="button" disabled={sharing} onClick={() => void share()}>{sharing ? "Preparing / sharing…" : "Share"}</button>
             <button type="button" onClick={() => window.print()}>Print</button>
             <button type="button" onClick={() => setSelected(null)}>Close</button>
           </div>
@@ -358,6 +360,7 @@ export default function AllCustomerData() {
       .customer-preview-account {min-width:0;flex:1}.customer-preview-name {font-weight:800;font-size:clamp(24px,4vw,32px);line-height:1.1;overflow-wrap:anywhere}
       .customer-preview-type {display:inline-block;margin:9px 0;color:#d71957;border:1px solid #ff91b0;border-radius:14px;padding:5px 14px;background:#fff0f5}
       .customer-preview-account-label {display:block;margin-top:9px}.customer-preview-account-number {display:flex;align-items:center;gap:16px;font-size:clamp(23px,4vw,32px);font-weight:800;min-width:0;overflow-wrap:anywhere}
+      .customer-preview-account-value {display:block;min-width:0;overflow-wrap:anywhere}
       .customer-preview-account-number button {background:#fff0f5;color:#d31352;border:1px solid #ffbad0;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:23px;flex:none}
       .customer-preview-status {background:#d9f8e8;border:1px solid #8ce7b7;color:#078350;border-radius:13px;padding:7px 14px;font-weight:700;white-space:nowrap}
       .customer-preview-sections {display:grid;gap:14px}.customer-preview-section {border:1px solid #f8d4df;border-radius:12px;background:white;overflow:hidden;box-shadow:0 2px 8px #e483a21a}
@@ -368,7 +371,7 @@ export default function AllCustomerData() {
       .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
       .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #d57c99;background:#fff;cursor:pointer}
       .customer-preview-actions button:first-child {background:#d51c57;color:white}
-      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:calc(100% - 112px)}.customer-preview-account-number{font-size:clamp(17px,5vw,25px);gap:5px}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl>div{grid-template-columns:minmax(115px,43%) 1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
+      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:calc(100% - 112px)}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl>div{grid-template-columns:minmax(115px,43%) 1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
       @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}}
     `}</style>
   </section>;

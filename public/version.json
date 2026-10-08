@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.42",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.42/BankSetu-Setup-1.0.42-x64.exe",
-  "notes": "Fast local save/delete, cross-device deletion refresh, preview sharing and activity details.",
-  "version": "1.0.42",
-  "releaseTag": "v1.0.42",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.42",
-  "windowsVersion": "1.0.42",
-  "androidBuild": 1000042,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.42/BankSetu-Setup-1.0.42-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.42/BankSetu-Android-1000042.apk"
+  "latestVersion": "1.0.43",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.43/BankSetu-Setup-1.0.43-x64.exe",
+  "notes": "Customer Preview Android share chooser and mobile account-number layout fix.",
+  "version": "1.0.43",
+  "releaseTag": "v1.0.43",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.43",
+  "windowsVersion": "1.0.43",
+  "androidBuild": 1000043,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.43/BankSetu-Setup-1.0.43-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.43/BankSetu-Android-1000043.apk"
 }

@@ -5,6 +5,7 @@ public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
         registerPlugin(BankSetuPrintPlugin.class);
         registerPlugin(BankSetuUpdatePlugin.class);
+        registerPlugin(BankSetuSharePlugin.class);
         super.onCreate(state);
     }
 }
