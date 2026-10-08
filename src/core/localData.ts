@@ -151,13 +151,14 @@ const running = new Map<string, Promise<void>>();
 const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
 type SyncProtection = {success?:boolean;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
   if(!protection.success||protection.protectionVersion!==1||protection.connectionId!==sessionStorage.getItem("bankSetuConnectionId")||!Array.isArray(protection.activeIds)||!Array.isArray(protection.deletedIds))
     throw new Error("Sync protection could not be verified. Deploy the updated tenant Code.gs; local changes remain pending.");
   const active=new Set(protection.activeIds),deleted=new Set(protection.deletedIds);
   await repository.transact(scope,state=>{
     if(protection.resetId && state.resetId!==protection.resetId){
-      if(state.operations.length||state.records.some(record=>!record.deleted&&!record.revision))
+      if(state.operations.length||state.records.some(hasUnsyncedContent))
         throw new Error("A shared reset is pending. Back up and resolve this device's unsynced changes before clearing its local database; uploads are paused.");
       state.records=[];state.operations=[];state.pull=undefined;state.resetId=protection.resetId;
     }
@@ -318,7 +319,7 @@ export async function resetLocalDatabase() {
   try {
     await running.get(scope);
     const current=await repository.read(scope);
-    if(current.operations.length||current.records.some(record=>!record.deleted&&!record.revision))
+    if(current.operations.length||current.records.some(hasUnsyncedContent))
       throw new Error("Back up and resolve every pending or unsynced customer before resetting. Local data was not cleared.");
     const url=sessionStorage.getItem("bankSetuBridgeUrl")!;
     const connectionId=sessionStorage.getItem("bankSetuConnectionId");
@@ -332,7 +333,7 @@ export async function resetLocalDatabase() {
     };
     await applySyncProtection(scope,await send("getSyncProtection"));
     const verified=await repository.read(scope);
-    if(verified.operations.length||verified.records.some(record=>!record.deleted&&!record.revision))
+    if(verified.operations.length||verified.records.some(hasUnsyncedContent))
       throw new Error("Unsynced changes remain on this device. Local data was not cleared.");
     const resetId=crypto.randomUUID();
     const published=await send("publishLocalReset",resetId);

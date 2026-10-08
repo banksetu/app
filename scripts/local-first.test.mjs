@@ -352,6 +352,9 @@ test('admin reset publishes a shared marker only after safety checks and downloa
   assert.equal(await engine.resetLocalDatabase(),1);
   assert.equal(published,1);assert.equal((await repository.read(scope)).resetId,sharedResetId);
   assert.deepEqual((await engine.getActiveLocalCustomers()).map(r=>r.recordId),['new']);
+  await repository.transact(scope,state=>{state.records[0].customer.photoDataUrl='data:image/png;base64,cGhvdG8=';});
+  await assert.rejects(engine.resetLocalDatabase(),/resolve every pending/);assert.equal(published,1);
+  await repository.transact(scope,state=>{delete state.records[0].customer.photoDataUrl;});
   navigator.onLine=false;await request({action:'saveCustomer',customer:{...customer,enrolId:'UNSYNCED',accountNo:'9090'}});
   navigator.onLine=true;await assert.rejects(engine.resetLocalDatabase(),/resolve every pending/);assert.equal(published,1);
  }finally{protectionOverride=undefined;navigator.onLine=false;}
