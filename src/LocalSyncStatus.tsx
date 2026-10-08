@@ -40,7 +40,13 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
   if (!visible) return null;
   if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
 
-  const runSync = () => { setBusy(true); setError(""); void syncNow().catch(reason => setError(reason instanceof Error ? reason.message : String(reason))).finally(() => { setBusy(false); refresh(); }); };
+  const runSync = () => {
+    const notice=(type:string,title:string,message:string)=>{const event=new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};event.detail={type,title,message};window.dispatchEvent(event);};
+    setBusy(true);setError("");notice("progress","Sync in progress","Checking this device and its Google Sheet.");
+    void syncNow().then(async()=>{const next=await getLocalStatus();notice(next.pending?"warning":"success",next.pending?"Sync pending":"Sync completed",next.pending?`${next.pending} changes still waiting for Google confirmation.`:"Customer records reconciled with Google Sheet.");})
+      .catch(reason=>{const message=reason instanceof Error?reason.message:String(reason);setError(message);notice("error","Sync failed",message);})
+      .finally(()=>{setBusy(false);refresh();});
+  };
   const formatBytes = (bytes: number | null | undefined) => { if (!bytes || bytes < 0) return ""; const units = ["B", "KB", "MB", "GB", "TB"]; let value = bytes; let unit = 0; while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; } return (value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)) + " " + units[unit]; };
   const cards = [
     { key: "local" as const, label: "Local data", value: String(status.records), hint: "इस device के local database में records", action: "Click here to see" },

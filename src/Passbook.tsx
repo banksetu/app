@@ -2,6 +2,7 @@ import { localDataFetch, getDataIdToken } from "./core/localData";
 import {
 
   useState,
+  useEffect,
 
 
   type FormEvent,
@@ -389,6 +390,13 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
   const [message, setMessage] = useState("");
 
   const [error, setError] = useState("");
+  useEffect(() => {
+    const text=error || message;
+    if (!text || !/print|printer|passbook/i.test(text)) return;
+    const event = new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};
+    event.detail={type:error?"error":"warning",title:error?"Print unavailable":"Print status",message:text};
+    window.dispatchEvent(event);
+  },[message,error]);
 
 
 

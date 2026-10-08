@@ -3959,9 +3959,9 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
         showMessage(
 
-          "Customer updated successfully.",
+          result.queued ? "Customer updated locally. Google sync pending." : "Customer updated successfully.",
 
-          "success"
+          result.queued ? "info" : "success"
 
         );
 
