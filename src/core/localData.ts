@@ -152,11 +152,17 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
 const running = new Map<string, Promise<void>>();
 const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
-type SyncProtection = {success?:boolean;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+type SyncProtection = {success?:boolean;code?:string;message?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
 const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
-  if(!protection.success||protection.protectionVersion!==1||protection.connectionId!==sessionStorage.getItem("bankSetuConnectionId")||!Array.isArray(protection.activeIds)||!Array.isArray(protection.deletedIds))
+  if(!protection.success){
+    if(protection.code==="CONNECTION_CHANGED")throw new Error("Workspace connection changed. Reconnect this tenant's Google Sheet/Drive in Bank Setu; local changes remain pending.");
+    if(protection.message)throw new Error(`Sync protection check failed: ${protection.message} Local changes remain pending.`);
+  }
+  if(!protection.success||protection.protectionVersion!==1||!Array.isArray(protection.activeIds)||!Array.isArray(protection.deletedIds))
     throw new Error("Sync protection could not be verified. Deploy the updated tenant Code.gs; local changes remain pending.");
+  if(protection.connectionId!==sessionStorage.getItem("bankSetuConnectionId"))
+    throw new Error("Sync protection belongs to another workspace connection. Reconnect this tenant's Google Sheet/Drive; local changes remain pending.");
   const active=new Set(protection.activeIds),deleted=new Set(protection.deletedIds);
   await repository.transact(scope,state=>{
     if(protection.resetId && state.resetId!==protection.resetId){
@@ -217,6 +223,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
     const value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
+    if(!value.success && String(value.message||"").includes("Valid name, account number, customer ID and Aadhaar are required"))
+      throw new Error(`Pending ${op.action} needs valid customer identity fields. Open the pending customer in Customer Entry and complete Name, Account Number, Customer ID and Aadhaar. Local changes remain pending.`);
     if (op.action === "deleteCustomer" && !value.success)
       throw new Error(String(value.message || "Google deletion was rejected; pending delete retained for retry."));
     if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true || value.rowDeleted !== true))

@@ -38,6 +38,23 @@ test('Master and Client delete incomplete legacy rows by stable ID without custo
    assert(context.syncCustomerOperation({connectionId:role,operation:deletion},actor).replayed);
  }
 });
+test('legacy incomplete customer allows a status or unrelated update without weakening new customer validation',()=>{
+ for(const role of ['master_owner','client_admin']){
+   const {context,rows}=bridge();const actor={...user,role,connectionId:role};
+   const initial=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:role,operation:initial},actor).success);
+   rows[1][12]=''; // Aadhaar was absent in this older Sheet row.
+   let revision=context.localFirstRead({action:'getAllCustomers'},actor).customers[0].revision;
+   const print={...initial,operationId:crypto.randomUUID(),action:'markPassbookPrinted',baseRevision:revision,customer:{name:'tampered',uidaiNo:''}};
+   assert(context.syncCustomerOperation({connectionId:role,operation:print},actor).success);
+   assert.equal(rows[1][2],'Alice');assert.equal(rows[1][11],'PRINTED');assert.equal(rows[1][12],'');
+   revision=context.localFirstRead({action:'getAllCustomers'},actor).customers[0].revision;
+   const update={...initial,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,customer:{contact:'9876543210'}};
+   assert(context.syncCustomerOperation({connectionId:role,operation:update},actor).success);
+   revision=context.localFirstRead({action:'getAllCustomers'},actor).customers[0].revision;
+   assert.throws(()=>context.syncCustomerOperation({connectionId:role,operation:{...update,operationId:crypto.randomUUID(),baseRevision:revision,customer:{name:''}}},actor),/Valid name/);
+   assert.throws(()=>context.syncCustomerOperation({connectionId:role,operation:{...initial,recordId:crypto.randomUUID(),operationId:crypto.randomUUID(),customer:{name:'Incomplete',uidaiNo:''}}},actor),/Valid name/);
+ }
+});
 test('audit details identify changed customer fields without exposing Aadhaar',()=>{
  const {context}=bridge();
  const details=context.activityChanges({name:'Old Name',accountNo:'1001',uidaiNo:'111122223333'}, {name:'New Name',accountNo:'1002',uidaiNo:'444455556666'});

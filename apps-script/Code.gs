@@ -3200,8 +3200,22 @@ function syncCustomerOperation(request, authUser) {
       try { recordActivity(authUser,"DELETE",rowToCustomer(existing),"Customer deleted from Google Sheet and Drive."); } catch (error) { console.error(error); }
       return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
-    const customer = Object.assign(existing ? rowToCustomer(existing) : {}, op.customer || {});
-    if (!cleanValue(customer.name) || !cleanValue(customer.accountNo) || !cleanValue(customer.enrolId) || normalizeDigits(customer.uidaiNo).length !== 12) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
+    const passbookAction = op.action === "markPassbookPrinted" || op.action === "markPassbookDelivered";
+    const customer = Object.assign(existing ? rowToCustomer(existing) : {}, passbookAction ? {} : op.customer || {});
+    if (op.action === "markPassbookPrinted") customer.passbookStatus = "PRINTED";
+    if (op.action === "markPassbookDelivered") customer.passbookStatus = "DELIVERED";
+    if (op.action === "saveCustomer" || op.action === "updateCustomer") {
+      const valid = value => !!cleanValue(value);
+      const identityValid = valid(customer.name) && valid(customer.accountNo) && valid(customer.enrolId) && normalizeDigits(customer.uidaiNo).length === 12;
+      // Legacy Sheet rows can lack identity fields. An unrelated status/field
+      // edit must not erase a previously valid value or require a made-up ID.
+      const original = existing ? rowToCustomer(existing) : null;
+      const preservedLegacy = op.action === "updateCustomer" && original &&
+        ["name", "accountNo", "enrolId", "uidaiNo"].every(key =>
+          (key === "uidaiNo" ? normalizeDigits(customer[key]).length === 12 : valid(customer[key])) ||
+          cleanValue(customer[key]) === cleanValue(original[key]));
+      if (!identityValid && !preservedLegacy) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
+    }
     if (op.action !== "deleteCustomer") {
       const duplicate = duplicateErrorResponse(findDuplicates(customer, existing ? index+2 : null, authUser));
       if (duplicate) return duplicate;
