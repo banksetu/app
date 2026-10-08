@@ -101,3 +101,11 @@ test('photo lookup confirms absence only after a successful tenant-folder search
  context.DriveApp={getFolderById:()=>{throw Error('Temporary Drive failure');}};
  assert.throws(()=>context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},actor),/Temporary Drive failure/);
 });
+test('tenant photo Drive read releases the Sheet lock before media access',()=>{
+ const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
+ rows[1][19]='https://drive.google.com/file/d/photo-id/view';let locked=false,reads=0;
+ context.LockService={getScriptLock:()=>({waitLock(){assert(!locked);locked=true;},releaseLock(){assert(locked);locked=false;}})};
+ context.getPhotoPreviewDataUrl=(_url,_folder)=>{assert.equal(locked,false);reads++;return 'data:image/jpeg;base64,eA==';};
+ const result=context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},{...user,photoFolderId:'bound-folder'});
+ assert(result.success);assert.equal(reads,1);assert.equal(locked,false);
+});
