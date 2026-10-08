@@ -336,6 +336,15 @@ export async function getActiveLocalCustomers() {
     photoDataUrl:undefined,pdfDataUrl:undefined,photoPreview:undefined,
   }));
 }
+// Export reads the same active, tenant-scoped records as the customer list.
+// Photos are included only here; normal list/sync snapshots stay lightweight.
+export async function getLocalExportCustomers() {
+  const state=await repository.read(identity());
+  return activeRecords(state.records,state.operations).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({
+    ...record.customer,rowNumber:record.rowNumber,recordId:record.recordId,
+    pdfDataUrl:undefined,
+  }));
+}
 export async function clearTemporaryLocalData() {
   const scope=identity();let cleared=0;
   await repository.transact(scope,state=>{
