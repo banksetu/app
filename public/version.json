@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.49",
+  "latestVersion": "1.0.50",
   "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.46/BankSetu-Setup-1.0.46-x64.exe",
-  "notes": "Faster bounded background photo sync with priority for new customer photos.",
-  "version": "1.0.49",
-  "releaseTag": "v1.0.49",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.49",
-  "windowsVersion": "1.0.49",
-  "androidBuild": 1000049,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.49/BankSetu-Setup-1.0.49-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.49/BankSetu-Android-1000049.apk"
+  "notes": "Local-first All Customer PDF preview and filtered Excel export with embedded local photos.",
+  "version": "1.0.50",
+  "releaseTag": "v1.0.50",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.50",
+  "windowsVersion": "1.0.50",
+  "androidBuild": 1000050,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.50/BankSetu-Setup-1.0.50-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.50/BankSetu-Android-1000050.apk"
 }

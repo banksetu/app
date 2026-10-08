@@ -2,7 +2,8 @@ import { snapshot } from "./AllCustomerData";
 import { isAndroid } from "./platform/android/runtime";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { localDataFetch, getDataIdToken } from "./core/localData";
+import { localDataFetch, getDataIdToken, getLocalExportCustomers, getLocalStatus } from "./core/localData";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
 
   useState,
@@ -505,265 +506,69 @@ export default function Customers() {
     } catch (cause) {setError(cause instanceof Error?cause.message:"Could not share preview image.");}
   };
 
-  /* =======================================================
-
-     MAKE ALL CUSTOMERS PDF
-
-     UI button is ready.
-
-     Backend bulk-customer API will be connected
-
-     in the next step.
-
-  ======================================================= */
-
-  const makeAllCustomersPdf = async () => {
-
+  const makeAllCustomersPdf = () => {
     setError("");
-
-    setMessage("");
-
+    const popup = window.open("", "_blank", "width=1050,height=850");
+    if (!popup) { setError("Allow the PDF preview popup and try again."); return; }
+    let cancelled = false;
+    const originalStyles = document.querySelector(".customers-page > style")?.textContent || "";
+    popup.document.open();
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bank Setu - All Customers PDF</title><style>${originalStyles}</style><style>
+      @page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}
+      body{margin:0;background:#e7ebf0;color:#111827;font-family:Arial,sans-serif}
+      .export-toolbar{position:sticky;top:0;z-index:2;background:#102d38;color:#fff;padding:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+      .export-toolbar button{padding:9px 16px;border:0;border-radius:7px;cursor:pointer}
+      .export-page{width:194mm;height:281mm;margin:12px auto;background:#fff;page-break-after:always;break-after:page;overflow:hidden;display:flex;flex-direction:column;gap:3mm;padding:0}
+      .export-page:last-child{page-break-after:auto;break-after:auto}
+      .export-slot{height:90mm;flex:none;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+      .export-slot .customer-preview{width:1100px!important;min-height:420px!important;transform:scale(var(--card-scale,.66));transform-origin:top left;box-shadow:none!important;}
+      .export-slot .customer-grid{grid-template-columns:1fr 1.2fr 170px!important;gap:30px!important}
+      .export-slot .info-row{grid-template-columns:145px 12px 1fr!important}
+      .export-slot .photo-section{align-items:center!important}
+      @media print{html,body{background:white!important;margin:0!important;padding:0!important}body *{visibility:visible!important}.export-toolbar{display:none!important}.export-page{margin:0!important}.export-slot .customer-preview{position:static!important;padding:28px!important;border-radius:18px!important;width:1100px!important;transform:scale(var(--card-scale,.66))!important}.export-slot .customer-grid{grid-template-columns:1fr 1.2fr 170px!important}}
+      @media screen and (max-width:850px){.export-page{zoom:.55;margin:8px auto}}
+    </style></head><body><div class="export-toolbar"><strong id="progress">Loading local customers…</strong><button id="print" disabled>Save PDF / Print</button><button id="cancel">Cancel</button></div><div id="pages"></div></body></html>`);
+    popup.document.close();
+    popup.document.getElementById("cancel")?.addEventListener("click", () => { cancelled = true; popup.close(); });
+    popup.document.getElementById("print")?.addEventListener("click", () => popup.print());
     setLoading(true);
-
-    try {
-
-      const allCustomers: Customer[] = [];
-
-      let page = 1;
-
-      let hasNextPage = true;
-
-      while (hasNextPage) {
-
-        const result = await apiRequest({
-
-          action: "getAllCustomers",
-
-          page,
-
-          pageSize: 50,
-
-        });
-
-        const batch = Array.isArray(result.customers)
-
-          ? (result.customers as Customer[])
-
-          : [];
-
-        allCustomers.push(...batch);
-
-        hasNextPage = Boolean(result.hasNextPage);
-
-        page += 1;
-
-        if (page > 1000) {
-
-          throw new Error("Too many customer pages returned by the API.");
-
+    void (async () => {
+      try {
+        const [records, status] = await Promise.all([getLocalExportCustomers(), getLocalStatus()]);
+        if (!records.length) throw new Error("No active customers are available in this device's local database.");
+        const pages = popup.document.getElementById("pages")!;
+        const progress = popup.document.getElementById("progress")!;
+        let skipped = 0;
+        for (let i = 0; i < records.length; i += 3) {
+          if (cancelled || popup.closed) return;
+          const page = popup.document.createElement("main"); page.className = "export-page";
+          for (const record of records.slice(i, i + 3)) {
+            const item = previewCustomer(record);
+            if (!item.name && !item.enrolId && !item.accountNo) { skipped++; continue; }
+            const slot = popup.document.createElement("div"); slot.className = "export-slot";
+            slot.innerHTML = renderToStaticMarkup(<CustomerPreviewCard customer={item} />);
+            page.appendChild(slot);
+          }
+          if (page.childElementCount) {
+            pages.appendChild(page);
+            for (const card of page.querySelectorAll<HTMLElement>(".customer-preview")) {
+              card.style.setProperty("--card-scale",String(Math.min(.66,(90*96/25.4-2)/card.scrollHeight)));
+            }
+          }
+          if (i % 30 === 0) { progress.textContent = `Preparing ${Math.min(i + 3, records.length)} / ${records.length} local customers…`; await new Promise(resolve => setTimeout(resolve, 0)); }
         }
-
-      }
-
-      if (allCustomers.length === 0) {
-
-        throw new Error("No customer data found.");
-
-      }
-
-      const popup = window.open("", "_blank", "width=1000,height=800");
-
-      if (!popup) {
-
-        throw new Error("Popup was blocked. Please allow popups and try again.");
-
-      }
-
-      const esc = (value?: string | null) =>
-
-        String(value ?? "")
-
-          .replace(/&/g, "&amp;")
-
-          .replace(/</g, "&lt;")
-
-          .replace(/>/g, "&gt;")
-
-          .replace(/"/g, "&quot;")
-
-          .replace(/'/g, "&#039;");
-
-      const customerCard = (item: Customer) => {
-
-        const address = makeAddress(item);
-
-        const photo = item.photoPreview || item.photoUrl || "";
-
-        return `
-
-          <section class="customer-card">
-
-            <div class="details">
-
-              <div><b>AOF NO.</b><span>${esc(item.aofNo)}</span></div>
-
-              <div><b>CIF / CUSTOMER ID</b><span>${esc(item.enrolId)}</span></div>
-
-              <div><b>ACCOUNT NO.</b><span>${esc(item.accountNo)}</span></div>
-
-              <div><b>A/C OPENING DATE</b><span>${esc(item.accountOpeningDate)}</span></div>
-
-              <div><b>MOBILE</b><span>${esc(item.contact)}</span></div>
-
-              <div><b>AADHAAR NO.</b><span>${esc(item.uidaiNo)}</span></div>
-
-            </div>
-
-            <div class="details">
-
-              <div><b>NAME</b><span>${esc(item.name).toUpperCase()}</span></div>
-
-              <div><b>C/O NAME</b><span>${esc(item.coName).toUpperCase()}</span></div>
-
-              <div><b>ADDRESS</b><span>${esc(address).toUpperCase()}</span></div>
-
-              <div><b>PIN CODE</b><span>${esc(item.pinCode)}</span></div>
-
-              <div><b>PAN</b><span>${esc(item.pan).toUpperCase()}</span></div>
-
-              <div><b>NOMINEE</b><span>${esc(item.nominee).toUpperCase()}</span></div>
-
-            </div>
-
-            <div class="details status-col">
-
-              <div><b>ACCOUNT STATUS</b><span>${esc(item.status)}</span></div>
-
-              <div><b>DBT STATUS</b><span>${esc(item.dbtStatus)}</span></div>
-
-              <div><b>PASSBOOK STATUS</b><span>${esc(item.passbookStatus)}</span></div>
-
-            </div>
-
-            <div class="photo-wrap">
-
-              ${photo ? `<img src="${esc(photo)}" alt="Customer photo" />` : `<div class="no-photo">NO PHOTO</div>`}
-
-            </div>
-
-          </section>`;
-
-      };
-
-      const pages: string[] = [];
-
-      for (let i = 0; i < allCustomers.length; i += 3) {
-
-        pages.push(
-
-          `<main class="pdf-page">${allCustomers
-
-            .slice(i, i + 3)
-
-            .map(customerCard)
-
-            .join("")}</main>`
-
-        );
-
-      }
-
-      popup.document.open();
-
-      popup.document.write(`<!doctype html>
-
-<html>
-
-<head>
-
-<meta charset="utf-8" />
-
-<title>Bank Setu - All Customers</title>
-
-<style>
-
-  @page { size: A4; margin: 8mm; }
-
-  * { box-sizing: border-box; }
-
-  body { margin: 0; font-family: Arial, sans-serif; color: #111; background: #fff; }
-
-  .pdf-page { width: 100%; min-height: 281mm; page-break-after: always; display: flex; flex-direction: column; gap: 4mm; }
-
-  .pdf-page:last-child { page-break-after: auto; }
-
-  .customer-card { height: 88mm; border: 1px solid #777; padding: 4mm; display: grid; grid-template-columns: 1.05fr 1.35fr .9fr 27mm; gap: 3mm; overflow: hidden; }
-
-  .details { min-width: 0; }
-
-  .details > div { display: grid; grid-template-columns: 42% 58%; gap: 2mm; margin-bottom: 2.2mm; align-items: start; font-size: 8.5pt; text-align: left; }
-
-  .details b { font-size: 7.6pt; }
-
-  .details span { overflow-wrap: anywhere; text-align: left; }
-
-  .status-col > div { grid-template-columns: 52% 48%; }
-
-  .photo-wrap { text-align: left; }
-
-  .photo-wrap img, .no-photo { width: 25mm; height: 31mm; object-fit: cover; border: 1px solid #777; }
-
-  .no-photo { display: flex; align-items: center; justify-content: center; font-size: 7pt; }
-
-  @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
-
-</style>
-
-</head>
-
-<body>${pages.join("")}</body>
-
-</html>`);
-
-      popup.document.close();
-
-      window.setTimeout(() => {
-
-        popup.focus();
-
-        popup.print();
-
-      }, 500);
-
-      setMessage(`${allCustomers.length} customers loaded. Print dialog opened for PDF.`);
-
-    } catch (err) {
-
-      setError(
-
-        err instanceof Error
-
-          ? err.message
-
-          : "All customers could not be loaded."
-
-      );
-
-    } finally {
-
-      setLoading(false);
-
-    }
-
+        await popup.document.fonts?.ready;
+        const images = [...popup.document.images];
+        await Promise.all(images.map(img => img.complete ? Promise.resolve() : new Promise<void>(resolve => { const timer=setTimeout(resolve,5000); img.onload = img.onerror = () => {clearTimeout(timer);resolve();}; })));
+        if (cancelled || popup.closed) return;
+        const incomplete = status.downloading || status.cacheLimited;
+        progress.textContent = `${records.length - skipped} locally available customers · ${pages.childElementCount} A4 pages · cloud total not verified${skipped ? ` · ${skipped} invalid records skipped` : ""}${incomplete ? " · local download incomplete; partial export" : ""}`;
+        popup.document.getElementById("print")!.removeAttribute("disabled");
+        setMessage(incomplete ? "Local download is incomplete. PDF preview is marked partial." : `PDF preview ready for ${records.length - skipped} customers.`);
+      } catch (reason) { if (!popup.closed) popup.document.getElementById("progress")!.textContent = reason instanceof Error ? reason.message : "PDF preview failed."; setError(reason instanceof Error ? reason.message : "PDF preview failed."); }
+      finally { setLoading(false); }
+    })();
   };
-
-  const photo =
-
-    customer?.photoPreview ||
-
-    customer?.photoUrl ||
-
-    "";
 
   /* =======================================================
 
@@ -2251,103 +2056,7 @@ export default function Customers() {
 
           </div>
 
-          <div className="customer-preview">
-
-            <div className="customer-preview-heading">
-
-              <h2>
-
-                CUSTOMER PREVIEW
-
-              </h2>
-
-            </div>
-
-            <div className="customer-grid">
-
-              <div className="info-column">
-
-                <InfoRow label="AOF NO." value={customer.aofNo} />
-
-                <InfoRow label="CIF / CUSTOMER ID" value={customer.enrolId} />
-
-                <InfoRow label="ACCOUNT NO." value={customer.accountNo} />
-
-                <InfoRow label="A/C OPENING DATE" value={customer.accountOpeningDate} />
-
-                <InfoRow label="NOMINEE" value={customer.nominee} upper />
-
-                <InfoRow label="MOBILE" value={customer.contact} />
-
-                <InfoRow label="AADHAAR NO." value={customer.uidaiNo} />
-
-              </div>
-
-              <div className="info-column">
-
-                <InfoRow label="NAME" value={customer.name} upper />
-
-                <InfoRow label="C/O NAME" value={customer.coName} upper />
-
-                <InfoRow label="ADDRESS" value={makeAddress(customer)} upper address />
-
-                <InfoRow label="PIN CODE" value={customer.pinCode} />
-
-                <InfoRow label="PAN" value={customer.pan} upper />
-
-              </div>
-
-              <div className="photo-section">
-
-                <div className="photo-box">
-
-                  {photo ? (
-
-                    <img src={photo} alt="Customer" />
-
-                  ) : (
-
-                    <div className="photo-placeholder">CUSTOMER<br />PHOTO</div>
-
-                  )}
-
-                </div>
-
-                <div className="photo-label">CUSTOMER PHOTO</div>
-
-              </div>
-
-            </div>
-
-            <div className="customer-status-strip">
-
-              <div className="status-item">
-
-                <span>ACCOUNT STATUS</span>
-
-                <strong>{safe(customer.status) || "-"}</strong>
-
-              </div>
-
-              <div className="status-item">
-
-                <span>DBT STATUS</span>
-
-                <strong>{safe(customer.dbtStatus) || "-"}</strong>
-
-              </div>
-
-              <div className="status-item">
-
-                <span>PASSBOOK STATUS</span>
-
-                <strong>{safe(customer.passbookStatus) || "-"}</strong>
-
-              </div>
-
-            </div>
-
-          </div>
+          <CustomerPreviewCard customer={customer} />
 
           {/* =========================================
 
@@ -2446,6 +2155,123 @@ export default function Customers() {
 
   );
 
+}
+
+function previewCustomer(value: Record<string, unknown>): Customer {
+  const field = (key: string) => String(value[key] ?? "");
+  return {
+    ...emptyCustomer, enrolId:field("enrolId"), accountNo:field("accountNo"), name:field("name"),
+    coName:field("coName") || field("fatherName"), status:field("status"), gender:field("gender"),
+    contact:field("contact") || field("mobile"), accountOpeningDate:field("accountOpeningDate"),
+    address:field("address"), nominee:field("nominee"), postOffice:field("postOffice"),
+    passbookStatus:field("passbookStatus"), uidaiNo:field("uidaiNo"), dbtStatus:field("dbtStatus"),
+    purposeOfAdvance:field("purposeOfAdvance"), fullAddress:field("fullAddress"),
+    pinCode:field("pinCode"), pan:field("pan"), aofNo:field("aofNo"),
+    photoPreview:field("photoPreview") || field("photoDataUrl"),
+  };
+}
+
+function CustomerPreviewCard({customer}:{customer:Customer}) {
+  return (
+          <div className="customer-preview">
+
+            <div className="customer-preview-heading">
+
+              <h2>
+
+                CUSTOMER PREVIEW
+
+              </h2>
+
+            </div>
+
+            <div className="customer-grid">
+
+              <div className="info-column">
+
+                <InfoRow label="AOF NO." value={customer.aofNo} />
+
+                <InfoRow label="CIF / CUSTOMER ID" value={customer.enrolId} />
+
+                <InfoRow label="ACCOUNT NO." value={customer.accountNo} />
+
+                <InfoRow label="A/C OPENING DATE" value={customer.accountOpeningDate} />
+
+                <InfoRow label="NOMINEE" value={customer.nominee} upper />
+
+                <InfoRow label="MOBILE" value={customer.contact} />
+
+                <InfoRow label="AADHAAR NO." value={customer.uidaiNo} />
+
+              </div>
+
+              <div className="info-column">
+
+                <InfoRow label="NAME" value={customer.name} upper />
+
+                <InfoRow label="C/O NAME" value={customer.coName} upper />
+
+                <InfoRow label="ADDRESS" value={makeAddress(customer)} upper address />
+
+                <InfoRow label="PIN CODE" value={customer.pinCode} />
+
+                <InfoRow label="PAN" value={customer.pan} upper />
+
+              </div>
+
+              <div className="photo-section">
+
+                <div className="photo-box">
+
+                  {customer.photoPreview || customer.photoUrl ? (
+
+                    <img src={customer.photoPreview || customer.photoUrl} alt="Customer" />
+
+                  ) : (
+
+                    <div className="photo-placeholder">CUSTOMER<br />PHOTO</div>
+
+                  )}
+
+                </div>
+
+                <div className="photo-label">CUSTOMER PHOTO</div>
+
+              </div>
+
+            </div>
+
+            <div className="customer-status-strip">
+
+              <div className="status-item">
+
+                <span>ACCOUNT STATUS</span>
+
+                <strong>{safe(customer.status) || "-"}</strong>
+
+              </div>
+
+              <div className="status-item">
+
+                <span>DBT STATUS</span>
+
+                <strong>{safe(customer.dbtStatus) || "-"}</strong>
+
+              </div>
+
+              <div className="status-item">
+
+                <span>PASSBOOK STATUS</span>
+
+                <strong>{safe(customer.passbookStatus) || "-"}</strong>
+
+              </div>
+
+            </div>
+
+          </div>
+
+  );
 }
 
 /* =========================================================
