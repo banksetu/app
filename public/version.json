@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.57",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.57/BankSetu-Setup-1.0.57-x64.exe",
-  "notes": "Smart Sync: hourly idle reconciliation, immediate queued customer uploads, durable adaptive pages, bounded authentication recovery and low-usage photo inventory. JSON backup/restore and tenant protection remain intact.",
-  "version": "1.0.57",
-  "releaseTag": "v1.0.57",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.57",
-  "windowsVersion": "1.0.57",
-  "androidBuild": 1000057,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.57/BankSetu-Setup-1.0.57-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.57/BankSetu-Android-1000057.apk"
+  "latestVersion": "1.0.58",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.58/BankSetu-Setup-1.0.58-x64.exe",
+  "notes": "Customer All PDF selection: all local customers, opening date, account range or selected search results. Existing A4 preview and Save PDF/Print output remain intact.",
+  "version": "1.0.58",
+  "releaseTag": "v1.0.58",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.58",
+  "windowsVersion": "1.0.58",
+  "androidBuild": 1000058,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.58/BankSetu-Setup-1.0.58-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.58/BankSetu-Android-1000058.apk"
 }
