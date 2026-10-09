@@ -222,6 +222,27 @@ function doPost(e) {
     }
 
 
+    /*
+      SMART SYNC: lightweight change-marker probe.
+      Lets idle devices reconcile with ONE cheap call per hour
+      instead of downloading full customer pages repeatedly.
+    */
+    if (
+      action === "getSyncStatus"
+    ) {
+      requireAuthorizedUser(
+        idToken,
+        false
+      );
+
+      return getSyncStatus(
+        cleanValue(
+          request.lastKnownMarker
+        )
+      );
+    }
+
+
     return jsonResponse({
       success: false,
       code:
@@ -2480,6 +2501,87 @@ function jsonResponse(
     );
 }
 
+
+/* =========================================================
+   SMART SYNC — LIGHTWEIGHT CHANGE MARKER
+   One cheap probe per idle device per hour instead of full
+   sheet downloads. Uses script cache to avoid hammering the
+   Sheets API when many devices poll around the same time.
+========================================================= */
+function getSyncStatus(
+  lastKnownMarker
+) {
+  const cache =
+    CacheService.getScriptCache();
+  const CACHE_KEY = "syncMarkerV1";
+  let marker =
+    cache.get(CACHE_KEY);
+
+  if (!marker) {
+    const sheet =
+      getSheet();
+    /*
+      Marker = row count + last-edit fingerprint.
+      Cheap: two metadata reads, no data download.
+    */
+    const lastRow =
+      sheet.getLastRow();
+    const updated =
+      SpreadsheetApp.getActiveSpreadsheet()
+        .getLastUpdatedDate()
+        .getTime();
+    marker = String(
+      lastRow
+    ) + "-" + String(
+      updated
+    );
+    /*
+      CacheService values must be <= 127 chars — fine here.
+    */
+    cache.put(
+      CACHE_KEY,
+      marker,
+      60
+    );
+  }
+
+  return jsonResponse({
+    success: true,
+    marker:
+      marker,
+    changed:
+      String(
+        lastKnownMarker || ""
+      ) !== marker,
+  });
+}
+
+/* =========================================================
+   SMART SYNC — SERVER-SIDE IDEMPOTENCY GUARD
+   Prevents duplicate "saveCustomer" executions when a client
+   retries an upload that actually succeeded on the server but
+   whose response was lost (offline / Apps Script timeout).
+========================================================= */
+function alreadyProcessed(
+  opId
+) {
+  if (!opId) return false;
+  const cache =
+    CacheService.getScriptCache();
+  const key =
+    "op-" + String(
+      opId
+    ).slice(0, 40);
+  if (cache.get(key)) {
+    return true;
+  }
+  cache.put(
+    key,
+    "1",
+    900
+  );
+  return false;
+}
 
 /* =========================================================
    PERMISSION FUNCTIONS
