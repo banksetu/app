@@ -11,11 +11,13 @@ globalThis.window=new EventTarget();globalThis.__auth={currentUser:{uid:'user-a'
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
 let handler=async()=>{throw new Error('offline');};
 let protectionOverride;
+let protectionCalls=0;
 let inventoryOverride,inventoryCalls=0;
 globalThis.fetch=async(...args)=>{
  const body=args[1]?.body?JSON.parse(args[1].body):{};
  if(body.action==='getPhotoPresence'){inventoryCalls++;return new Response(JSON.stringify({success:true,complete:true,connectionId:storage.get('bankSetuConnectionId'),customerIds:inventoryOverride||[]}));}
  if(body.action==='getSyncProtection'){
+   protectionCalls++;
    const connectionId=storage.get('bankSetuConnectionId');
    const scope=`${globalThis.__auth.currentUser.uid}:${storage.get('bankSetuMasterLocalEnabled')==='true'?`master:${globalThis.__auth.currentUser.uid}`:storage.get('bankSetuTenantId')}:${connectionId}`;
    const state=await repository.read(scope);
@@ -138,6 +140,26 @@ test('10,000 generated customers import through durable 250-row pages, including
  assert.equal(state.pull.cursor,0);assert(state.pull.lastCompletedAt);assert.equal(state.operations.length,0);assert.equal(pages,40);
 });
 
+test('oversized Google pages shrink with a durable cursor and resume without duplicate customers',async()=>{
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};storage.clear();connect('adaptive-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:adaptive-device';
+ const rows=Array.from({length:130},(_,i)=>({recordId:`adaptive-${i}`,rowNumber:i+2,revision:'r1',name:`Adaptive ${i}`,photoAvailable:false,photoUrl:''}));
+ const sizes=[];let lost=false;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerPage');sizes.push(body.pageSize);
+   if(body.pageSize>40)return new Response('too large',{status:413});
+   if(body.cursor>0&&!lost){lost=true;throw Error('Connection interrupted after first page');}
+   const end=Math.min(body.cursor+body.pageSize,rows.length);
+   return new Response(JSON.stringify({success:true,customers:rows.slice(body.cursor,end),nextCursor:end,hasNextPage:end<rows.length}));
+ };
+ for(let i=0;i<3;i++)await engine.syncNow(true);
+ let state=await repository.read(scope);assert.deepEqual(sizes.slice(0,3),[250,125,62]);assert.equal(state.pull.pageSize,31);assert.equal(state.records.length,0);
+ await assert.rejects(engine.syncNow(true),/Connection interrupted/);
+ state=await repository.read(scope);assert.equal(state.pull.cursor,31);assert.equal(state.records.length,31);
+ await engine.syncNow(true);state=await repository.read(scope);
+ assert.equal(state.records.length,130);assert.equal(new Set(state.records.map(record=>record.recordId)).size,130);
+ assert.equal(state.pull.pageSize,31);assert.equal(state.pull.cursor,0);
+});
+
 test('interrupted download resumes its cursor, exposes error and never overwrites a pending local edit',async()=>{
  connect('resume-device');navigator.onLine=true;const scope='user-a:tenant-a:resume-device';
  await repository.transact(scope,state=>state.records.push({key:'edit',recordId:'edit',scope,rowNumber:2,revision:'old',customer:{name:'Unsynced edit'},pending:true}));
@@ -161,7 +183,7 @@ test('shared recovery backs off, reconnects immediately, retains queued identity
  try{
  await settle();assert.equal(attempts,1);assert([...timers.values()].some(t=>t.delay>=4000&&t.delay<=6000));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await engine.getLocalStatus()).syncing,false);
  const retry=[...timers.values()].find(t=>t.delay>=4000&&t.delay<=6000);retry.fn();await settle();assert.equal(attempts,2);assert([...timers.values()].some(t=>t.delay>=8000&&t.delay<=12000));
- healthy=true;window.dispatchEvent(new Event('online'));await settle();assert.equal(attempts,3);assert.equal((await repository.read(scope)).operations.length,0);assert(activity.includes(true));assert.equal(activity.at(-1),false);assert(recoveries>=2);
+ healthy=true;navigator.onLine=false;window.dispatchEvent(new Event('offline'));navigator.onLine=true;window.dispatchEvent(new Event('online'));await settle();assert.equal(attempts,3);assert.equal((await repository.read(scope)).operations.length,0);assert(activity.includes(true));assert.equal(activity.at(-1),false);assert(recoveries>=2);
  const before=attempts;document.visibilityState='visible';window.dispatchEvent(new Event('focus'));await settle();assert.equal(attempts,before,'focus does not poll an already healthy connection');
  }finally{stop();engine.configureConnectionRecovery(undefined);window.removeEventListener('banksetu-sync-change',changed);globalThis.setTimeout=nativeTimeout;globalThis.clearTimeout=nativeClear;}
 });
@@ -191,6 +213,75 @@ test('manual header refresh forces reconciliation through the same engine state'
    while(Date.now()<deadline+3000&&pulls<2)await new Promise(resolve=>setTimeout(resolve,10));
    assert.equal(pulls,2);
  }finally{stop();}
+});
+
+test('idle workspace makes one hourly reconciliation, no focus pull, and manual sync bypasses the interval',async()=>{
+ storage.clear();connect('hourly-idle');navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const previousUser=globalThis.__auth.currentUser,originalNow=Date.now,originalTimeout=globalThis.setTimeout,originalClear=globalThis.clearTimeout;
+ let now=1800000000000,tokens=0,worker=0,pages=0,nextId=0;protectionCalls=0;
+ Date.now=()=>now;globalThis.__auth.currentUser={uid:'user-a',getIdToken:async(force)=>{assert(!force);tokens++;return 'cached-token';}};
+ const timers=new Map();globalThis.setTimeout=(fn,delay)=>{const id=++nextId;timers.set(id,{fn,delay});return id;};globalThis.clearTimeout=id=>timers.delete(id);
+ engine.configureConnectionRecovery(async()=>{worker++;});
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage'){pages++;return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));}throw Error(`Unexpected ${body.action}`);};
+ // getSyncProtection is intercepted by the fixture fetch wrapper.
+ const settle=async()=>{for(let i=0;i<50;i++)await new Promise(resolve=>setImmediate(resolve));};
+ const stop=engine.startLocalSync();
+ try{
+   await settle();assert.equal(pages,1);assert.equal(protectionCalls,1);assert.equal(worker,1);assert.equal(tokens,2);
+   let state=await repository.read('user-a:tenant-a:hourly-idle');assert.equal(state.pull.lastCompletedAt,now);
+   for(let i=0;i<2;i++){const fast=[...timers.values()].find(timer=>timer.delay===250);if(!fast)break;now+=250;fast.fn();await settle();}
+   now+=30*60000;window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));await settle();
+   assert.equal(pages,1);assert.equal(protectionCalls,1);assert.equal(worker,1);assert.equal(tokens,2);
+   const due=[...timers.values()].find(timer=>timer.delay>=29*60000&&timer.delay<=30*60000);assert(due,JSON.stringify([...timers.values()].map(timer=>timer.delay)));now+=due.delay;due.fn();await settle();
+   assert.equal(pages,2);assert.equal(protectionCalls,2);assert.equal(worker,2);assert.equal(tokens,4);
+   await engine.syncNow(true);assert.equal(pages,3);assert.equal(protectionCalls,3);assert.equal(tokens,6);
+   state=await repository.read('user-a:tenant-a:hourly-idle');assert.equal(state.pull.lastCompletedAt,now);
+ }finally{stop();engine.configureConnectionRecovery(undefined);Date.now=originalNow;globalThis.setTimeout=originalTimeout;globalThis.clearTimeout=originalClear;globalThis.__auth.currentUser=previousUser;}
+});
+
+test('permanent rejected upload remains reviewable without a fast retry loop',async()=>{
+ storage.clear();connect('permanent-upload');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'INVALID-1',accountNo:'91001'}});assert(saved.queued);
+ navigator.onLine=true;let writes=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   writes++;return new Response(JSON.stringify({success:false,code:'INVALID_INPUT',message:'Invalid customer field.'}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ await engine.syncNow(true);
+ const scope='user-a:tenant-a:permanent-upload';const state=await repository.read(scope);
+ assert.equal(state.operations.length,1);assert.equal(state.operations[0].state,'failed');assert.equal(state.operations[0].recordId,saved.recordId);
+ await engine.syncNow(false);assert.equal(writes,1);assert.equal((await engine.getLocalStatus()).conflicts,1);
+});
+
+test('authentication recovery refreshes the Firebase token at most once and retains unsent work',async()=>{
+ storage.clear();connect('auth-recovery');navigator.onLine=false;const previous=globalThis.__auth.currentUser;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'AUTH-1',accountNo:'91002'}});assert(saved.queued);
+ let forced=0,attempts=0;globalThis.__auth.currentUser={uid:'user-a',getIdToken:async(force)=>{if(force)forced++;return force?'renewed':'cached';}};
+ navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   attempts++;return attempts===1?new Response('',{status:401}):new Response(JSON.stringify({success:false,code:'AUTH_REQUIRED'}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ try{await assert.rejects(engine.syncNow(true),/authentication needs attention/);assert.equal(attempts,2);assert.equal(forced,1);
+   const state=await repository.read('user-a:tenant-a:auth-recovery');assert.equal(state.operations[0].state,'pending');assert.equal(state.operations[0].recordId,saved.recordId);
+ }finally{globalThis.__auth.currentUser=previous;}
+});
+
+test('HTTP 429 Retry-After delays the next upload and keeps its operation identity',async()=>{
+ storage.clear();connect('rate-limit');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'RATE-1',accountNo:'91003'}});
+ const scope='user-a:tenant-a:rate-limit',id=(await repository.read(scope)).operations[0].operationId;
+ const oldTimeout=globalThis.setTimeout,oldClear=globalThis.clearTimeout,timers=new Map();let nextId=0,attempts=0;
+ globalThis.setTimeout=(fn,delay)=>{const key=++nextId;timers.set(key,{fn,delay});return key};globalThis.clearTimeout=key=>timers.delete(key);
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   attempts++;assert.equal(body.operation.operationId,id);
+   if(attempts===1)return new Response('',{status:429,headers:{'Retry-After':'120'}});
+   return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ navigator.onLine=true;const settle=async()=>{for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));};const stop=engine.startLocalSync();
+ try{
+   await settle();assert.equal(attempts,1);assert.equal((await repository.read(scope)).operations[0].state,'pending');
+   const retry=[...timers.values()].find(timer=>timer.delay>=120000);assert(retry);
+   retry.fn();await settle();assert.equal(attempts,2);assert.equal((await repository.read(scope)).operations.length,0);
+ }finally{stop();globalThis.setTimeout=oldTimeout;globalThis.clearTimeout=oldClear;}
 });
 
 test('stopping the lifecycle engine aborts active cloud work and preserves its queue',async()=>{

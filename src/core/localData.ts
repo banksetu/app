@@ -4,6 +4,7 @@ import { auth } from "../firebase";
 import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
+const IDLE_RECONCILE_MS=60*60*1000;
 export const localModeEnabled = () => sessionStorage.getItem("bankSetuConnectionMode")==="option-b" || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
 const identity = () => {
   const uid = auth.currentUser?.uid;
@@ -138,7 +139,7 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
   return resultResponse(masked);
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
-async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {cursor:number;seen:string[];startedAt:number}) {
+async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   await repository.transact(scope, state => {
     if (value.fullSnapshot === true) { const incoming = new Set(list.map(customer => String(customer.recordId))); state.records.forEach(record => { if (!record.pending && !incoming.has(record.recordId)) record.deleted = true; }); }
@@ -159,7 +160,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if(value.hasNextPage){
         if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
         state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
-      }else state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited};
+      }else state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize};
     }
     trimCache(state);
   });
@@ -241,37 +242,44 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     const requestSignal=AbortSignal.any([...(signal?[signal]:[]),...(photoSignal?[photoSignal]:[]),AbortSignal.timeout(25000)]);
     const perform=()=>networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:requestSignal});
     let response=await perform();
-    if(response.status===401){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();}
+    let refreshed=false;
+    if(response.status===401){idToken=await user.getIdToken(true);refreshed=true;if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();}
     if(!response.ok){
       if(response.status===401||response.status===403){const error=new Error("Google access requires attention. Sign in or check this workspace's permissions; local changes remain pending.") as Error & {permanent:boolean};error.permanent=true;throw error;}
       const retryAfter=response.headers.get("Retry-After");
       const seconds=retryAfter?Number(retryAfter):NaN;
       const date=retryAfter&&!Number.isFinite(seconds)?Date.parse(retryAfter):NaN;
       const suggested=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?date-Date.now():0;
-      const error=new Error(`Google sync is temporarily unavailable (${response.status}). Local changes remain pending.`) as Error & {retryAfterMs?:number};
+      const error=new Error(`Google sync is temporarily unavailable (${response.status}). Local changes remain pending.`) as Error & {retryAfterMs?:number;status?:number};
+      error.status=response.status;
       if([429,500,502,503,504].includes(response.status))error.retryAfterMs=Math.min(300000,Math.max(0,suggested));
       throw error;
     }
     let value=await response.json();
-    if(!value.success&&value.code==="AUTH_REQUIRED"){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();value=await response.json();}
+    if(!value.success&&value.code==="AUTH_REQUIRED"&&!refreshed){idToken=await user.getIdToken(true);refreshed=true;if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();if(response.status===401||response.status===403)throw Object.assign(new Error("Google authentication needs attention. Sign in again; local changes remain pending."),{permanent:true});if(!response.ok)throw new Error(`Google sync is temporarily unavailable (${response.status}). Local changes remain pending.`);value=await response.json();}
+    if(!value.success&&value.code==="AUTH_REQUIRED")throw Object.assign(new Error("Google authentication needs attention. Sign in again; local changes remain pending."),{permanent:true});
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
     if(!value.success && (value.code==="SYNC_BUSY" || /Lock timeout|another process was holding the lock/i.test(String(value.message||""))))
       throw new Error("Google sync is busy on another request. Pending changes are retained and will retry automatically.");
     return value;
   };
+  const initial = await repository.read(scope);
+  if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
+  const shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
+  const pending=initial.operations.some(operation=>operation.state==="pending");
+  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto))return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
-  const initial = await repository.read(scope);
   if (initial.operations.some(operation => operation.state === "pending")) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
   for (const op of initial.operations.filter(operation => operation.state === "pending").slice(0,25)) {
     if (identity() !== scope || auth.currentUser?.uid !== user.uid) return;
     const current = await repository.read(scope);
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
-    const value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
+    let value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
     if(!value.success && String(value.message||"").includes("Valid name, account number, customer ID and Aadhaar are required"))
-      throw new Error(`Pending ${op.action} needs valid customer identity fields. Open the pending customer in Customer Entry and complete Name, Account Number, Customer ID and Aadhaar. Local changes remain pending.`);
-    if (op.action === "deleteCustomer" && !value.success)
+      value={...value,code:"INVALID_INPUT",message:`Pending ${op.action} needs valid customer identity fields. Complete Name, Account Number, Customer ID and Aadhaar before retrying. The local change is retained for review.`};
+    if (op.action === "deleteCustomer" && !value.success && !["CONFLICT","DUPLICATE","CONNECTION_CHANGED","FORBIDDEN","INVALID_INPUT"].includes(String(value.code||"")))
       throw new Error(String(value.message || "Google deletion was rejected; pending delete retained for retry."));
     if (op.action === "deleteCustomer" && value.success && (value.deleted !== true || value.driveDeleted !== true || value.rowDeleted !== true))
       throw new Error("Google Sheet row and Drive deletion are not confirmed. Update this tenant's Apps Script bridge; local deletion remains pending.");
@@ -289,17 +297,31 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   }
   // At most four 250-row pages per sync; resume the cursor on the next tick.
   const started=Date.now();
-  const shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=60000;
   for(let page=0;shouldPull && page<4 && Date.now()-started<20000;page++) {
     if(identity()!==scope)return;
     const state=await repository.read(scope);
     const pull=state.pull || {cursor:0,seen:[],startedAt:Date.now()};
-    const value=await send({action:"getCustomerPage",cursor:pull.cursor,pageSize:250});
-    if(!value.success)throw new Error(value.message || "Google download rejected; local data retained.");
+    const pageSize=Math.min(250,Math.max(25,pull.pageSize||250));
+    let value: Record<string,unknown>;
+    try {value=await send({action:"getCustomerPage",cursor:pull.cursor,pageSize});}
+    catch(error){
+      const oversized=(error as {status?:number})?.status===413;
+      const timedOut=error instanceof DOMException&&error.name==="TimeoutError";
+      if((oversized||timedOut)&&pageSize>25){
+        const smaller=Math.max(25,Math.floor(pageSize/2));
+        await repository.transact(scope,current=>{
+          if((current.pull?.cursor||0)===pull.cursor)current.pull={...pull,pageSize:smaller};
+        });
+        queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
+        return;
+      }
+      throw error;
+    }
+    if(!value.success)throw new Error(String(value.message || "Google download rejected; local data retained."));
     // An old bridge without page support must be upgraded; never infer a complete snapshot.
     if(!Array.isArray(value.customers))throw new Error("Deploy the current client bridge to enable paged sync.");
     if(value.customers.some((customer:Customer)=>!customer.recordId))throw new Error("The Google bridge must return stable customer IDs before automatic download can continue.");
-    if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
+    if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
     // Page data and resume cursor must commit together across crash/restart.
     await cacheResponse(scope,value,pull);
     if(!value.hasNextPage)break;
@@ -310,7 +332,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   const downloaded=await repository.read(scope);
   if(downloaded.photoPresence)photoPresence.set(scope,{checkedAt:downloaded.photoPresence.checkedAt,ids:new Set(downloaded.photoPresence.customerIds)});
   if(!downloaded.pull?.cursor && downloaded.records.some(record=>blankPhotoMetadata(record.customer)) &&
-     (!downloaded.photoPresence||Date.now()-downloaded.photoPresence.checkedAt>5*60000) &&
+     (!downloaded.photoPresence||Date.now()-downloaded.photoPresence.checkedAt>IDLE_RECONCILE_MS) &&
      Date.now()-(photoInventoryRetry.get(scope)||0)>60000){
     photoInventoryRetry.set(scope,Date.now());
     try {
@@ -372,7 +394,7 @@ function confirmedNoPhoto(record:CachedRecord) {
   if(record.customer.photoAvailable===false)return true;
   const presence=photoPresence.get(record.scope);
   const id=String(record.customer.enrolId||"").trim().replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,100);
-  return !!presence&&Date.now()-presence.checkedAt<=5*60000&&!presence.ids.has(id);
+  return !!presence&&Date.now()-presence.checkedAt<=IDLE_RECONCILE_MS&&!presence.ids.has(id);
 }
 function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
 function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&!confirmedNoPhoto(record);}
@@ -480,18 +502,19 @@ export function startLocalSync() {
     let activeController:AbortController|undefined;
     const tick=async()=>{
       if(stopped||syncPaused)return;if(busy){wakePending=true;return;}
-      clearTimeout(timer);busy=true;let delay=60000,actionRequired=false;activeController=new AbortController();const signal=activeController.signal;
+      clearTimeout(timer);busy=true;let delay=IDLE_RECONCILE_MS,actionRequired=false;activeController=new AbortController();const signal=activeController.signal;
       try{
         if(navigator.onLine){
-          if(recoverWorkspace && (!lastBackendCheck||Date.now()-lastBackendCheck>=5*60000||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")){
+          if(recoverWorkspace && (!lastBackendCheck||Date.now()-lastBackendCheck>=IDLE_RECONCILE_MS||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")){
             await recoverWorkspace(signal);if(stopped||signal.aborted)return;lastBackendCheck=Date.now();
           }
           if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"){
             const scope=identity();const refresh=refreshRequested;refreshRequested=false;await syncNow(refresh,signal);if(stopped||signal.aborted)return;
             if(identity()===scope){const state=await repository.read(scope);if(state.pull?.cursor||state.operations.some(op=>op.state==="pending")||state.records.some(needsPhoto))delay=250;
-              else {const waiting=state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||((record.photoCheckedAt||0)+24*60*60*1000)))-Date.now()));}}
+              else {const waiting=state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||((record.photoCheckedAt||0)+24*60*60*1000)))-Date.now()));
+                if(state.pull?.lastCompletedAt)delay=Math.min(delay,Math.max(250,state.pull.lastCompletedAt+IDLE_RECONCILE_MS-Date.now()));}}
           }
-          if(!lastHostingCheck||Date.now()-lastHostingCheck>=15*60000){
+          if(!lastHostingCheck||Date.now()-lastHostingCheck>=IDLE_RECONCILE_MS){
             lastHostingCheck=Date.now();
             // Independent, low-frequency public version check; never blocks sync.
             void networkFetch("https://banksetu-app.web.app/version.json",{cache:"no-store",signal:AbortSignal.timeout(10000)}).catch(()=>undefined);
@@ -505,11 +528,12 @@ export function startLocalSync() {
     };
     const wake=(event?:Event)=>{if(syncPaused)return;if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};
     const pauseChanged=()=>{if(syncPaused){clearTimeout(timer);activeController?.abort(new DOMException("Background sync paused on this device.","AbortError"));nextRetryAt=0;announce();}else wake();};
-    const reconnect=()=>{lastBackendCheck=0;wake();};
-    const offline=()=>{clearTimeout(timer);activeController?.abort(new DOMException("Network connection lost.","AbortError"));healthError="Offline — local changes remain pending.";announce();};
-    const visibility=()=>{if(document.visibilityState==="visible"&&navigator.onLine)wake();};
-    const focus=()=>{if(navigator.onLine)wake();};
-    const workspace=()=>{if(!busy)wake();};
+    let wasOffline=!navigator.onLine;
+    const reconnect=()=>{if(wasOffline){lastBackendCheck=0;refreshRequested=true;wasOffline=false;wake();}else if(!failures||Date.now()>=nextRetryAt)wake();};
+    const offline=()=>{wasOffline=true;clearTimeout(timer);activeController?.abort(new DOMException("Network connection lost.","AbortError"));healthError="Offline — local changes remain pending.";announce();};
+    const visibility=()=>{if(!busy&&document.visibilityState==="visible"&&navigator.onLine&&(!failures||Date.now()>=nextRetryAt))wake();};
+    const focus=()=>{if(!busy&&navigator.onLine&&(!failures||Date.now()>=nextRetryAt))wake();};
+    const workspace=()=>{if(!busy){lastBackendCheck=0;wake();}};
     window.addEventListener("online",reconnect);window.addEventListener("offline",offline);window.addEventListener("focus",focus);window.addEventListener("banksetu-workspace-change",workspace);window.addEventListener("banksetu-sync-request",wake);window.addEventListener("banksetu-sync-pause-change",pauseChanged);
     document.addEventListener("visibilitychange",visibility);wake();
     stopScheduler=()=>{stopped=true;clearTimeout(timer);activeController?.abort(new DOMException("Sync engine stopped.","AbortError"));window.removeEventListener("online",reconnect);window.removeEventListener("offline",offline);window.removeEventListener("focus",focus);window.removeEventListener("banksetu-workspace-change",workspace);window.removeEventListener("banksetu-sync-request",wake);window.removeEventListener("banksetu-sync-pause-change",pauseChanged);document.removeEventListener("visibilitychange",visibility);};

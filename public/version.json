@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.56",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.56/BankSetu-Setup-1.0.56-x64.exe",
-  "notes": "Versioned readable Windows SQLite with verified legacy migration backup; atomic paged sync checkpoints, safe local edits and JSON backup/restore. Existing Sheet/Drive connection remains unchanged.",
-  "version": "1.0.56",
-  "releaseTag": "v1.0.56",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.56",
-  "windowsVersion": "1.0.56",
-  "androidBuild": 1000056,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.56/BankSetu-Setup-1.0.56-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.56/BankSetu-Android-1000056.apk"
+  "latestVersion": "1.0.57",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.57/BankSetu-Setup-1.0.57-x64.exe",
+  "notes": "Smart Sync: hourly idle reconciliation, immediate queued customer uploads, durable adaptive pages, bounded authentication recovery and low-usage photo inventory. JSON backup/restore and tenant protection remain intact.",
+  "version": "1.0.57",
+  "releaseTag": "v1.0.57",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.57",
+  "windowsVersion": "1.0.57",
+  "androidBuild": 1000057,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.57/BankSetu-Setup-1.0.57-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.57/BankSetu-Android-1000057.apk"
 }

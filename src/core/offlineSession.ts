@@ -24,6 +24,16 @@ export async function verifyOfflineSession(session: SignedSession, uid: string, 
 }
 export async function enrollOfflineSession(): Promise<void> {
   const uid=auth.currentUser?.uid;if(!uid)return;
+  const stored=await customerRepository.read(scope(uid));
+  if(stored.offlineSession){
+    try{
+      const claims=await verifyOfflineSession(stored.offlineSession,uid);
+      const currentTenant=sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true"?`master:${uid}`:sessionStorage.getItem("bankSetuTenantId");
+      if(claims.expiresAt-Date.now()>2*60*60*1000 && claims.connectionId===sessionStorage.getItem("bankSetuConnectionId") && claims.tenantId===currentTenant && claims.role===sessionStorage.getItem("bankSetuAccountRole")){
+        sessionStorage.setItem("bankSetuOfflineUntil",String(claims.expiresAt));return;
+      }
+    }catch{/* An expired or changed grant is renewed online. */}
+  }
   const session=await callBankSetuWorker<SignedSession>("/get-offline-session",{});
   const claims=await verifyOfflineSession(session,uid);
   if(auth.currentUser?.uid!==uid)return;
