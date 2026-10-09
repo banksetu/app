@@ -1,0 +1,18 @@
+{
+  "title": "Bank Setu",
+  "hero": "ग्राहक प्रबंधन, आपके काम की रफ्तार के साथ",
+  "description": "Bank Setu अधिकृत टीमों के लिए ग्राहक रिकॉर्ड, दस्तावेज़ और पासबुक कार्य को एक जगह व्यवस्थित करता है। Windows और Android ऐप में स्थानीय रिकॉर्ड तथा उपलब्ध कनेक्शन पर Google Sheets और Drive sync मिलता है।",
+  "banner": "Windows और Android के लिए उपलब्ध",
+  "theme": { "primary": "#1264e8", "deep": "#082b5d", "accent": "#12b9d4" },
+  "features": [
+    { "icon": "◎", "title": "ग्राहक प्रबंधन", "text": "ग्राहक जोड़ें, खोजें और स्थिति अपडेट करें।" },
+    { "icon": "↔", "title": "Local-first sync", "text": "डिवाइस पर रिकॉर्ड रखें; कनेक्शन मिलने पर Google Sheet से sync करें।" },
+    { "icon": "▣", "title": "दस्तावेज़ और PDF", "text": "Google Drive दस्तावेज़ तथा मौजूदा PDF workflow।" },
+    { "icon": "▤", "title": "पासबुक", "text": "पासबुक PDF और प्रिंटिंग सुविधाएँ।" },
+    { "icon": "◈", "title": "Backup और Restore", "text": "ऐप में स्थानीय backup file बनाकर आवश्यकता पर restore करें।" },
+    { "icon": "◇", "title": "भूमिका आधारित पहुँच", "text": "अधिकृत खातों के लिए अलग client workspace और permissions।" }
+  ],
+  "screenshots": [],
+  "downloadText": "अपने डिवाइस के लिए नवीनतम सत्यापित रिलीज़ डाउनलोड करें।",
+  "footer": "Bank Setu — ग्राहक कार्य के लिए सॉफ्टवेयर। किसी बैंक की आधिकारिक सेवा या समर्थन का दावा नहीं।"
+}

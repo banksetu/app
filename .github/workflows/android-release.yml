@@ -8,6 +8,9 @@ on:
       version_name:
         required: true
         type: string
+      release_ref:
+        required: false
+        type: string
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: true
@@ -38,6 +41,8 @@ jobs:
       ANDROID_VERSION_NAME: ${{ inputs.version_name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.release_ref || github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'

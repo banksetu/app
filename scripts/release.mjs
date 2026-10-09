@@ -27,8 +27,11 @@ if (
 // Increase patch version
 const [major, minor, patch] = parts;
 
-const newVersion =
-  `${major}.${minor}.${patch + 1}`;
+const newVersion = process.argv[2] || `${major}.${minor}.${patch + 1}`;
+if (!/^\d+\.\d+\.\d+$/.test(newVersion)) throw Error('Version must be x.y.z');
+const [nextMajor, nextMinor, nextPatch] = newVersion.split('.').map(Number);
+if (nextMinor > 999 || nextPatch > 999 || nextMajor * 1000000 + nextMinor * 1000 + nextPatch > 99999999 ||
+    nextMajor * 1000000 + nextMinor * 1000 + nextPatch <= major * 1000000 + minor * 1000 + patch) throw Error('Release version must increase');
 
 // Update package.json
 pkg.version = newVersion;
@@ -76,11 +79,12 @@ if (fs.existsSync(versionPath)) {
         fs.readFileSync(versionPath, "utf8")
       ),
       latestVersion: newVersion,
+      releaseDate: new Date().toISOString().slice(0, 10),
       version: newVersion,
       releaseTag: `v${newVersion}`,
       releaseUrl: `https://github.com/banksetu/app/releases/tag/v${newVersion}`,
-      androidBuild: major * 1000000 + minor * 1000 + patch + 1,
-      androidDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Android-${major * 1000000 + minor * 1000 + patch + 1}.apk`,
+      androidBuild: nextMajor * 1000000 + nextMinor * 1000 + nextPatch,
+      androidDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Android-${nextMajor * 1000000 + nextMinor * 1000 + nextPatch}.apk`,
       downloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Setup-${newVersion}-x64.exe`,
       windowsVersion: newVersion,
       windowsDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Setup-${newVersion}-x64.exe`

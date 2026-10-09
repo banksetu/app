@@ -1,16 +1,6 @@
-name: Publish Android and Windows release
+name: Bank Setu — One Click App Release
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/spark-client-workspace-20261001
-    paths:
-      - desktop/**
-      - package.json
-      - package-lock.json
-      - .github/workflows/publish-app-release.yml
-      - .github/workflows/android-release.yml
-      - .github/workflows/windows-signed-release.yml
 permissions:
   contents: read
 concurrency:
@@ -19,47 +9,69 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
-      name: ${{ steps.version.outputs.name }}
-      code: ${{ steps.version.outputs.code }}
+      name: ${{ steps.prepare.outputs.name }}
+      code: ${{ steps.prepare.outputs.code }}
+      sha: ${{ steps.prepare.outputs.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - id: version
-        name: Validate version
+        with:
+          ref: codex/spark-client-workspace-20261001
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Select unused version and commit consistent metadata
+        id: prepare
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node --input-type=module <<'NODE'
-          import {readFileSync, appendFileSync} from 'node:fs';
-          const v = JSON.parse(readFileSync('package.json')).version;
-          if (!/^\d+\.\d+\.\d+$/.test(v)) throw Error('Release version must be x.y.z.');
-          const [a,b,c] = v.split('.').map(Number);
-          const code = a*1000000+b*1000+c;
-          if (b>999 || c>999 || code<1 || code>99999999) throw Error('Unsupported version.');
-          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== `v${v}`) throw Error('Tag and package version differ.');
-          appendFileSync(process.env.GITHUB_OUTPUT, `name=${v}\ncode=${code}\n`);
+          set -euo pipefail
+          git fetch origin codex/spark-client-workspace-20261001
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/codex/spark-client-workspace-20261001)" || { echo 'Branch changed; rerun from latest branch.'; exit 1; }
+          NEXT=$(node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          const headers={Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json'};
+          const response=await fetch('https://api.github.com/repos/banksetu/app/releases?per_page=100',{headers,signal:AbortSignal.timeout(15000)});
+          if(!response.ok) throw Error('Cannot check GitHub releases');
+          const tags=await fetch('https://api.github.com/repos/banksetu/app/tags?per_page=100',{headers,signal:AbortSignal.timeout(15000)});
+          if(!tags.ok) throw Error('Cannot check GitHub tags');
+          const versions=[JSON.parse(readFileSync('package.json')).version,...(await response.json()).map(x=>x.tag_name.replace(/^v/,'')),...(await tags.json()).map(x=>x.name.replace(/^v/,''))].filter(x=>/^\d+\.\d+\.\d+$/.test(x));
+          const code=v=>v.split('.').reduce((n,x,i)=>n+Number(x)*[1000000,1000,1][i],0);
+          const [a,b,c]=versions.sort((x,y)=>code(y)-code(x))[0].split('.').map(Number);
+          if(b>999 || c>=999) throw Error('Manual minor version selection required');
+          console.log(`${a}.${b}.${c+1}`);
           NODE
-      - name: Check release destination
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.name }}
-        run: |
-          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release v$VERSION already exists; refusing to overwrite published installers."
-            exit 1
-          else
-            echo "Release v$VERSION will be created after both builds pass."
-          fi
+          )
+          if gh release view "v$NEXT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "v$NEXT" >/dev/null 2>&1; then echo 'Version already exists'; exit 1; fi
+          node scripts/release.mjs "$NEXT"
+          npm ci
+          npm run test:local && npm run test:bridge && npm run check:schema && npm run build
+          git config user.name 'banksetu-release-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json public/version.json
+          git commit -m "Release metadata v$NEXT"
+          git push origin HEAD:codex/spark-client-workspace-20261001
+          CODE=$(node -p "const [a,b,c]=require('./package.json').version.split('.').map(Number);a*1000000+b*1000+c")
+          echo "name=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
   android:
     needs: version
     uses: ./.github/workflows/android-release.yml
     with:
       version_code: ${{ needs.version.outputs.code }}
       version_name: ${{ needs.version.outputs.name }}
+      release_ref: ${{ needs.version.outputs.sha }}
     secrets: inherit
   windows:
     needs: version
     uses: ./.github/workflows/windows-signed-release.yml
+    with:
+      release_ref: ${{ needs.version.outputs.sha }}
     secrets: inherit
   publish:
     needs: [version, android, windows]
@@ -67,6 +79,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.version.outputs.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: BankSetu-Android-SIGNED
@@ -75,17 +90,50 @@ jobs:
         with:
           name: BankSetu-Windows-SIGNED
           path: release
-      - name: Publish both apps and update metadata together
+      - name: Publish complete release only
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.name }}
+          RELEASE_SHA: ${{ needs.version.outputs.sha }}
         run: |
           set -euo pipefail
-          test -f release/latest.yml
-          compgen -G 'release/*.apk' >/dev/null
-          compgen -G 'release/*.exe' >/dev/null
-          if ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Bank Setu $VERSION" --notes "Android APK and Windows installer with current production dashboard, local-first sync, printing, and update notices. Install over your existing release to retain local data. The Windows installer is not code-signed."
-          fi
-          gh release upload "v$VERSION" release/* --repo "$GITHUB_REPOSITORY" --clobber
+          test -s release/latest.yml
+          test -s "release/BankSetu-Setup-$VERSION-x64.exe"
+          test -s "release/BankSetu-Android-${{ needs.version.outputs.code }}.apk"
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo 'Release tag already exists; refusing overwrite.'; exit 1; fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --draft --title "Bank Setu $VERSION" --notes 'Windows installer (unsigned) and signed Android APK. Existing local data is retained by the installers.'
+          gh release upload "v$VERSION" release/* --repo "$GITHUB_REPOSITORY"
           gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          node scripts/verify-public-release.mjs public/version.json
+  hosting:
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    env:
+      PORTFOLIO_COMMIT: ${{ needs.version.outputs.sha }}
+    permissions:
+      contents: read
+    concurrency:
+      group: banksetu-firebase-hosting-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci && npm run build:portfolio && npm run test:portfolio
+      - name: Verify release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-public-release.mjs portfolio-dist/version.json
+      - name: Prepare Firebase credential
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: node scripts/firebase-credential.mjs
+      - run: node scripts/write-portfolio-deployment.mjs
+      - run: node scripts/record-previous-hosting.mjs
+      - name: Update portfolio release metadata
+        run: npx --yes firebase-tools@15.31.0 deploy --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive
+      - run: node scripts/verify-live-portfolio.mjs

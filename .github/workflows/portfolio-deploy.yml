@@ -1,0 +1,43 @@
+name: Bank Setu — Portfolio Deploy
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/spark-client-workspace-20261001]
+    paths:
+      - 'portfolio/**'
+      - 'firebase.portfolio.json'
+      - '.github/workflows/portfolio-deploy.yml'
+permissions:
+  contents: read
+concurrency:
+  group: banksetu-firebase-hosting-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:portfolio
+      - run: npm run test:portfolio
+      - name: Verify published assets before deploying
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-public-release.mjs portfolio-dist/version.json
+      - name: Prepare Firebase credential
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: node scripts/firebase-credential.mjs
+      - name: Identify deployment
+        run: node scripts/write-portfolio-deployment.mjs
+      - name: Record previous live deployment
+        run: node scripts/record-previous-hosting.mjs
+      - name: Deploy only Hosting
+        run: npx --yes firebase-tools@15.31.0 deploy --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive
+      - name: Verify live site and update manifest
+        run: node scripts/verify-live-portfolio.mjs

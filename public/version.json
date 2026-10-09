@@ -1,5 +1,6 @@
 {
   "latestVersion": "1.0.59",
+  "releaseDate": "2026-10-09",
   "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Setup-1.0.59-x64.exe",
   "notes": "Android Customer Search now uses the verified workspace bridge for local-first lookup and cloud fallback; stale cached URLs cannot receive customer requests.",
   "version": "1.0.59",

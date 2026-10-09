@@ -1,0 +1,18 @@
+{
+  "hosting": {
+    "target": "banksetu-app",
+    "public": "portfolio-dist",
+    "ignore": ["firebase.portfolio.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {"source": "/privacy-policy", "destination": "/privacy-policy/index.html"},
+      {"source": "/terms", "destination": "/terms/index.html"},
+      {"source": "**", "destination": "/index.html"}
+    ],
+    "headers": [
+      {"source": "/", "headers": [{"key":"Cache-Control","value":"no-store, max-age=0, must-revalidate"}]},
+      {"source": "/index.html", "headers": [{"key":"Cache-Control","value":"no-store, max-age=0, must-revalidate"}]},
+      {"source": "/version.json", "headers": [{"key":"Cache-Control","value":"no-store, max-age=0, must-revalidate"}]},
+      {"source": "/deployment.json", "headers": [{"key":"Cache-Control","value":"no-store, max-age=0, must-revalidate"}]}
+    ]
+  }
+}
