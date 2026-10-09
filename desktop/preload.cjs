@@ -20,5 +20,5 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
   },
 });
 contextBridge.exposeInMainWorld('bankSetuPrint', {
-  preview: html => ipcRenderer.invoke('print:preview', html)
+  preview: (html,options) => ipcRenderer.invoke('print:preview', html, options)
 });

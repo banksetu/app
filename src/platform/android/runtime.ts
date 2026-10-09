@@ -4,7 +4,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 export const isAndroid = () => Capacitor.getPlatform() === 'android';
-const NativePrint = registerPlugin<{ print(): Promise<void> }>('BankSetuPrint');
+const NativePrint = registerPlugin<{ print(options?: {duplex?: boolean}): Promise<void> }>('BankSetuPrint');
 const NativeUpdate = registerPlugin<{
   downloadAndInstall(options: { url: string }): Promise<void>;
   addListener(eventName: 'downloadProgress', listenerFunc: (event: { downloaded: number; total: number; percent: number }) => void): Promise<{ remove: () => Promise<void> }>;
@@ -15,6 +15,9 @@ export function startAndroidRuntime() {
   void App.addListener('appStateChange', ({ isActive }) => {
     if (isActive) window.dispatchEvent(new Event('online'));
   });
+}
+export async function printAndroidDocument(duplex: boolean) {
+  await NativePrint.print({duplex});
 }
 export async function shareAndroidBackup(text: string) {
   const path = `BankSetu-backup-${Date.now()}.json`;

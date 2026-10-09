@@ -52,6 +52,19 @@ test('offline save, search, retry, connection isolation and explicit conflict re
  await engine.resolveConflict(conflicts[0].operationId,'cloud');state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].customer.name,'Cloud edit');assert.equal(state.records[0].rowNumber,4);
 });
 
+test('session-only pause resumes manually and every local customer change auto-resumes without losing its queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('pause-device');navigator.onLine=false;
+ engine.pauseSync();assert.equal(engine.isSyncPaused(),true);assert.equal((await engine.getLocalStatus()).paused,true);
+ engine.resumeSync();assert.equal(engine.isSyncPaused(),false);
+ engine.pauseSync();const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'PAUSE-1',accountNo:'8101'}});
+ assert(saved.queued);assert.equal(engine.isSyncPaused(),false,'a local add automatically resumes sync');
+ let state=await repository.read('user-a:tenant-a:pause-device');assert.equal(state.operations.length,1);
+ await repository.transact('user-a:tenant-a:pause-device',current=>{current.operations=[];current.records[0].pending=false;current.records[0].revision='r1';current.records[0].customer.uidaiNo='';});
+ engine.pauseSync();const status=await request({action:'updateCustomer',rowNumber:saved.rowNumber,statusOnly:true,statusField:'status',statusValue:'Active',customer:{name:'must not overwrite'}});
+ assert(status.success&&status.queued);assert.equal(engine.isSyncPaused(),false,'a status change automatically resumes sync');
+ state=await repository.read('user-a:tenant-a:pause-device');assert.equal(state.records[0].customer.name,'Alice');assert.equal(state.records[0].customer.status,'Active');assert.deepEqual(state.operations[0].customer,{status:'Active'});
+});
+
 test('Master local-first save/search/sync stays outside client scope and retains original connection',async()=>{
  const clientBefore=await repository.read('user-a:tenant-a:connection-a');
  globalThis.__auth.currentUser={uid:'master-user',getIdToken:async()=> 'master-token'};

@@ -16,7 +16,8 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   const source=new FakeWindow({});bridge.attach(source);
   const event={sender:source.webContents,senderFrame:source.webContents.mainFrame};
   await assert.rejects(handlers.get('print:preview')({sender:{},senderFrame:{}},'<html/>'),/Untrusted/);
-  await handlers.get('print:preview')(event,'<html><body>Customer snapshot</body></html>');
+  const previewCompletion=handlers.get('print:preview')(event,'<html><body>Customer snapshot</body></html>');
+  await new Promise(resolve=>setImmediate(resolve));
   const snapshot=windows[1],preview=windows[2];
   assert.equal(snapshot.options.webPreferences.javascript,false);
   assert.equal(preview.options.webPreferences.nodeIntegration,false);
@@ -24,13 +25,14 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   assert(decodeURIComponent(snapshot.url).includes('Customer snapshot'));
   assert.equal(pdfOptions[0].preferCSSPageSize,true);
   const previewEvent={sender:preview.webContents,senderFrame:preview.webContents.mainFrame};
-  const settings={paper:'document',landscape:false,scale:100,copies:1,pageRanges:'1-2, 4',deviceName:'test-printer'};
+  const settings={paper:'document',landscape:false,duplex:true,scale:100,copies:1,pageRanges:'1-2, 4',deviceName:'test-printer'};
   await assert.rejects(handlers.get('print:action')(event,'print',settings),/Untrusted/);
   await assert.rejects(handlers.get('print:action')(previewEvent,'print',{...settings,deviceName:'other'}),/installed printer/);
   await assert.rejects(handlers.get('print:action')(previewEvent,'print',{...settings,pageRanges:'0-2'}),/page range/);
   await handlers.get('print:action')(previewEvent,'print',settings);
   assert.deepEqual(printOptions[0].pageRanges,[{from:0,to:1},{from:3,to:3}]);
   assert.equal(printOptions[0].silent,true);
+  assert.equal(printOptions[0].duplexMode,'longEdge');
   assert.deepEqual(printOptions[0].pageSize,{width:127000,height:177800});
   await handlers.get('print:action')(previewEvent,'preview',{...settings,paper:'A4',landscape:true});
   assert.equal(pdfOptions.at(-1).pageSize,'A4');
@@ -48,13 +50,15 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   source.close(); // document.write source windows may close before the preview.
   assert(!snapshot.isDestroyed());
   preview.close();assert(!snapshot.isDestroyed());
-  finishPrint(true);await pending;assert(snapshot.isDestroyed());
+  finishPrint(true);await pending;await previewCompletion;assert(snapshot.isDestroyed());
   const next=new FakeWindow({});bridge.attach(next);
   const nextEvent={sender:next.webContents,senderFrame:next.webContents.mainFrame};
   const count=windows.length;
-  await Promise.all([handlers.get('print:preview')(nextEvent,'<html/>'),handlers.get('print:preview')(nextEvent,'<html/>')]);
+  const first=handlers.get('print:preview')(nextEvent,'<html/>');
+  const second=handlers.get('print:preview')(nextEvent,'<html/>');
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(windows.length,count+2,'concurrent requests create one snapshot and preview');
-  windows.at(-1).close();
-  await handlers.get('print:preview')(nextEvent,'<html/>');
-  windows.at(-1).close();next.close();
+  windows.at(-1).close();await Promise.all([first,second]);
+  const third=handlers.get('print:preview')(nextEvent,'<html/>');await new Promise(resolve=>setImmediate(resolve));
+  windows.at(-1).close();await third;next.close();
 });

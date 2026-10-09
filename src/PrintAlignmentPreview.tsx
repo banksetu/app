@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { auth } from "./firebase";
+import type { PrintOutcome } from "./platform/print";
 
 export type PrintOffset = { x: number; y: number };
 const ZERO: PrintOffset = { x: 0, y: 0 };
@@ -49,7 +50,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
   bankName: string;
   sourceSelector: string;
   onClose: () => void;
-  onPrint: (offset: PrintOffset, test: boolean) => void | Promise<void>;
+  onPrint: (offset: PrintOffset, test: boolean, duplex: boolean) => void | PrintOutcome | Promise<void | PrintOutcome>;
 }) {
   const [offset, setOffset] = useState<PrintOffset>(() => savedOffset(bankName));
   const [saved, setSaved] = useState<PrintOffset>(() => savedOffset(bankName));
@@ -58,6 +59,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
   const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [duplex, setDuplex] = useState(false);
 
   useEffect(() => { setPreview(sourceDocument(sourceSelector)); }, [sourceSelector]);
   useEffect(() => { const previous=document.body.style.overflow; document.body.style.overflow="hidden"; return () => {document.body.style.overflow=previous;}; }, []);
@@ -65,7 +67,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
   const print = async (test: boolean) => {
     if (busy) return;
     setBusy(true); setError("");
-    try { await onPrint(offset, test); if (!test) onClose(); }
+    try { const result=await onPrint(offset, test, duplex); if (!test && result && result.accepted) onClose(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Print could not be started."); }
     finally { setBusy(false); }
   };
@@ -115,6 +117,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
             <div className="print-alignment-saved"><strong>Current Saved Setting ({bankName})</strong><div><span>Left / Right: &nbsp; <b>{mm(saved.x)}</b><br/>Up / Down: &nbsp; <b>{mm(saved.y)}</b></span><button type="button" onClick={() => setOffset(saved)}>Use Saved</button></div></div>
             <p className="print-alignment-tip">ⓘ &nbsp;This adjustment moves the entire passbook layout. It does not change text, mapping or data. It only shifts the print position.</p>
             {error && <p role="alert" className="print-alignment-error">{error}</p>}
+            <label className="print-alignment-duplex"><input type="checkbox" checked={duplex} onChange={event=>setDuplex(event.target.checked)} /> Duplex printing {duplex?"ON":"OFF"}<small>Unsupported printers use the system print-dialog setting.</small></label>
             <div className="print-alignment-final"><button type="button" disabled={busy} onClick={() => void print(true)}>🖨 &nbsp;Test Print<br/><small>(Optional)</small></button><button type="button" disabled={busy} onClick={() => void print(false)}>🖨 &nbsp;Final Print<br/><small>(Use this layout)</small></button></div>
           </div>
         </div>
@@ -155,6 +158,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
       .print-alignment-saved>div{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;color:#222}
       .print-alignment-saved button{background:#c3507c;border:0;border-radius:7px;color:white;padding:13px;cursor:pointer}
       .print-alignment-tip{background:#e0f1ff;border-radius:8px;padding:14px;line-height:1.4}
+      .print-alignment-duplex{display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px;background:#fff;border:1px solid #efdbe2;border-radius:8px;font-weight:800}.print-alignment-duplex input{width:20px;height:20px}.print-alignment-duplex small{margin-left:auto;font-weight:400;color:#59616b}
       .print-alignment-final button:first-child{background:#f6f6f6;border:1px solid #bbb;color:#2c3b42}
       .print-alignment-final button:last-child{background:#d71848}.print-alignment-error{color:#a50031}
       @media(max-width:1000px){.print-alignment-columns{grid-template-columns:1fr}.print-alignment-window{max-height:98vh}.print-alignment-measured{overflow:auto}.print-alignment-settings{width:100%;box-sizing:border-box}.print-alignment-paper{max-height:56dvh}}

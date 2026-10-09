@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import CustomerExcelExport from "./CustomerExcelExport";
 import "./LocalSyncStatus.css";
-import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, clearTemporaryLocalData, resetLocalDatabase, syncNow } from "./core/localData";
+import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, clearTemporaryLocalData, resetLocalDatabase, syncNow, pauseSync, resumeSync } from "./core/localData";
 import type { QueueOperation } from "./core/schema";
 import { callBankSetuWorker } from "./workerApi";
 
-type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean; syncing: boolean; lastCompletedAt: number; error: string; mediaPending: number };
-const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false, syncing:false,lastCompletedAt:0,error:"",mediaPending:0 };
+type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean; syncing: boolean; paused:boolean; lastCompletedAt: number; error: string; mediaPending: number };
+const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false, syncing:false,paused:false,lastCompletedAt:0,error:"",mediaPending:0 };
 
 export default function LocalSyncStatus({ visible = true }: { visible?: boolean }) {
   const [conflicts, setConflicts] = useState<QueueOperation[]>([]);
@@ -77,10 +77,10 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
   ];
   const viewerTitle = viewer === "local" ? "Local database records" : viewer === "pending" ? "Upload pending queue" : viewer === "storage" ? "Local storage status" : "Google Sheet data";
   const viewerItems = viewer === "local" ? snapshot.records : viewer === "pending" ? snapshot.operations : [];
-  const statusText=status.syncing||status.downloading?"Sync in progress":status.pending?`${status.pending} upload pending`:status.lastCompletedAt?"Last sync completed":"Waiting for first sync";
+  const statusText=status.paused?"Background sync paused on this device":status.syncing||status.downloading?"Sync in progress":status.pending?`${status.pending} upload pending`:status.lastCompletedAt?"Last sync completed":"Waiting for first sync";
   const cardIcons:Record<string,string>={local:"💻",pending:"☁️",sheet:"📊",storage:"💾"};
   return <aside aria-label="Local database sync" className="sync-center">
-    <header className="sync-header"><div className="sync-header-icon">☁️</div><div><p>DATA CONTROL CENTER</p><h2>Sync &amp; Backup</h2><span>Local-first storage · Google Sheet sync · backup and restore</span></div><div className="sync-header-actions"><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs">⬇ Download Code.gs</a><button disabled={busy} onClick={runSync}>{busy ? "Syncing…" : "↻ Sync Now"}</button></div></header>
+    <header className="sync-header"><div className="sync-header-icon">☁️</div><div><p>DATA CONTROL CENTER</p><h2>Sync &amp; Backup</h2><span>Local-first storage · Google Sheet sync · backup and restore</span></div><div className="sync-header-actions"><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs">⬇ Download Code.gs</a><button disabled={busy} onClick={runSync}>{busy ? "Syncing…" : "↻ Sync Now"}</button><button type="button" disabled={busy} onClick={()=>{if(status.paused)resumeSync();else pauseSync();refresh();}}>{status.paused?"▶ Resume Sync":"⏸ Pause Sync"}</button></div></header>
     <section className="sync-body"><div className="sync-summary"><div><b>✓</b><span><strong>Your data protection</strong><small>Local storage with verified Google Sheet sync and backup.</small></span></div><em className={error||status.error?"error":status.pending?"pending":""}>{statusText}</em></div>
     <div className="sync-card-grid">{cards.map(card => <article key={card.key} className={`sync-card sync-card-${card.key}`}><div className="sync-card-icon">{cardIcons[card.key]}</div><div className="sync-card-copy"><span>{card.label}</span><p>{card.hint}</p></div><strong>{card.value}</strong><button onClick={() => card.key === "sheet" && sheetUrl ? window.open(sheetUrl, "_blank", "noopener,noreferrer") : setViewer(card.key)}>{card.action} ›</button></article>)}</div>
     {(error || status.error || status.conflicts > 0) && <div style={styles.errorCard}><strong>Sync attention needed</strong><p>{error || status.error || `${status.conflicts} record(s) need review.`}</p></div>}

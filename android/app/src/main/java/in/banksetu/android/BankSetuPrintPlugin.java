@@ -16,7 +16,9 @@ public class BankSetuPrintPlugin extends Plugin {
             try {
                 PrintManager manager = (PrintManager) getActivity().getSystemService(Context.PRINT_SERVICE);
                 if (manager == null) { call.reject("Print service unavailable"); return; }
-                manager.print("Bank Setu", getBridge().getWebView().createPrintDocumentAdapter("Bank Setu"), new PrintAttributes.Builder().build());
+                PrintAttributes.Builder attributes = new PrintAttributes.Builder();
+                if (call.getBoolean("duplex", false)) attributes.setDuplexMode(PrintAttributes.DUPLEX_MODE_LONG_EDGE);
+                manager.print("Bank Setu", getBridge().getWebView().createPrintDocumentAdapter("Bank Setu"), attributes.build());
                 call.resolve();
             } catch (Exception error) { call.reject("Could not print", error); }
         });
