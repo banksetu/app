@@ -1,0 +1,41 @@
+name: Build Windows release
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs desktop/print-preview.test.cjs desktop/app-protocol.test.cjs
+      - run: npm run check:schema
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Test real Electron startup and preview cancellation
+        run: npx electron desktop/print-smoke.cjs
+      - name: Package Windows installer without code signing
+        run: npx electron-builder --win nsis --publish never --config.forceCodeSigning=false
+      - name: Verify installer and update metadata
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem desktop-release/*.exe)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one installer.' }
+          if (!(Test-Path desktop-release/latest.yml)) { throw 'Missing Windows update manifest.' }
+          if (!(Get-ChildItem desktop-release/*.blockmap)) { throw 'Missing Windows update blockmap.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Windows-SIGNED
+          path: |
+            desktop-release/*.exe
+            desktop-release/*.blockmap
+            desktop-release/latest.yml
+          if-no-files-found: error
