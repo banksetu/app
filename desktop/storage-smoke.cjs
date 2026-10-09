@@ -1,4 +1,4 @@
-// Real Windows safeStorage fixtures only; never opens production userData.
+// Isolated real Windows DPAPI migration fixture; never opens production userData.
 const {app,safeStorage}=require('electron');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawn}=require('node:child_process');
@@ -14,9 +14,14 @@ const timer=setTimeout(()=>app.exit(1),30000);
 app.whenReady().then(async()=>{
  if(process.argv[2]==='write'||process.argv[2]==='read'){
   assert(safeStorage.isEncryptionAvailable());
-  const store=createStore(process.argv[3],{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value),backup:target=>{if(process.argv[2]==='read')fs.copyFileSync(path.join(app.getPath('userData'),'Local State'),target+'.Local-State',fs.constants.COPYFILE_EXCL);}});
-  if(process.argv[2]==='write'){store.commit('fixture',{records:[],operations:[]},saved);store.backup();}
-  else {assert.deepEqual(store.read('fixture'),saved);store.backup();}
+  if(process.argv[2]==='write'){
+   const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync(path.join(process.argv[3],'customers.sqlite'));
+   db.exec('CREATE TABLE workspaces(scope TEXT PRIMARY KEY,payload BLOB NOT NULL); PRAGMA user_version=1');
+   db.prepare('INSERT INTO workspaces VALUES(?,?)').run('fixture',safeStorage.encryptString(JSON.stringify(saved)));db.close();
+   return;
+  }
+  const store=createStore(process.argv[3],{decrypt:value=>safeStorage.decryptString(value),profilePath:path.join(app.getPath('userData'),'Local State')});
+  assert.deepEqual(store.read('fixture'),saved);store.backup();
   store.close();return;
  }
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-dpapi-'));
@@ -25,6 +30,6 @@ app.whenReady().then(async()=>{
    const child=spawn(process.execPath,[__filename,mode,directory],{stdio:'inherit'});
    child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(Error('DPAPI fixture process failed: '+code)));
   });
-  console.log('Windows safeStorage encrypted fixture survives independent app restarts with pending deletion intact.');
+  console.log('Windows DPAPI fixture migrated with a verified backup; plaintext SQLite survives independent restarts with pending deletion intact.');
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 }).then(()=>{clearTimeout(timer);app.quit()}).catch(error=>{console.error(error);clearTimeout(timer);app.exit(1)});

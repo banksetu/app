@@ -93,13 +93,17 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     return resultResponse({success:false,message:"Resolve this customer's pending review before deleting. Local data was unchanged."});
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
-  const combined = statusOnly ? {...existing?.customer,[statusField]:statusValue} : {...existing?.customer, ...customer};
-  if(customer.photoDataUrl)combined.photoPreview=customer.photoDataUrl;
-  if (action === "markPassbookDelivered") combined.passbookStatus = "DELIVERED";
-  if (action === "markPassbookPrinted") combined.passbookStatus = "PRINTED";
   let localRow = existing?.rowNumber || 0;
   await repository.transact(scope, current => {
     const previous = current.records.find(record => record.recordId === recordId);
+    if(existing && (!previous || previous.deleted || previous.revision !== existing.revision || JSON.stringify(previous.customer)!==JSON.stringify(existing.customer)))
+      throw new Error("Customer changed during this save. Reload and retry; no fields were overwritten.");
+    if(action === "saveCustomer" && current.records.some(record=>!record.deleted && record.recordId!==recordId && ["accountNo","enrolId","uidaiNo"].some(key=>fold(customer[key])&&fold(customer[key])===fold(record.customer[key]))))
+      throw new Error("A matching customer is already saved on this device. Duplicate save was blocked.");
+    const combined = statusOnly ? {...previous?.customer,[statusField]:statusValue} : {...previous?.customer,...customer};
+    if(customer.photoDataUrl)combined.photoPreview=customer.photoDataUrl;
+    if(action === "markPassbookDelivered")combined.passbookStatus="DELIVERED";
+    if(action === "markPassbookPrinted")combined.passbookStatus="PRINTED";
     if (!localRow) localRow = Math.max(0,...current.records.map(record => record.rowNumber)) + 1000000000;
     const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:localRow,revision:previous?.revision || "",customer:combined,pending:true,deleted:action === "deleteCustomer"};
     current.records = current.records.filter(item => item.recordId !== recordId);current.records.push(record);
@@ -134,7 +138,7 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
   return resultResponse(masked);
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
-async function cacheResponse(scope: string, value: Record<string, unknown>) {
+async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {cursor:number;seen:string[];startedAt:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   await repository.transact(scope, state => {
     if (value.fullSnapshot === true) { const incoming = new Set(list.map(customer => String(customer.recordId))); state.records.forEach(record => { if (!record.pending && !incoming.has(record.recordId)) record.deleted = true; }); }
@@ -150,6 +154,13 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
     }
     const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
     state.records.forEach(record => { if (!record.pending && deleted.has(record.recordId)) record.deleted = true; });
+    if(checkpoint){
+      const seen=new Set([...checkpoint.seen,...list.map(customer=>String(customer.recordId))]);
+      if(value.hasNextPage){
+        if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
+        state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
+      }else state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited};
+    }
     trimCache(state);
   });
   announce();
@@ -231,7 +242,16 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     const perform=()=>networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:requestSignal});
     let response=await perform();
     if(response.status===401){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();}
-    if(!response.ok)throw new Error("Google sync is temporarily unavailable. Local data retained.");
+    if(!response.ok){
+      if(response.status===401||response.status===403){const error=new Error("Google access requires attention. Sign in or check this workspace's permissions; local changes remain pending.") as Error & {permanent:boolean};error.permanent=true;throw error;}
+      const retryAfter=response.headers.get("Retry-After");
+      const seconds=retryAfter?Number(retryAfter):NaN;
+      const date=retryAfter&&!Number.isFinite(seconds)?Date.parse(retryAfter):NaN;
+      const suggested=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?date-Date.now():0;
+      const error=new Error(`Google sync is temporarily unavailable (${response.status}). Local changes remain pending.`) as Error & {retryAfterMs?:number};
+      if([429,500,502,503,504].includes(response.status))error.retryAfterMs=Math.min(300000,Math.max(0,suggested));
+      throw error;
+    }
     let value=await response.json();
     if(!value.success&&value.code==="AUTH_REQUIRED"){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();value=await response.json();}
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
@@ -280,18 +300,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if(!Array.isArray(value.customers))throw new Error("Deploy the current client bridge to enable paged sync.");
     if(value.customers.some((customer:Customer)=>!customer.recordId))throw new Error("The Google bridge must return stable customer IDs before automatic download can continue.");
     if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
-    await cacheResponse(scope,value);
-    await repository.transact(scope,current=>{
-      const seen=new Set([...pull.seen,...value.customers.map((customer:Customer)=>String(customer.recordId))]);
-      if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||value.nextCursor<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
-      if(value.hasNextPage)current.pull={...pull,cursor:value.nextCursor,seen:[...seen]};
-      else {
-        // Only explicit server tombstones delete records: rows can move during pagination.
-        current.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:current.pull?.cacheLimited};
-        // Only explicit local Save operations enter the existing queue. An
-        // orphan cache row cannot become a new customer after a remote delete.
-      }
-    });
+    // Page data and resume cursor must commit together across crash/restart.
+    await cacheResponse(scope,value,pull);
     if(!value.hasNextPage)break;
   }
   const afterPull=await repository.read(scope);
@@ -470,7 +480,7 @@ export function startLocalSync() {
     let activeController:AbortController|undefined;
     const tick=async()=>{
       if(stopped||syncPaused)return;if(busy){wakePending=true;return;}
-      clearTimeout(timer);busy=true;let delay=60000;activeController=new AbortController();const signal=activeController.signal;
+      clearTimeout(timer);busy=true;let delay=60000,actionRequired=false;activeController=new AbortController();const signal=activeController.signal;
       try{
         if(navigator.onLine){
           if(recoverWorkspace && (!lastBackendCheck||Date.now()-lastBackendCheck>=5*60000||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")){
@@ -488,9 +498,9 @@ export function startLocalSync() {
           }
           failures=0;healthError="";
         }
-      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}}
+      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
       finally{
-        activeController=undefined;busy=false;if(!stopped){if(syncPaused){clearTimeout(timer);nextRetryAt=0;announce();return;}if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
+        activeController=undefined;busy=false;if(!stopped){if(syncPaused||actionRequired){clearTimeout(timer);nextRetryAt=0;announce();return;}if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
       }
     };
     const wake=(event?:Event)=>{if(syncPaused)return;if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};

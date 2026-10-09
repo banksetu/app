@@ -67,6 +67,23 @@ test('session-only pause resumes manually and every local customer change auto-r
  state=await repository.read('user-a:tenant-a:pause-device');assert.equal(state.records[0].customer.name,'Alice');assert.equal(state.records[0].customer.status,'Active');assert.deepEqual(state.operations[0].customer,{status:'Active'});
 });
 
+test('rapid duplicate saves and simultaneous status changes retain one identity and all fields',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('rapid-device');navigator.onLine=false;
+ const first={...customer,enrolId:'RAPID-1',accountNo:'9811001'};
+ const results=await Promise.allSettled(Array.from({length:5},()=>request({action:'saveCustomer',customer:first})));
+ assert.equal(results.filter(result=>result.status==='fulfilled'&&result.value.success).length,1);
+ const scope='user-a:tenant-a:rapid-device';let state=await repository.read(scope);
+ assert.equal(state.records.length,1);assert.equal(state.operations.length,1);
+ await repository.transact(scope,current=>{current.records[0].revision='cloud-v1';current.records[0].pending=false;current.operations=[];current.records[0].customer.uidaiNo='';});
+ const rowNumber=state.records[0].rowNumber;
+ const updates=await Promise.allSettled([
+   request({action:'updateCustomer',rowNumber,statusOnly:true,statusField:'status',statusValue:'Active'}),
+   request({action:'updateCustomer',rowNumber,statusOnly:true,statusField:'passbookStatus',statusValue:'Printed'})
+ ]);
+ assert.equal(updates.filter(result=>result.status==='fulfilled'&&result.value.success).length,1);
+ state=await repository.read(scope);assert.equal(state.records[0].customer.name,first.name);assert.equal(state.records[0].customer.uidaiNo,'');assert.equal(state.operations.length,1);
+});
+
 test('Master local-first save/search/sync stays outside client scope and retains original connection',async()=>{
  const clientBefore=await repository.read('user-a:tenant-a:connection-a');
  globalThis.__auth.currentUser={uid:'master-user',getIdToken:async()=> 'master-token'};
@@ -102,6 +119,25 @@ test('fresh installation downloads every page automatically, hydrates photos and
  }finally{stop();}
 });
 
+test('10,000 generated customers import through durable 250-row pages, including a 3,000-row restart checkpoint',async()=>{
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};storage.clear();connect('bulk-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:bulk-device';
+ const rows=Array.from({length:10000},(_,i)=>({recordId:`bulk-${i}`,rowNumber:i+2,revision:'v1',name:`Customer ${i}`,accountNo:`B${i}`,photoUrl:'',photoAvailable:false}));
+ let failed=false,pages=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerPage');assert.equal(body.pageSize,250);
+   if(body.cursor===3000&&!failed){failed=true;throw Error('Synthetic connection loss');}
+   pages++;const end=Math.min(body.cursor+250,rows.length);
+   return new Response(JSON.stringify({success:true,customers:rows.slice(body.cursor,end),nextCursor:end,hasNextPage:end<rows.length}));
+ };
+ for(let i=0;i<3;i++)await engine.syncNow(true);
+ let state=await repository.read(scope);assert.equal(state.records.length,3000);assert.equal(state.pull.cursor,3000);
+ await assert.rejects(engine.syncNow(true),/Synthetic connection loss/);
+ state=await repository.read(scope);assert.equal(state.records.length,3000);assert.equal(state.pull.cursor,3000);
+ for(let i=0;i<7;i++)await engine.syncNow(true);
+ state=await repository.read(scope);assert.equal(state.records.length,10000);assert.equal(new Set(state.records.map(record=>record.recordId)).size,10000);
+ assert.equal(state.pull.cursor,0);assert(state.pull.lastCompletedAt);assert.equal(state.operations.length,0);assert.equal(pages,40);
+});
+
 test('interrupted download resumes its cursor, exposes error and never overwrites a pending local edit',async()=>{
  connect('resume-device');navigator.onLine=true;const scope='user-a:tenant-a:resume-device';
  await repository.transact(scope,state=>state.records.push({key:'edit',recordId:'edit',scope,rowNumber:2,revision:'old',customer:{name:'Unsynced edit'},pending:true}));
@@ -123,8 +159,8 @@ test('shared recovery backs off, reconnects immediately, retains queued identity
  const settle=async()=>{for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));};
  navigator.onLine=true;const stop=engine.startLocalSync();
  try{
- await settle();assert.equal(attempts,1);assert([...timers.values()].some(t=>t.delay===5000));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await engine.getLocalStatus()).syncing,false);
- const retry=[...timers.values()].find(t=>t.delay===5000);retry.fn();await settle();assert.equal(attempts,2);assert([...timers.values()].some(t=>t.delay===10000));
+ await settle();assert.equal(attempts,1);assert([...timers.values()].some(t=>t.delay>=4000&&t.delay<=6000));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await engine.getLocalStatus()).syncing,false);
+ const retry=[...timers.values()].find(t=>t.delay>=4000&&t.delay<=6000);retry.fn();await settle();assert.equal(attempts,2);assert([...timers.values()].some(t=>t.delay>=8000&&t.delay<=12000));
  healthy=true;window.dispatchEvent(new Event('online'));await settle();assert.equal(attempts,3);assert.equal((await repository.read(scope)).operations.length,0);assert(activity.includes(true));assert.equal(activity.at(-1),false);assert(recoveries>=2);
  const before=attempts;document.visibilityState='visible';window.dispatchEvent(new Event('focus'));await settle();assert.equal(attempts,before,'focus does not poll an already healthy connection');
  }finally{stop();engine.configureConnectionRecovery(undefined);window.removeEventListener('banksetu-sync-change',changed);globalThis.setTimeout=nativeTimeout;globalThis.clearTimeout=nativeClear;}
