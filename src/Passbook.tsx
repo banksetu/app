@@ -15,6 +15,7 @@ import { getTenantApiUrl } from "./tenantApi";
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
+import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 
 
 
@@ -736,7 +737,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
 
-  const printPassbook = async (offset?: PrintOffset, test = false) => {
+  const printPassbook = async (offset?: PrintOffset, test = false, duplex = false): Promise<PrintOutcome | void> => {
 
     if (!previewCustomer) {
 
@@ -799,10 +800,10 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
         page.style.setProperty("--alignment-y", `${offset.y}mm`);
         page.classList.add("alignment-print-active");
       }
-      window.print();
+      const printOutcome=await printCurrentDocument(duplex);
       if (test) {
-        setMessage("Test print dialog opened.");
-        return;
+        setMessage(printOutcome.accepted?"Test print accepted by the printer.":"Test print dialog opened; confirm the result in the system dialog.");
+        return printOutcome;
       }
 
 
@@ -813,7 +814,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
       // already been shown and re-print remains available.
 
-      try {
+      if (printOutcome.accepted) try {
 
         await apiRequest({
 
@@ -861,7 +862,8 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
 
-      setMessage("Print dialog opened.");
+      setMessage(printOutcome.accepted?"Print job accepted by the printer.":printOutcome.cancelled?"Print cancelled. Preview remains available for retry.":"Print dialog opened. Bank Setu cannot verify completion on this platform.");
+      return printOutcome;
 
     } catch (err) {
 
@@ -3057,7 +3059,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
         bankName={alignmentBank}
         sourceSelector={isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
         onClose={() => setAlignmentOpen(false)}
-        onPrint={(offset, test) => printPassbook(offset, test)}
+        onPrint={(offset, test, duplex) => printPassbook(offset, test, duplex)}
       />}
     </div>
 

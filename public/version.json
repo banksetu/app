@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.51",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.46/BankSetu-Setup-1.0.46-x64.exe",
-  "notes": "Responsive Sync & Backup redesign plus secure Support chat, WhatsApp help and targeted announcements.",
-  "version": "1.0.51",
-  "releaseTag": "v1.0.51",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.51",
-  "windowsVersion": "1.0.51",
-  "androidBuild": 1000051,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.51/BankSetu-Setup-1.0.51-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.51/BankSetu-Android-1000051.apk"
+  "latestVersion": "1.0.52",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.52/BankSetu-Setup-1.0.52-x64.exe",
+  "notes": "Session-only sync pause/resume, safe duplex print preview and legacy-record dashboard status updates.",
+  "version": "1.0.52",
+  "releaseTag": "v1.0.52",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.52",
+  "windowsVersion": "1.0.52",
+  "androidBuild": 1000052,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.52/BankSetu-Setup-1.0.52-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.52/BankSetu-Android-1000052.apk"
 }

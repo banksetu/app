@@ -2953,7 +2953,7 @@ function DashboardStatusPanel({type, accountRole, onClose}: {type:StatusPanelTyp
     setBusy(id);setError("");setNotice("");
     try{
       const apiUrl=getTenantApiUrl();if(!apiUrl)throw new Error("Customer workspace is unavailable.");
-      const response=await localDataFetch(apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"updateCustomer",rowNumber:customer.rowNumber,customer:{...customer,[config.field]:next},idToken:await getDataIdToken()})});
+      const response=await localDataFetch(apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"updateCustomer",rowNumber:customer.rowNumber,statusOnly:true,statusField:config.field,statusValue:next,customer:{},idToken:await getDataIdToken()})});
       if(!response.ok)throw new Error("Customer status could not be saved.");
       const result=await response.json() as {success?:boolean;message?:string;queued?:boolean};
       if(!result.success)throw new Error(result.message||"Customer status could not be saved.");

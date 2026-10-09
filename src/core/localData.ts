@@ -82,13 +82,18 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   const customer = (payload.customer || {}) as Customer;
   const existing = state.records.find(record => record.rowNumber === Number(payload.rowNumber));
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
+  const statusOnly = action === "updateCustomer" && payload.statusOnly === true;
+  const statusField = String(payload.statusField || "");
+  const statusValue = String(payload.statusValue || "").trim();
+  if (statusOnly && (!existing?.recordId || !["status","passbookStatus"].includes(statusField) || !statusValue))
+    return resultResponse({success:false,message:"A valid customer identity and status selection are required."});
   if (action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) return resultResponse({success:false,message:"Administrator permission is required."});
   if (action === "saveCustomer" && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
   if (action === "deleteCustomer" && (existing?.deleted || state.operations.some(op => op.recordId === existing?.recordId && op.state !== "pending")))
     return resultResponse({success:false,message:"Resolve this customer's pending review before deleting. Local data was unchanged."});
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
-  const combined = {...existing?.customer, ...customer};
+  const combined = statusOnly ? {...existing?.customer,[statusField]:statusValue} : {...existing?.customer, ...customer};
   if(customer.photoDataUrl)combined.photoPreview=customer.photoDataUrl;
   if (action === "markPassbookDelivered") combined.passbookStatus = "DELIVERED";
   if (action === "markPassbookPrinted") combined.passbookStatus = "PRINTED";
@@ -98,13 +103,13 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if (!localRow) localRow = Math.max(0,...current.records.map(record => record.rowNumber)) + 1000000000;
     const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:localRow,revision:previous?.revision || "",customer:combined,pending:true,deleted:action === "deleteCustomer"};
     current.records = current.records.filter(item => item.recordId !== recordId);current.records.push(record);
-    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending"};
+    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : statusOnly ? {[statusField]:statusValue} : combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending"};
     current.operations.push(operation);
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
   announce();
   actionNotice("warning", action === "deleteCustomer" ? "Deleted locally" : "Saved locally", "Google Sheet and Drive sync pending.");
-  window.dispatchEvent(new Event("banksetu-sync-request"));
+  if (syncPaused) resumeSync(); else window.dispatchEvent(new Event("banksetu-sync-request"));
   if (action === "deleteCustomer") {
     return resultResponse({success:false,deleted:true,queued:true,rowNumber:localRow,recordId,message:"Deleted locally; Google Sheet and Drive deletion is pending sync."});
   }
@@ -152,6 +157,21 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
 const running = new Map<string, Promise<void>>();
 const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
+let syncPaused = false;
+export const isSyncPaused = () => syncPaused;
+export function pauseSync() {
+  if (syncPaused) return;
+  syncPaused = true;
+  window.dispatchEvent(new Event("banksetu-sync-pause-change"));
+  announce();
+}
+export function resumeSync() {
+  const changed = syncPaused;
+  syncPaused = false;
+  if (changed) window.dispatchEvent(new Event("banksetu-sync-pause-change"));
+  window.dispatchEvent(new Event("banksetu-sync-request"));
+  announce();
+}
 type SyncProtection = {success?:boolean;code?:string;message?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
 const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
@@ -183,12 +203,12 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
   announce();
 }
 export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
-  if (!navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
+  if (syncPaused || !navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
   let scope: string;
   try { scope=identity(); } catch(error) { return Promise.reject(error); }
   if(resetting.has(scope))return Promise.reject(new Error("Local reset is in progress. Retry sync when it completes."));
   const existing=running.get(scope);if(existing)return existing;
-  const task=runSync(refresh,signal).then(()=>{syncErrors.delete(scope);}).catch(error=>{syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
+  const task=runSync(refresh,signal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(syncPaused && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
   running.set(scope,task);announce();return task;
 }
 async function runSync(refresh: boolean, signal?:AbortSignal) {
@@ -392,7 +412,7 @@ export async function resetLocalDatabase() {
   if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
   return activeRecords(state.records,state.operations).length;
 }
-export async function getLocalStatus() { const state=await repository.read(identity());return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(photoCandidate).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const state=await repository.read(identity());return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(photoCandidate).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {
@@ -415,7 +435,7 @@ export function startLocalSync() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let activeController:AbortController|undefined;
     const tick=async()=>{
-      if(stopped)return;if(busy){wakePending=true;return;}
+      if(stopped||syncPaused)return;if(busy){wakePending=true;return;}
       clearTimeout(timer);busy=true;let delay=60000;activeController=new AbortController();const signal=activeController.signal;
       try{
         if(navigator.onLine){
@@ -439,15 +459,16 @@ export function startLocalSync() {
         activeController=undefined;busy=false;if(!stopped){if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
       }
     };
-    const wake=(event?:Event)=>{if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};
+    const wake=(event?:Event)=>{if(syncPaused)return;if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};
+    const pauseChanged=()=>{if(syncPaused){clearTimeout(timer);activeController?.abort(new DOMException("Background sync paused on this device.","AbortError"));nextRetryAt=0;announce();}else wake();};
     const reconnect=()=>{lastBackendCheck=0;wake();};
     const offline=()=>{clearTimeout(timer);activeController?.abort(new DOMException("Network connection lost.","AbortError"));healthError="Offline — local changes remain pending.";announce();};
     const visibility=()=>{if(document.visibilityState==="visible"&&navigator.onLine)wake();};
     const focus=()=>{if(navigator.onLine)wake();};
     const workspace=()=>{if(!busy)wake();};
-    window.addEventListener("online",reconnect);window.addEventListener("offline",offline);window.addEventListener("focus",focus);window.addEventListener("banksetu-workspace-change",workspace);window.addEventListener("banksetu-sync-request",wake);
+    window.addEventListener("online",reconnect);window.addEventListener("offline",offline);window.addEventListener("focus",focus);window.addEventListener("banksetu-workspace-change",workspace);window.addEventListener("banksetu-sync-request",wake);window.addEventListener("banksetu-sync-pause-change",pauseChanged);
     document.addEventListener("visibilitychange",visibility);wake();
-    stopScheduler=()=>{stopped=true;clearTimeout(timer);activeController?.abort(new DOMException("Sync engine stopped.","AbortError"));window.removeEventListener("online",reconnect);window.removeEventListener("offline",offline);window.removeEventListener("focus",focus);window.removeEventListener("banksetu-workspace-change",workspace);window.removeEventListener("banksetu-sync-request",wake);document.removeEventListener("visibilitychange",visibility);};
+    stopScheduler=()=>{stopped=true;clearTimeout(timer);activeController?.abort(new DOMException("Sync engine stopped.","AbortError"));window.removeEventListener("online",reconnect);window.removeEventListener("offline",offline);window.removeEventListener("focus",focus);window.removeEventListener("banksetu-workspace-change",workspace);window.removeEventListener("banksetu-sync-request",wake);window.removeEventListener("banksetu-sync-pause-change",pauseChanged);document.removeEventListener("visibilitychange",visibility);};
   }
   let released=false;
   return()=>{if(released)return;released=true;if(--syncUsers===0){stopScheduler?.();stopScheduler=undefined;healthError="";lastBackendCheck=0;}};
