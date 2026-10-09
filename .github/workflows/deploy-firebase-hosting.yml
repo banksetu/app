@@ -55,14 +55,30 @@ jobs:
           }, null, 2) + '\n');
           NODE
 
-      - name: Keep the last published release manifest until installers exist
+      - name: Wait for verified release assets before advertising the new update
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const manifest = JSON.parse(readFileSync('dist/version.json', 'utf8'));
-          if (!/^\d+\.\d+\.\d+$/.test(manifest.latestVersion) || !manifest.androidDownloadUrl || !manifest.windowsDownloadUrl) {
-            throw new Error('public/version.json must point to an existing published release.');
+          if (!/^\d+\.\d+\.\d+$/.test(manifest.latestVersion) || !manifest.androidDownloadUrl || !manifest.windowsDownloadUrl) throw new Error('Invalid release manifest.');
+          const required = [manifest.windowsDownloadUrl, manifest.androidDownloadUrl].map(url => new URL(url).pathname.split('/').pop()).concat('latest.yml');
+          const deadline = Date.now() + 25 * 60000;
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases/tags/v${manifest.latestVersion}`, {headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000)});
+              if (response.ok) {
+                const release = await response.json();
+                if (!release.draft && !release.prerelease && required.every(name => release.assets.some(asset => asset.name === name && asset.state === 'uploaded' && asset.size > 0))) {
+                  console.log(`Release v${manifest.latestVersion} installers and Windows feed are published.`);
+                  process.exit(0);
+                }
+              }
+            } catch { /* Preserve the current live website on transient API errors. */ }
+            await new Promise(resolve => setTimeout(resolve, 15000));
           }
+          throw new Error('Installers were not published; retaining the existing live website and update manifest.');
           NODE
 
       - name: Check Firebase deployment credential

@@ -13,7 +13,7 @@ function createStore(directory, cipher) {
       if (!state || !Array.isArray(state.records) || !Array.isArray(state.operations)) throw new Error('Invalid encrypted workspace.');
       return state;
     } catch (cause) {
-      const error = new Error('Local database is locked: encrypted data could not be read. The database and pending queue were retained at '+directory+'. Open Bank Setu with the original Windows account on the original computer (without switching user / Run as another user). If its Windows encryption keys are unavailable, this ciphertext cannot be recovered; use a verified backup. Do not delete or reset local storage.', {cause});
+      const error = new Error('Local database is locked: encrypted data could not be read. The database and pending queue were retained at '+directory+'. Open Bank Setu with the original Windows account on the original computer and its original app profile (Local State encryption keys), without switching user / Run as another user. If the original keys are unavailable, this ciphertext cannot be recovered; use a verified backup. Do not delete or reset local storage.', {cause});
       error.code = 'LOCAL_DECRYPTION_FAILED';
       throw error;
     }
@@ -32,6 +32,7 @@ function createStore(directory, cipher) {
     if(checkpoint.busy)throw new Error('Database backup is busy. Retry the update; local data was retained.');
     const target=path.join(directory,'customers-before-update-'+require('node:crypto').randomUUID()+'.sqlite');
     fs.copyFileSync(path.join(directory,'customers.sqlite'),target,fs.constants.COPYFILE_EXCL);
+    cipher.backup?.(target);
     const legacy=path.join(directory,'customers-before-update.sqlite');
     if(!fs.existsSync(legacy))fs.copyFileSync(target,legacy,fs.constants.COPYFILE_EXCL);
   },close(){db.close();}};

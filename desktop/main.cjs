@@ -61,7 +61,11 @@ const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{
 if(primaryInstance)app.whenReady().then(async()=>{
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows credential encryption is unavailable. Local database is locked.');
   const dataDirectory = resolveDataDirectory();
-  store=createStore(dataDirectory,{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value)});
+  store=createStore(dataDirectory,{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value),backup:target=>{
+    // Windows payloads also depend on Chromium's DPAPI-protected profile key.
+    // Retain that encrypted key context with each immutable update snapshot.
+    if(process.platform==='win32')fs.copyFileSync(path.join(app.getPath('userData'),'Local State'),target+'.Local-State',fs.constants.COPYFILE_EXCL);
+  }});
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});

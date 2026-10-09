@@ -33,3 +33,12 @@ test('Windows database selection stays pinned across reinstall on another drive 
  assert.equal(context.resolveDirectory(),'C:\\Bank Setu Data');
  fakeFs.mkdirSync=()=>{throw Error('Access denied')};assert.throws(()=>context.resolveDirectory(),/Access denied/);
 });
+
+test('update snapshot retains encrypted key context and a failed key backup prevents update completion',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-keybackup-'));
+ const cipher={encrypt:value=>Buffer.from(value),decrypt:value=>value.toString(),backup:target=>fs.writeFileSync(target+'.Local-State','DPAPI-protected-key',{flag:'wx'})};
+ let store=createStore(directory,cipher);store.backup();store.backup();store.close();
+ assert.equal(fs.readdirSync(directory).filter(name=>name.endsWith('.Local-State')).length,2);
+ store=createStore(directory,{...cipher,backup:()=>{throw Error('Key context unavailable')}});assert.throws(()=>store.backup(),/Key context unavailable/);store.close();
+ assert.equal(fs.readdirSync(directory).filter(name=>name.endsWith('.Local-State')).length,2);fs.rmSync(directory,{recursive:true,force:true});
+});

@@ -9,9 +9,9 @@ const timer=setTimeout(()=>app.exit(1),30000);
 app.whenReady().then(async()=>{
  if(process.argv[2]==='write'||process.argv[2]==='read'){
   assert(safeStorage.isEncryptionAvailable());
-  const store=createStore(process.argv[3],{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value)});
+  const store=createStore(process.argv[3],{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value),backup:target=>{if(process.argv[2]==='read')fs.copyFileSync(path.join(app.getPath('userData'),'Local State'),target+'.Local-State',fs.constants.COPYFILE_EXCL);}});
   if(process.argv[2]==='write'){store.commit('fixture',{records:[],operations:[]},saved);store.backup();}
-  else assert.deepEqual(store.read('fixture'),saved);
+  else {assert.deepEqual(store.read('fixture'),saved);store.backup();}
   store.close();return;
  }
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-dpapi-'));

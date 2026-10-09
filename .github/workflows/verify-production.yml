@@ -17,7 +17,7 @@ permissions:
 jobs:
   smoke-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 35
     steps:
       - name: Checkout source history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -43,15 +43,15 @@ jobs:
 
           let hosting;
           let hostingCommit = '';
-          for (let attempt = 1; attempt <= 5; attempt++) {
+          for (let attempt = 1; attempt <= 180; attempt++) {
             try {
               hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}&attempt=${attempt}`);
               hostingCommit = String(hosting.commit || '');
               if (hostingCommit === process.env.FRONTEND_COMMIT) break;
             } catch (error) {
-              if (attempt === 5) throw error;
+              if (attempt === 180) throw error;
             }
-            if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 5000));
+            if (attempt < 180) await new Promise(resolve => setTimeout(resolve, 10000));
           }
           assert.equal(hostingCommit, process.env.FRONTEND_COMMIT, `Live Hosting serves commit ${hostingCommit || 'unknown'}, expected ${process.env.FRONTEND_COMMIT}`);
 

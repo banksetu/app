@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.53",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.53/BankSetu-Setup-1.0.53-x64.exe",
+  "latestVersion": "1.0.54",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.54/BankSetu-Setup-1.0.54-x64.exe",
   "notes": "Safe encrypted storage recovery, faster photo-less migration sync, retryable lock contention, status PATCH validation and print duplicate protection.",
-  "version": "1.0.53",
-  "releaseTag": "v1.0.53",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.53",
-  "windowsVersion": "1.0.53",
-  "androidBuild": 1000053,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.53/BankSetu-Setup-1.0.53-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.53/BankSetu-Android-1000053.apk"
+  "version": "1.0.54",
+  "releaseTag": "v1.0.54",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.54",
+  "windowsVersion": "1.0.54",
+  "androidBuild": 1000054,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.54/BankSetu-Setup-1.0.54-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.54/BankSetu-Android-1000054.apk"
 }
