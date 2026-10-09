@@ -44,6 +44,8 @@ jobs:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
       - name: Windows Electron login smoke
         run: node scripts/ui-smoke.mjs --desktop
+      - name: Windows DPAPI migration and restart smoke
+        run: npx electron desktop/storage-smoke.cjs
       - name: Build Windows installer for client testing
         run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false
         env:
