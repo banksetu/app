@@ -19,6 +19,9 @@ test('manifest, legal pages, and tenant-free static content are packaged', () =>
   assert.deepEqual(deployed, source);
   for (const path of ['privacy-policy/index.html','terms/index.html','client-bridge/Code.gs']) assert.ok(read(`portfolio-dist/${path}`).length > 200);
   const json = read('portfolio/content/site.json');
+  const screenshots=JSON.parse(json).screenshots;
+  assert.equal(screenshots.length,3);
+  for(const item of screenshots) assert.ok(readFileSync(`portfolio-dist${item.src}`).length > 10000);
   assert.doesNotMatch(json, /@gmail\.com|\b\d{12}\b/);
   assert.match(read('firebase.portfolio.json'), /portfolio-dist/);
 });
