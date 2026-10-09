@@ -6,18 +6,28 @@ function createStore(directory, cipher) {
   const db = new DatabaseSync(path.join(directory,'customers.sqlite'));
   db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS workspaces (scope TEXT PRIMARY KEY, payload BLOB NOT NULL);');
   if(db.prepare('PRAGMA user_version').get().user_version===0)db.exec('PRAGMA user_version=1');
+  let recoveryPath;
   const decode = value => {
     if (value === undefined) return {records:[],operations:[]};
     try {
-      const state = JSON.parse(cipher.decrypt(Buffer.from(value)));
-      if (!state || !Array.isArray(state.records) || !Array.isArray(state.operations)) throw new Error('Invalid encrypted workspace.');
+      const state=JSON.parse(cipher.decrypt(Buffer.from(value)));
+      if (!Array.isArray(state.records)||!Array.isArray(state.operations)) throw Error('Invalid encrypted workspace.');
       return state;
     } catch (cause) {
-      const error = new Error('Local database is locked: encrypted data could not be read. The database and pending queue were retained at '+directory+'. Open Bank Setu with the original Windows account on the original computer and its original app profile (Local State encryption keys), without switching user / Run as another user. If the original keys are unavailable, this ciphertext cannot be recovered; use a verified backup. Do not delete or reset local storage.', {cause});
-      error.code = 'LOCAL_DECRYPTION_FAILED';
-      throw error;
+      // SQLite makes a consistent encrypted snapshot, including committed WAL
+      // pages. Never overwrite the original or the before-update backup.
+      if (!recoveryPath) {
+        const target=path.join(directory,`customers-locked-${require('node:crypto').randomUUID()}.sqlite`);
+        try {db.exec("VACUUM INTO '"+target.replace(/'/g,"''")+"'");recoveryPath=target;} catch {}
+      }
+      const error=new Error(`Encrypted local database is locked at ${path.join(directory,'customers.sqlite')}. No records or pending operations were reset. Open Bank Setu using the original Windows account, computer and Bank Setu encryption profile (Local State). Missing original profile keys or another Windows user/computer can make this ciphertext unrecoverable.${recoveryPath?' Encrypted recovery copy: '+recoveryPath: ' The original encrypted database is retained; recovery copy could not be created.'}`,{cause});
+      error.code='LOCAL_DECRYPTION_FAILED';error.recoveryPath=recoveryPath;throw error;
     }
   };
+  // Fail closed for the whole store: an unreadable old scope must never appear
+  // to be a fresh installation merely because another user has a new scope.
+  try {for(const row of db.prepare('SELECT payload FROM workspaces').all())decode(row.payload);}
+  catch(error){db.close();throw error;}
   const read = scope => decode(db.prepare('SELECT payload FROM workspaces WHERE scope=?').get(scope)?.payload);
   const commit = (scope,before,after) => {
     db.exec('BEGIN IMMEDIATE');
@@ -31,7 +41,9 @@ function createStore(directory, cipher) {
     const checkpoint=db.prepare('PRAGMA wal_checkpoint(FULL)').get();
     if(checkpoint.busy)throw new Error('Database backup is busy. Retry the update; local data was retained.');
     const target=path.join(directory,'customers-before-update-'+require('node:crypto').randomUUID()+'.sqlite');
+    if(cipher.profilePath&&!fs.existsSync(cipher.profilePath))throw Error('Windows encryption profile is unavailable for backup. Restart with the original Bank Setu profile before updating; local data is retained.');
     fs.copyFileSync(path.join(directory,'customers.sqlite'),target,fs.constants.COPYFILE_EXCL);
+    if(cipher.profilePath)fs.copyFileSync(cipher.profilePath,target+'.local-state',fs.constants.COPYFILE_EXCL);
     cipher.backup?.(target);
     const legacy=path.join(directory,'customers-before-update.sqlite');
     if(!fs.existsSync(legacy))fs.copyFileSync(target,legacy,fs.constants.COPYFILE_EXCL);

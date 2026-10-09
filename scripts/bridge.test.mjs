@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import fs from 'node:fs';import crypto from 'node:crypto';
 function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new Map();const book={getSheetByName:name=>tabs.get(name),insertSheet(name){const tab=makeSheet([[]]);tabs.set(name,tab);return tab;}};function makeSheet(data){return {getParent:()=>book,hideSheet(){},getMaxColumns:()=>27,getLastRow:()=>data.length,appendRow:row=>data.push(row),deleteRow:row=>data.splice(row-1,1),getRange(start,col,count,width){return {getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[start+i-1]?.[col+j-1]||'')),getDisplayValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>String(data[start+i-1]?.[col+j-1]||''))),setValues(values){values.forEach((row,i)=>{data[start+i-1] ||= [];row.forEach((cell,j)=>data[start+i-1][col+j-1]=cell);});}};}};}const sheet=makeSheet(rows);
- const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({tryLock(){return true},waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
+ const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
 test('bridge replays committed operations, uses UUID after row reorder and rejects concurrent edits',()=>{
@@ -38,7 +38,7 @@ test('Master and Client delete incomplete legacy rows by stable ID without custo
    assert(context.syncCustomerOperation({connectionId:role,operation:deletion},actor).replayed);
  }
 });
-test('legacy status-only patches preserve blank identity fields and full edits require validation',()=>{
+test('legacy incomplete customer allows status updates while full edits retain mandatory validation',()=>{
  for(const role of ['master_owner','client_admin']){
    const {context,rows}=bridge();const actor={...user,role,connectionId:role};
    const initial=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:role,operation:initial},actor).success);
@@ -104,22 +104,53 @@ test('photo lookup confirms absence only after a successful tenant-folder search
 test('tenant photo Drive read releases the Sheet lock before media access',()=>{
  const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
  rows[1][19]='https://drive.google.com/file/d/photo-id/view';let locked=false,reads=0;
- context.LockService={getScriptLock:()=>({tryLock(){assert(!locked);locked=true;return true;},releaseLock(){assert(locked);locked=false;}})};
+ context.LockService={getScriptLock:()=>({waitLock(){assert(!locked);locked=true;},releaseLock(){assert(locked);locked=false;}})};
  context.getPhotoPreviewDataUrl=(_url,_folder)=>{assert.equal(locked,false);reads++;return 'data:image/jpeg;base64,eA==';};
  const result=context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},{...user,photoFolderId:'bound-folder'});
  assert(result.success);assert.equal(reads,1);assert.equal(locked,false);
 });
-
-test('busy Sheet lock responds retryably without reads or mutation and status PATCH preserves blank legacy fields',()=>{
- const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
- rows[1][1]='';rows[1][12]='';rows[1][8]='  original address  ';const original=rows[1].slice();
- const revision=context.localFirstRead({action:'getCustomerPage',cursor:0},user).customers[0].revision;
- const status={...op,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,customer:{status:'Active'}};
- assert(context.syncCustomerOperation({connectionId:'bound',operation:status},user).success);
- original.forEach((value,i)=>{if(![4,25].includes(i))assert.equal(rows[1][i],value);});
- const before=JSON.stringify(rows);context.LockService={getScriptLock:()=>({tryLock:()=>false,releaseLock(){throw Error('unowned lock')}})};
- for(const action of ['getSyncProtection','getCustomerPage','syncCustomerOperation']){
-   const result=action==='getSyncProtection'?context.syncProtection({action,connectionId:'bound'},user):action==='getCustomerPage'?context.localFirstRead({action},user):context.syncCustomerOperation({connectionId:'bound',operation:status},user);
-   assert.equal(result.code,'SYNC_BUSY');assert.equal(JSON.stringify(rows),before);
+test('Drive uploads release the Sheet lock, then revalidate before committing; busy locks make no changes',()=>{
+ const {context,rows}=bridge();let locked=false,uploads=0;
+ context.LockService={getScriptLock:()=>({tryLock(){assert(!locked);locked=true;return true},releaseLock(){assert(locked);locked=false}})};
+ context.saveBoundDocument=()=>{assert.equal(locked,false);uploads++;return {driveUrl:'drive-photo'}};
+ const op=makeOp(crypto.randomUUID());op.customer.photoDataUrl='data:image/jpeg;base64,eA==';
+ const result=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
+ assert(result.success);assert.equal(uploads,1);assert.equal(rows[1][19],'drive-photo');assert.equal(locked,false);
+ const before=JSON.stringify(rows);
+ context.LockService={getScriptLock:()=>({tryLock:()=>false,releaseLock(){throw Error('not held')}})};
+ assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound'},user).code,'SYNC_BUSY');
+ assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:makeOp(crypto.randomUUID())},user).code,'SYNC_BUSY');
+ assert.equal(JSON.stringify(rows),before);
+});
+test('an edit or delete during an unlocked Drive upload cannot overwrite the newer Sheet row',()=>{
+ for(const deleted of [false,true]){
+  const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());const original=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
+  context.saveBoundDocument=()=>{if(deleted)rows.splice(1,1);else rows[1][2]='Newer cloud name';return {driveUrl:'staged-photo'}};
+  const edit={...op,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:original.revision,customer:{...op.customer,photoDataUrl:'data:image/jpeg;base64,eA=='}};
+  assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:edit},user).code,'CONFLICT');
+  assert.equal(rows.length,deleted?1:2);if(!deleted)assert.equal(rows[1][2],'Newer cloud name');
  }
+});
+test('status-only patches preserve incomplete legacy fields and reject invalid values; full saves still validate',()=>{
+ const {context,rows}=bridge();const initial=makeOp(crypto.randomUUID());context.syncCustomerOperation({connectionId:'bound',operation:initial},user);
+ rows[1][1]='';rows[1][12]='';rows[1][8]='  legacy address  ';
+ const before=rows[1].slice();const revision=context.localFirstRead({action:'getCustomerPage',cursor:0},user).customers[0].revision;
+ const op={...initial,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,statusOnly:true,customer:{status:'Active'}};
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
+ for(let i=0;i<27;i++)if(![4,25].includes(i))assert.equal(rows[1][i],before[i]);
+ assert.equal(rows[1][4],'Active');
+ const current=context.localFirstRead({action:'getCustomerPage',cursor:0},user).customers[0].revision;
+ for(const customer of [{status:'malicious'},{status:'Active',name:'overwritten'}])assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:{...op,operationId:crypto.randomUUID(),baseRevision:current,customer}},user),/status-only/);
+ assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:{...op,operationId:crypto.randomUUID(),baseRevision:current,statusOnly:false,validationMode:'full',customer:{name:'Edited'}}},user),/Valid name/);
+});
+
+test('photo presence inventories only file names once, outside locks, without downloading or changing customers',()=>{
+ const {context,rows}=bridge();let reads=0;
+ const names=['LEGACY.jpg','OTHER.PNG','00000000-0000-0000-0000-000000000000-UPDATED-photo','sample.pdf'];
+ context.DriveApp={getFolderById:id=>{assert.equal(id,'tenant-folder');let i=0;return {getFiles:()=>{reads++;return {hasNext:()=>i<names.length,next:()=>({getName:()=>names[i++]})}}}}};
+ context.LockService={getScriptLock:()=>{throw Error('No lock should be needed')}};
+ const before=JSON.stringify(rows);
+ const result=context.getPhotoPresence({connectionId:'bound'},{...user,photoFolderId:'tenant-folder'});
+ assert(result.success&&result.complete);assert.deepEqual(Array.from(result.customerIds),['LEGACY','OTHER','UPDATED']);assert.equal(reads,1);assert.equal(JSON.stringify(rows),before);
+ assert.equal(context.getPhotoPresence({connectionId:'foreign'},{...user,photoFolderId:'tenant-folder'}).code,'CONNECTION_CHANGED');assert.equal(reads,1);
 });

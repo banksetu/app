@@ -11,8 +11,10 @@ globalThis.window=new EventTarget();globalThis.__auth={currentUser:{uid:'user-a'
 Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
 let handler=async()=>{throw new Error('offline');};
 let protectionOverride;
+let inventoryOverride,inventoryCalls=0;
 globalThis.fetch=async(...args)=>{
  const body=args[1]?.body?JSON.parse(args[1].body):{};
+ if(body.action==='getPhotoPresence'){inventoryCalls++;return new Response(JSON.stringify({success:true,complete:true,connectionId:storage.get('bankSetuConnectionId'),customerIds:inventoryOverride||[]}));}
  if(body.action==='getSyncProtection'){
    const connectionId=storage.get('bankSetuConnectionId');
    const scope=`${globalThis.__auth.currentUser.uid}:${storage.get('bankSetuMasterLocalEnabled')==='true'?`master:${globalThis.__auth.currentUser.uid}`:storage.get('bankSetuTenantId')}:${connectionId}`;
@@ -448,32 +450,70 @@ test('photo failure retries later without blocking new photo upload; new save pr
  }finally{navigator.onLine=false;}
 });
 
-test('2734 migrated blank-photo records make no media requests or mass uploads; new cloud photo invalidates absence',async()=>{
- storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('migrated-no-photos');navigator.onLine=true;
- const scope='user-a:tenant-a:migrated-no-photos';
- const records=Array.from({length:2734},(_,i)=>({recordId:'migration-'+i,rowNumber:i+2,revision:'r1',name:'Migrated '+i,enrolId:'M-'+i,accountNo:'',uidaiNo:'',photoUrl:''}));
- let media=0,uploads=0;
+test('2,734 migrated rows with explicit empty photo metadata make zero photo requests or uploads; remote new photo invalidates absence',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('migrated-2734');navigator.onLine=true;
+ const scope='user-a:tenant-a:migrated-2734';
+ const records=Array.from({length:2734},(_,i)=>({recordId:`migrated-${i}`,revision:'r1',rowNumber:i+2,name:`Migrated ${i}`,enrolId:`M-${i}`,accountNo:'',uidaiNo:'',photoUrl:''}));
+ let photoRequests=0,uploads=0;
  handler=async(_url,init)=>{const body=JSON.parse(init.body);
-  if(body.action==='getCustomerPage'){const end=Math.min(body.cursor+250,records.length);return new Response(JSON.stringify({success:true,customers:records.slice(body.cursor,end),nextCursor:end,hasNextPage:end<records.length}));}
-  if(body.action==='getCustomerByRowNumber'){media++;return new Response(JSON.stringify({success:true,customer:{...records[0],photoPreview:'data:image/jpeg;base64,eA=='}}));}
-  uploads++;throw Error('Unexpected upload');
+  if(body.action==='syncCustomerOperation'){uploads++;throw Error('No imported row should upload');}
+  if(body.action==='getCustomerByRowNumber'){photoRequests++;assert.equal(body.recordId,'migrated-2');return new Response(JSON.stringify({success:true,customer:{...records[2],photoPreview:'data:image/jpeg;base64,eA=='},rowNumber:4}));}
+  assert.equal(body.action,'getCustomerPage');const end=Math.min(body.cursor+250,records.length);return new Response(JSON.stringify({success:true,customers:records.slice(body.cursor,end),nextCursor:end,hasNextPage:end<records.length}));
  };
- for(let i=0;i<3;i++)await engine.syncNow(false);
- let state=await repository.read(scope);assert.equal(state.records.length,2734);assert.equal(media,0);assert.equal(uploads,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);
- const before=JSON.stringify(state);await engine.syncNow(false);assert.equal(JSON.stringify(await repository.read(scope)),before,'no metadata-only rewrite of migrated records');
- records[0].photoUrl='new-drive-photo';records[0].revision='r2';await engine.syncNow(true);await engine.syncNow(false);await engine.syncNow(false);assert.equal(media,1);assert.match((await repository.read(scope)).records.find(r=>r.recordId==='migration-0').customer.photoPreview,/data:image/);
- navigator.onLine=false;
- const status=await request({action:'updateCustomer',rowNumber:3,statusOnly:true,statusField:'status',statusValue:'Active'});assert(status.queued);
- state=await repository.read(scope);assert.deepEqual(state.operations[0].customer,{status:'Active'});assert.equal(state.records.find(r=>r.recordId==='migration-1').customer.uidaiNo,'');
- assert.equal((await request({action:'updateCustomer',rowNumber:3,customer:{name:'Incomplete full edit'}})).success,false);
- assert.equal((await request({action:'updateCustomer',rowNumber:3,statusOnly:true,statusField:'status',statusValue:'invalid'})).success,false);
+ try{
+  for(let i=0;i<3;i++)await engine.syncNow(false);
+  assert.equal((await engine.getLocalStatus()).records,2734);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  await engine.syncNow(false);assert.equal(photoRequests,0);assert.equal(uploads,0);
+  const before=await repository.read(scope);assert.equal(before.operations.length,0);assert.deepEqual(before.photoPresence.customerIds,[]);
+  records[2]={...records[2],photoUrl:'new-drive-id',revision:'r2'};
+  for(let i=0;i<3;i++)await engine.syncNow(true);
+  assert.equal(photoRequests,1);assert.equal(uploads,0);assert.match((await repository.read(scope)).records.find(r=>r.recordId==='migrated-2').customer.photoPreview,/data:image/);
+ }finally{navigator.onLine=false;}
+});
+
+test('busy lock preserves the exact pending operation and retries safely on the next sync',async()=>{
+ storage.clear();connect('lock-retry');navigator.onLine=false;const saved=await request({action:'saveCustomer',customer});
+ const scope='user-a:tenant-a:lock-retry';const before=await repository.read(scope);navigator.onLine=true;let busy=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='syncCustomerOperation')return new Response(JSON.stringify(busy?{success:false,code:'SYNC_BUSY',message:'Another request is active'}:{success:true,revision:'r1',rowNumber:2,customer:{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1',photoUrl:''}}));
+  return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));
+ };
+ try{
+  await assert.rejects(engine.syncNow(false),/retry automatically/);
+  assert.deepEqual((await repository.read(scope)).operations,before.operations);
+  busy=false;await engine.syncNow(false);assert.equal((await repository.read(scope)).operations.length,0);
+ }finally{navigator.onLine=false;}
+});
+
+test('incomplete migrated row accepts only the allowed status patch and keeps full-form validation',async()=>{
+ storage.clear();connect('legacy-status');navigator.onLine=false;const scope='user-a:tenant-a:legacy-status';
+ await repository.transact(scope,state=>state.records.push({key:'legacy',scope,recordId:'legacy',rowNumber:2,revision:'r1',pending:false,customer:{name:'Legacy',accountNo:'',uidaiNo:'',enrolId:'L-1',photoUrl:'',address:'unchanged'}}));
+ const before=await repository.read(scope);
+ assert.equal((await request({action:'updateCustomer',recordId:'foreign',rowNumber:2,statusOnly:true,statusField:'status',statusValue:'Active'})).success,false);
+ assert.equal((await request({action:'updateCustomer',recordId:'legacy',rowNumber:2,statusOnly:true,statusField:'status',statusValue:'INVALID'})).success,false);
+ assert.equal((await request({action:'updateCustomer',rowNumber:2,customer:{name:'Edited',enrolId:'L-1',accountNo:'',uidaiNo:''}})).success,false);
+ assert.deepEqual(await repository.read(scope),before);
+ const patch=await request({action:'updateCustomer',recordId:'legacy',rowNumber:999,statusOnly:true,statusField:'status',statusValue:'Active',customer:{name:'must not overwrite'}});
+ assert(patch.queued);const after=await repository.read(scope);
+ assert.deepEqual(after.records[0].customer,{...before.records[0].customer,status:'Active'});
+ assert.deepEqual(after.operations[0].customer,{status:'Active'});assert.equal(after.operations[0].statusOnly,true);
+});
+
+test('blank URL does not hide an existing legacy customer-ID photo from the verified folder inventory',async()=>{
+ storage.clear();connect('legacy-folder-photo');navigator.onLine=true;inventoryOverride=['EXISTING'];
+ const scope='user-a:tenant-a:legacy-folder-photo';
+ await repository.transact(scope,state=>{state.records.push({key:'present',recordId:'present',scope,rowNumber:2,revision:'r1',customer:{name:'Legacy photo',enrolId:'EXISTING',photoUrl:''},pending:false});state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let reads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');reads++;return new Response(JSON.stringify({success:true,rowNumber:2,customer:{recordId:'present',rowNumber:2,revision:'r1',enrolId:'EXISTING',photoUrl:'legacy-drive',photoPreview:'data:image/jpeg;base64,eA=='}}));};
+ try{await engine.syncNow(false);assert.equal(reads,1);assert.match((await repository.read(scope)).records[0].customer.photoPreview,/data:image/);}
+ finally{inventoryOverride=undefined;navigator.onLine=false;}
 });
 
 test('lock contention leaves operations pending and concurrent sync requests share one job',async()=>{
  storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('lock-busy');navigator.onLine=false;
  await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:lock-busy';const before=await repository.read(scope);navigator.onLine=true;
  protectionOverride={success:false,code:'SYNC_BUSY',message:'Another device is committing a change.'};
- try{const first=engine.syncNow(false);assert.equal(engine.syncNow(false),first);await assert.rejects(first,/Automatic retry/);assert.deepEqual(await repository.read(scope),before);}finally{protectionOverride=undefined;navigator.onLine=false;}
+ try{const first=engine.syncNow(false);assert.equal(engine.syncNow(false),first);await assert.rejects(first,/retry automatically/);assert.deepEqual(await repository.read(scope),before);}finally{protectionOverride=undefined;navigator.onLine=false;}
 });
 
 test('pause aborts an already running manual sync without deleting its pending operation',async()=>{

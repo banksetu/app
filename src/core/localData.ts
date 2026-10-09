@@ -80,12 +80,12 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (!supportedWrites.has(action)) return cloudRead(input, init);
   if(resetting.has(scope))return resultResponse({success:false,message:"Local reset is in progress. Retry after the Google download completes."});
   const customer = (payload.customer || {}) as Customer;
-  const existing = state.records.find(record => record.rowNumber === Number(payload.rowNumber));
+  const existing = state.records.find(record => payload.recordId ? record.recordId === String(payload.recordId) : record.rowNumber === Number(payload.rowNumber));
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
   const statusOnly = action === "updateCustomer" && payload.statusOnly === true;
   const statusField = String(payload.statusField || "");
   const statusValue = String(payload.statusValue || "").trim();
-  if (statusOnly && (!existing?.recordId || !["client_admin","client_user","master_owner","admin","user"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") || !(statusField === "status" ? ["active","inactive","pending"] : statusField === "passbookStatus" ? ["pending","printed","delivered"] : []).includes(statusValue.toLowerCase())))
+  if (statusOnly && (!existing?.recordId || existing.deleted || !["status","passbookStatus"].includes(statusField) || !allowedStatus(statusField,statusValue) || !["client_admin","client_user","master_owner","admin","user"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")))
     return resultResponse({success:false,message:"A valid customer identity and status selection are required."});
   if (action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) return resultResponse({success:false,message:"Administrator permission is required."});
   if ((action === "saveCustomer" || (action === "updateCustomer" && !statusOnly)) && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
@@ -103,7 +103,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if (!localRow) localRow = Math.max(0,...current.records.map(record => record.rowNumber)) + 1000000000;
     const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:localRow,revision:previous?.revision || "",customer:combined,pending:true,deleted:action === "deleteCustomer"};
     current.records = current.records.filter(item => item.recordId !== recordId);current.records.push(record);
-    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : statusOnly ? {[statusField]:statusValue} : combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending"};
+    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : statusOnly ? {[statusField]:statusValue} : combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending",...(statusOnly?{statusOnly:true}:action==="updateCustomer"?{validationMode:"full" as const}:{})};
     current.operations.push(operation);
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
@@ -145,7 +145,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
       if (previous?.pending || previous?.deleted) continue;
       const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId;
       const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (samePhoto?previous?.customer.photoPreview:"") || ""},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,photoRetryAt:samePhoto?previous?.photoRetryAt:undefined,photoFailures:samePhoto?previous?.photoFailures:undefined,pending:false};
-      if(value.photoNotFound===true&&!record.customer.photoPreview){record.photoMissingRef=photoRef(record);record.photoRetryAt=undefined;record.photoFailures=undefined;}
+      if((value.photoNotFound===true||record.customer.photoAvailable===false)&&!record.customer.photoPreview){record.photoMissingRef=photoRef(record);record.photoRetryAt=undefined;record.photoFailures=undefined;}
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
     const deleted=Array.isArray(value.deletedIds)?new Set(value.deletedIds.map(String)):new Set<string>();
@@ -235,8 +235,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     let value=await response.json();
     if(!value.success&&value.code==="AUTH_REQUIRED"){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();value=await response.json();}
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
-    if(!value.success&&(value.code==="SYNC_BUSY"||/Lock timeout/i.test(String(value.message||""))))
-      throw new Error("Google sync is busy with another device. Automatic retry will keep all local changes pending.");
+    if(!value.success && (value.code==="SYNC_BUSY" || /Lock timeout|another process was holding the lock/i.test(String(value.message||""))))
+      throw new Error("Google sync is busy on another request. Pending changes are retained and will retry automatically.");
     return value;
   };
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
@@ -298,6 +298,21 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(afterPull.operations.some(op=>op.state==="pending" && !initial.operations.some(previous=>previous.operationId===op.operationId)))
     queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
   const downloaded=await repository.read(scope);
+  if(downloaded.photoPresence)photoPresence.set(scope,{checkedAt:downloaded.photoPresence.checkedAt,ids:new Set(downloaded.photoPresence.customerIds)});
+  if(!downloaded.pull?.cursor && downloaded.records.some(record=>blankPhotoMetadata(record.customer)) &&
+     (!downloaded.photoPresence||Date.now()-downloaded.photoPresence.checkedAt>5*60000) &&
+     Date.now()-(photoInventoryRetry.get(scope)||0)>60000){
+    photoInventoryRetry.set(scope,Date.now());
+    try {
+      const value=await send({action:"getPhotoPresence"});
+      if(value.success&&value.complete===true&&value.connectionId===connectionId&&Array.isArray(value.customerIds)&&value.customerIds.every((id:unknown)=>typeof id==="string")){
+        const presence={checkedAt:Date.now(),customerIds:value.customerIds as string[]};
+        await repository.transact(scope,state=>{state.photoPresence=presence;});
+        photoPresence.set(scope,{checkedAt:presence.checkedAt,ids:new Set(presence.customerIds)});
+      }
+    } catch { /* Optional photo inventory never prevents customer data sync. */ }
+  }
+
   // Existing pending uploads always finish first. Legacy photo hydration uses
   // three concurrent Drive reads; a new save interrupts it at the next wave.
   if(!downloaded.pull?.cursor){
@@ -336,14 +351,21 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   }
 
 }
-function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
-function photoCandidate(record: CachedRecord) {
-  // A present, blank Sheet Photo URL is the authoritative no-photo state for
-  // migrated rows. Derive it without rewriting records or uploading metadata.
-  // Older bridges that omit the field entirely still use legacy discovery.
-  const confirmedAbsent=Object.hasOwn(record.customer,"photoUrl")&&!fold(record.customer.photoUrl)&&!record.customer.photoDataUrl&&!record.customer.photoPreview;
-  return !confirmedAbsent&&!record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record);
+function allowedStatus(field:string,value:string){return (field==="status"?["pending","active","inactive"]:field==="passbookStatus"?["pending","printed","delivered"]:[]).includes(value.toLowerCase());}
+const photoPresence=new Map<string,{checkedAt:number;ids:Set<string>}>();
+const photoInventoryRetry=new Map<string,number>();
+function blankPhotoMetadata(customer:Customer) {
+  return Object.prototype.hasOwnProperty.call(customer,"photoUrl")&&!String(customer.photoUrl||"").trim()&&!customer.photoId&&!customer.photoFileId&&!customer.photoDataUrl&&!customer.photoPreview&&customer.photoAvailable!==true;
 }
+function confirmedNoPhoto(record:CachedRecord) {
+  if(!blankPhotoMetadata(record.customer))return false;
+  if(record.customer.photoAvailable===false)return true;
+  const presence=photoPresence.get(record.scope);
+  const id=String(record.customer.enrolId||"").trim().replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,100);
+  return !!presence&&Date.now()-presence.checkedAt<=5*60000&&!presence.ids.has(id);
+}
+function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
+function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&!confirmedNoPhoto(record);}
 function needsPhoto(record: CachedRecord) {return photoCandidate(record)&&(!record.photoRetryAt||Date.now()>=record.photoRetryAt)&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.
@@ -424,7 +446,7 @@ export async function resetLocalDatabase() {
   if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
   return activeRecords(state.records,state.operations).length;
 }
-export async function getLocalStatus() { const state=await repository.read(identity());return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(photoCandidate).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(photoCandidate).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {
@@ -466,9 +488,9 @@ export function startLocalSync() {
           }
           failures=0;healthError="";
         }
-      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}}
+      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}}
       finally{
-        activeController=undefined;busy=false;if(!stopped){if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
+        activeController=undefined;busy=false;if(!stopped){if(syncPaused){clearTimeout(timer);nextRetryAt=0;announce();return;}if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
       }
     };
     const wake=(event?:Event)=>{if(syncPaused)return;if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};

@@ -145,8 +145,9 @@ function doPost(e) {
       });
     }
 
-    if (["syncCustomerOperation", "getSyncProtection", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
+    if (["getPhotoPresence", "syncCustomerOperation", "getSyncProtection", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
       const authUser = requireAuthorizedUser(idToken, false);
+      if (action === "getPhotoPresence") return getPhotoPresence(request,authUser);
       if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
       if (action === "getSyncProtection" || action === "publishLocalReset") return syncProtection(request, authUser);
       if (action === "markPassbookPrinted") {
@@ -3049,13 +3050,34 @@ function syncResetSheet(sheet, create) {
     throw new Error("Reset ledger name is already in use. No local reset was published.");
   return ledger;
 }
+// One tenant-folder name inventory replaces thousands of missing-photo searches.
+// No Sheet lock, customer writes, blobs or photo downloads are needed.
+function getPhotoPresence(request,authUser) {
+  if(request.connectionId!==authUser.connectionId||!authUser.connectionId)return jsonResponse({success:false,code:"CONNECTION_CHANGED"});
+  if(!authUser.photoFolderId)throw new Error("A verified tenant Drive folder is required.");
+  const files=DriveApp.getFolderById(authUser.photoFolderId).getFiles();
+  const ids=new Set();let count=0;const started=Date.now();
+  while(files.hasNext()){
+    if(++count>10000||Date.now()-started>15000)return jsonResponse({success:false,code:"PHOTO_INVENTORY_INCOMPLETE"});
+    const file=files.next(),name=file.getName();
+    const legacy=/^(.+)\.(?:jpg|jpeg|png|webp)$/i.exec(name);
+    const uploaded=/^[a-f0-9-]{36}-(.+)-photo$/i.exec(name);
+    if(legacy)ids.add(legacy[1]);
+    else if(uploaded)ids.add(uploaded[1]);
+  }
+  return jsonResponse({success:true,connectionId:authUser.connectionId,complete:true,customerIds:[...ids]});
+}
+function acquireSyncLock(lock) {
+  if (typeof lock.tryLock === "function") return lock.tryLock(5000);
+  lock.waitLock(5000);return true;
+}
+function syncBusyResponse(){return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another sync request is active. Retry automatically; local changes remain pending."});}
 function syncProtection(request, authUser) {
   if (request.connectionId !== authUser.connectionId || !authUser.connectionId)
     return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed."});
   if (request.action === "publishLocalReset" && !["client_admin","master_owner","admin"].includes(authUser.role))
     throw new Error("Administrator permission is required.");
-  const lock=LockService.getScriptLock();
-  if(!lock.tryLock(1000))return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another device is committing a change. Retry shortly; local changes remain pending."});
+  const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))return syncBusyResponse();
   try {
     const sheet=getSheet(authUser);ensureSyncMetadata(sheet);
     let ledger=syncResetSheet(sheet,request.action === "publishLocalReset");
@@ -3081,7 +3103,7 @@ function ensureSyncMetadata(sheet) {
   if (sheet.getMaxColumns() < HEADERS.length + SYNC_HEADERS.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), HEADERS.length + SYNC_HEADERS.length - sheet.getMaxColumns());
   const actual = sheet.getRange(1, 25, 1, 3).getDisplayValues()[0];
   if (actual.some((cell, i) => cell && cell !== SYNC_HEADERS[i])) throw new Error("Columns Y:AA are already in use. Sync migration stopped without overwriting them.");
-  if(actual.some((cell,i)=>cell!==SYNC_HEADERS[i]))sheet.getRange(1, 25, 1, 3).setValues([SYNC_HEADERS]);
+  if (actual.some((cell,i)=>cell!==SYNC_HEADERS[i])) sheet.getRange(1, 25, 1, 3).setValues([SYNC_HEADERS]);
   const count = sheet.getLastRow() - 1;
   if (count > 0) {
     const meta = sheet.getRange(2, 25, count, 3).getValues();
@@ -3097,8 +3119,7 @@ function syncCustomerObject(row, rowNumber) {
   return Object.assign(rowToCustomer(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
 }
 function localFirstRead(request, authUser) {
-  const lock = LockService.getScriptLock();
-  if(!lock.tryLock(1000))return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another device is committing a change. Retry shortly; local changes remain pending."});
+  const lock = LockService.getScriptLock(); if(!acquireSyncLock(lock))return syncBusyResponse();
   let detail;
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
@@ -3170,14 +3191,14 @@ function deleteSyncedCustomerDriveFiles(row, authUser) {
   return true;
 }
 
-function syncCustomerOperation(request, authUser) {
+function syncCustomerOperation(request, authUser, preparedMedia) {
   const op = request.operation || {};
   if (request.connectionId !== authUser.connectionId || !authUser.connectionId) return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed. Old queue remains on its original connection."});
   if (!/^[a-f0-9-]{36}$/i.test(op.recordId || "") || !/^[a-f0-9-]{36}$/i.test(op.operationId || "")) throw new Error("Invalid sync identity.");
   if (!["saveCustomer","updateCustomer","markPassbookPrinted","markPassbookDelivered","deleteCustomer"].includes(op.action)) throw new Error("Unsupported queued operation.");
   if (op.action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(authUser.role)) throw new Error("Administrator permission is required.");
-  const lock = LockService.getScriptLock();
-  if(!lock.tryLock(1000))return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another device is committing a change. Retry shortly; local changes remain pending."});
+  const lock = LockService.getScriptLock(); if(!acquireSyncLock(lock))return syncBusyResponse();
+  let held=true;
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
     const resetLedger=syncResetSheet(sheet,false);
@@ -3213,12 +3234,16 @@ function syncCustomerOperation(request, authUser) {
       try { recordActivity(authUser,"DELETE",rowToCustomer(existing),"Customer deleted from Google Sheet and Drive."); } catch (error) { console.error(error); }
       return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
-    const passbookAction = op.action === "markPassbookPrinted" || op.action === "markPassbookDelivered";
     const patchKeys=Object.keys(op.customer||{});
-    // Accept older queued status patches as well as current dashboard patches.
-    const statusOnly=op.action==="updateCustomer"&&patchKeys.length>0&&patchKeys.every(key=>["status","passbookStatus"].includes(key));
-    if(statusOnly && (!existing || patchKeys.some(key=>!(key==="status"?["active","inactive","pending"]:["pending","printed","delivered"]).includes(cleanValue(op.customer[key]).toLowerCase()))))
-      throw new Error("Invalid customer status change.");
+    const statusOnly=op.action==="updateCustomer"&&op.validationMode!=="full"&&patchKeys.length>0&&patchKeys.every(key=>["status","passbookStatus"].includes(key));
+    if(op.statusOnly===true || statusOnly) {
+      const keys=Object.keys(op.customer||{});
+      if(op.action!=="updateCustomer"||!existing||!keys.length||keys.some(field=>{
+        const allowed=field==="status"?["pending","active","inactive"]:field==="passbookStatus"?["pending","printed","delivered"]:[];
+        return !allowed.includes(cleanValue(op.customer[field]).toLowerCase());
+      }))throw new Error("Invalid status-only change.");
+    }
+    const passbookAction = op.action === "markPassbookPrinted" || op.action === "markPassbookDelivered";
     const customer = Object.assign(existing ? rowToCustomer(existing) : {}, passbookAction ? {} : op.customer || {});
     if (op.action === "markPassbookPrinted") customer.passbookStatus = "PRINTED";
     if (op.action === "markPassbookDelivered") customer.passbookStatus = "DELIVERED";
@@ -3227,40 +3252,38 @@ function syncCustomerOperation(request, authUser) {
       const identityValid = valid(customer.name) && valid(customer.accountNo) && valid(customer.enrolId) && normalizeDigits(customer.uidaiNo).length === 12;
       if (!identityValid) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
     }
-    if (!statusOnly&&!passbookAction) {
+    if (op.action !== "deleteCustomer" && !statusOnly && !passbookAction) {
       const duplicate = duplicateErrorResponse(findDuplicates(customer, existing ? index+2 : null, authUser));
       if (duplicate) return duplicate;
     }
-    if (customer.photoDataUrl && op.action !== "deleteCustomer") {
-      const photo = saveBoundDocument(customer.photoDataUrl, customer.enrolId + "-photo", authUser.photoFolderId, op.operationId);
-      customer.photoUrl = photo.driveUrl;
+    if ((customer.photoDataUrl || customer.pdfDataUrl) && !preparedMedia) {
+      // Slow Drive writes must not hold the Sheet lock. Re-enter the operation
+      // with the same UUID and re-check reset, tombstones, revision and duplicates
+      // under a fresh lock before committing. Retry uses idempotent file names.
+      lock.releaseLock();held=false;
+      const media={};
+      if(customer.photoDataUrl)media.photo=saveBoundDocument(customer.photoDataUrl,customer.enrolId+"-photo",authUser.photoFolderId,op.operationId);
+      if(customer.pdfDataUrl)media.pdf=saveBoundDocument(customer.pdfDataUrl,customer.pdfFileName||customer.enrolId+".pdf",authUser.photoFolderId,op.operationId);
+      return syncCustomerOperation(request,authUser,media);
     }
-    if (customer.pdfDataUrl && op.action !== "deleteCustomer") {
-      const document = saveBoundDocument(customer.pdfDataUrl, customer.pdfFileName || customer.enrolId + ".pdf", authUser.photoFolderId, op.operationId);
-      customer.pdfUrl = document.driveUrl;
-    }
+    if(preparedMedia?.photo)customer.photoUrl=preparedMedia.photo.driveUrl;
+    if(preparedMedia?.pdf)customer.pdfUrl=preparedMedia.pdf.driveUrl;
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
     if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");
-    let row = customerToRow(customer, existing ? existing[21] : new Date(), new Date()).concat([op.recordId,JSON.stringify(operations),""]);
-    if(statusOnly){
-      const range=sheet.getRange(index+2,1,1,27);
-      row=range.getValues()[0];
-      // Preserve native values and formulas in every untouched legacy field.
-      const formulas=range.getFormulas?range.getFormulas()[0]:[];
-      formulas.forEach((formula,i)=>{if(formula)row[i]=formula;});
-      patchKeys.forEach(key=>{row[key==="status"?4:11]=customer[key];});
-      row[25]=JSON.stringify(operations);
-    }
+    const row = customerToRow(customer, existing ? existing[21] : new Date(), new Date()).concat([op.recordId,JSON.stringify(operations),op.action === "deleteCustomer" ? "true" : ""]);
     const rowNumber = existing ? index+2 : sheet.getLastRow()+1;
-    if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
+    if (statusOnly || passbookAction) {
+      for(const field of passbookAction?["passbookStatus"]:patchKeys)sheet.getRange(rowNumber,field==="status"?5:12,1,1).setValues([[customer[field]]]);
+      sheet.getRange(rowNumber,26,1,1).setValues([[JSON.stringify(operations)]]);
+    } else if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
     SpreadsheetApp.flush();
     const saved = sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0];
     const action = op.action === "markPassbookPrinted" ? "PASSBOOK_PRINTED" : op.action === "markPassbookDelivered" ? "PASSBOOK_DELIVERED" : existing ? "UPDATE" : "CREATE";
     const details = action === "UPDATE" ? activityChanges(rowToCustomer(existing),customer) : action === "PASSBOOK_PRINTED" ? "Passbook print was requested." : action === "PASSBOOK_DELIVERED" ? "Passbook marked delivered." : "Customer record created.";
     try { recordActivity(authUser,action,customer,details); } catch (error) { console.error(error); }
     return jsonResponse({success:true,rowNumber,revision:syncRevision(saved),deleted:op.action === "deleteCustomer",driveDeleted:op.action === "deleteCustomer",customer:syncCustomerObject(saved,rowNumber)});
-  } finally { lock.releaseLock(); }
+  } finally { if(held)lock.releaseLock(); }
 }
 function initializeClientWorkspace() {
   const spreadsheetId = getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID");

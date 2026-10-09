@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{
   const deadline=Date.now()+15000;
   while(Date.now()<deadline){
     preview=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Bank Setu · Print');
-    if(preview)break;
+    if(preview&&await preview.webContents.executeJavaScript('!!document.querySelector("#cancel")').catch(()=>false))break;
     await new Promise(resolve=>setTimeout(resolve,50));
   }
   assert(preview,'preview loaded');

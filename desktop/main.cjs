@@ -9,50 +9,9 @@ protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:tr
 const primaryInstance=app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
 let window,store,downloaded=false;
-const copyMissingFiles = (source, target) => {
-  if (!fs.existsSync(source)) return;
-  fs.mkdirSync(target, { recursive: true });
-  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
-    const from = path.join(source, entry.name), to = path.join(target, entry.name);
-    if (entry.isDirectory()) copyMissingFiles(from, to);
-    else if (!fs.existsSync(to)) fs.copyFileSync(from, to);
-  }
-};
-const resolveDataDirectory = () => {
-  if (process.platform !== 'win32') return path.join(app.getPath('userData'), 'database');
-  const legacy = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Bank Setu', 'Data');
-  const selectedDrive = path.parse(process.execPath).root || 'C:\\';
-  // Installation/update location must not select a different (empty) DB.
-  const locationFile=path.join(app.getPath('userData'),'banksetu-database-location.json');
-  const pinned=fs.existsSync(locationFile)?JSON.parse(fs.readFileSync(locationFile,'utf8')).directory:null;
-  if(pinned && (typeof pinned!=='string'||!path.isAbsolute(pinned)))throw new Error('Invalid saved database location. Local storage was not reset.');
-  let preferred = pinned || process.env.BANKSETU_DATA_DIR || path.join(selectedDrive, 'Bank Setu Data');
-  if(!pinned&&!process.env.BANKSETU_DATA_DIR&&!fs.existsSync(path.join(preferred,'customers.sqlite'))){
-    const known=[legacy,path.join('C:\\','Bank Setu Data'),path.join(app.getPath('userData'),'database')];
-    const existing=[...new Set(known)].filter(directory=>fs.existsSync(path.join(directory,'customers.sqlite')));
-    if(existing.length>1)throw new Error('Multiple existing databases found. Set BANKSETU_DATA_DIR to the original database folder; none was overwritten.');
-    if(existing.length===1)preferred=existing[0];
-  }
-  const remember=directory=>{fs.mkdirSync(app.getPath('userData'),{recursive:true});if(!fs.existsSync(locationFile))fs.writeFileSync(locationFile,JSON.stringify({directory}),{flag:'wx'});return directory;};
-  try {
-    fs.mkdirSync(preferred, { recursive: true });
-    // Keep the legacy folder intact; copy only missing files so migration is recoverable.
-    if (path.resolve(preferred).toLowerCase() !== path.resolve(legacy).toLowerCase()
-      && fs.existsSync(path.join(legacy, 'customers.sqlite'))
-      && !fs.existsSync(path.join(preferred, 'customers.sqlite'))) {
-      copyMissingFiles(legacy, preferred);
-      fs.writeFileSync(path.join(preferred, 'data-location.json'), JSON.stringify({
-        migratedFrom: legacy, selectedDrive, version: 1
-      }, null, 2));
-    }
-    return remember(preferred);
-  } catch(error) {
-    // Never hide existing encrypted storage behind a fresh fallback database.
-    if(pinned || fs.existsSync(path.join(preferred,'customers.sqlite')))throw error;
-    try { fs.mkdirSync(legacy, { recursive: true }); return remember(legacy); }
-    catch(legacyError) {if(fs.existsSync(path.join(legacy,'customers.sqlite')))throw legacyError;return remember(path.join(app.getPath('userData'), 'database'));}
-  }
-};
+const resolveDataDirectory = () => require('./data-directory.cjs').resolveDataDirectory({
+  userData:app.getPath('userData'),platform:process.platform,executable:process.execPath,env:process.env
+});
 const trusted = event => {
   if(!window||window.isDestroyed())throw new Error("Application window is closed.");
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(ORIGIN+'/')) throw new Error('Untrusted application frame.');
@@ -61,11 +20,7 @@ const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{
 if(primaryInstance)app.whenReady().then(async()=>{
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows credential encryption is unavailable. Local database is locked.');
   const dataDirectory = resolveDataDirectory();
-  store=createStore(dataDirectory,{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value),backup:target=>{
-    // Windows payloads also depend on Chromium's DPAPI-protected profile key.
-    // Retain that encrypted key context with each immutable update snapshot.
-    if(process.platform==='win32')fs.copyFileSync(path.join(app.getPath('userData'),'Local State'),target+'.Local-State',fs.constants.COPYFILE_EXCL);
-  }});
+  store=createStore(dataDirectory,{encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});

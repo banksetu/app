@@ -5,6 +5,11 @@ const {spawn}=require('node:child_process');
 const assert=require('node:assert/strict');
 const {createStore}=require('./store.cjs');
 const saved={records:[{recordId:'fixture',customer:{name:'DPAPI fixture'},deleted:true}],operations:[{operationId:'fixture-delete',state:'pending'}]};
+// Child fixtures get a dedicated Chromium key profile. A running parent must
+// never race them to persist a different OSCrypt key in the same Local State.
+if(process.argv[2]==='write'||process.argv[2]==='read'){
+ const profile=path.join(process.argv[3],'profile');fs.mkdirSync(profile,{recursive:true});app.setPath('userData',profile);
+}
 const timer=setTimeout(()=>app.exit(1),30000);
 app.whenReady().then(async()=>{
  if(process.argv[2]==='write'||process.argv[2]==='read'){

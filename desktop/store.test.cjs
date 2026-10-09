@@ -5,33 +5,54 @@ test('SQLite transactions survive restart, reject stale commits, isolate scopes 
  let store=createStore(directory,cipher);const empty={records:[],operations:[]};const saved={records:[{name:'private-customer'}],operations:[{id:'pending'}]};store.commit('a',empty,saved);assert.throws(()=>store.commit('a',empty,empty),/changed/);assert.deepEqual(store.read('b'),empty);store.backup();store.close();
  store=createStore(directory,cipher);assert.deepEqual(store.read('a'),saved);store.close();assert(!fs.readFileSync(path.join(directory,'customers.sqlite')).includes(Buffer.from('private-customer')));assert(fs.existsSync(path.join(directory,'customers-before-update.sqlite')));fs.rmSync(directory,{recursive:true,force:true});
 });
-
-test('unreadable ciphertext is never an empty workspace or overwritten, and original keys recover pending data',()=>{
+test('wrong DPAPI key fails closed, preserves ciphertext and pending queue and creates an encrypted recovery snapshot',()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-locked-'));
- const cipher={encrypt:value=>Buffer.from('encrypted:'+value),decrypt:value=>{if(!value.toString().startsWith('encrypted:'))throw Error('bad payload');return value.toString().slice(10);}};
- const empty={records:[],operations:[]},saved={records:[{recordId:'kept',deleted:true}],operations:[{operationId:'delete-pending'}]};
- let store=createStore(directory,cipher);store.commit('tenant',empty,saved);store.backup();store.close();
- const before=fs.readFileSync(path.join(directory,'customers.sqlite'));
- store=createStore(directory,{encrypt(){throw Error('must not encrypt')},decrypt(){throw Error('DPAPI wrong Windows user')}});
- assert.throws(()=>store.read('tenant'),error=>error.code==='LOCAL_DECRYPTION_FAILED'&&/original Windows account/.test(error.message));
- assert.throws(()=>store.commit('tenant',empty,empty),/database is locked/);
- store.backup();store.close();
- assert.deepEqual(fs.readFileSync(path.join(directory,'customers.sqlite')),before);
- assert.equal(fs.readdirSync(directory).filter(name=>/^customers-before-update-/.test(name)).length,2);
- store=createStore(directory,cipher);assert.deepEqual(store.read('tenant'),saved);store.close();fs.rmSync(directory,{recursive:true,force:true});
+ const cipher={encrypt:value=>Buffer.from('cipher:'+value),decrypt:value=>{assert(value.toString().startsWith('cipher:'));return value.toString().slice(7)}};
+ const saved={records:[{name:'retained'}],operations:[{id:'pending-delete',action:'deleteCustomer'}]};
+ let store=createStore(directory,cipher);store.commit('owner',{records:[],operations:[]},saved);store.backup();store.close();
+ const original=fs.readFileSync(path.join(directory,'customers.sqlite'));
+ let recovery;
+ assert.throws(()=>createStore(directory,{...cipher,decrypt(){throw Error('DPAPI wrong user')}}),error=>{
+   assert.equal(error.code,'LOCAL_DECRYPTION_FAILED');assert.match(error.message,/No records or pending operations were reset/);recovery=error.recoveryPath;return true;
+ });
+ assert(recovery);assert.deepEqual(fs.readFileSync(path.join(directory,'customers.sqlite')),original);
+ store=createStore(directory,cipher);assert.deepEqual(store.read('owner'),saved);store.close();
+ const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync(recovery);assert.deepEqual(JSON.parse(cipher.decrypt(Buffer.from(db.prepare('SELECT payload FROM workspaces').get().payload))),saved);db.close();
+ assert(fs.existsSync(path.join(directory,'customers-before-update.sqlite')));fs.rmSync(directory,{recursive:true,force:true});
+});
+test('Windows restart, update and reinstall keep the pinned database; fresh users use their own directory',()=>{
+ const {resolveDataDirectory}=require('./data-directory.cjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-location-'));
+ const shared=path.join(root,'old-shared'),userData=path.join(root,'original-user');fs.mkdirSync(shared);fs.writeFileSync(path.join(shared,'customers.sqlite'),'existing fixture');
+ const args={userData,platform:'win32',executable:path.join(root,'install','app.exe'),env:{BANKSETU_DATA_DIR:shared,ProgramData:path.join(root,'program-data')}};
+ assert.equal(resolveDataDirectory(args),shared);
+ assert.equal(resolveDataDirectory({...args,executable:path.join(root,'reinstall','app.exe'),env:{}}),shared);
+ const fresh=resolveDataDirectory({...args,userData:path.join(root,'other-user'),env:{ProgramData:path.join(root,'empty')}});
+ assert.equal(fresh,path.join(root,'other-user','database'));
+ fs.renameSync(path.join(shared,'customers.sqlite'),path.join(shared,'preserved.sqlite'));
+ assert.throws(()=>resolveDataDirectory(args),/no empty replacement/);
+ assert(fs.existsSync(path.join(shared,'preserved.sqlite')));fs.rmSync(root,{recursive:true,force:true});
 });
 
-test('Windows database selection stays pinned across reinstall on another drive and fails closed on denied access',()=>{
- const vm=require('node:vm');const source=fs.readFileSync(path.join(__dirname,'main.cjs'),'utf8');
- const start=source.indexOf('const resolveDataDirectory =');const end=source.indexOf('const trusted =',start);
- const files=new Map(),directories=new Set();const paths=path.win32;
- const fakeFs={existsSync:file=>files.has(file),mkdirSync:dir=>directories.add(dir),readFileSync:file=>files.get(file),writeFileSync:(file,data)=>files.set(file,data)};
- const context=vm.createContext({fs:fakeFs,path:paths,process:{platform:'win32',execPath:'C:\\Apps\\Bank Setu.exe',env:{}},app:{getPath:()=> 'C:\\Users\\Original\\AppData\\Bank Setu'},copyMissingFiles:()=>{throw Error('unexpected migration')}});
- vm.runInContext(source.slice(start,end)+';globalThis.resolveDirectory=resolveDataDirectory;',context);
- assert.equal(context.resolveDirectory(),'C:\\Bank Setu Data');
- files.set('C:\\Bank Setu Data\\customers.sqlite','encrypted');context.process.execPath='D:\\Apps\\Bank Setu.exe';
- assert.equal(context.resolveDirectory(),'C:\\Bank Setu Data');
- fakeFs.mkdirSync=()=>{throw Error('Access denied')};assert.throws(()=>context.resolveDirectory(),/Access denied/);
+test('encrypted update backups are unique and never replace an earlier backup',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-backups-'));
+ const cipher={encrypt:value=>Buffer.from(value),decrypt:value=>value.toString()};
+ const store=createStore(directory,cipher),empty={records:[],operations:[]};
+ store.commit('scope',empty,{records:[{id:'original'}],operations:[]});store.backup();
+ const first=fs.readFileSync(path.join(directory,'customers-before-update.sqlite'));
+ store.commit('scope',store.read('scope'),{records:[{id:'updated'}],operations:[{id:'retained'}]});store.backup();store.close();
+ assert.deepEqual(fs.readFileSync(path.join(directory,'customers-before-update.sqlite')),first);
+ assert.equal(fs.readdirSync(directory).filter(name=>/^customers-before-update-/.test(name)).length,2);
+ fs.rmSync(directory,{recursive:true,force:true});
+});
+test('Windows update backup retains the encrypted key profile and blocks an incomplete backup',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-profile-')),profile=path.join(directory,'Local State');
+ const fixture=JSON.stringify({os_crypt:{encrypted_key:'encrypted-fixture-key'}});fs.writeFileSync(profile,fixture);
+ const store=createStore(directory,{encrypt:value=>Buffer.from(value),decrypt:value=>value.toString(),profilePath:profile});
+ store.commit('scope',{records:[],operations:[]},{records:[{id:'retained'}],operations:[{id:'pending'}]});store.backup();
+ const copy=fs.readdirSync(directory).find(name=>name.endsWith('.local-state'));assert.equal(fs.readFileSync(path.join(directory,copy),'utf8'),fixture);
+ fs.renameSync(profile,profile+'.retained');assert.throws(()=>store.backup(),/encryption profile is unavailable/);
+ assert.equal(store.read('scope').operations[0].id,'pending');store.close();fs.rmSync(directory,{recursive:true,force:true});
 });
 
 test('update snapshot retains encrypted key context and a failed key backup prevents update completion',()=>{

@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.54",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.54/BankSetu-Setup-1.0.54-x64.exe",
-  "notes": "Safe encrypted storage recovery, faster photo-less migration sync, retryable lock contention, status PATCH validation and print duplicate protection.",
-  "version": "1.0.54",
-  "releaseTag": "v1.0.54",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.54",
-  "windowsVersion": "1.0.54",
-  "androidBuild": 1000054,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.54/BankSetu-Setup-1.0.54-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.54/BankSetu-Android-1000054.apk"
+  "latestVersion": "1.0.55",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.55/BankSetu-Setup-1.0.55-x64.exe",
+  "notes": "Encrypted database preservation, stable Windows storage, safe sync locking, verified photo-less import optimization and strict status-only patches. Update the existing Apps Script deployment with the bundled Code.gs for lock and photo inventory support.",
+  "version": "1.0.55",
+  "releaseTag": "v1.0.55",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.55",
+  "windowsVersion": "1.0.55",
+  "androidBuild": 1000055,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.55/BankSetu-Setup-1.0.55-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.55/BankSetu-Android-1000055.apk"
 }
