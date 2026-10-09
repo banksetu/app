@@ -38,7 +38,7 @@ test('decryptable legacy payload is migrated only after verified encrypted backu
   const old=new DatabaseSync(path.join(directory,backup));
   assert.equal(old.prepare('SELECT typeof(payload) AS type FROM workspaces').get().type,'blob');old.close();
   store.close();
-  assert.deepEqual(createStore(directory).read('tenant:owner'),state);
+  const reopened=createStore(directory);assert.deepEqual(reopened.read('tenant:owner'),state);reopened.close();
   fs.rmSync(directory,{recursive:true,force:true});
 });
 test('wrong key and backup failure preserve original ciphertext and pending work',()=>{
@@ -60,7 +60,7 @@ test('Windows update and reinstall keep pinned database; backup is verified and 
   assert.equal(resolveDataDirectory(args),shared);
   const first=store.backup();const second=store.backup();assert.notEqual(first,second);store.close();
   assert.equal(resolveDataDirectory({...args,executable:path.join(root,'reinstall','app.exe'),env:{}}),shared);
-  assert.equal(createStore(shared).read('tenant:owner').operations[0].id,'pending');
+  const reopened=createStore(shared);assert.equal(reopened.read('tenant:owner').operations[0].id,'pending');reopened.close();
   assert.equal(resolveDataDirectory({...args,userData:path.join(root,'another-user'),env:{ProgramData:path.join(root,'empty')}}),path.join(root,'another-user','database'));
   fs.rmSync(root,{recursive:true,force:true});
 });

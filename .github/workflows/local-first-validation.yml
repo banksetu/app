@@ -39,6 +39,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Windows SQLite transaction and backup tests
+        run: node --test desktop/store.test.cjs
       - run: npm run build
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
