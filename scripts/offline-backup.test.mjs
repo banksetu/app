@@ -20,6 +20,22 @@ test('backup restoration retains pending data, rejects foreign scopes, deduplica
  assert.throws(()=>backup.parseBackup(JSON.stringify({...archive,operations:[{...op,key:'bad'}]}),scope),/invalid/);
 });
 
+test('JSON backup round trip retains downloaded Sheet records, local edits, photos and deletion tombstones',()=>{
+ const scope='u1:tenant:conn';
+ const syncedId=crypto.randomUUID(),pendingId=crypto.randomUUID(),deletedId=crypto.randomUUID(),operationId=crypto.randomUUID();
+ const records=[
+  {key:syncedId,scope,recordId:syncedId,rowNumber:2,revision:'sheet-r1',pending:false,customer:{name:'Downloaded',photoUrl:'drive-id',photoPreview:'data:image/png;base64,eA=='}},
+  {key:pendingId,scope,recordId:pendingId,rowNumber:1000000000,revision:'',pending:true,customer:{name:'Offline entry',accountNo:'123'}},
+  {key:deletedId,scope,recordId:deletedId,rowNumber:4,revision:'sheet-r2',pending:false,deleted:true,customer:{name:'Deleted'}}
+ ];
+ const operations=[{key:operationId,scope,operationId,recordId:pendingId,action:'saveCustomer',baseRevision:'',rowNumber:1000000000,createdAt:Date.now(),state:'pending',customer:records[1].customer}];
+ const archive=JSON.stringify(backup.makeBackup(scope,{records,operations}));
+ const target={records:[],operations:[]};
+ assert.deepEqual(backup.mergeBackup(target,backup.parseBackup(archive,scope)),{records:3,operations:1,conflicts:0});
+ assert.deepEqual(target.records,records);assert.deepEqual(target.operations,operations);
+ assert.deepEqual(backup.mergeBackup(target,backup.parseBackup(archive,scope)),{records:0,operations:0,conflicts:0});
+});
+
 test('Master offline grant keeps user-scoped API settings and rejects a client tenant',async()=>{
  const {privateKey}=crypto.generateKeyPairSync('rsa',{modulusLength:2048});const now=Date.now();const claims={uid:'u1',tenantId:'master:u1',connectionId:'master-conn',role:'master_owner',status:'approved',subscriptionStatus:'active',apiUrl:'https://script.google.com/macros/s/master/exec',issuedAt:now,expiresAt:now+3600000};
  session=await createOfflineSession(JSON.stringify({private_key:privateKey.export({type:'pkcs8',format:'pem'})}),claims);await offline.enrollOfflineSession();storage.clear();await offline.resumeOfflineSession('u1');assert.equal(storage.get('bankSetuTenantId'),undefined);assert.equal(storage.get('bankSetuMasterLocalEnabled'),'true');assert.equal(storage.get('bankSetuConnectionMode'),'master-local');
