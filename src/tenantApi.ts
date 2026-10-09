@@ -17,6 +17,14 @@ export function getTenantApiUrl(): string {
   return localStorage.getItem(tenantStorageKey("bankSetuApiUrl"))?.trim() || "";
 }
 
+/** Customer search uses the bridge bound to this verified workspace session.
+ * The tenant-scoped localStorage URL can lag behind a bridge reconnection. */
+export function getCustomerSearchApiUrl(localMode: boolean): string {
+  if (localMode) return sessionStorage.getItem("bankSetuWorkspaceReady") === "true"
+    ? sessionStorage.getItem("bankSetuBridgeUrl")?.trim() || "" : "";
+  return getTenantApiUrl();
+}
+
 export function setTenantApiUrl(value: string): void {
   localStorage.setItem(tenantStorageKey("bankSetuApiUrl"), value.trim());
 }

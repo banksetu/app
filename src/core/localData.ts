@@ -29,6 +29,9 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
   const url = String(input);
   if (url !== sessionStorage.getItem("bankSetuBridgeUrl")) {
+    // Customer operations must never be sent to a stale or unrelated bridge.
+    if (supportedReads.has(String(payload.action || "")) || supportedWrites.has(String(payload.action || "")))
+      throw new Error("Workspace bridge changed. Reconnect before accessing Google data.");
     if (!payload.idToken) throw new Error("Workspace bridge changed. Reconnect before accessing Google data.");
     return networkFetch(input, init);
   }

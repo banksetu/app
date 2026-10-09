@@ -33,6 +33,28 @@ const engine=await import(compile(source));
 function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
 const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
 const request=body=>engine.localDataFetch('https://script.google.com/macros/s/bridge/exec',{method:'POST',body:JSON.stringify({...body,idToken:'never-store-this'})}).then(response=>response.json());
+const tenantApiSource=fs.readFileSync('src/tenantApi.ts','utf8').replace('import { getAuth } from "firebase/auth";','const getAuth=()=>globalThis.__auth;');
+const {getCustomerSearchApiUrl}=await import(compile(tenantApiSource));
+test('stale cached bridge URL still searches verified local workspace first and uses only its bound bridge for cloud fallback',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('search-bridge');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,name:'Bridge Cached',accountNo:'00045',enrolId:'BRIDGE-1'}});assert(saved.success);
+ const verified=storage.get('bankSetuBridgeUrl');
+ // Simulate an Android tenant cache left behind by the previous bridge deployment.
+ globalThis.localStorage={getItem:()=> 'https://script.google.com/macros/s/old-bridge/exec'};
+ assert.equal(getCustomerSearchApiUrl(true),verified);
+ let calls=0;navigator.onLine=true;
+ handler=async(url,init)=>{calls++;assert.equal(String(url),verified);assert.equal(JSON.parse(init.body).action,'searchCustomer');return new Response(JSON.stringify({success:true,customer:{recordId:'remote-1',revision:'r1',rowNumber:12,name:'Remote Match',enrolId:'REMOTE-1',accountNo:'0099'},rowNumber:12}));};
+ const local=await engine.localDataFetch(getCustomerSearchApiUrl(true),{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Bridge Cached'})}).then(response=>response.json());
+ assert.equal(local.customer.recordId,saved.recordId);assert.equal(calls,0);
+ const remote=await engine.localDataFetch(getCustomerSearchApiUrl(true),{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Remote Match'})}).then(response=>response.json());
+ assert.equal(remote.customer.name,'Remote Match');assert.equal(calls,1);
+ await assert.rejects(engine.localDataFetch('https://script.google.com/macros/s/old-bridge/exec',{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Bridge Cached',idToken:'token'})}),/Workspace bridge changed/);
+ assert.equal(calls,1,'stale bridge never receives customer request');
+ navigator.onLine=false;storage.set('bankSetuTenantId','another-tenant');
+ const other=await engine.localDataFetch(getCustomerSearchApiUrl(true),{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Bridge Cached'})}).then(response=>response.json());
+ assert.equal(other.success,false,'other tenant cannot read cached customer');
+ storage.set('bankSetuWorkspaceReady','false');assert.equal(getCustomerSearchApiUrl(true),'');
+});
 test('IndexedDB persists customer and queue in one atomic transaction and rolls back failed changes',async()=>{
  await repository.transact('atomic',state=>{state.records.push({recordId:'kept'});state.operations.push({operationId:'kept'});});
  await assert.rejects(repository.transact('atomic',state=>{state.records.push({recordId:'lost'});throw Error('abort');}));

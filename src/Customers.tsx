@@ -2,7 +2,7 @@ import { snapshot } from "./AllCustomerData";
 import { isAndroid } from "./platform/android/runtime";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { localDataFetch, getDataIdToken, getLocalExportCustomers, getLocalStatus } from "./core/localData";
+import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getLocalStatus } from "./core/localData";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
 
@@ -14,7 +14,7 @@ import {
 } from "react";
 
 import { getAuth } from "firebase/auth";
-import { getTenantApiUrl } from "./tenantApi";
+import { getCustomerSearchApiUrl } from "./tenantApi";
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
 
@@ -253,7 +253,7 @@ export default function Customers() {
 
   ) => {
 
-      const apiUrl = getTenantApiUrl();
+      const apiUrl = getCustomerSearchApiUrl(localModeEnabled());
 
     if (!apiUrl) {
 

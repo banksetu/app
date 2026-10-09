@@ -1,12 +1,12 @@
 {
-  "latestVersion": "1.0.58",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.58/BankSetu-Setup-1.0.58-x64.exe",
-  "notes": "Customer All PDF selection: all local customers, opening date, account range or selected search results. Existing A4 preview and Save PDF/Print output remain intact.",
-  "version": "1.0.58",
-  "releaseTag": "v1.0.58",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.58",
-  "windowsVersion": "1.0.58",
-  "androidBuild": 1000058,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.58/BankSetu-Setup-1.0.58-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.58/BankSetu-Android-1000058.apk"
+  "latestVersion": "1.0.59",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Setup-1.0.59-x64.exe",
+  "notes": "Android Customer Search now uses the verified workspace bridge for local-first lookup and cloud fallback; stale cached URLs cannot receive customer requests.",
+  "version": "1.0.59",
+  "releaseTag": "v1.0.59",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.59",
+  "windowsVersion": "1.0.59",
+  "androidBuild": 1000059,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Setup-1.0.59-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Android-1000059.apk"
 }
