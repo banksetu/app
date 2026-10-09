@@ -22,4 +22,4 @@ app.whenReady().then(async()=>{
   });
   console.log('Windows safeStorage encrypted fixture survives independent app restarts with pending deletion intact.');
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
-}).then(()=>{clearTimeout(timer);app.exit(0)}).catch(error=>{console.error(error);clearTimeout(timer);app.exit(1)});
+}).then(()=>{clearTimeout(timer);app.quit()}).catch(error=>{console.error(error);clearTimeout(timer);app.exit(1)});
