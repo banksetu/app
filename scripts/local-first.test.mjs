@@ -447,3 +447,40 @@ test('photo failure retries later without blocking new photo upload; new save pr
    await engine.syncNow(false);state=await repository.read(scope);assert.match(state.records.find(item=>item.recordId==='old').customer.photoPreview,/data:image/);
  }finally{navigator.onLine=false;}
 });
+
+test('2734 migrated blank-photo records make no media requests or mass uploads; new cloud photo invalidates absence',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('migrated-no-photos');navigator.onLine=true;
+ const scope='user-a:tenant-a:migrated-no-photos';
+ const records=Array.from({length:2734},(_,i)=>({recordId:'migration-'+i,rowNumber:i+2,revision:'r1',name:'Migrated '+i,enrolId:'M-'+i,accountNo:'',uidaiNo:'',photoUrl:''}));
+ let media=0,uploads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='getCustomerPage'){const end=Math.min(body.cursor+250,records.length);return new Response(JSON.stringify({success:true,customers:records.slice(body.cursor,end),nextCursor:end,hasNextPage:end<records.length}));}
+  if(body.action==='getCustomerByRowNumber'){media++;return new Response(JSON.stringify({success:true,customer:{...records[0],photoPreview:'data:image/jpeg;base64,eA=='}}));}
+  uploads++;throw Error('Unexpected upload');
+ };
+ for(let i=0;i<3;i++)await engine.syncNow(false);
+ let state=await repository.read(scope);assert.equal(state.records.length,2734);assert.equal(media,0);assert.equal(uploads,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+ const before=JSON.stringify(state);await engine.syncNow(false);assert.equal(JSON.stringify(await repository.read(scope)),before,'no metadata-only rewrite of migrated records');
+ records[0].photoUrl='new-drive-photo';records[0].revision='r2';await engine.syncNow(true);await engine.syncNow(false);await engine.syncNow(false);assert.equal(media,1);assert.match((await repository.read(scope)).records.find(r=>r.recordId==='migration-0').customer.photoPreview,/data:image/);
+ navigator.onLine=false;
+ const status=await request({action:'updateCustomer',rowNumber:3,statusOnly:true,statusField:'status',statusValue:'Active'});assert(status.queued);
+ state=await repository.read(scope);assert.deepEqual(state.operations[0].customer,{status:'Active'});assert.equal(state.records.find(r=>r.recordId==='migration-1').customer.uidaiNo,'');
+ assert.equal((await request({action:'updateCustomer',rowNumber:3,customer:{name:'Incomplete full edit'}})).success,false);
+ assert.equal((await request({action:'updateCustomer',rowNumber:3,statusOnly:true,statusField:'status',statusValue:'invalid'})).success,false);
+});
+
+test('lock contention leaves operations pending and concurrent sync requests share one job',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('lock-busy');navigator.onLine=false;
+ await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:lock-busy';const before=await repository.read(scope);navigator.onLine=true;
+ protectionOverride={success:false,code:'SYNC_BUSY',message:'Another device is committing a change.'};
+ try{const first=engine.syncNow(false);assert.equal(engine.syncNow(false),first);await assert.rejects(first,/Automatic retry/);assert.deepEqual(await repository.read(scope),before);}finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('pause aborts an already running manual sync without deleting its pending operation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('pause-inflight');navigator.onLine=false;
+ await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:pause-inflight';const before=await repository.read(scope);navigator.onLine=true;
+ let started;const ready=new Promise(resolve=>{started=resolve});
+ handler=async(_url,init)=>new Promise((_resolve,reject)=>{started();init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true});});
+ const task=engine.syncNow(false);await ready;engine.pauseSync();engine.resumeSync();await task;
+ assert.equal(engine.isSyncPaused(),false);assert.deepEqual(await repository.read(scope),before);assert.equal((await engine.getLocalStatus()).error,'');navigator.onLine=false;
+});

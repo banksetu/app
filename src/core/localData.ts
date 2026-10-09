@@ -85,10 +85,10 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   const statusOnly = action === "updateCustomer" && payload.statusOnly === true;
   const statusField = String(payload.statusField || "");
   const statusValue = String(payload.statusValue || "").trim();
-  if (statusOnly && (!existing?.recordId || !["status","passbookStatus"].includes(statusField) || !statusValue))
+  if (statusOnly && (!existing?.recordId || !["client_admin","client_user","master_owner","admin","user"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") || !(statusField === "status" ? ["active","inactive","pending"] : statusField === "passbookStatus" ? ["pending","printed","delivered"] : []).includes(statusValue.toLowerCase())))
     return resultResponse({success:false,message:"A valid customer identity and status selection are required."});
   if (action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) return resultResponse({success:false,message:"Administrator permission is required."});
-  if (action === "saveCustomer" && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
+  if ((action === "saveCustomer" || (action === "updateCustomer" && !statusOnly)) && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
   if (action === "deleteCustomer" && (existing?.deleted || state.operations.some(op => op.recordId === existing?.recordId && op.state !== "pending")))
     return resultResponse({success:false,message:"Resolve this customer's pending review before deleting. Local data was unchanged."});
   const recordId = existing?.recordId || crypto.randomUUID();
@@ -155,6 +155,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>) {
   announce();
 }
 const running = new Map<string, Promise<void>>();
+const syncControllers = new Map<string, AbortController>();
 const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
 let syncPaused = false;
@@ -162,6 +163,7 @@ export const isSyncPaused = () => syncPaused;
 export function pauseSync() {
   if (syncPaused) return;
   syncPaused = true;
+  for(const controller of syncControllers.values())controller.abort(new DOMException("Background sync paused on this device.","AbortError"));
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
@@ -208,7 +210,9 @@ export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   try { scope=identity(); } catch(error) { return Promise.reject(error); }
   if(resetting.has(scope))return Promise.reject(new Error("Local reset is in progress. Retry sync when it completes."));
   const existing=running.get(scope);if(existing)return existing;
-  const task=runSync(refresh,signal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(syncPaused && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);announce();});
+  const controller=new AbortController();syncControllers.set(scope,controller);
+  const combinedSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
+  const task=runSync(refresh,combinedSignal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();});
   running.set(scope,task);announce();return task;
 }
 async function runSync(refresh: boolean, signal?:AbortSignal) {
@@ -231,6 +235,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     let value=await response.json();
     if(!value.success&&value.code==="AUTH_REQUIRED"){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();value=await response.json();}
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
+    if(!value.success&&(value.code==="SYNC_BUSY"||/Lock timeout/i.test(String(value.message||""))))
+      throw new Error("Google sync is busy with another device. Automatic retry will keep all local changes pending.");
     return value;
   };
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
@@ -331,7 +337,13 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
 
 }
 function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
-function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record);}
+function photoCandidate(record: CachedRecord) {
+  // A present, blank Sheet Photo URL is the authoritative no-photo state for
+  // migrated rows. Derive it without rewriting records or uploading metadata.
+  // Older bridges that omit the field entirely still use legacy discovery.
+  const confirmedAbsent=Object.hasOwn(record.customer,"photoUrl")&&!fold(record.customer.photoUrl)&&!record.customer.photoDataUrl&&!record.customer.photoPreview;
+  return !confirmedAbsent&&!record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record);
+}
 function needsPhoto(record: CachedRecord) {return photoCandidate(record)&&(!record.photoRetryAt||Date.now()>=record.photoRetryAt)&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.
@@ -454,7 +466,7 @@ export function startLocalSync() {
           }
           failures=0;healthError="";
         }
-      }catch(error){if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}}
+      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);delay=Math.min(300000,5000*2**Math.min(failures++,6));}}
       finally{
         activeController=undefined;busy=false;if(!stopped){if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
       }

@@ -22,7 +22,18 @@ const resolveDataDirectory = () => {
   if (process.platform !== 'win32') return path.join(app.getPath('userData'), 'database');
   const legacy = path.join(process.env.ProgramData || 'C:\\ProgramData', 'Bank Setu', 'Data');
   const selectedDrive = path.parse(process.execPath).root || 'C:\\';
-  const preferred = process.env.BANKSETU_DATA_DIR || path.join(selectedDrive, 'Bank Setu Data');
+  // Installation/update location must not select a different (empty) DB.
+  const locationFile=path.join(app.getPath('userData'),'banksetu-database-location.json');
+  const pinned=fs.existsSync(locationFile)?JSON.parse(fs.readFileSync(locationFile,'utf8')).directory:null;
+  if(pinned && (typeof pinned!=='string'||!path.isAbsolute(pinned)))throw new Error('Invalid saved database location. Local storage was not reset.');
+  let preferred = pinned || process.env.BANKSETU_DATA_DIR || path.join(selectedDrive, 'Bank Setu Data');
+  if(!pinned&&!process.env.BANKSETU_DATA_DIR&&!fs.existsSync(path.join(preferred,'customers.sqlite'))){
+    const known=[legacy,path.join('C:\\','Bank Setu Data'),path.join(app.getPath('userData'),'database')];
+    const existing=[...new Set(known)].filter(directory=>fs.existsSync(path.join(directory,'customers.sqlite')));
+    if(existing.length>1)throw new Error('Multiple existing databases found. Set BANKSETU_DATA_DIR to the original database folder; none was overwritten.');
+    if(existing.length===1)preferred=existing[0];
+  }
+  const remember=directory=>{fs.mkdirSync(app.getPath('userData'),{recursive:true});if(!fs.existsSync(locationFile))fs.writeFileSync(locationFile,JSON.stringify({directory}),{flag:'wx'});return directory;};
   try {
     fs.mkdirSync(preferred, { recursive: true });
     // Keep the legacy folder intact; copy only missing files so migration is recoverable.
@@ -34,10 +45,12 @@ const resolveDataDirectory = () => {
         migratedFrom: legacy, selectedDrive, version: 1
       }, null, 2));
     }
-    return preferred;
-  } catch {
-    try { fs.mkdirSync(legacy, { recursive: true }); return legacy; }
-    catch { return path.join(app.getPath('userData'), 'database'); }
+    return remember(preferred);
+  } catch(error) {
+    // Never hide existing encrypted storage behind a fresh fallback database.
+    if(pinned || fs.existsSync(path.join(preferred,'customers.sqlite')))throw error;
+    try { fs.mkdirSync(legacy, { recursive: true }); return remember(legacy); }
+    catch(legacyError) {if(fs.existsSync(path.join(legacy,'customers.sqlite')))throw legacyError;return remember(path.join(app.getPath('userData'), 'database'));}
   }
 };
 const trusted = event => {

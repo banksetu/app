@@ -20,6 +20,8 @@ jobs:
       - run: npm run build
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Verify Windows DPAPI encrypted restart fixtures
+        run: npx electron desktop/storage-smoke.cjs
       - name: Test real Electron startup and preview cancellation
         run: npx electron desktop/print-smoke.cjs
       - name: Package Windows installer without code signing

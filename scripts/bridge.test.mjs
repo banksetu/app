@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import fs from 'node:fs';import crypto from 'node:crypto';
 function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new Map();const book={getSheetByName:name=>tabs.get(name),insertSheet(name){const tab=makeSheet([[]]);tabs.set(name,tab);return tab;}};function makeSheet(data){return {getParent:()=>book,hideSheet(){},getMaxColumns:()=>27,getLastRow:()=>data.length,appendRow:row=>data.push(row),deleteRow:row=>data.splice(row-1,1),getRange(start,col,count,width){return {getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[start+i-1]?.[col+j-1]||'')),getDisplayValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>String(data[start+i-1]?.[col+j-1]||''))),setValues(values){values.forEach((row,i)=>{data[start+i-1] ||= [];row.forEach((cell,j)=>data[start+i-1][col+j-1]=cell);});}};}};}const sheet=makeSheet(rows);
- const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
+ const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({tryLock(){return true},waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
 test('bridge replays committed operations, uses UUID after row reorder and rejects concurrent edits',()=>{
@@ -38,7 +38,7 @@ test('Master and Client delete incomplete legacy rows by stable ID without custo
    assert(context.syncCustomerOperation({connectionId:role,operation:deletion},actor).replayed);
  }
 });
-test('legacy incomplete customer allows a status or unrelated update without weakening new customer validation',()=>{
+test('legacy status-only patches preserve blank identity fields and full edits require validation',()=>{
  for(const role of ['master_owner','client_admin']){
    const {context,rows}=bridge();const actor={...user,role,connectionId:role};
    const initial=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:role,operation:initial},actor).success);
@@ -48,7 +48,7 @@ test('legacy incomplete customer allows a status or unrelated update without wea
    assert(context.syncCustomerOperation({connectionId:role,operation:print},actor).success);
    assert.equal(rows[1][2],'Alice');assert.equal(rows[1][11],'PRINTED');assert.equal(rows[1][12],'');
    revision=context.localFirstRead({action:'getAllCustomers'},actor).customers[0].revision;
-   const update={...initial,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,customer:{contact:'9876543210'}};
+   const update={...initial,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,customer:{status:'Active'}};
    assert(context.syncCustomerOperation({connectionId:role,operation:update},actor).success);
    revision=context.localFirstRead({action:'getAllCustomers'},actor).customers[0].revision;
    assert.throws(()=>context.syncCustomerOperation({connectionId:role,operation:{...update,operationId:crypto.randomUUID(),baseRevision:revision,customer:{name:''}}},actor),/Valid name/);
@@ -104,8 +104,22 @@ test('photo lookup confirms absence only after a successful tenant-folder search
 test('tenant photo Drive read releases the Sheet lock before media access',()=>{
  const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
  rows[1][19]='https://drive.google.com/file/d/photo-id/view';let locked=false,reads=0;
- context.LockService={getScriptLock:()=>({waitLock(){assert(!locked);locked=true;},releaseLock(){assert(locked);locked=false;}})};
+ context.LockService={getScriptLock:()=>({tryLock(){assert(!locked);locked=true;return true;},releaseLock(){assert(locked);locked=false;}})};
  context.getPhotoPreviewDataUrl=(_url,_folder)=>{assert.equal(locked,false);reads++;return 'data:image/jpeg;base64,eA==';};
  const result=context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},{...user,photoFolderId:'bound-folder'});
  assert(result.success);assert.equal(reads,1);assert.equal(locked,false);
+});
+
+test('busy Sheet lock responds retryably without reads or mutation and status PATCH preserves blank legacy fields',()=>{
+ const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
+ rows[1][1]='';rows[1][12]='';rows[1][8]='  original address  ';const original=rows[1].slice();
+ const revision=context.localFirstRead({action:'getCustomerPage',cursor:0},user).customers[0].revision;
+ const status={...op,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,customer:{status:'Active'}};
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:status},user).success);
+ original.forEach((value,i)=>{if(![4,25].includes(i))assert.equal(rows[1][i],value);});
+ const before=JSON.stringify(rows);context.LockService={getScriptLock:()=>({tryLock:()=>false,releaseLock(){throw Error('unowned lock')}})};
+ for(const action of ['getSyncProtection','getCustomerPage','syncCustomerOperation']){
+   const result=action==='getSyncProtection'?context.syncProtection({action,connectionId:'bound'},user):action==='getCustomerPage'?context.localFirstRead({action},user):context.syncCustomerOperation({connectionId:'bound',operation:status},user);
+   assert.equal(result.code,'SYNC_BUSY');assert.equal(JSON.stringify(rows),before);
+ }
 });

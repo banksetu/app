@@ -106,7 +106,7 @@ function appsHarness(){
     PropertiesService:{getScriptProperties:()=>({getProperty:()=>""})},
     SpreadsheetApp:{openById:id=>{assert(stores.has(id),"Unexpected spreadsheet: "+id);return stores.get(id);}},
     DriveApp:{getFolderById:id=>({getFilesByName:()=>({hasNext:()=>false})}),getFileById:id=>files[id]},
-    LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
+    LockService:{getScriptLock:()=>({tryLock(){return true},waitLock(){},releaseLock(){}})},
     Utilities:{getUuid:randomUUID,base64Encode:bytes=>Buffer.from(bytes).toString("base64")},console
   });
   vm.runInContext(fs.readFileSync(process.env.APPS_SCRIPT_TEST_SOURCE||new URL("../apps-script/Code.gs",import.meta.url),"utf8"),context);

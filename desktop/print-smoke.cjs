@@ -14,14 +14,21 @@ app.whenReady().then(async()=>{
  await source.loadURL('banksetu://app/index.html');
  assert.match(await source.webContents.executeJavaScript('document.documentElement.outerHTML'),/root/);
  for(let i=0;i<3;i++){
-  await source.webContents.executeJavaScript(`window.bankSetuPrint.preview('<html><head><style>@page{size:A4;margin:0}</style></head><body>Bank Setu print lifecycle</body></html>')`);
-  const preview=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Bank Setu · Print');
+  await source.webContents.executeJavaScript(`window.__smokePrint=window.bankSetuPrint.preview('<html><head><style>@page{size:A4;margin:0}</style></head><body>Bank Setu print lifecycle</body></html>');void 0;`);
+  let preview;
+  const deadline=Date.now()+15000;
+  while(Date.now()<deadline){
+    preview=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Bank Setu · Print');
+    if(preview)break;
+    await new Promise(resolve=>setTimeout(resolve,50));
+  }
   assert(preview,'preview loaded');
   assert.equal(await preview.webContents.executeJavaScript('document.querySelector("#cancel").textContent'),'Cancel');
   const result=await preview.webContents.executeJavaScript('window.bankSetuPrintPreview.action("preview",{paper:"A4",landscape:false,scale:100,copies:1,pageRanges:""})');
   assert(result.pdf.startsWith('JVBER'),'Chromium generated PDF');
   preview.close();
-  await new Promise(resolve=>setTimeout(resolve,100));
+  const outcome=await source.webContents.executeJavaScript('window.__smokePrint');
+  assert.equal(outcome.accepted,false);assert.equal(outcome.cancelled,true);
  }
  source.close();
  console.log('Real Electron startup, PDF preview, cancel and reopen passed.');

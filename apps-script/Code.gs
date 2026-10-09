@@ -3054,7 +3054,8 @@ function syncProtection(request, authUser) {
     return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed."});
   if (request.action === "publishLocalReset" && !["client_admin","master_owner","admin"].includes(authUser.role))
     throw new Error("Administrator permission is required.");
-  const lock=LockService.getScriptLock();lock.waitLock(20000);
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(1000))return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another device is committing a change. Retry shortly; local changes remain pending."});
   try {
     const sheet=getSheet(authUser);ensureSyncMetadata(sheet);
     let ledger=syncResetSheet(sheet,request.action === "publishLocalReset");
@@ -3080,7 +3081,7 @@ function ensureSyncMetadata(sheet) {
   if (sheet.getMaxColumns() < HEADERS.length + SYNC_HEADERS.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), HEADERS.length + SYNC_HEADERS.length - sheet.getMaxColumns());
   const actual = sheet.getRange(1, 25, 1, 3).getDisplayValues()[0];
   if (actual.some((cell, i) => cell && cell !== SYNC_HEADERS[i])) throw new Error("Columns Y:AA are already in use. Sync migration stopped without overwriting them.");
-  sheet.getRange(1, 25, 1, 3).setValues([SYNC_HEADERS]);
+  if(actual.some((cell,i)=>cell!==SYNC_HEADERS[i]))sheet.getRange(1, 25, 1, 3).setValues([SYNC_HEADERS]);
   const count = sheet.getLastRow() - 1;
   if (count > 0) {
     const meta = sheet.getRange(2, 25, count, 3).getValues();
@@ -3096,7 +3097,8 @@ function syncCustomerObject(row, rowNumber) {
   return Object.assign(rowToCustomer(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
 }
 function localFirstRead(request, authUser) {
-  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  const lock = LockService.getScriptLock();
+  if(!lock.tryLock(1000))return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another device is committing a change. Retry shortly; local changes remain pending."});
   let detail;
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
@@ -3113,8 +3115,14 @@ function localFirstRead(request, authUser) {
       const nextCursor=cursor+size;
       return jsonResponse({success:true,customers,deletedIds,nextCursor,hasNextPage:nextCursor<Math.max(total,deletions.length),totalRows:total});
     }
-    const values = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, 27).getDisplayValues() : [];
-    let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, i+2)).filter(Boolean);
+    // Photo reads usually have a stable ID and its last known row. Verify both
+    // under the same lock; fall back to ID search only when rows have moved.
+    const rowNumber=Number(request.rowNumber);
+    const direct=request.action==="getCustomerByRowNumber"&&Number.isSafeInteger(rowNumber)&&rowNumber>=2&&rowNumber<=sheet.getLastRow()
+      ? sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0] : null;
+    const matched=direct&&direct[26]!=="true"&&(!request.recordId||String(direct[24])===String(request.recordId));
+    const values = matched ? [direct] : sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, 27).getDisplayValues() : [];
+    let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, matched?rowNumber:i+2)).filter(Boolean);
     if (request.action === "getAllCustomers") return jsonResponse({success:true,customers,fullSnapshot:true});
     if (request.action === "getCustomerByRowNumber") customers = customers.filter(customer => request.recordId ? customer.recordId === String(request.recordId) : customer.rowNumber === Number(request.rowNumber));
     else {
@@ -3168,7 +3176,8 @@ function syncCustomerOperation(request, authUser) {
   if (!/^[a-f0-9-]{36}$/i.test(op.recordId || "") || !/^[a-f0-9-]{36}$/i.test(op.operationId || "")) throw new Error("Invalid sync identity.");
   if (!["saveCustomer","updateCustomer","markPassbookPrinted","markPassbookDelivered","deleteCustomer"].includes(op.action)) throw new Error("Unsupported queued operation.");
   if (op.action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(authUser.role)) throw new Error("Administrator permission is required.");
-  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  const lock = LockService.getScriptLock();
+  if(!lock.tryLock(1000))return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another device is committing a change. Retry shortly; local changes remain pending."});
   try {
     const sheet = getSheet(authUser); ensureSyncMetadata(sheet);
     const resetLedger=syncResetSheet(sheet,false);
@@ -3205,22 +3214,20 @@ function syncCustomerOperation(request, authUser) {
       return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
     const passbookAction = op.action === "markPassbookPrinted" || op.action === "markPassbookDelivered";
+    const patchKeys=Object.keys(op.customer||{});
+    // Accept older queued status patches as well as current dashboard patches.
+    const statusOnly=op.action==="updateCustomer"&&patchKeys.length>0&&patchKeys.every(key=>["status","passbookStatus"].includes(key));
+    if(statusOnly && (!existing || patchKeys.some(key=>!(key==="status"?["active","inactive","pending"]:["pending","printed","delivered"]).includes(cleanValue(op.customer[key]).toLowerCase()))))
+      throw new Error("Invalid customer status change.");
     const customer = Object.assign(existing ? rowToCustomer(existing) : {}, passbookAction ? {} : op.customer || {});
     if (op.action === "markPassbookPrinted") customer.passbookStatus = "PRINTED";
     if (op.action === "markPassbookDelivered") customer.passbookStatus = "DELIVERED";
-    if (op.action === "saveCustomer" || op.action === "updateCustomer") {
+    if (op.action === "saveCustomer" || (op.action === "updateCustomer"&&!statusOnly)) {
       const valid = value => !!cleanValue(value);
       const identityValid = valid(customer.name) && valid(customer.accountNo) && valid(customer.enrolId) && normalizeDigits(customer.uidaiNo).length === 12;
-      // Legacy Sheet rows can lack identity fields. An unrelated status/field
-      // edit must not erase a previously valid value or require a made-up ID.
-      const original = existing ? rowToCustomer(existing) : null;
-      const preservedLegacy = op.action === "updateCustomer" && original &&
-        ["name", "accountNo", "enrolId", "uidaiNo"].every(key =>
-          (key === "uidaiNo" ? normalizeDigits(customer[key]).length === 12 : valid(customer[key])) ||
-          cleanValue(customer[key]) === cleanValue(original[key]));
-      if (!identityValid && !preservedLegacy) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
+      if (!identityValid) throw new Error("Valid name, account number, customer ID and Aadhaar are required.");
     }
-    if (op.action !== "deleteCustomer") {
+    if (!statusOnly&&!passbookAction) {
       const duplicate = duplicateErrorResponse(findDuplicates(customer, existing ? index+2 : null, authUser));
       if (duplicate) return duplicate;
     }
@@ -3235,7 +3242,16 @@ function syncCustomerOperation(request, authUser) {
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
     if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");
-    const row = customerToRow(customer, existing ? existing[21] : new Date(), new Date()).concat([op.recordId,JSON.stringify(operations),op.action === "deleteCustomer" ? "true" : ""]);
+    let row = customerToRow(customer, existing ? existing[21] : new Date(), new Date()).concat([op.recordId,JSON.stringify(operations),""]);
+    if(statusOnly){
+      const range=sheet.getRange(index+2,1,1,27);
+      row=range.getValues()[0];
+      // Preserve native values and formulas in every untouched legacy field.
+      const formulas=range.getFormulas?range.getFormulas()[0]:[];
+      formulas.forEach((formula,i)=>{if(formula)row[i]=formula;});
+      patchKeys.forEach(key=>{row[key==="status"?4:11]=customer[key];});
+      row[25]=JSON.stringify(operations);
+    }
     const rowNumber = existing ? index+2 : sheet.getLastRow()+1;
     if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
     SpreadsheetApp.flush();

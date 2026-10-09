@@ -53,7 +53,7 @@ function previewHtml(pdf,printers) {
     '<div class="buttons"><button id="print">Print</button><button class="secondary" id="cancel">Cancel</button></div></aside>'+
     '<script>const $=id=>document.getElementById(id);const settings=()=>({deviceName:$("destination").value,color:$("color").value==="color",pageRanges:$("pages").value,landscape:$("layout").value==="landscape",paper:$("paper").value,copies:Number($("copies").value),scale:Number($("scale").value),duplex:$("duplex").checked});'+
     '$("destination").onchange=()=>{$("print").textContent=$("destination").value==="pdf"?"Save":"Print"};'+
-    'async function run(action){$("print").disabled=true;try{const result=await window.bankSetuPrintPreview.action(action,settings());if(result.pdf)$("preview").src="data:application/pdf;base64,"+result.pdf+"#toolbar=0";$("status").textContent=result.accepted?"Print Successful — job accepted by the printer.":result.message||"";if(result.accepted)setTimeout(()=>window.close(),350)}catch(error){$("status").textContent=action==="print"?"Print Failed/Error: "+error.message:error.message}finally{$("print").disabled=false}}'+
+    'async function run(action){$("print").disabled=true;try{const result=await window.bankSetuPrintPreview.action(action,settings());if(result.pdf)$("preview").src="data:application/pdf;base64,"+result.pdf+"#toolbar=0";$("status").textContent=result.accepted?"Print request accepted by the system.":result.message||"";if(result.accepted)setTimeout(()=>window.close(),350)}catch(error){$("status").textContent=action==="print"?"Print Failed/Error: "+error.message:error.message}finally{$("print").disabled=false}}'+
     'for(const id of ["layout","paper","pages","scale"])$(id).onchange=()=>run("preview");$("print").onclick=()=>run($("destination").value==="pdf"?"save":"print");$("cancel").onclick=()=>window.close();document.addEventListener("keydown",e=>{if(e.key==="Escape")window.close()});</script></body></html>';
 }
 function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow}) {
@@ -125,6 +125,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow}) {
     const options={paper:input?.paper,landscape:input?.landscape===true,duplex:input?.duplex===true,scale:Number(input?.scale),copies:Number(input?.copies),pageRanges:String(input?.pageRanges||'').trim(),deviceName:String(input?.deviceName||'')};
     if(!['document','A4','Letter'].includes(options.paper)||!Number.isFinite(options.scale)||options.scale<25||options.scale>200||!Number.isInteger(options.copies)||options.copies<1||options.copies>99)throw Error('Invalid print settings.');
     const pageRanges=ranges(options.pageRanges);
+    if(state.outcome?.accepted)return {accepted:true,message:'This print job was already accepted.'};
     if(state.busy)return {message:'Please wait for the current print operation.'};
     state.busy=true;
     try {
