@@ -799,15 +799,6 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({success:true});
   }
 
-  if (route === "/save-client-bridge-url") {
-    if (role !== "client_admin" || !actor.profile.tenantId) return json({error:"Only the Client Admin can manage the connection."},403);
-    const body=await request.json().catch(()=>({}));
-    const apiUrl=String(body.apiUrl ?? "").trim();
-    if(apiUrl && !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(apiUrl))return json({error:"Enter a valid Apps Script deployment URL."},400);
-    await putDocument(env,`/tenantSettings/${encodeURIComponent(actor.profile.tenantId)}`,{apiUrl,updatedAt:new Date().toISOString(),updatedBy:actor.uid});
-    return json({success:true});
-  }
-
   if (route === "/save-client-registration") {
     if (role !== "client_admin" || !actor.profile.tenantId) return json({ error: "Only a Client Admin assigned to a workspace can save bank details." }, 403);
     const body = await request.json().catch(() => ({}));
@@ -1361,7 +1352,7 @@ export default {
     try {
       const supportedRoutes = [
         "/account-action", "/delete-user", "/create-client-user", "/create-client", "/create-client-invite",
-        "/get-google-setup", "/save-google-setup", "/save-client-registration", "/save-client-bridge-url",
+        "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
@@ -1385,7 +1376,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/save-client-bridge-url", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
+      const migratedRoutes = ["/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route)
         : migratedRoutes.includes(route)

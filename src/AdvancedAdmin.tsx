@@ -23,7 +23,6 @@ import {
 import { auth, db } from "./firebase";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
-import { callBankSetuWorker } from "./workerApi";
 declare const __APP_VERSION__: string;
 
 const CURRENT_APP_VERSION = __APP_VERSION__;
@@ -39,8 +38,8 @@ type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: b
 
 async function saveVerifiedBridgeUrl(uid: string, apiUrl: string) {
   if (sessionStorage.getItem("bankSetuLicenseRequired") === "true") {
-    await callBankSetuWorker("/save-client-bridge-url", { apiUrl });
-    return;
+    if (apiUrl && apiUrl === getTenantApiUrl()) return;
+    throw new Error("Use the verified Google Sheet / Drive connection setup to change this workspace bridge. The existing connection was retained.");
   }
   await setDoc(doc(db, ...tenantSettingsPath(uid)), {
     apiUrl, ...tenantSettingsWriteMetadata(uid), updatedAt: serverTimestamp(),
@@ -392,7 +391,9 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
       );
 
       setMessage(
-        "Database connection could not be saved to Firebase Cloud. Please try again."
+        error instanceof Error && error.message.includes("verified Google Sheet / Drive connection setup")
+          ? error.message
+          : "Database connection could not be saved to Firebase Cloud. Please try again."
       );
     }
   };
