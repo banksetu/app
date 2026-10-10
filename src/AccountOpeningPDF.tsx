@@ -1,4 +1,5 @@
 import { localDataFetch, getDataIdToken } from "./core/localData";
+import { requireLicensedWrite } from "./core/licenseAccess";
 import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
@@ -496,7 +497,10 @@ export default function AccountOpeningPDF() {
   };
 
 
-  const printForm = () => window.print();
+  const printForm = async () => {
+    try { await requireLicensedWrite(); window.print(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "License verification is required to print."); }
+  };
 
 
 

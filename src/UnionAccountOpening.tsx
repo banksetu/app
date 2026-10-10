@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { UNION_AOF_BOXES, unionAofOverflow, unionAofValues } from "./unionAofLayout";
+import { requireLicensedWrite } from "./core/licenseAccess";
 
 export default function UnionAccountOpening({ customer }: { customer: Record<string, unknown> }) {
   const [edits, setEdits] = useState<Record<string,string>>({});
   const [addressChecked, setAddressChecked] = useState(false);
+  const [printError,setPrintError]=useState("");
   const values = {...unionAofValues(customer), ...edits};
   const overflow = unionAofOverflow(values);
   const photo = String(customer.photoPreview || customer.photoUrl || "");
@@ -21,7 +23,8 @@ export default function UnionAccountOpening({ customer }: { customer: Record<str
       </details>
       {!!overflow.length && <p role="alert">इन फ़ील्ड में बॉक्स से अधिक अक्षर हैं; प्रिंट से पहले सुधारें: {[...new Set(overflow.map(box=>box.label))].join(", ")}</p>}
       <label><input type="checkbox" checked={addressChecked} onChange={event=>setAddressChecked(event.target.checked)} /> मैंने नाम, पता और बाकी विवरण जाँच लिए हैं।</label>
-      <button disabled={!!overflow.length || !addressChecked} onClick={()=>window.print()}>Print / Save PDF</button>
+      <button disabled={!!overflow.length || !addressChecked} onClick={()=>void requireLicensedWrite().then(()=>window.print()).catch(reason=>setPrintError(reason instanceof Error?reason.message:"License verification is required to print."))}>Print / Save PDF</button>
+      {printError&&<p role="alert">{printError}</p>}
     </div>
     <div className="union-aof-pages">{[1,2].map(page=><section className="union-aof-page" key={page} aria-label={`Union account opening page ${page}`}>
       <img className="union-aof-background" src={`/union-aof/page-${page}.png`} alt="Union Bank blank account opening form" />

@@ -1,4 +1,5 @@
 import { localDataFetch, getDataIdToken } from "./core/localData";
+import { requireLicensedWrite } from "./core/licenseAccess";
 import {
 
   useState,
@@ -776,6 +777,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
     try {
+      await requireLicensedWrite();
 
       /*
 
@@ -916,6 +918,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
     setMessage("");
 
     try {
+      await requireLicensedWrite();
       const response = await localDataFetch("http://127.0.0.1:18181/print-pr2", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

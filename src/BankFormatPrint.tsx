@@ -1,6 +1,7 @@
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { readTextTemplate, clearAddressTemplate, renderTemplateGraphics, type TextTemplatePage } from "./pdfTextTemplate";
 import { localDataFetch, getDataIdToken } from "./core/localData";
+import { requireLicensedWrite } from "./core/licenseAccess";
 import { useEffect, useState } from "react";
 import { doc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -97,7 +98,8 @@ export default function BankFormatPrint({
         })}
       </section>)}
     </div>
-    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => onPrint ? onPrint() : window.print()}>Print bank format</button></div>
+    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => void requireLicensedWrite().then(()=>onPrint ? onPrint() : window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>Print bank format</button></div>
+    {error&&<p role="alert" className="bank-format-print-error">{error}</p>}
     <style>{`
       .bank-format-print-wrap { margin: 22px auto; max-width: 100%; overflow-x: auto; }
       .bank-format-print-actions { display:flex; justify-content:center; align-items:center; gap:14px; margin:0 auto 12px; color:#d9eaf1; font-size:13px; }

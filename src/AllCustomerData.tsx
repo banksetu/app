@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getAuth } from "firebase/auth";
 import { localDataFetch, getDataIdToken, getLocalSnapshot, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
+import { requireLicensedWrite } from "./core/licenseAccess";
 import { getTenantApiUrl } from "./tenantApi";
 import { isAndroid } from "./platform/android/runtime";
 import { registerPlugin } from "@capacitor/core";
@@ -318,7 +319,7 @@ export default function AllCustomerData() {
           </div>
           <div className="customer-preview-actions">
             <button type="button" disabled={sharing} onClick={() => void share()}>{sharing ? "Preparing / sharing…" : "Share"}</button>
-            <button type="button" onClick={() => window.print()}>Print</button>
+            <button type="button" onClick={() => void requireLicensedWrite().then(()=>window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>Print</button>
             <button type="button" onClick={() => setSelected(null)}>Close</button>
           </div>
         </div>
