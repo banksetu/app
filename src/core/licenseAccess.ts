@@ -24,9 +24,10 @@ export async function requireLicensedWrite(): Promise<void> {
       if (auth.currentUser?.uid !== uid || sessionStorage.getItem("bankSetuTenantId") !== tenantId) throw new Error("The signed-in workspace changed.");
       if (!result.view.canWrite || !result.receipt) throw new Error("Your Bank Setu license is pending or expired. Please renew or activate your license to continue.");
       claims = await verifyLicenseReceipt(result.receipt, uid, tenantId);
-      saveLicenseReceipt(result.receipt, uid, tenantId);
+      try { saveLicenseReceipt(result.receipt, uid, tenantId); }
+      catch { /* The current verified online request remains valid; offline access will need a fresh saved receipt. */ }
     }
-    if (!claims || !["active", "expiring_soon"].includes(claims.state)) throw new Error("Connect to the internet to verify your Bank Setu license.");
+    if (!claims || !["active", "expiring_soon", "demo_active"].includes(claims.state)) throw new Error("Connect to the internet to verify your Bank Setu license.");
     if (auth.currentUser?.uid !== uid || sessionStorage.getItem("bankSetuTenantId") !== tenantId || sessionStorage.getItem("bankSetuLicenseRequired") !== "true") throw new Error("The signed-in workspace changed.");
   })();
   verification = task;
