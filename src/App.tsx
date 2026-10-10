@@ -150,7 +150,7 @@ function App() {
       const url="https://script.google.com/macros/s/banksetu-demo-local/exec";
       sessionStorage.setItem("bankSetuConnectionMode","demo");sessionStorage.setItem("bankSetuConnectionId","demo-sample");sessionStorage.setItem("bankSetuBridgeUrl",url);
       setTenantApiUrl(url);setTenantWorkspaceReady(true);
-      if(navigator.onLine)void enrollOfflineSession().catch(()=>undefined);
+      if(navigator.onLine)await enrollOfflineSession().catch(()=>undefined);
       return;
     }
     if(sessionStorage.getItem("bankSetuDemoWorkspace")==="expired")return;
@@ -173,7 +173,7 @@ function App() {
     sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);
     setTenantWorkspaceReady(true);
     // Offline grant renewal is independent of online workspace readiness.
-    if(master||setup.connectionMode==="option-b")void enrollOfflineSession().catch(()=>undefined);
+    if(master||setup.connectionMode==="option-b")await enrollOfflineSession().catch(()=>undefined);
   }, []);
 
   const rejectSession = useCallback(async (message: string) => {

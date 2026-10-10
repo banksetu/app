@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const {createStore} = require('./store.cjs');
+const {createLicenseGuard} = require('./license-guard.cjs');
 const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 const primaryInstance=app.requestSingleInstanceLock();
@@ -20,6 +21,7 @@ const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{
 if(primaryInstance)app.whenReady().then(async()=>{
   const dataDirectory = resolveDataDirectory();
   store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
+  const authorizeLocalCommit=createLicenseGuard(require('../src/generated/licensePublicKey.json'));
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
@@ -86,11 +88,12 @@ if(primaryInstance)app.whenReady().then(async()=>{
   };
   ipcMain.handle('local:storage',(event)=>{trusted(event);return localStorageInfo();});
   ipcMain.handle('local:read',(event,scope)=>{trusted(event);scopeCheck(scope);return store.read(scope);});
-  ipcMain.handle('local:commit',(event,scope,before,after)=>{
+  ipcMain.handle('local:commit',(event,scope,before,after,receipt)=>{
     trusted(event);scopeCheck(scope);
     if (!before || !after || !Array.isArray(after.records) || !Array.isArray(after.operations) || JSON.stringify(after).length>100*1024*1024) throw new Error('Invalid local transaction.');
     if ([...after.records,...after.operations].some(value=>value.scope!==scope)) throw new Error('Cross-workspace transaction rejected.');
-    store.commit(scope,before,after);
+    const licensed=authorizeLocalCommit(store,scope,receipt);
+    store.commit(scope,before,after,licensed);
   });
   ipcMain.handle('clipboard:write-text',(event,value)=>{trusted(event);if(typeof value!=='string'||value.length>10000)throw new Error('Invalid clipboard text.');clipboard.writeText(value);});
   require('./share-preview.cjs').installPreviewShare({ipcMain,trusted,dialog,window,fs,shell});

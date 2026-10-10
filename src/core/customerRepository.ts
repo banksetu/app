@@ -1,10 +1,11 @@
 import { indexedDbRepository } from "../platform/web/indexedDbRepository";
 import type { CustomerRepository, LocalState } from "./schema";
+import type { LicenseReceipt } from "./licenseReceipt";
 declare global {
   interface Window { bankSetuDesktop?: {
     read(scope: string): Promise<LocalState>;
     storage(): Promise<{ path: string; databasePath: string; usedBytes: number; freeBytes: number | null; totalBytes: number | null }>;
-    commit(scope: string, before: LocalState, after: LocalState): Promise<void>;
+    commit(scope: string, before: LocalState, after: LocalState, receipt?: LicenseReceipt): Promise<void>;
     version(): Promise<string>;
     checkUpdate(): Promise<unknown>;
     installUpdate(): Promise<void>;
@@ -18,7 +19,15 @@ export const customerRepository: CustomerRepository = {
     const run = serial.catch(() => undefined).then(async () => {
       const before = await window.bankSetuDesktop!.read(scope);
       const after = structuredClone(before); change(after);
-      await window.bankSetuDesktop!.commit(scope, before, after);
+      let receipt: LicenseReceipt | undefined;
+      if (!scope.startsWith("offline:")) {
+        try {
+          const uid=scope.split(":",1)[0];
+          const tenant=sessionStorage.getItem("bankSetuTenantId");
+          if(tenant)receipt=(JSON.parse(localStorage.getItem(`bankSetuLicenseReceipt:${uid}:${tenant}`)||"null") as {receipt?:LicenseReceipt}|null)?.receipt;
+        } catch { /* Native IPC verifies signed authorization independently. */ }
+      }
+      await window.bankSetuDesktop!.commit(scope, before, after, receipt);
     });
     serial = run; return run;
   },

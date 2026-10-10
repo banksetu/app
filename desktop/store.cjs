@@ -13,7 +13,7 @@ function createStore(directory, legacyCipher = {}) {
   fs.mkdirSync(directory, {recursive:true});
   const file=path.join(directory,'customers.sqlite');
   const db=new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS workspaces (scope TEXT PRIMARY KEY, payload BLOB NOT NULL);');
+  db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS workspaces (scope TEXT PRIMARY KEY, payload BLOB NOT NULL); CREATE TABLE IF NOT EXISTS licensed_workspaces (scope TEXT PRIMARY KEY);');
   const version=db.prepare('PRAGMA user_version').get().user_version;
   if(version>FORMAT){db.close();throw Error('This database uses a newer storage format. Update Bank Setu; no data was changed.');}
   const integrity=db.prepare('PRAGMA quick_check').get();
@@ -65,16 +65,18 @@ function createStore(directory, legacyCipher = {}) {
     error.code='LOCAL_DECRYPTION_FAILED';error.recoveryPath=recoveryPath;throw error;
   }
   const read=scope=>decode(db.prepare('SELECT payload FROM workspaces WHERE scope=?').get(scope)?.payload);
-  const commit=(scope,before,after)=>{
+  const isLicensed=scope=>!!db.prepare('SELECT 1 FROM licensed_workspaces WHERE scope=?').get(scope);
+  const commit=(scope,before,after,markLicensed=false)=>{
     validate(after);
     db.exec('BEGIN IMMEDIATE');
     try {
       if(JSON.stringify(read(scope))!==JSON.stringify(before))throw Error('Local data changed in another window. Retry this operation.');
       db.prepare('INSERT INTO workspaces(scope,payload) VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET payload=excluded.payload').run(scope,JSON.stringify({format:FORMAT,state:after}));
+      if(markLicensed)db.prepare('INSERT OR IGNORE INTO licensed_workspaces(scope) VALUES(?)').run(scope);
       db.exec('COMMIT');
     }catch(error){db.exec('ROLLBACK');throw error;}
   };
-  return {read,commit,backup(){
+  return {read,commit,isLicensed,backup(){
     const target=snapshot('customers-before-update');
     const legacy=path.join(directory,'customers-before-update.sqlite');
     if(!fs.existsSync(legacy))fs.copyFileSync(target,legacy,fs.constants.COPYFILE_EXCL);
