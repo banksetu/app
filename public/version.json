@@ -1,13 +1,13 @@
 {
-  "latestVersion": "1.0.59",
-  "releaseDate": "2026-10-09",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Setup-1.0.59-x64.exe",
+  "latestVersion": "1.0.60",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.60/BankSetu-Setup-1.0.60-x64.exe",
   "notes": "Android Customer Search now uses the verified workspace bridge for local-first lookup and cloud fallback; stale cached URLs cannot receive customer requests.",
-  "version": "1.0.59",
-  "releaseTag": "v1.0.59",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.59",
-  "windowsVersion": "1.0.59",
-  "androidBuild": 1000059,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Setup-1.0.59-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.59/BankSetu-Android-1000059.apk"
+  "version": "1.0.60",
+  "releaseTag": "v1.0.60",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.60",
+  "releaseDate": "2026-10-10",
+  "windowsVersion": "1.0.60",
+  "androidBuild": 1000060,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.60/BankSetu-Setup-1.0.60-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.60/BankSetu-Android-1000060.apk"
 }
