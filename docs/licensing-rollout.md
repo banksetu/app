@@ -13,7 +13,7 @@ This branch is a feature-flagged implementation checkpoint. Do not merge into th
 
 ## Prerequisites for a production release
 
-1. Configure `LICENSE_TURNSTILE_SITE_KEY` as a Worker variable and `LICENSE_TURNSTILE_SECRET` as a Worker secret, using a Turnstile widget allowed on `banksetu-app.web.app`. Verify from both native WebViews; do not expose the secret in git.
+1. Create a Turnstile widget restricted to `banksetu-app.web.app`. Add `LICENSE_TURNSTILE_SITE_KEY` and `LICENSE_TURNSTILE_SECRET` to GitHub Actions Secrets; the Worker deploy workflow installs them as Worker secrets using the existing scoped Cloudflare API token. Verify the public HTTPS request form and Android WebView. Do not expose the secret in git or chat.
 2. Verify the deployed Worker public key against the pinned build key during the release. A service-account key rotation requires a new app build; retain the old key as an accepted verifier during any rotation window.
 3. Deploy the additive Firestore rule before the Worker; verify a synthetic tenant can read only its own license. Update the per-tenant Apps Script deployment with the bundled Code.gs before enabling newly licensed clients.
 4. Verify the reported absence of existing clients before enabling existing-client enforcement. New-client invitation is the default path; a prior app's legacy create-client request receives a clear redirect error. Missing metadata is never interpreted as expiry for legacy accounts.
