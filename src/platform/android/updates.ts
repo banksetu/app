@@ -1,4 +1,5 @@
 import { App } from '@capacitor/app';
+import { parsePlatformNotes } from '../releaseNotes';
 
 const RELEASES = 'https://api.github.com/repos/banksetu/app/releases?per_page=30';
 
@@ -7,6 +8,7 @@ type AndroidRelease = {
   prerelease: boolean;
   tag_name?: string;
   body?: string;
+  published_at?: string;
   assets: Array<{ name: string; browser_download_url: string }>;
 };
 
@@ -39,7 +41,9 @@ export async function checkAndroidUpdate() {
         build: Number(match[1]),
         version: version || `Android build ${match[1]}`,
         downloadUrl: url.href,
-        notes: release.body || '',
+        notes: /^## (Windows|Android)\s*$/im.test(release.body || '') ? '' : release.body || '',
+        changelog: parsePlatformNotes(release.body || '', 'Android'),
+        releaseDate: release.published_at?.slice(0,10),
       }];
     }))
     .sort((a, b) => b.build - a.build);
@@ -54,5 +58,7 @@ export async function checkAndroidUpdate() {
     latestBuild: latest?.build || currentBuild,
     downloadUrl: latest?.downloadUrl || '',
     notes: latest?.notes || '',
+    changelog: latest?.changelog,
+    releaseDate: latest?.releaseDate,
   };
 }

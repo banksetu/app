@@ -1,6 +1,6 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 
-import { startLocalSync, configureConnectionRecovery } from "./core/localData";
+import { startLocalSync, configureConnectionRecovery, resetSyncSession } from "./core/localData";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
@@ -99,6 +99,7 @@ function App() {
   const recoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ownerBootstrapAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
+  const workspaceRequestRef = useRef(0);
 
   useEffect(() => {
     void getPublicLicenseSettings().then(settings => {
@@ -138,9 +139,10 @@ function App() {
   const prepareClientWorkspace = useCallback(async (signal?:AbortSignal) => {
     const profile=activeProfile.current;const user=auth.currentUser;
     if(!profile||!user)return;
+    const requestId=++workspaceRequestRef.current;
     const role=normalize(profile.role);
     if(!["master_owner","admin","client_admin","client_user"].includes(role))return;
-    const stillCurrent=()=>auth.currentUser?.uid===user.uid && activeProfile.current?.role===profile.role && activeProfile.current?.tenantId===profile.tenantId;
+    const stillCurrent=()=>requestId===workspaceRequestRef.current && auth.currentUser?.uid===user.uid && activeProfile.current?.role===profile.role && activeProfile.current?.tenantId===profile.tenantId;
     if(sessionStorage.getItem("bankSetuWorkspaceReady")!=="true"){
       try{await resumeOfflineSession(user.uid,{role,tenantId:String(profile.tenantId||"")});}catch{/* First use needs a verified connection. */}
     }
@@ -281,7 +283,8 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      clearTimeout(recoveryTimer.current);verifiedNavigation.current=false;activeProfile.current=null;setTenantWorkspaceReady(false);
+      clearTimeout(recoveryTimer.current);verifiedNavigation.current=false;activeProfile.current=null;
+      workspaceRequestRef.current++;setTenantWorkspaceReady(false);resetSyncSession();
       if (!user) {
         activeProfile.current=null;
         ownerBootstrapAttemptRef.current = false;
@@ -425,6 +428,7 @@ function App() {
   const handleLogout = async () => {
     try {
       clearProfileListener();
+      workspaceRequestRef.current++;activeProfile.current=null;setTenantWorkspaceReady(false);resetSyncSession();
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
       sessionStorage.removeItem("bankSetuTenantId");

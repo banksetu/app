@@ -1,10 +1,14 @@
+import type { ReleaseChangelog } from "./releaseNotes";
 export type UpdateManifest = {
   latestVersion?: string;
+  downloadUrl?: string;
   androidBuild?: number;
   androidDownloadUrl?: string;
   windowsVersion?: string;
   windowsDownloadUrl?: string;
   notes?: string;
+  releaseDate?: string;
+  changelog?: {windows?: ReleaseChangelog; android?: ReleaseChangelog};
 };
 
 export const UPDATE_MANIFEST_URL =

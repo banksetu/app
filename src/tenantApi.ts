@@ -14,6 +14,10 @@ export function getTenantApiUrl(): string {
   if (["client_admin", "client_user"].includes(role || "") && sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") {
     return "";
   }
+  if (sessionStorage.getItem("bankSetuWorkspaceReady") === "true") {
+    const verified = sessionStorage.getItem("bankSetuBridgeUrl")?.trim();
+    if (verified) return verified;
+  }
   return localStorage.getItem(tenantStorageKey("bankSetuApiUrl"))?.trim() || "";
 }
 

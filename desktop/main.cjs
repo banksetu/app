@@ -103,7 +103,17 @@ if(primaryInstance)app.whenReady().then(async()=>{
     if (!app.isPackaged || !hasUpdateFeed()) throw new Error('Windows update feed is not packaged. Install the production EXE release.');
   };
   ipcMain.handle('update:version',event=>{trusted(event);return app.getVersion();});
-  ipcMain.handle('update:check',async event=>{trusted(event);if(!app.isPackaged)return testUpdater.check();assertUpdateFeed();downloaded=false;const result=await autoUpdater.checkForUpdates();return {latestVersion:result?.updateInfo.version || app.getVersion(),notes:'Verified Windows update feed.'};});
+  ipcMain.handle('update:check',async event=>{
+    trusted(event);if(!app.isPackaged)return testUpdater.check();assertUpdateFeed();downloaded=false;
+    const result=await autoUpdater.checkForUpdates();const latestVersion=result?.updateInfo.version || app.getVersion();
+    let changelog,releaseDate;
+    try {
+      const response=await net.fetch('https://banksetu-app.web.app/version.json',{signal:AbortSignal.timeout(10000),cache:'no-store'});
+      if(response.ok){const manifest=await response.json();if(manifest.windowsVersion===latestVersion && manifest.changelog?.windows?.version===latestVersion){changelog=manifest.changelog.windows;releaseDate=manifest.changelog.windows.releaseDate;}}
+    }catch{/* Older or temporarily unavailable metadata must not block updates. */}
+    const notes=typeof result?.updateInfo.releaseNotes==='string'?result.updateInfo.releaseNotes:'';
+    return {latestVersion,notes,changelog,releaseDate};
+  });
   ipcMain.handle('update:install',async event=>{trusted(event);if(!app.isPackaged)return testUpdater.install();assertUpdateFeed();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
   await window.loadURL(ORIGIN+'/index.html');
 }).catch(error=>{require('electron').dialog.showErrorBox('Bank Setu startup failed',error.message);app.quit();});

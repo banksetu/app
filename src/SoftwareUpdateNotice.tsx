@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { startUpdatePolling } from "./platform/updatePolling";
 import { downloadAndroidUpdate, isAndroid } from "./platform/android/runtime";
 import { checkAndroidUpdate } from "./platform/android/updates";
+import type { ReleaseChangelog } from "./platform/releaseNotes";
+import type { UpdateManifest } from "./platform/updateManifest";
 
 declare const __APP_VERSION__: string;
 
@@ -17,13 +19,9 @@ type UpdateNoticeState = {
   latestVersion: string;
   downloadUrl: string;
   notes: string;
+  changelog?: ReleaseChangelog;
+  releaseDate?: string;
   platform: "web" | "android" | "windows";
-};
-
-type VersionManifest = {
-  latestVersion?: string;
-  downloadUrl?: string;
-  notes?: string;
 };
 
 const desktopBridge = () =>
@@ -50,6 +48,8 @@ async function findUpdate(): Promise<UpdateNoticeState> {
       latestVersion: result.latestVersion,
       downloadUrl: result.downloadUrl,
       notes: result.notes,
+      changelog: result.changelog,
+      releaseDate: result.releaseDate,
       platform: "android",
     };
   }
@@ -60,13 +60,15 @@ async function findUpdate(): Promise<UpdateNoticeState> {
       desktop.version(),
       desktop.checkUpdate(),
     ]);
-    const result = rawResult as { latestVersion?: string; notes?: string };
+    const result = rawResult as { latestVersion?: string; notes?: string; changelog?: ReleaseChangelog; releaseDate?: string };
     const latestVersion = String(result.latestVersion || installedVersion);
     return {
       available: compareVersions(latestVersion, installedVersion) > 0,
       latestVersion,
       downloadUrl: "",
       notes: String(result.notes || ""),
+      changelog: result.changelog,
+      releaseDate: result.releaseDate,
       platform: "windows",
     };
   }
@@ -75,13 +77,15 @@ async function findUpdate(): Promise<UpdateNoticeState> {
     cache: "no-store",
   });
   if (!response.ok) throw new Error("Update manifest unavailable.");
-  const manifest = (await response.json()) as VersionManifest;
+  const manifest = (await response.json()) as UpdateManifest;
   const latestVersion = String(manifest.latestVersion || current).trim();
   return {
     available: compareVersions(latestVersion, current) > 0,
     latestVersion,
     downloadUrl: String(manifest.downloadUrl || "").trim(),
     notes: String(manifest.notes || "").trim(),
+    changelog: manifest.changelog?.windows?.version === latestVersion ? manifest.changelog.windows : undefined,
+    releaseDate: manifest.releaseDate,
     platform: "web",
   };
 }
@@ -115,6 +119,7 @@ export default function SoftwareUpdateNotice() {
   }, []);
 
   if (!notice) return null;
+  const groups = Object.entries(notice.changelog?.categories || {}).filter(([,items]) => Array.isArray(items) && items.length);
 
   const dismiss = () => {
     try { sessionStorage.setItem("bankSetuUpdateDismissed", notice.latestVersion); } catch { /* Storage is optional. */ }
@@ -179,11 +184,12 @@ export default function SoftwareUpdateNotice() {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div>
           <strong style={{ display: "block", fontSize: 15 }}>
-            New Bank Setu update available
+            Bank Setu Update Available
           </strong>
           <span style={{ display: "block", marginTop: 4, fontSize: 13, opacity: 0.9 }}>
             Version {notice.latestVersion} is ready to download.
           </span>
+          {notice.releaseDate && <span style={{display:"block",marginTop:3,fontSize:12,opacity:.8}}>Released {notice.releaseDate}</span>}
         </div>
         <button
           type="button"
@@ -201,7 +207,11 @@ export default function SoftwareUpdateNotice() {
           ×
         </button>
       </div>
-      {notice.notes && (
+      {groups.length > 0 && <div style={{marginTop:14,maxHeight:"min(34vh,220px)",overflowY:"auto",paddingRight:6}}>
+        <strong style={{fontSize:14}}>What&apos;s New in This Version</strong>
+        {groups.map(([heading,items])=><section key={heading} style={{marginTop:9}}><strong style={{fontSize:12}}>{heading}</strong><ul style={{margin:"5px 0 0",paddingLeft:20,fontSize:12,lineHeight:1.45}}>{items.map((item,index)=><li key={`${heading}-${index}`}>{item}</li>)}</ul></section>)}
+      </div>}
+      {!groups.length && notice.notes && (
         <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.88 }}>
           {notice.notes}
         </p>

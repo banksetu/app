@@ -28,22 +28,20 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
   const url = String(input);
-  if (url !== sessionStorage.getItem("bankSetuBridgeUrl")) {
-    // Customer operations must never be sent to a stale or unrelated bridge.
-    if (supportedReads.has(String(payload.action || "")) || supportedWrites.has(String(payload.action || "")))
-      throw new Error("Workspace bridge changed. Reconnect before accessing Google data.");
-    if (!payload.idToken) throw new Error("Workspace bridge changed. Reconnect before accessing Google data.");
-    return networkFetch(input, init);
-  }
+  const verifiedUrl = sessionStorage.getItem("bankSetuBridgeUrl") || "";
+  if (url !== verifiedUrl && (!verifiedUrl || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true"))
+    throw new Error("Workspace bridge changed. Reconnect before accessing Google data.");
+  // Older screens can hold a stale tenant URL. Local reads use their verified
+  // scope, while every cloud action below is sent only to the bound endpoint.
   if(sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true"){payload.masterLocalSync=true;init={...init,body:JSON.stringify(payload)};}
   const action = String(payload.action || "");
   const scope = identity();
-  const cloudRead=async(target: RequestInfo | URL, options?: RequestInit)=>{
+  const cloudRead=async(_target: RequestInfo | URL, options?: RequestInit)=>{
     const user=auth.currentUser!;const idToken=await user.getIdToken();
-    if(identity()!==scope)throw new Error("Workspace changed.");
+    if(identity()!==scope || sessionStorage.getItem("bankSetuBridgeUrl")!==verifiedUrl)throw new Error("Workspace changed.");
     const body=JSON.parse(String(options?.body||"{}"));
-    const response=await networkFetch(target,{...options,body:JSON.stringify({...body,idToken}),signal:AbortSignal.timeout(25000)});
-    if(identity()!==scope)throw new Error("Workspace changed.");
+    const response=await networkFetch(verifiedUrl,{...options,body:JSON.stringify({...body,idToken}),signal:AbortSignal.timeout(25000)});
+    if(identity()!==scope || sessionStorage.getItem("bankSetuBridgeUrl")!==verifiedUrl)throw new Error("Workspace changed.");
     return response;
   };
   const state = await repository.read(scope);
@@ -189,6 +187,13 @@ export function resumeSync() {
   window.dispatchEvent(new Event("banksetu-sync-request"));
   announce();
 }
+/** A new authenticated session must not inherit another account's pause/job. */
+export function resetSyncSession() {
+  for (const controller of syncControllers.values()) controller.abort(new DOMException("Account changed.","AbortError"));
+  syncPaused = false;
+  window.dispatchEvent(new Event("banksetu-sync-pause-change"));
+  announce();
+}
 type SyncProtection = {success?:boolean;code?:string;message?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
 const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
@@ -227,7 +232,7 @@ export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   const existing=running.get(scope);if(existing)return existing;
   const controller=new AbortController();syncControllers.set(scope,controller);
   const combinedSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
-  const task=runSync(refresh,combinedSignal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();});
+  const task=runSync(refresh,combinedSignal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
   running.set(scope,task);announce();return task;
 }
 async function runSync(refresh: boolean, signal?:AbortSignal) {
@@ -259,7 +264,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       throw error;
     }
     let value=await response.json();
-    if(!value.success&&value.code==="AUTH_REQUIRED"&&!refreshed){idToken=await user.getIdToken(true);refreshed=true;if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();if(response.status===401||response.status===403)throw Object.assign(new Error("Google authentication needs attention. Sign in again; local changes remain pending."),{permanent:true});if(!response.ok)throw new Error(`Google sync is temporarily unavailable (${response.status}). Local changes remain pending.`);value=await response.json();}
+    if(!value.success&&value.code==="AUTH_REQUIRED"&&!refreshed){idToken=await user.getIdToken(true);if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();if(response.status===401||response.status===403)throw Object.assign(new Error("Google authentication needs attention. Sign in again; local changes remain pending."),{permanent:true});if(!response.ok)throw new Error(`Google sync is temporarily unavailable (${response.status}). Local changes remain pending.`);value=await response.json();}
     if(!value.success&&value.code==="AUTH_REQUIRED")throw Object.assign(new Error("Google authentication needs attention. Sign in again; local changes remain pending."),{permanent:true});
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
     if(!value.success && (value.code==="SYNC_BUSY" || /Lock timeout|another process was holding the lock/i.test(String(value.message||""))))
@@ -526,13 +531,18 @@ export function startLocalSync() {
         }
       }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
       finally{
-        activeController=undefined;busy=false;if(!stopped){if(syncPaused||actionRequired){clearTimeout(timer);nextRetryAt=0;announce();return;}if(!navigator.onLine){nextRetryAt=0;announce();return;}if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);announce();}
+        activeController=undefined;busy=false;if(!stopped){
+          if(syncPaused||actionRequired){clearTimeout(timer);nextRetryAt=0;}
+          else if(!navigator.onLine)nextRetryAt=0;
+          else {if(wakePending&&!failures)delay=250;wakePending=false;nextRetryAt=Date.now()+delay;timer=setTimeout(()=>void tick(),delay);}
+          announce();
+        }
       }
     };
-    const wake=(event?:Event)=>{if(syncPaused)return;if((event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh)refreshRequested=true;failures=0;healthError="";void tick();};
+    const wake=(event?:Event)=>{if(syncPaused)return;const manual=(event as CustomEvent<{refresh?:boolean}>|undefined)?.detail?.refresh===true;if(manual)refreshRequested=true;if(!manual && failures && Date.now()<nextRetryAt)return;failures=0;healthError="";void tick();};
     const pauseChanged=()=>{if(syncPaused){clearTimeout(timer);activeController?.abort(new DOMException("Background sync paused on this device.","AbortError"));nextRetryAt=0;announce();}else wake();};
     let wasOffline=!navigator.onLine;
-    const reconnect=()=>{if(wasOffline){lastBackendCheck=0;refreshRequested=true;wasOffline=false;wake();}else if(!failures||Date.now()>=nextRetryAt)wake();};
+    const reconnect=()=>{if(wasOffline){lastBackendCheck=0;refreshRequested=true;wasOffline=false;failures=0;nextRetryAt=0;wake();}else if(!failures||Date.now()>=nextRetryAt)wake();};
     const offline=()=>{wasOffline=true;clearTimeout(timer);activeController?.abort(new DOMException("Network connection lost.","AbortError"));healthError="Offline — local changes remain pending.";announce();};
     const visibility=()=>{if(!busy&&document.visibilityState==="visible"&&navigator.onLine&&(!failures||Date.now()>=nextRetryAt))wake();};
     const focus=()=>{if(!busy&&navigator.onLine&&(!failures||Date.now()>=nextRetryAt))wake();};

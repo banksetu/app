@@ -45,7 +45,7 @@ function createTestUpdater({fetch,current,directory,backup,launch,manifestUrl}){
               const releases=await releaseResponse.json();
               selected=findLatestWindowsAsset(Array.isArray(releases)?releases:[releases],current);
             }
-            return {latestVersion:String(manifest.windowsVersion),notes:manifest.notes||'New Bank Setu update is available.'};
+            return {latestVersion:String(manifest.windowsVersion),notes:manifest.notes||'',changelog:manifest.changelog?.windows?.version===manifest.windowsVersion?manifest.changelog.windows:undefined,releaseDate:manifest.releaseDate};
           }
         }
       }

@@ -31,6 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin codex/spark-client-workspace-20261001
+          git fetch --tags origin
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/codex/spark-client-workspace-20261001)" || { echo 'Branch changed; rerun from latest branch.'; exit 1; }
           NEXT=$(node --input-type=module <<'NODE'
           import {readFileSync} from 'node:fs';
@@ -48,9 +49,10 @@ jobs:
           )
           if gh release view "v$NEXT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "v$NEXT" >/dev/null 2>&1; then echo 'Version already exists'; exit 1; fi
           node scripts/release.mjs "$NEXT"
+          node scripts/release-notes.mjs
           node scripts/pin-license-key.mjs
           npm ci
-          npm run test:worker && npm run test:local && npm run test:bridge && npm run check:schema && npm run build
+          npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && npm run check:schema && npm run build
           git config user.name 'banksetu-release-bot'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json package-lock.json public/version.json src/generated/licensePublicKey.json
@@ -60,6 +62,11 @@ jobs:
           echo "name=$NEXT" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-Release-Notes
+          path: release-notes.md
+          if-no-files-found: error
   android:
     needs: version
     uses: ./.github/workflows/android-release.yml
@@ -91,6 +98,10 @@ jobs:
         with:
           name: BankSetu-Windows-SIGNED
           path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: BankSetu-Release-Notes
+          path: notes
       - name: Publish complete release only
         env:
           GH_TOKEN: ${{ github.token }}
@@ -101,8 +112,9 @@ jobs:
           test -s release/latest.yml
           test -s "release/BankSetu-Setup-$VERSION-x64.exe"
           test -s "release/BankSetu-Android-${{ needs.version.outputs.code }}.apk"
+          test -s notes/release-notes.md
           if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo 'Release tag already exists; refusing overwrite.'; exit 1; fi
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --draft --title "Bank Setu $VERSION" --notes 'Windows installer (unsigned) and signed Android APK. Existing local data is retained by the installers.'
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --draft --title "Bank Setu $VERSION" --notes-file notes/release-notes.md
           gh release upload "v$VERSION" release/* --repo "$GITHUB_REPOSITORY"
           gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           node scripts/verify-public-release.mjs public/version.json
