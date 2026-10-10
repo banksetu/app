@@ -1,6 +1,6 @@
 // Tenant licensing rules. No customer records or local storage are touched here.
 const DAY = 86_400_000;
-export const DEFAULT_FLAGS = Object.freeze({ uiEnabled: false, newClientRequired: false, existingClientEnforcement: false, verificationEnforcement: false });
+export const DEFAULT_FLAGS = Object.freeze({ uiEnabled: false, newClientRequired: true, existingClientEnforcement: false, verificationEnforcement: false });
 export const DEFAULT_PRICING = Object.freeze({ annualPaise: 0, lifetimePaise: 0, annualAvailable: false, lifetimeAvailable: false, upgradeCreditEnabled: false, maxCreditPaise: 0, graceDays: 7, paymentInstructions: "Contact the Master Admin for payment details." });
 
 export function validatePricing(input) {

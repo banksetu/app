@@ -8,7 +8,7 @@ import { callBankSetuWorker } from "./workerApi";
 type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean; syncing: boolean; paused:boolean; lastCompletedAt: number; error: string; mediaPending: number };
 const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false, syncing:false,paused:false,lastCompletedAt:0,error:"",mediaPending:0 };
 
-export default function LocalSyncStatus({ visible = true }: { visible?: boolean }) {
+export default function LocalSyncStatus({ visible = true, readOnly = false }: { visible?: boolean; readOnly?: boolean }) {
   const [conflicts, setConflicts] = useState<QueueOperation[]>([]);
   const [status, setStatus] = useState<Status>(emptyStatus);
   const [error, setError] = useState("");
@@ -42,6 +42,8 @@ export default function LocalSyncStatus({ visible = true }: { visible?: boolean 
 
   if (!visible) return null;
   if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
+
+  if (readOnly) return <aside aria-label="Local database backup" className="sync-center"><header className="sync-header"><div><p>DATA CONTROL CENTER</p><h2>Read-Only Backup</h2><span>Existing customer data and pending operations remain on this device.</span></div></header><section className="sync-body"><p>{status.records} local customer records · {status.pending} pending operations</p><button type="button" className="backup-action" onClick={() => void exportLocalBackup().catch(reason => setError(reason instanceof Error ? reason.message : "Backup failed."))}>◉ Backup Now</button>{error && <p role="alert">{error}</p>}</section></aside>;
 
   const runSync = () => {
     const notice=(type:string,title:string,message:string)=>{const event=new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};event.detail={type,title,message};window.dispatchEvent(event);};

@@ -146,7 +146,7 @@ function doPost(e) {
     }
 
     if (["getPhotoPresence", "syncCustomerOperation", "getSyncProtection", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
-      const authUser = requireAuthorizedUser(idToken, false);
+      const authUser = requireAuthorizedUser(idToken, false, action);
       if (action === "getPhotoPresence") return getPhotoPresence(request,authUser);
       if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
       if (action === "getSyncProtection" || action === "publishLocalReset") return syncProtection(request, authUser);
@@ -158,33 +158,33 @@ function doPost(e) {
     }
 
     if (action === "uploadBankFormatSample") {
-      const admin = requireAuthorizedUser(idToken, true);
+      const admin = requireAuthorizedUser(idToken, true, action);
       if (admin.role !== "client_admin") throw new Error("Client Admin permission is required.");
       return jsonResponse(Object.assign({success:true}, saveBoundDocument(request.dataUrl, request.fileName, admin.photoFolderId, request.operationId)));
     }
 
     if (["saveCustomer","updateCustomer","deleteCustomer","markPassbookDelivered"].includes(action)) {
-      const checked = requireAuthorizedUser(idToken, false);
+      const checked = requireAuthorizedUser(idToken, false, action);
       if (checked.tenantId && checked.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
     }
 
     if (action === "getRecentActivities") {
-      const authUser = requireAuthorizedUser(idToken, false);
+      const authUser = requireAuthorizedUser(idToken, false, action);
       return getRecentActivities(authUser, request.limit);
     }
 
     if (action === "getDashboardStats") {
-      const authUser = requireAuthorizedUser(idToken, false);
+      const authUser = requireAuthorizedUser(idToken, false, action);
       return getDashboardStats(authUser);
     }
 
     if (action === "getBankFormatPreview") {
-      const authUser = requireAuthorizedUser(idToken, false);
+      const authUser = requireAuthorizedUser(idToken, false, action);
       return getBankFormatPreview(authUser, request.formatType);
     }
 
     if (action === "testTenantConnection") {
-      const authUser = requireAuthorizedUser(idToken, false);
+      const authUser = requireAuthorizedUser(idToken, false, action);
       return testTenantConnection(authUser);
     }
 
@@ -193,10 +193,7 @@ function doPost(e) {
       action === "saveCustomer"
     ) {
       const authUser =
-        requireAuthorizedUser(
-          idToken,
-          false
-        );
+        requireAuthorizedUser(idToken, false, action);
 
       return saveCustomer(
         request.customer || {},
@@ -209,10 +206,7 @@ function doPost(e) {
       action === "searchCustomer"
     ) {
       const authUser =
-        requireAuthorizedUser(
-          idToken,
-          false
-        );
+        requireAuthorizedUser(idToken, false, action);
 
       return searchCustomer(
         request.query,
@@ -225,10 +219,7 @@ function doPost(e) {
       action === "updateCustomer"
     ) {
       const authUser =
-        requireAuthorizedUser(
-          idToken,
-          false
-        );
+        requireAuthorizedUser(idToken, false, action);
 
       return updateCustomer(
         request.rowNumber,
@@ -241,10 +232,7 @@ function doPost(e) {
     if (
       action === "checkDuplicate"
     ) {
-      const authUser = requireAuthorizedUser(
-        idToken,
-        false
-      );
+      const authUser = requireAuthorizedUser(idToken, false, action);
 
       return checkDuplicate(
         request.customer || {},
@@ -259,10 +247,7 @@ function doPost(e) {
       "markPassbookDelivered"
     ) {
       const authUser =
-        requireAuthorizedUser(
-          idToken,
-          false
-        );
+        requireAuthorizedUser(idToken, false, action);
 
       return markPassbookDelivered(
         request.rowNumber,
@@ -275,10 +260,7 @@ function doPost(e) {
       action === "deleteCustomer"
     ) {
       const admin =
-        requireAuthorizedUser(
-          idToken,
-          true
-        );
+        requireAuthorizedUser(idToken, true, action);
 
       return deleteCustomer(
         request.rowNumber,
@@ -313,7 +295,8 @@ function doPost(e) {
 
 function requireAuthorizedUser(
   idToken,
-  adminRequired
+  adminRequired,
+  action
 ) {
   const authAccount =
     verifyFirebaseIdToken(
@@ -406,6 +389,16 @@ function requireAuthorizedUser(
   }
   if (tenantId && !["client_admin", "client_user"].includes(role)) {
     throw new Error("Only a client account assigned to this workspace may access its data.");
+  }
+  if (tenantId && profile.licenseRequired === true && [
+    "saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered",
+    "markPassbookPrinted", "uploadBankFormatSample", "publishLocalReset",
+    "syncCustomerOperation"
+  ].indexOf(action) !== -1) {
+    const license = getFirestoreTenantLicense(tenantId, idToken);
+    if (!licenseAllowsWrite(license)) {
+      throw new Error("License renewal is required. Pending customer changes remain saved locally.");
+    }
   }
   const tenantSettings = tenantId
     ? getFirestoreTenantSettings(tenantId, idToken)
@@ -609,10 +602,37 @@ function getFirestoreUserProfile(
       firestoreString(
         document,
         "tenantId"
-      )
+      ),
+    licenseRequired: Boolean(document.fields && document.fields.licenseRequired && document.fields.licenseRequired.booleanValue === true)
   };
 }
 
+
+function getFirestoreTenantLicense(tenantId, idToken) {
+  const url = "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(FIREBASE_PROJECT_ID) +
+    "/databases/(default)/documents/tenantLicenses/" + encodeURIComponent(tenantId);
+  const response = UrlFetchApp.fetch(url, { method: "get", headers: { Authorization: "Bearer " + idToken }, muteHttpExceptions: true });
+  if (response.getResponseCode() === 404) return null;
+  if (response.getResponseCode() !== 200) throw new Error("License verification is temporarily unavailable. Local changes remain saved.");
+  const document = JSON.parse(response.getContentText() || "{}");
+  return {
+    tenantId: firestoreString(document, "tenantId"),
+    plan: firestoreString(document, "plan"),
+    status: firestoreString(document, "status"),
+    expiresAt: firestoreString(document, "expiresAt"),
+    graceDays: Number(document.fields && document.fields.graceDays && document.fields.graceDays.integerValue || 7)
+  };
+}
+
+function licenseAllowsWrite(license) {
+  if (!license || license.status !== "active") return false;
+  if (license.plan === "lifetime") return true;
+  if (license.plan !== "annual") return false;
+  const expiry = Date.parse(license.expiresAt);
+  const graceDays = Number.isInteger(license.graceDays) && license.graceDays >= 0 && license.graceDays <= 30 ? license.graceDays : 7;
+  return Number.isFinite(expiry) && Date.now() <= expiry + graceDays * 86400000;
+}
 
 function getFirestoreTenantSettings(tenantId, idToken) {
   const url =

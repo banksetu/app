@@ -36,6 +36,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
       }
     };
     if (/^https:\/\/(?:docs\.google\.com|drive\.google\.com|script\.google\.com|github\.com)\//.test(url)) void shell.openExternal(url);
+    if (/^https:\/\/banksetu-app\.web\.app\/license-request\/?(?:\?plan=(?:annual|lifetime|undecided))?$/.test(url)) void shell.openExternal(url);
     return {action:'deny'};
   });
   window.webContents.on('did-create-window',child=>{

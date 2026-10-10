@@ -4,6 +4,7 @@ import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validateInquiry, addCa
 
 test('legacy tenants remain accessible until migration and enforcement', () => {
   assert.equal(DEFAULT_FLAGS.existingClientEnforcement, false);
+  assert.equal(DEFAULT_FLAGS.newClientRequired, true);
   assert.deepEqual(licenseView(null, Date.now()), {state:'legacy_unreviewed',daysRemaining:null,canWrite:true});
 });
 test('annual expiry uses calendar year including leap days and renewal extends existing expiry', () => {

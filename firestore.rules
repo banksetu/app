@@ -127,6 +127,13 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Server-managed licensing metadata. Apps Script may read the signed-in
+    // tenant's state; no client may create or modify a license or pricing.
+    match /tenantLicenses/{tenantId} {
+      allow get: if sameTenant(tenantId);
+      allow list, create, update, delete: if false;
+    }
+
     match /tenantSettings/{tenantId} {
       allow get: if sameTenant(tenantId);
       allow list: if false;

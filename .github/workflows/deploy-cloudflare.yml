@@ -6,6 +6,7 @@ on:
       - codex/spark-client-workspace-20261001
     paths:
       - cloudflare/**
+      - firestore.rules
       - .github/workflows/deploy-cloudflare.yml
   workflow_dispatch:
 
@@ -17,7 +18,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  rules:
+    if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Prepare Firebase credential
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: node scripts/firebase-credential.mjs
+      - name: Deploy additive Firestore license-read rule
+        run: npx --yes firebase-tools@15.31.0 deploy --config firebase.json --only firestore:rules --project banksetu-69e2f --non-interactive
+
   deploy:
+    needs: rules
     if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 15

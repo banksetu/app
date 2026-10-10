@@ -17,7 +17,10 @@ test('manifest, legal pages, and tenant-free static content are packaged', () =>
   const source = JSON.parse(read('public/version.json'));
   const deployed = JSON.parse(read('portfolio-dist/version.json'));
   assert.deepEqual(deployed, source);
-  for (const path of ['privacy-policy/index.html','terms/index.html','client-bridge/Code.gs']) assert.ok(read(`portfolio-dist/${path}`).length > 200);
+  for (const path of ['privacy-policy/index.html','terms/index.html','license-request/index.html','client-bridge/Code.gs']) assert.ok(read(`portfolio-dist/${path}`).length > 200);
+  const requestPage=read('portfolio-dist/license-request/index.html');
+  assert.match(requestPage,/Contact Master Admin/);
+  assert.doesNotMatch(requestPage,/CustomerEntry|signInWithEmailAndPassword/);
   const json = read('portfolio/content/site.json');
   const screenshots=JSON.parse(json).screenshots;
   assert.equal(screenshots.length,3);

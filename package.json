@@ -16,7 +16,7 @@
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --win nsis --publish never",
     "desktop:pack:unsigned": "npm run build && electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false",
-    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs desktop/share-preview.test.cjs scripts/union-passbook.test.mjs desktop/app-protocol.test.cjs scripts/auth-navigation.test.mjs",
+    "test:local": "node --test scripts/local-first.test.mjs scripts/offline-backup.test.mjs scripts/license-receipt.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs desktop/share-preview.test.cjs scripts/union-passbook.test.mjs desktop/app-protocol.test.cjs scripts/auth-navigation.test.mjs",
     "test:bridge": "node --test scripts/bridge.test.mjs",
     "predev": "node scripts/prepare-client-assets.mjs",
     "android:sync": "npm run build && cap sync android",

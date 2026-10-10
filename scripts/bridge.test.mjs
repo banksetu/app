@@ -3,6 +3,18 @@ function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new 
  const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
+test('licensed tenant bridge blocks direct customer writes after expiry while keeping reads available',()=>{
+  const {context}=bridge();
+  context.verifyFirebaseIdToken=()=>({localId:'synthetic-user',email:'owner@example.invalid'});
+  context.getFirestoreUserProfile=()=>({role:'client_admin',status:'approved',subscriptionStatus:'active',tenantId:'synthetic-tenant',licenseRequired:true});
+  context.getFirestoreTenantSettings=()=>({workspaceOwnerUid:'synthetic-user',connectionId:'synthetic-connection',spreadsheetId:'synthetic-sheet',photoFolderId:'synthetic-folder'});
+  context.getFirestoreTenant=()=>({status:'active',ownerUid:'synthetic-user'});
+  context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status:'active',expiresAt:'2020-01-01T00:00:00.000Z',graceDays:7});
+  assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation'),/License renewal/);
+  assert.equal(context.requireAuthorizedUser('synthetic-token',false,'getAllCustomers').tenantId,'synthetic-tenant');
+  context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'lifetime',status:'active'});
+  assert.equal(context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation').tenantId,'synthetic-tenant');
+});
 test('bridge replays committed operations, uses UUID after row reorder and rejects concurrent edits',()=>{
  const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());const first=context.syncCustomerOperation({connectionId:'bound',operation:op},user);assert(first.success);assert.equal(rows.length,2);const replay=context.syncCustomerOperation({connectionId:'bound',operation:op},user);assert(replay.replayed);assert.equal(rows.length,2);
  rows.splice(1,0,Array(27).fill(''));const edit={...op,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:first.revision,customer:{...op.customer,name:'Updated'}};const updated=context.syncCustomerOperation({connectionId:'bound',operation:edit},user);assert(updated.success);assert.equal(updated.rowNumber,3);assert.equal(rows[1][2],'');assert.equal(rows[2][2],'Updated');

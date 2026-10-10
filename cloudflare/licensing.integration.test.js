@@ -14,7 +14,7 @@ const originalFetch=globalThis.fetch;
 test('server-only annual activation, renewal and duplicate approval are atomic and tenant scoped',async()=>{
   const store=new Map([
     ['users/master',doc('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'})],
-    ['users/client',doc('users/client',{role:'client_admin',tenantId:'tenant-a',status:'approved',subscriptionStatus:'active'})],
+    ['users/client',doc('users/client',{role:'client_admin',tenantId:'tenant-a',status:'approved',subscriptionStatus:'active',licenseRequired:true})],
     ['tenants/tenant-a',doc('tenants/tenant-a',{tenantId:'tenant-a',ownerUid:'client',status:'active'})],
   ]);
   let commitCount=0;
@@ -41,12 +41,23 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
   };
   try{
     assert.equal((await call('client','/license-save-settings',{pricing:settings})).status,403);
+    assert.equal((await call('client','/presence-heartbeat',{})).status,403);
+    assert.equal((await call('master','/create-client',{})).status,409);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
     const id='01234567-89ab-4cde-8fab-0123456789ab';
     assert.equal((await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,403);
     assert.equal((await call('master','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,200);
-    const first=(await call('client','/license-me',{})).body.license;
+    const verified=await call('client','/license-me',{});
+    const first=verified.body.license;
     assert.equal(first.tenantId,'tenant-a');assert.equal(first.plan,'annual');assert.equal(first.revision,1);
+    const receipt=verified.body.receipt;
+    const keyResponse=await worker.fetch(new Request('https://worker.example/license-public-key'),env);
+    assert.equal(keyResponse.status,200);
+    const publicKey=(await keyResponse.json()).publicKey;
+    const key=await crypto.subtle.importKey('jwk',publicKey,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
+    const signature=Uint8Array.from(atob(receipt.signature.replace(/-/g,'+').replace(/_/g,'/')),char=>char.charCodeAt(0));
+    assert(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,signature,new TextEncoder().encode(receipt.payload)));
+    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=8*3600000);
     const renewal='12345678-89ab-4cde-8fab-0123456789ab';
     assert.equal((await call('client','/license-request-change',{kind:'renewal',requestId:renewal})).status,200);
     assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve'})).status,400);
@@ -61,5 +72,12 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert.equal((await call('master','/license-admin-decision',{requestId:upgrade,action:'approve',paymentConfirmed:true})).body.repeated,true);
     const lifetime=(await call('client','/license-me',{})).body.license;
     assert.equal(lifetime.tenantId,'tenant-a');assert.equal(lifetime.plan,'lifetime');assert.equal(lifetime.expiresAt,null);assert.equal(lifetime.revision,3);
+    const stateId='34567890-89ab-4cde-8fab-0123456789ab';
+    assert.equal((await call('client','/license-admin-state',{tenantId:'tenant-a',action:'suspend',requestId:stateId})).status,403);
+    assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'suspend',requestId:stateId})).body.status,'suspended');
+    assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'suspend',requestId:stateId})).body.repeated,true);
+    assert.equal((await call('client','/presence-heartbeat',{})).status,403);
+    assert.equal((await call('client','/license-me',{})).body.view.state,'suspended');
+    assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'reactivate',requestId:'45678901-89ab-4cde-8fab-0123456789ab'})).body.status,'active');
   }finally{globalThis.fetch=originalFetch;}
 });

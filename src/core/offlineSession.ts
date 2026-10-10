@@ -4,7 +4,7 @@ import { customerRepository } from "./customerRepository";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "../tenantApi";
 export type OfflineClaims = {
   uid: string; tenantId: string; role: "client_admin" | "client_user" | "master_owner" | "admin";
-  status: "approved"; subscriptionStatus: "active";
+  status: "approved"; subscriptionStatus: "active"; licenseRequired?: boolean;
   connectionId: string; apiUrl: string; issuedAt: number; expiresAt: number;
 };
 export type SignedSession = {payload: string; signature: string; publicKey: JsonWebKey};

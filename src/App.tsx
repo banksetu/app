@@ -15,6 +15,7 @@ import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
 import LicenseOnboarding, { getPublicLicenseSettings } from "./LicenseOnboarding";
+import { cachedLicenseReceipt, saveLicenseReceipt, verifyLicenseReceipt, type LicenseReceipt } from "./core/licenseReceipt";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
@@ -28,6 +29,7 @@ type UserProfile = {
   subscriptionStatus?: string;
   email?: string;
   tenantId?: string;
+  licenseRequired?: boolean;
 };
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
@@ -86,6 +88,8 @@ function App() {
   const [accountRole, setAccountRole] = useState("user");
   const [licenseWelcome, setLicenseWelcome] = useState<Awaited<ReturnType<typeof getPublicLicenseSettings>>>(null);
   const [showLicenseWelcome, setShowLicenseWelcome] = useState(true);
+  const [licenseReadOnly, setLicenseReadOnly] = useState(false);
+  const [licenseWarning, setLicenseWarning] = useState("");
   const [knownAccount, setKnownAccount] = useState(() => { try { return localStorage.getItem("bankSetuKnownAccount") === "true"; } catch { return false; } });
 
 
@@ -182,6 +186,33 @@ function App() {
     }
   }, [clearProfileListener]);
 
+  const checkLicense = useCallback(async (user: User, profile: UserProfile, online: boolean) => {
+    if (profile.licenseRequired !== true) { setLicenseReadOnly(false); setLicenseWarning(""); return; }
+    const tenantId = String(profile.tenantId || "");
+    if (!tenantId) { setLicenseReadOnly(true); setLicenseWarning("This account needs a verified tenant license."); return; }
+    if (online) {
+      try {
+        const result = await callBankSetuWorker<{receipt:LicenseReceipt|null;view:{canWrite:boolean;state:string}}>("/license-me", {});
+        if (auth.currentUser?.uid !== user.uid) return;
+        if (result.receipt) {
+          await verifyLicenseReceipt(result.receipt, user.uid, tenantId);
+          try { saveLicenseReceipt(result.receipt, user.uid, tenantId); } catch { /* Online verification remains authoritative. */ }
+        }
+        setLicenseReadOnly(!result.view.canWrite || !result.receipt);
+        setLicenseWarning(!result.receipt ? "License verification is unavailable. Existing records and backup remain accessible." : result.view.canWrite ? "" : "Renew or upgrade your license to resume customer changes.");
+        return;
+      } catch { /* A previously signed, unexpired receipt supports a temporary outage. */ }
+    }
+    try {
+      const receipt = await cachedLicenseReceipt(user.uid, tenantId);
+      setLicenseReadOnly(!["active", "expiring_soon", "grace"].includes(receipt.state));
+      setLicenseWarning("");
+    } catch {
+      setLicenseReadOnly(true);
+      setLicenseWarning("Reconnect to verify your license. Existing records and backup remain accessible.");
+    }
+  }, []);
+
   const watchUserProfile = useCallback((user: User) => {
     clearProfileListener();
 
@@ -233,6 +264,8 @@ function App() {
         }
 
         verifiedNavigation.current=true;clearTimeout(recoveryTimer.current);
+        await checkLicense(user, profile, navigator.onLine);
+        if(auth.currentUser?.uid!==user.uid)return;
         setKnownAccount(true);
         try { localStorage.setItem("bankSetuKnownAccount", "true"); } catch { /* Login remains available without persistent UI preference. */ }
         setError("");setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);
@@ -244,7 +277,7 @@ function App() {
         setCheckingSession(false);
       }
     );
-  }, [applyProfile, clearProfileListener, rejectSession]);
+  }, [applyProfile, checkLicense, clearProfileListener, rejectSession]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -268,18 +301,18 @@ function App() {
       // Stop the previous account's sync lifecycle before validating a switched user.
       setIsLoggedIn(false);
       if(!navigator.onLine){
-        void resumeOfflineSession(user.uid).then(claims=>{
+        void resumeOfflineSession(user.uid).then(async claims=>{
           if(auth.currentUser?.uid!==user.uid)return;
-          applyProfile(claims);setIsLoggedIn(true);setError("");setCheckingSession(false);
+          applyProfile(claims);await checkLicense(user, claims, false);setIsLoggedIn(true);setError("");setCheckingSession(false);
         }).catch(reason=>{setError(reason instanceof Error?reason.message:"Connect to verify your account.");setCheckingSession(false);});
         return;
       }
       watchUserProfile(user);
       recoveryTimer.current=setTimeout(()=>{
         if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
-        void resumeOfflineSession(user.uid).then(claims=>{
+        void resumeOfflineSession(user.uid).then(async claims=>{
           if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
-          applyProfile(claims);verifiedNavigation.current=true;setIsLoggedIn(true);setCheckingSession(false);setError("");
+          applyProfile(claims);await checkLicense(user, claims, false);verifiedNavigation.current=true;setIsLoggedIn(true);setCheckingSession(false);setError("");
         }).catch(()=>{/* Never bypass verification for a first login or expired grant. */});
       },4000);
     });
@@ -288,7 +321,7 @@ function App() {
       clearTimeout(recoveryTimer.current);unsubscribe();
       clearProfileListener();
     };
-  }, [applyProfile, clearProfileListener, watchUserProfile]);
+  }, [applyProfile, checkLicense, clearProfileListener, watchUserProfile]);
 
   useEffect(()=>{
     const reconnect=()=>{if(auth.currentUser)watchUserProfile(auth.currentUser);};
@@ -298,9 +331,22 @@ function App() {
   useEffect(()=>{
     if(!isLoggedIn)return;
     configureConnectionRecovery(prepareClientWorkspace);
+    if(licenseReadOnly){
+      void prepareClientWorkspace().catch(()=>{/* A verified offline workspace still permits local viewing and backup. */});
+      return()=>configureConnectionRecovery(undefined);
+    }
     const stop=startLocalSync();
     return()=>{stop();configureConnectionRecovery(undefined);};
-  },[isLoggedIn,prepareClientWorkspace]);
+  },[isLoggedIn,licenseReadOnly,prepareClientWorkspace]);
+
+  useEffect(() => {
+    const refresh = () => {
+      const user = auth.currentUser, profile = activeProfile.current;
+      if (user && profile?.licenseRequired) void checkLicense(user, profile, navigator.onLine);
+    };
+    window.addEventListener("banksetu-license-updated", refresh);
+    return () => window.removeEventListener("banksetu-license-updated", refresh);
+  }, [checkLicense]);
 
   const handleForgotPassword = async () => {
     setError("");
@@ -433,7 +479,7 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
+        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} />
         <SoftwareUpdateNotice />
       </div>
     );
