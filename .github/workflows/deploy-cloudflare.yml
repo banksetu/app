@@ -1,0 +1,139 @@
+name: Deploy Bank Setu Cloudflare Worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: banksetu-client-api-production
+  cancel-in-progress: false
+
+jobs:
+  rules:
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: codex/spark-client-workspace-20261001
+          persist-credentials: false
+      - name: Pin production source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Prepare Firebase credential
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: node scripts/firebase-credential.mjs
+      - name: Deploy additive Firestore license-read rule
+        run: npx --yes firebase-tools@15.31.0 deploy --config firebase.json --only firestore:rules --project banksetu-69e2f --non-interactive
+
+  deploy:
+    needs: rules
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the selected commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ needs.rules.outputs.source_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Test Worker request checks
+        run: npm run test:worker
+
+      - name: Check deployment credential is configured
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSTILE_SITE_KEY }}
+          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSTILE_SECRET }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo '::error::Add the repository Actions secret CLOUDFLARE_API_TOKEN, then re-run this failed job.'
+            printf '%s\n' '## Deployment needs one repository secret' 'Add CLOUDFLARE_API_TOKEN under Settings > Secrets and variables > Actions, then re-run this failed job. Do not paste the token into code, chat, issues, or logs.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ -z "$LICENSE_TURNSTILE_SITE_KEY" ] || [ -z "$LICENSE_TURNSTILE_SECRET" ]; then
+            echo '::error::Configure LICENSE_TURNSTILE_SITE_KEY and LICENSE_TURNSTILE_SECRET in GitHub Actions Secrets before deploying licensing.'
+            exit 1
+          fi
+
+      - name: Deploy banksetu-client-api
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: c67c1c38d8481b01e9b9fbca5cb0f9b5
+          wranglerVersion: '4.146.0'
+          command: deploy --config cloudflare/wrangler.toml
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+
+      - name: Set private Turnstile credentials on Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c67c1c38d8481b01e9b9fbca5cb0f9b5
+          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSTILE_SITE_KEY }}
+          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSTILE_SECRET }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$LICENSE_TURNSTILE_SITE_KEY" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SITE_KEY --config cloudflare/wrangler.toml
+          printf '%s' "$LICENSE_TURNSTILE_SECRET" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SECRET --config cloudflare/wrangler.toml
+
+      - name: Check live Worker health
+        env:
+          SOURCE_SHA: ${{ needs.rules.outputs.source_sha }}
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 15 \
+            https://banksetu-client-api.banksetu2026.workers.dev/health \
+            --output "$RUNNER_TEMP/banksetu-worker-health.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const health = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/banksetu-worker-health.json`, 'utf8'));
+          assert.equal(health.success, true);
+          assert.equal(health.protected, true);
+          assert.equal(health.message, 'Bank Setu API is running');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Cloudflare Worker deployment succeeded',
+            `Source commit: ${process.env.SOURCE_SHA}`,
+            'Worker: https://banksetu-client-api.banksetu2026.workers.dev',
+            'Public health check passed. Authenticated account and tenant-isolation checks are still required.',
+            'This workflow deploys the Worker only. Firebase Hosting, Firestore rules and Apps Script are separate deployments.',
+            '',
+          ].join('\n'));
+          NODE
+
+      - name: Verify live licensing endpoints
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 \
+            https://banksetu-client-api.banksetu2026.workers.dev/license-public-key \
+            --output "$RUNNER_TEMP/license-public-key.json"
+          curl --fail --silent --show-error --max-time 15 \
+            -H 'Origin: https://banksetu-app.web.app' -H 'Content-Type: application/json' \
+            -d '{}' https://banksetu-client-api.banksetu2026.workers.dev/license-public \
+            --output "$RUNNER_TEMP/license-public.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const key=JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/license-public-key.json`,'utf8'));
+          const publicState=JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/license-public.json`,'utf8'));
+          assert.equal(key.issuer,'banksetu-69e2f');
+          assert.equal(key.publicKey?.kty,'RSA');
+          assert.match(key.publicKey?.n||'',/^[-_A-Za-z0-9]{300,}$/);
+          assert.ok(publicState.turnstileSiteKey && publicState.turnstileSiteKey.length>10);
+          assert.ok(publicState.pricing && typeof publicState.pricing==='object');
+          NODE
