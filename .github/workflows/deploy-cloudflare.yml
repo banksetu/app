@@ -65,8 +65,8 @@ jobs:
       - name: Check deployment credential is configured
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSTILE_SITE_KEY }}
-          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSTILE_SECRET }}
+          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSILE_SITE_KEY }}
+          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSILE_SECRET }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo '::error::Add the repository Actions secret CLOUDFLARE_API_TOKEN, then re-run this failed job.'
@@ -92,8 +92,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: c67c1c38d8481b01e9b9fbca5cb0f9b5
-          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSTILE_SITE_KEY }}
-          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSTILE_SECRET }}
+          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSILE_SITE_KEY }}
+          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSILE_SECRET }}
         run: |
           set -euo pipefail
           printf '%s' "$LICENSE_TURNSTILE_SITE_KEY" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SITE_KEY --config cloudflare/wrangler.toml
