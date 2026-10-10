@@ -246,8 +246,14 @@ export default function Customers() {
       // Only the bound, verified tenant bridge may supply missing pages.
       const requestPage=navigator.onLine && getCustomerSearchApiUrl(localModeEnabled())
         ? async (page:number,pageSize:number) => apiRequest({action:"getAllCustomers",page,pageSize}) : undefined;
-      const selection=await loadPdfCustomers(records,status.downloading || status.cacheLimited,navigator.onLine,requestPage);
-      setPdfRecords(selection.records);setPdfIncomplete(selection.incomplete);
+      try {
+        const selection=await loadPdfCustomers(records,status.downloading || status.cacheLimited,navigator.onLine,requestPage);
+        setPdfRecords(selection.records);setPdfIncomplete(selection.incomplete);
+      } catch (reason) {
+        if (!records.length) throw reason;
+        setPdfRecords(records);setPdfIncomplete(true);
+        setError("Google customer pages are unavailable. Only this device's cached customers are selected; review the partial count before generating.");
+      }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read customers for PDF preview."); }
     finally { setPdfLoading(false); }
   };
