@@ -26,6 +26,13 @@ test('licensed offline grant can last five days but never beyond its signed expi
  const excessive=await createOfflineSession(JSON.stringify({private_key:privateKey.export({type:'pkcs8',format:'pem'})}),{...claims,expiresAt:now+6*86400000});
  await assert.rejects(offline.verifyOfflineSession(excessive,'u1'),/expired/);
 });
+test('demo grant is bound to the sample-only connection and cannot become a production grant',async()=>{
+ const now=Date.now();const claims={uid:'u1',tenantId:'trial-a',connectionId:'demo-sample',role:'client_admin',status:'approved',subscriptionStatus:'active',licenseRequired:true,demoOnly:true,apiUrl:'https://script.google.com/macros/s/banksetu-demo-local/exec',issuedAt:now,expiresAt:now+5*86400000};
+ const sign=async payload=>createOfflineSession(JSON.stringify({private_key:privateKey.export({type:'pkcs8',format:'pem'})}),payload);
+ assert.equal((await offline.verifyOfflineSession(await sign(claims),'u1',now+4*86400000)).demoOnly,true);
+ await assert.rejects(offline.verifyOfflineSession(await sign({...claims,connectionId:'production-sheet'}),'u1'),/Demo offline scope/);
+ await assert.rejects(offline.verifyOfflineSession(await sign({...claims,apiUrl:'https://script.google.com/macros/s/real/exec'}),'u1'),/Demo offline scope/);
+});
 test('backup restoration retains pending data, rejects foreign scopes, deduplicates operation replay and records differing versions as conflicts',()=>{
  const scope='u1:tenant:conn',id=crypto.randomUUID(),opId=crypto.randomUUID();const record={key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:true,customer:{name:'Restored'}};const op={key:opId,scope,recordId:id,operationId:opId,action:'updateCustomer',baseRevision:'r1',customer:record.customer,rowNumber:2,createdAt:Date.now(),state:'pending'};const archive=backup.makeBackup(scope,{records:[record],operations:[op]});
  assert.throws(()=>backup.parseBackup(JSON.stringify(archive),'u2:tenant:conn'),/belonging/);

@@ -6,10 +6,10 @@ import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
 const IDLE_RECONCILE_MS=60*60*1000;
-export const localModeEnabled = () => sessionStorage.getItem("bankSetuConnectionMode")==="option-b" || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
+export const localModeEnabled = () => ["option-b","demo"].includes(sessionStorage.getItem("bankSetuConnectionMode")||"") || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
 const identity = () => {
   const uid = auth.currentUser?.uid;
-  const tenant = sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true" ? `master:${uid}` : sessionStorage.getItem("bankSetuTenantId");
+  const tenant = sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true" ? `master:${uid}` : sessionStorage.getItem("bankSetuConnectionMode")==="demo" ? `demo:${sessionStorage.getItem("bankSetuTenantId")||""}` : sessionStorage.getItem("bankSetuTenantId");
   const connection = sessionStorage.getItem("bankSetuConnectionId");
   if (!uid || !tenant || !connection || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") throw new Error("An active, verified client connection is required.");
   if (!navigator.onLine && Date.now() > Number(sessionStorage.getItem("bankSetuOfflineUntil") || 0)) throw new Error("Offline access expired. Reconnect to verify account permissions; local records are retained.");
@@ -38,8 +38,10 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   // scope, while every cloud action below is sent only to the bound endpoint.
   if(sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true"){payload.masterLocalSync=true;init={...init,body:JSON.stringify(payload)};}
   const action = String(payload.action || "");
+  const demo=sessionStorage.getItem("bankSetuConnectionMode")==="demo";
   const scope = identity();
   const cloudRead=async(_target: RequestInfo | URL, options?: RequestInit)=>{
+    if(demo)throw new Error("The demo is a local sample workspace and cannot access production Google data.");
     const user=auth.currentUser!;const idToken=await user.getIdToken();
     if(identity()!==scope || sessionStorage.getItem("bankSetuBridgeUrl")!==verifiedUrl)throw new Error("Workspace changed.");
     const body=JSON.parse(String(options?.body||"{}"));
@@ -50,13 +52,13 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   const state = await repository.read(scope);
   if (supportedReads.has(action)) {
     // Bulk online export must read every cloud page, even when only part is cached.
-    if(action === "getAllCustomers" && navigator.onLine){
+    if(action === "getAllCustomers" && navigator.onLine && !demo){
       const response=await cloudRead(input,init);const value=await response.clone().json();
       if(value.success)await cacheResponse(scope,value);return await hideLocallyDeleted(scope,value,response);
     }
     const query = fold(payload.query);
     const hits = state.records.filter(record => !record.deleted && (action === "getAllCustomers" || (action === "getCustomerByRowNumber" ? record.rowNumber === Number(payload.rowNumber) : query && ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(field => fold(record.customer[field]).includes(query)))));
-    if (hits.length || !navigator.onLine) {
+    if (hits.length || !navigator.onLine || demo) {
       if (!hits.length) return resultResponse({success:false,message:"Customer is not in this device's offline cache."});
       const first = hits[0];
       const page = Math.max(1,Number(payload.page)||1);const pageSize=Math.min(250,Math.max(1,Number(payload.pageSize)||50));
@@ -72,6 +74,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (action === "getBankFormatPreview") {
     const key=String(payload.formatType || "");
     if (!navigator.onLine && state.documents?.[key]) return resultResponse(state.documents[key]);
+    if(demo)return resultResponse(state.documents?.[key]||{success:false,message:"No sample PDF template is installed for this demo workspace."});
     const response=await cloudRead(input,init);const value=await response.clone().json();
     if (value.success) await repository.transact(scope,current=>{current.documents ||= {};current.documents[key]=value;});
     return response;
@@ -117,13 +120,13 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
   announce();
-  actionNotice("warning", action === "deleteCustomer" ? "Deleted locally" : "Saved locally", "Google Sheet and Drive sync pending.");
-  if (syncPaused) resumeSync(); else window.dispatchEvent(new Event("banksetu-sync-request"));
+  actionNotice(demo?"success":"warning", action === "deleteCustomer" ? "Deleted locally" : "Saved locally", demo?"Sample data stays on this device and is never uploaded to production Google services.":"Google Sheet and Drive sync pending.");
+  if (!demo) {if (syncPaused) resumeSync(); else window.dispatchEvent(new Event("banksetu-sync-request"));}
   if (action === "deleteCustomer") {
     return resultResponse({success:false,deleted:true,queued:true,rowNumber:localRow,recordId,message:"Deleted locally; Google Sheet and Drive deletion is pending sync."});
   }
   return resultResponse({success:true,queued:true,rowNumber:localRow,recordId,
-    message:"Saved on this device. Google sync starts immediately; keep this device's data until sync completes.",
+    message:demo?"Saved to the sample-only demo workspace on this device.":"Saved on this device. Google sync starts immediately; keep this device's data until sync completes.",
     photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
 }
 async function hideLocallyDeleted(scope: string, value: Record<string, unknown>, response: Response): Promise<Response> {
@@ -228,6 +231,7 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
   announce();
 }
 export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
+  if(sessionStorage.getItem("bankSetuConnectionMode")==="demo")return Promise.resolve();
   if (syncPaused || !navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
   let scope: string;
   try { scope=identity(); } catch(error) { return Promise.reject(error); }

@@ -228,13 +228,14 @@ async function verifyActor(request, env) {
   // New invited tenants require an active server-side license. Existing users
   // without the explicit marker retain their existing access during rollout.
   // Licensing, setup reads and account recovery remain available after expiry.
-  if (profile.licenseRequired === true && !["/license-me", "/license-request-change", "/get-google-setup", "/get-offline-session"].includes(new URL(request.url).pathname)) {
+  if (profile.licenseRequired === true && !["/license-me", "/license-request-change", "/get-offline-session"].includes(new URL(request.url).pathname)) {
     const path = `/tenantLicenses/${encodeURIComponent(String(profile.tenantId || ""))}`;
     const document = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
     const license = decodeFields(document?.fields || {});
     const pricing = decodeFields((await firestoreRequest(env, "/appSettings/licensing").catch(error => error.status === 404 ? null : Promise.reject(error)))?.fields || {}).pricing || {};
     const view = licenseView(license.tenantId ? license : {status:"pending"}, Date.now(), Number.isInteger(pricing.graceDays) ? pricing.graceDays : 7);
-    if (!view.canWrite) return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
+    if(license.plan==="demo")return {error:json({error:"Demo access is limited to the separate sample workspace. Production Google services are unavailable."},403)};
+    if (!view.canWrite && new URL(request.url).pathname !== "/get-google-setup") return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
   }
   return {
     uid: account.localId,
@@ -493,7 +494,7 @@ async function handleLicensing(request, env, actor, route) {
     const serverTime = Date.now();
     let receipt = null;
     if (actor.profile.licenseRequired === true && found && view.canWrite) {
-      const expiry = license.plan === "annual" ? Date.parse(license.expiresAt) : Infinity;
+      const expiry = ["annual","demo"].includes(license.plan) ? Date.parse(license.expiresAt) : Infinity;
       const validUntil = Math.min(serverTime + 5 * 86400000, expiry);
       const signed = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, { purpose: "banksetu-license-v1", uid: actor.uid, tenantId, revision: license.revision, state: view.state, issuedAt: serverTime, validUntil, expiresAt: license.expiresAt, plan: license.plan });
       receipt = { payload: signed.payload, signature: signed.signature };
@@ -557,6 +558,45 @@ async function handleLicensing(request, env, actor, route) {
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "License already assigned. Refresh before retrying." }, 409); throw error; }
     return json({ success: true, tenantId, license });
+  }
+  if (route === "/license-admin-demo") {
+    if(!master)return json({error:"Master Admin access is required."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(body.tenantId||""),id=String(body.requestId||"");
+    if(!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)||!/^[a-f0-9-]{36}$/.test(id))return json({error:"Select a valid invited tenant."},400);
+    const tenantDoc=await licenseDoc(env,`/tenants/${tenantId}`),tenant=licenseFields(tenantDoc);
+    if(tenant.status!=="active")return json({error:"Active invited tenant not found."},409);
+    const existing=await licenseDoc(env,`/tenantLicenses/${tenantId}`);
+    if(existing){if(licenseFields(existing).lastRequestId===id)return json({success:true,repeated:true});return json({error:"A license or demo already exists for this tenant."},409);}
+    const ownerUid=String(tenant.ownerUid||""),ownerDoc=ownerUid?await licenseDoc(env,`/users/${encodeURIComponent(ownerUid)}`):null,owner=licenseFields(ownerDoc);
+    const workspace=licenseFields(await licenseDoc(env,`/tenantSettings/${tenantId}`));
+    if(!ownerDoc||owner.tenantId!==tenantId||owner.licensingInvite!==true||workspace.spreadsheetId||workspace.photoFolderId)return json({error:"Demo requires a newly invited tenant without a production Google workspace."},409);
+    const nowMs=Date.now(),now=new Date(nowMs).toISOString();
+    const license={tenantId,plan:"demo",status:"active",demoOnly:true,activatedAt:now,expiresAt:new Date(nowMs+5*86400000).toISOString(),paidPaise:0,revision:1,updatedAt:now,lastRequestId:id};
+    const writes=[licenseWrite(env,"tenantLicenses",tenantId,license),licenseWrite(env,"licenseAudit",id,{action:"demo_activated",actorUid:actor.uid,tenantId,at:now,expiresAt:license.expiresAt})];
+    if(owner.status==="pending")writes.push(licenseWrite(env,"users",ownerUid,{...owner,status:"approved",subscriptionStatus:"active",updatedAt:now,updatedBy:actor.uid},{updateTime:ownerDoc.updateTime}));
+    try{await licenseCommit(env,writes);}catch(error){if(error.status===409)return json({error:"Demo state changed. Refresh before retrying."},409);throw error;}
+    return json({success:true,license});
+  }
+  if(route==="/license-admin-demo-convert"){
+    if(!master)return json({error:"Master Admin access is required."},403);
+    const body=await request.json().catch(()=>({}));const tenantId=String(body.tenantId||""),id=String(body.requestId||""),plan=String(body.plan||"");
+    if(!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)||!/^[a-f0-9-]{36}$/.test(id)||!["annual","lifetime"].includes(plan)||body.paymentConfirmed!==true)return json({error:"Select the plan and confirm payment."},400);
+    const doc=await licenseDoc(env,`/tenantLicenses/${tenantId}`),current=licenseFields(doc);
+    if(current.lastRequestId===id)return json({success:true,repeated:true});
+    if(current.plan!=="demo"||!current.demoOnly)return json({error:"This tenant has no sample-only demo to convert."},409);
+    const price=plan==="annual"?settings.pricing.annualPaise:settings.pricing.lifetimePaise;
+    const paidPaise=body.paidPaise===undefined?price:Number(body.paidPaise);
+    if(!settings.pricing[plan==="annual"?"annualAvailable":"lifetimeAvailable"]||!Number.isSafeInteger(paidPaise)||paidPaise<=0||paidPaise>100_000_000)return json({error:"Confirm an available paid plan and amount."},400);
+    const now=new Date().toISOString();const startAt=licenseStartDate(body.startDate);
+    if(startAt===null)return json({error:"Select a valid India activation date."},400);
+    const durationMonths=body.durationMonths===undefined?12:Number(body.durationMonths);
+    if(plan==="annual"&&(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120))return json({error:"Select a valid paid duration."},400);
+    const next=transitionLicense(null,{kind:plan,id,quotedPaise:paidPaise,startAt,durationMonths},now,settings.pricing);
+    Object.assign(next,{tenantId,firstActivatedAt:next.activatedAt,demoOnly:false,revision:Number(current.revision||0)+1});
+    try{await licenseCommit(env,[licenseWrite(env,"tenantLicenses",tenantId,next,{updateTime:doc.updateTime}),licenseWrite(env,"licenseAudit",id,{action:"demo_converted",actorUid:actor.uid,tenantId,at:now,before:{plan:"demo",expiresAt:current.expiresAt},after:{plan,status:next.status,activatedAt:next.activatedAt,expiresAt:next.expiresAt},paidPaise})]);}
+    catch(error){if(error.status===409)return json({error:"License changed. Refresh before retrying."},409);throw error;}
+    return json({success:true,license:next,productionWorkspaceRequiresConnection:true});
   }
   if (route === "/license-admin-decision") {
     if (!master) return json({ error: "Master Admin access is required." }, 403);
@@ -781,6 +821,14 @@ async function handleMasterOperation(request, env, actor, route) {
       const issuedAt=Date.now();return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:`master:${actor.uid}`,role:role==="admin"?"admin":"master_owner",status:"approved",subscriptionStatus:"active",connectionId:config.masterConnectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:issuedAt+8*60*60*1000}));
     }
     if (!["client_admin","client_user"].includes(role)) return json({error:"Offline customer access requires a client workspace."},403);
+    if(actor.profile.licenseRequired===true){
+      const demo=licenseFields(await licenseDoc(env,`/tenantLicenses/${encodeURIComponent(actor.profile.tenantId)}`));
+      const demoView=licenseView(demo.tenantId?demo:{status:"pending"},Date.now());
+      if(demo.plan==="demo"){
+        if(!demoView.canWrite)return json({error:"Demo has expired. Sample data remains on this device."},403);
+        const issuedAt=Date.now();return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",licenseRequired:true,demoOnly:true,connectionId:"demo-sample",apiUrl:"https://script.google.com/macros/s/banksetu-demo-local/exec",issuedAt,expiresAt:Math.min(issuedAt+5*86400000,Date.parse(demo.expiresAt))}));
+      }
+    }
     const config=await getGoogleSetupConfig(env,actor).then(response=>response.json());
     if(config.connectionMode!=="option-b" || !config.dataApiReady || !config.hasWorkspace || config.workspaceStatus!=="active") return json({error:"Connect an active Option B workspace before enabling offline access."},409);
     const issuedAt=Date.now();
@@ -1300,7 +1348,7 @@ export default {
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
-        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-request-change", "/license-admin-decision", "/license-admin-state",
+        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);

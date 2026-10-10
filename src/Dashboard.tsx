@@ -69,6 +69,7 @@ type DashboardProps = {
   accountRole: string;
   licenseReadOnly?: boolean;
   licenseWarning?: string;
+  demoExpired?: boolean;
 
 };
 
@@ -266,7 +267,7 @@ type PageName =
   | "license-management"
   | "support";
 
-function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, licenseWarning = "" }: DashboardProps) {
+function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, licenseWarning = "", demoExpired = false }: DashboardProps) {
   useEffect(()=>startPresence(),[]);
 
   // The verified legacy Master Admin is represented as `admin` for backward
@@ -802,6 +803,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   };
 
   const openPage = (page: PageName) => {
+    if(demoExpired && !["license-management","support"].includes(page)){
+      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day sample demo has ended. Contact the Master Admin to activate a paid production workspace."}}));
+      return;
+    }
     if (licenseReadOnly && !["dashboard", "customers", "all-customer-data", "license-management", "sync-backup", "support"].includes(page)) {
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
@@ -1337,7 +1342,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
-        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly} />
+        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly && sessionStorage.getItem("bankSetuDemoWorkspace")!=="active"} />
 
         {["client_admin","client_user"].includes(accountRole) && <LicenseNotice open={() => openPage("license-management")} />}
 
@@ -1345,12 +1350,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
-          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} Customer viewing, backup and license requests remain available.</p>}
+          {sessionStorage.getItem("bankSetuDemoWorkspace")==="active" && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Sample-only data on this device. Production Google Sheets and Drive are disconnected. Sample records will not move into a paid workspace.</p>}
+          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Demo data remains isolated. Activation and support remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
-          {activePage === "dashboard" && licenseReadOnly && <LicenseReadOnlyCustomers />}
+          {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
           {activePage === "dashboard" && !licenseReadOnly && (
 
             <DashboardHome
@@ -1377,14 +1383,14 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
           )}
 
-          {activePage === "customers" && licenseReadOnly && <LicenseReadOnlyCustomers />}
+          {activePage === "customers" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
           {activePage === "customers" && !licenseReadOnly && (
 
             <Customers />
 
           )}
 
-          {activePage === "all-customer-data" && (licenseReadOnly ? <LicenseReadOnlyCustomers /> : <AllCustomerData />)}
+          {activePage === "all-customer-data" && !demoExpired && (licenseReadOnly ? <LicenseReadOnlyCustomers /> : <AllCustomerData />)}
 
           {bankSettingsReady && activePage === "passbook" && (
 
