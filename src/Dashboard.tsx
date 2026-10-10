@@ -282,7 +282,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
     useState<PageName>("dashboard");
 
-  useEffect(() => { if (licenseReadOnly) setActivePage("license-management"); }, [licenseReadOnly]);
+  useEffect(() => { if (!licenseReadOnly)return;let active=true;queueMicrotask(()=>{if(active)setActivePage("license-management");});return()=>{active=false;}; }, [licenseReadOnly]);
 
   const [mobileMenuOpen, setMobileMenuOpen] =
 
@@ -415,7 +415,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
       queueMicrotask(()=>{if(active){setBankInfo({...emptyBankInfo,bankName:"Bank Setu Demo",passbookBank:"Assam Gramin Bank"});setBankLogo("");setBankSettingsReady(true);setBankSettingsError("");}});
       return()=>{active=false;};
     }
-    setBankSettingsReady(false); setBankSettingsError("");
+    let active = true;
+    queueMicrotask(() => {
+      if (active) { setBankSettingsReady(false); setBankSettingsError(""); }
+    });
     let receivedServer = false;
     const timeout = window.setTimeout(() => {
       if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
@@ -440,7 +443,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
       setBankSettingsError("Saved bank settings could not be loaded from Firebase. Please retry.");
       console.error("Workspace bank settings listener failed:", error);
     });
-    return () => { window.clearTimeout(timeout); unsubscribe(); };
+    return () => { active = false; window.clearTimeout(timeout); unsubscribe(); };
   }, [bankSettingsRetry, accountRole]);
 
   const hasBankInfo =

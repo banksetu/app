@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { callBankSetuWorker } from './workerApi';
 import './LicenseManagement.css';
 
@@ -33,7 +33,7 @@ export default function LicenseManagement({master,canRequest=true}:{master:boole
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
-  const refresh=async()=>{
+  const refresh=useCallback(async()=>{
     if(master){
       const [settings,listing,history]=await Promise.all([
         callBankSetuWorker<{pricing:Pricing;flags:{uiEnabled:boolean;newClientRequired:boolean}}>('/license-admin-settings',{}),
@@ -45,8 +45,8 @@ export default function LicenseManagement({master,canRequest=true}:{master:boole
       const result=await callBankSetuWorker<LicenseState>('/license-me',{});
       setState(result);setPricing(result.pricing);window.dispatchEvent(new Event("banksetu-license-updated"));
     }
-  };
-  useEffect(()=>{void refresh().catch(reason=>setError(reason instanceof Error?reason.message:'Unable to load license information.'));},[master]);
+  },[master]);
+  useEffect(()=>{const timer=window.setTimeout(()=>void refresh().catch(reason=>setError(reason instanceof Error?reason.message:'Unable to load license information.')),0);return()=>window.clearTimeout(timer);},[refresh]);
   const perform=async(fn:()=>Promise<unknown>,message:string)=>{
     if(busy)return;setBusy(true);setError('');setNotice('');
     try{await fn();await refresh();setNotice(message);}catch(reason){setError(reason instanceof Error?reason.message:'Could not complete the request.');}finally{setBusy(false);}
