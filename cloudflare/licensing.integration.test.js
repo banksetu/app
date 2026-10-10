@@ -1,0 +1,65 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {generateKeyPairSync} from 'node:crypto';
+import worker from './worker.js';
+const project='synthetic-banksetu';
+const base=`projects/${project}/databases/(default)/documents`;
+const wrap=(value)=>typeof value==='string'?{stringValue:value}:typeof value==='boolean'?{booleanValue:value}:typeof value==='number'?{integerValue:String(value)}:value===null?{nullValue:null}:{mapValue:{fields:Object.fromEntries(Object.entries(value).map(([k,v])=>[k,wrap(v)]))}};
+const fields=value=>Object.fromEntries(Object.entries(value).map(([k,v])=>[k,wrap(v)]));
+const doc=(key,value,revision=1)=>({name:`${base}/${key}`,fields:fields(value),updateTime:`2026-10-10T00:00:0${revision}.000Z`});
+const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+const env={ALLOWED_ORIGINS:'https://banksetu-app.web.app',FIREBASE_PROJECT_ID:project,FIREBASE_WEB_API_KEY:'synthetic-key',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'synthetic@example.invalid',private_key:privateKey.export({type:'pkcs8',format:'pem'})})};
+const settings={annualPaise:149900,lifetimePaise:499900,annualAvailable:true,lifetimeAvailable:true,upgradeCreditEnabled:true,maxCreditPaise:149900,graceDays:7,paymentInstructions:'Contact Master Admin.'};
+const originalFetch=globalThis.fetch;
+test('server-only annual activation, renewal and duplicate approval are atomic and tenant scoped',async()=>{
+  const store=new Map([
+    ['users/master',doc('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'})],
+    ['users/client',doc('users/client',{role:'client_admin',tenantId:'tenant-a',status:'approved',subscriptionStatus:'active'})],
+    ['tenants/tenant-a',doc('tenants/tenant-a',{tenantId:'tenant-a',ownerUid:'client',status:'active'})],
+  ]);
+  let commitCount=0;
+  globalThis.fetch=async (url,options={})=>{
+    const text=String(url);
+    if(text.includes('oauth2.googleapis.com/token'))return new Response(JSON.stringify({access_token:'synthetic',expires_in:3600}));
+    if(text.includes('accounts:lookup')){const master=JSON.parse(options.body).idToken==='master';return new Response(JSON.stringify({users:[{localId:master?'master':'client',email:master?'owner@example.invalid':'client@example.invalid',emailVerified:true}]}));}
+    if(text.includes('firestore.googleapis.com')){
+      const path=decodeURIComponent(text.split('/documents')[1]||'');
+      if(path===':commit'){
+        const writes=JSON.parse(options.body).writes;
+        for(const write of writes){const key=write.update.name.slice(base.length+1);const old=store.get(key);if(write.currentDocument?.exists===false&&old||write.currentDocument?.updateTime&&old?.updateTime!==write.currentDocument.updateTime)return new Response(JSON.stringify({error:{message:'Conflict'}}),{status:409});}
+        for(const write of writes){const key=write.update.name.slice(base.length+1);store.set(key,{...write.update,updateTime:`2026-10-10T00:00:${String(++commitCount).padStart(2,'0')}.000Z`});}
+        return new Response('{}');
+      }
+      const key=path.replace(/^\//,'').split('?')[0];const existing=store.get(key);
+      return existing?new Response(JSON.stringify(existing)):new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
+    }
+    throw new Error(`Unexpected request: ${text}`);
+  };
+  const call=async(token,path,body)=>{
+    const response=await worker.fetch(new Request(`https://worker.example${path}`,{method:'POST',headers:{origin:'https://banksetu-app.web.app',authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(body)}),env);
+    return {status:response.status,body:await response.json()};
+  };
+  try{
+    assert.equal((await call('client','/license-save-settings',{pricing:settings})).status,403);
+    assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
+    const id='01234567-89ab-4cde-8fab-0123456789ab';
+    assert.equal((await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,403);
+    assert.equal((await call('master','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,200);
+    const first=(await call('client','/license-me',{})).body.license;
+    assert.equal(first.tenantId,'tenant-a');assert.equal(first.plan,'annual');assert.equal(first.revision,1);
+    const renewal='12345678-89ab-4cde-8fab-0123456789ab';
+    assert.equal((await call('client','/license-request-change',{kind:'renewal',requestId:renewal})).status,200);
+    assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve'})).status,400);
+    assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve',paymentConfirmed:true})).status,200);
+    assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve',paymentConfirmed:true})).body.repeated,true);
+    const current=(await call('client','/license-me',{})).body.license;
+    assert.equal(current.revision,2);assert(new Date(current.expiresAt)>new Date(first.expiresAt));
+    const upgrade='23456789-89ab-4cde-8fab-0123456789ab';
+    const request=(await call('client','/license-request-change',{kind:'upgrade',requestId:upgrade}));
+    assert.equal(request.status,200);assert.equal(request.body.quotedPaise,350000);
+    assert.equal((await call('master','/license-admin-decision',{requestId:upgrade,action:'approve',paymentConfirmed:true})).status,200);
+    assert.equal((await call('master','/license-admin-decision',{requestId:upgrade,action:'approve',paymentConfirmed:true})).body.repeated,true);
+    const lifetime=(await call('client','/license-me',{})).body.license;
+    assert.equal(lifetime.tenantId,'tenant-a');assert.equal(lifetime.plan,'lifetime');assert.equal(lifetime.expiresAt,null);assert.equal(lifetime.revision,3);
+  }finally{globalThis.fetch=originalFetch;}
+});

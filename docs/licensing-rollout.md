@@ -26,7 +26,7 @@ The production branch checkpoint before this work is `39c3fa4dbbef34bc0512caa550
 
 ## Verification at this checkpoint (2026-10-10)
 
-- `npm run test:worker`, `npm run test:local`, `npm run test:bridge`, `npm run test:portfolio`, `npm run check:schema`, and `npm run build` passed with synthetic data.
+- `npm run test:worker` (including synthetic activation, renewal, upgrade, duplicate approval and unauthorized access), `npm run test:local`, `npm run test:bridge`, `npm run test:portfolio`, `npm run check:schema`, and `npm run build` passed with synthetic data.
 - Android `npx cap sync android` passed. Local `assembleDebug` could not complete because this environment has a Java runtime without `javac`; no signed Android APK was produced.
 - Windows packaging reached NSIS but could not complete on this Linux host because Wine is absent. The existing Windows CI runner is required; no signed release or manifest was produced.
 - No authenticated production licensing endpoint, Turnstile delivery, native sign-in flow, or real tenant migration has been verified. Production branch, Worker, Hosting, customer data, and v1.0.59 release have not been changed by this branch.
