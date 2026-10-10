@@ -10,7 +10,14 @@ const auth={currentUser:{uid:'user-a'}};
 const navigator={onLine:false};
 let cached=async()=>({issuedAt:Date.now(),state:'active'}),remote=async()=>{throw Error('No network request expected');},calls=0;
 const exports={};
-vm.runInNewContext(source,{exports,require:specifier=>specifier.endsWith('firebase')?{auth}:specifier.endsWith('workerApi')?{callBankSetuWorker:async()=>{calls++;return remote();}}:{cachedLicenseReceipt:(...args)=>cached(...args),saveLicenseReceipt:()=>{},verifyLicenseReceipt:async value=>value.claims},sessionStorage:{getItem:key=>storage.get(key)||null},navigator,Date,Intl,Error,Promise});
+vm.runInNewContext(source,{exports,require:specifier=>specifier.endsWith('firebase')?{auth}:specifier.endsWith('workerApi')?{callBankSetuWorker:async()=>{calls++;return remote();}}:{cachedLicenseReceipt:(...args)=>cached(...args),saveLicenseReceipt:()=>{},verifyLicenseReceipt:async value=>value.claims},sessionStorage:{getItem:key=>storage.get(key)||null},navigator,Date,Intl,Error,TypeError,Promise});
+
+test('only temporary license failures may use an existing signed offline receipt',()=>{
+ assert.equal(exports.isTemporaryLicenseFailure(Object.assign(Error('denied'),{status:403})),false);
+ assert.equal(exports.isTemporaryLicenseFailure(Object.assign(Error('expired token'),{status:401})),false);
+ assert.equal(exports.isTemporaryLicenseFailure(Object.assign(Error('unavailable'),{status:503})),true);
+ assert.equal(exports.isTemporaryLicenseFailure(new TypeError('network unreachable')),true);
+});
 
 test('pending or expired license cannot mutate local customer data even with a cached active receipt',async()=>{
  storage.set('bankSetuLicenseReadOnly','true');

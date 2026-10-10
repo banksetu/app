@@ -7,6 +7,12 @@ const ONLINE_WRITE_VERIFICATION_MS=15*60_000;
 let verification: Promise<void> | undefined;
 let verificationKey = "";
 
+export const isTemporaryLicenseFailure = (error: unknown): boolean => {
+  const status=(error as {status?:number})?.status;
+  return status===429 || (typeof status==="number" && status>=500) || error instanceof TypeError ||
+    (error instanceof Error && (error.name==="TimeoutError" || error.name==="AbortError"));
+};
+
 /** Protect every new local business mutation with the tenant's signed entitlement. */
 export async function requireLicensedWrite(): Promise<void> {
   const required = sessionStorage.getItem("bankSetuLicenseRequired");
@@ -26,9 +32,7 @@ export async function requireLicensedWrite(): Promise<void> {
       let result: { view: { canWrite: boolean }; receipt: LicenseReceipt | null };
       try { result = await callBankSetuWorker("/license-me", {}); }
       catch (error) {
-        const status=(error as {status?:number})?.status;
-        const temporary=status===429 || (typeof status==="number" && status>=500) || error instanceof TypeError || (error instanceof Error && (error.name==="TimeoutError" || error.name==="AbortError"));
-        if (!temporary || !claims) throw error;
+        if (!isTemporaryLicenseFailure(error) || !claims) throw error;
         // The signed, unexpired receipt supports bounded local work during a
         // transient service outage. A real 401/403 denial never falls back.
         result = {view:{canWrite:true},receipt:null};

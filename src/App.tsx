@@ -16,6 +16,7 @@ import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
 import LicenseOnboarding, { getPublicLicenseSettings } from "./LicenseOnboarding";
 import { cachedLicenseReceipt, saveLicenseReceipt, verifyLicenseReceipt, type LicenseReceipt } from "./core/licenseReceipt";
+import { isTemporaryLicenseFailure } from "./core/licenseAccess";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
@@ -227,7 +228,13 @@ function App() {
         sessionStorage.setItem("bankSetuDemoWorkspace",result.license?.plan==="demo"?(result.view.state==="demo_active"?"active":"expired"):"false");
         update(!result.view.canWrite || !result.receipt,result.view.canWrite&&result.receipt?"":result.license?.plan==="demo"?"Your five-day demo has ended. Contact the Master Admin to activate a paid workspace.":"Renew or upgrade your license to resume customer changes.");
         return;
-      } catch { /* A previously signed, unexpired receipt supports a temporary outage. */ }
+      } catch (reason) {
+        if(!isTemporaryLicenseFailure(reason)){
+          update(true,"License verification was denied. Sign in again or contact the Master Admin. Existing data and backup remain available.");
+          return;
+        }
+        // A signed, unexpired receipt supports a temporary service outage only.
+      }
     }
     try {
       const receipt = await cachedLicenseReceipt(user.uid, tenantId);
