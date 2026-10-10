@@ -480,10 +480,17 @@ async function handleLicensing(request, env, actor, route) {
   }
   if (route === "/license-admin-history") {
     if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body=await request.json().catch(()=>({}));
+    const cursor=body.cursor;
+    if(cursor && (typeof cursor.at!=="string"||!/^[0-9TZ:.+-]{20,40}$/.test(cursor.at)||typeof cursor.name!=="string"||!cursor.name.startsWith(`projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/licenseAudit/`)||cursor.name.length>320))
+      return json({error:"Invalid activity cursor."},400);
     const rows = await firestoreRequest(env, ":runQuery", {
-      method: "POST", body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "licenseAudit" }], orderBy: [{ field: { fieldPath: "at" }, direction: "DESCENDING" }], limit: 100 } }),
+      method: "POST", body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "licenseAudit" }], orderBy: [{ field: { fieldPath: "at" }, direction: "DESCENDING" },{field:{fieldPath:"__name__"},direction:"DESCENDING"}],...(cursor?{startAt:{values:[{stringValue:cursor.at},{referenceValue:cursor.name}],before:false}}:{}), limit: 51 } }),
     });
-    return json({ activities: rows.filter(row => row.document).map(row => licenseFields(row.document)) });
+    const documents=rows.filter(row=>row.document).map(row=>row.document);
+    const page=documents.slice(0,50);
+    const last=page.at(-1);
+    return json({ activities:page.map(doc=>({...licenseFields(doc),id:doc.name.split('/').at(-1)})),nextCursor:documents.length>50&&last?{at:String(licenseFields(last).at||""),name:last.name}:null });
   }
   if (route === "/license-me") {
     if (master) return json({ master: true, pricing: settings.pricing, flags: settings.flags });

@@ -24,6 +24,13 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     if(text.includes('accounts:lookup')){const master=JSON.parse(options.body).idToken==='master';return new Response(JSON.stringify({users:[{localId:master?'master':'client',email:master?'owner@example.invalid':'client@example.invalid',emailVerified:true}]}));}
     if(text.includes('firestore.googleapis.com')){
       const path=decodeURIComponent(text.split('/documents')[1]||'');
+      if(path===':runQuery'){
+        const query=JSON.parse(options.body).structuredQuery;
+        const ordered=[...store.values()].filter(item=>item.name.includes('/licenseAudit/')).sort((a,b)=>String(b.fields.at.stringValue).localeCompare(String(a.fields.at.stringValue))||b.name.localeCompare(a.name));
+        const cursor=query.startAt?.values;
+        const after=cursor?ordered.filter(item=>String(item.fields.at.stringValue)<cursor[0].stringValue||String(item.fields.at.stringValue)===cursor[0].stringValue&&item.name<cursor[1].referenceValue):ordered;
+        return new Response(JSON.stringify(after.slice(0,query.limit).map(document=>({document}))));
+      }
       if(path===':commit'){
         const writes=JSON.parse(options.body).writes;
         for(const write of writes){const key=write.update.name.slice(base.length+1);const old=store.get(key);if(write.currentDocument?.exists===false&&old||write.currentDocument?.updateTime&&old?.updateTime!==write.currentDocument.updateTime)return new Response(JSON.stringify({error:{message:'Conflict'}}),{status:409});}
@@ -42,6 +49,9 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
   try{
     assert.equal((await call('client','/license-save-settings',{pricing:settings})).status,403);
     assert.equal((await call('client','/presence-heartbeat',{})).status,403);
+    const pending=await call('client','/license-me',{});
+    assert.equal(pending.body.view.canWrite,false);
+    assert.equal(pending.body.receipt,null);
     assert.equal((await call('master','/create-client',{})).status,409);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
     const id='01234567-89ab-4cde-8fab-0123456789ab';
@@ -79,5 +89,15 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert.equal((await call('client','/presence-heartbeat',{})).status,403);
     assert.equal((await call('client','/license-me',{})).body.view.state,'suspended');
     assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'reactivate',requestId:'45678901-89ab-4cde-8fab-0123456789ab'})).body.status,'active');
+    for(let index=0;index<55;index++){
+      const id=`history-${String(index).padStart(3,'0')}`;
+      store.set(`licenseAudit/${id}`,doc(`licenseAudit/${id}`,{action:'synthetic_test',tenantId:'tenant-a',actorUid:'master',at:new Date(Date.UTC(2026,9,10,0,0,index)).toISOString()}));
+    }
+    const firstPage=await call('master','/license-admin-history',{});
+    assert.equal(firstPage.body.activities.length,50);assert(firstPage.body.nextCursor);
+    const secondPage=await call('master','/license-admin-history',{cursor:firstPage.body.nextCursor});
+    assert(secondPage.body.activities.length>=5);assert.equal(secondPage.body.nextCursor,null);
+    assert.equal(new Set([...firstPage.body.activities,...secondPage.body.activities].map(item=>item.id)).size,firstPage.body.activities.length+secondPage.body.activities.length);
+    assert.equal((await call('client','/license-admin-history',{})).status,403);
   }finally{globalThis.fetch=originalFetch;}
 });
