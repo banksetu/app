@@ -37,3 +37,11 @@ test('inquiry validates size and fields without accepting arbitrary pricing',()=
   assert.throws(()=>validateInquiry({...input,mobile:'123'}));
   assert.throws(()=>validateInquiry({...input,message:'x'.repeat(501)}));
 });
+
+test('suspended and revoked states never turn into active status when expiry changes',()=>{
+  for(const status of ['suspended','revoked']){
+    const record={tenantId:'tenant-a',plan:'lifetime',status,expiresAt:null};
+    assert.equal(licenseView(record,Date.parse('2035-01-01T00:00:00Z')).canWrite,false);
+  }
+  assert.throws(()=>transitionLicense({plan:'annual',status:'revoked',expiresAt:'2026-01-01T00:00:00Z',revision:1},{kind:'renewal',id:'x',quotedPaise:100},'2026-02-01T00:00:00Z',DEFAULT_PRICING));
+});

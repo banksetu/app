@@ -112,3 +112,26 @@ test('public inquiry fails closed without CAPTCHA keys', async () => {
     assert.match((await response.json()).error,/temporarily unavailable/);
   } finally { globalThis.fetch=realFetch; }
 });
+
+test('client admin cannot change global licensing prices or approve licenses', async () => {
+  const {generateKeyPairSync}=await import('node:crypto');
+  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+  const realFetch=globalThis.fetch;
+  const field=value=>typeof value==='string'?{stringValue:value}:{booleanValue:value};
+  globalThis.fetch=async (url)=>{
+    const path=String(url);
+    if(path.includes('accounts:lookup')) return new Response(JSON.stringify({users:[{localId:'client-uid',email:'client@example.invalid',emailVerified:true}]}));
+    if(path.includes('oauth2.googleapis.com/token')) return new Response(JSON.stringify({access_token:'test',expires_in:3600}));
+    if(path.endsWith('/users/client-uid')) return new Response(JSON.stringify({fields:{role:field('client_admin'),tenantId:field('tenant-a'),status:field('approved'),subscriptionStatus:field('active')}}));
+    if(path.endsWith('/tenants/tenant-a')) return new Response(JSON.stringify({fields:{status:field('active')}}));
+    if(path.includes('/appSettings/licensing')) return new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  try{
+    const synthetic={...env,FIREBASE_PROJECT_ID:'synthetic-test',FIREBASE_WEB_API_KEY:'test',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.invalid',private_key:privateKey.export({type:'pkcs8',format:'pem'})})};
+    for(const path of ['/license-save-settings','/license-admin-assign','/license-admin-decision','/license-admin-history']){
+      const response=await worker.fetch(new Request(`https://worker.example${path}`,{method:'POST',headers:{origin:'https://banksetu-app.web.app',authorization:'Bearer synthetic','content-type':'application/json'},body:'{}'}),synthetic);
+      assert.equal(response.status,403,path);
+    }
+  }finally{globalThis.fetch=realFetch;}
+});

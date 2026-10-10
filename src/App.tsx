@@ -86,6 +86,7 @@ function App() {
   const [accountRole, setAccountRole] = useState("user");
   const [licenseWelcome, setLicenseWelcome] = useState<Awaited<ReturnType<typeof getPublicLicenseSettings>>>(null);
   const [showLicenseWelcome, setShowLicenseWelcome] = useState(true);
+  const [knownAccount, setKnownAccount] = useState(() => { try { return localStorage.getItem("bankSetuKnownAccount") === "true"; } catch { return false; } });
 
 
   const loginAttemptRef = useRef(false);
@@ -232,6 +233,8 @@ function App() {
         }
 
         verifiedNavigation.current=true;clearTimeout(recoveryTimer.current);
+        setKnownAccount(true);
+        try { localStorage.setItem("bankSetuKnownAccount", "true"); } catch { /* Login remains available without persistent UI preference. */ }
         setError("");setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);
         setCheckingSession(false);
       },
@@ -411,7 +414,7 @@ function App() {
     );
   }
 
-  if (!isLoggedIn && showLicenseWelcome && licenseWelcome) {
+  if (!isLoggedIn && showLicenseWelcome && licenseWelcome && !knownAccount) {
     return <LicenseOnboarding settings={licenseWelcome} onSignIn={() => setShowLicenseWelcome(false)} />;
   }
 

@@ -454,6 +454,13 @@ async function handleLicensing(request, env, actor, route) {
       summary: { total: tenantPage.records.length, active: stateCount("active") + stateCount("expiring_soon") + stateCount("grace"), soon: stateCount("expiring_soon"), expired: stateCount("expired"), pending: requestPage.records.filter(item => item.status === "pending").length },
       truncated: requestPage.truncated || licensePage.truncated || tenantPage.truncated });
   }
+  if (route === "/license-admin-history") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const rows = await firestoreRequest(env, ":runQuery", {
+      method: "POST", body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "licenseAudit" }], orderBy: [{ field: { fieldPath: "at" }, direction: "DESCENDING" }], limit: 100 } }),
+    });
+    return json({ activities: rows.filter(row => row.document).map(row => licenseFields(row.document)) });
+  }
   if (route === "/license-me") {
     if (master) return json({ master: true, pricing: settings.pricing, flags: settings.flags });
     const tenantId = licenseTenant(actor);
@@ -1202,7 +1209,7 @@ export default {
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
-        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-assign", "/license-request-change", "/license-admin-decision",
+        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-request-change", "/license-admin-decision",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);

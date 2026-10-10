@@ -13,6 +13,7 @@ export default function LicenseManagement({master}:{master:boolean}) {
   const [uiEnabled,setUiEnabled]=useState(false);
   const [state,setState]=useState<LicenseState|null>(null);
   const [requests,setRequests]=useState<Inquiry[]>([]);
+  const [activities,setActivities]=useState<Array<{action:string;tenantId?:string;at:string;actorUid:string}>>([]);
   const [licenses,setLicenses]=useState<License[]>([]);
   const [tenants,setTenants]=useState<Array<{tenantId:string;bankName:string}>>([]);
   const [truncated,setTruncated]=useState(false);
@@ -25,11 +26,12 @@ export default function LicenseManagement({master}:{master:boolean}) {
   const [error,setError]=useState('');
   const refresh=async()=>{
     if(master){
-      const [settings,listing]=await Promise.all([
+      const [settings,listing,history]=await Promise.all([
         callBankSetuWorker<{pricing:Pricing;flags:{uiEnabled:boolean}}>('/license-admin-settings',{}),
         callBankSetuWorker<{requests:Inquiry[];licenses:License[];tenants:Array<{tenantId:string;bankName:string}>;summary:{total:number;active:number;soon:number;expired:number;pending:number};truncated:boolean}>('/license-admin-list',{}),
+        callBankSetuWorker<{activities:Array<{action:string;tenantId?:string;at:string;actorUid:string}>}>('/license-admin-history',{}),
       ]);
-      setPricing(settings.pricing);setUiEnabled(settings.flags.uiEnabled);setRequests(listing.requests);setLicenses(listing.licenses);setTenants(listing.tenants);setSummary(listing.summary);setTruncated(listing.truncated);
+      setPricing(settings.pricing);setUiEnabled(settings.flags.uiEnabled);setRequests(listing.requests);setActivities(history.activities);setLicenses(listing.licenses);setTenants(listing.tenants);setSummary(listing.summary);setTruncated(listing.truncated);
     }else{
       const result=await callBankSetuWorker<LicenseState>('/license-me',{});
       setState(result);setPricing(result.pricing);
@@ -67,6 +69,7 @@ export default function LicenseManagement({master}:{master:boolean}) {
         <h3>Requests</h3>{truncated&&<p className="license-note">More than 100 records: full pagination is required before managing older requests.</p>}
         {requests.length===0?<p>No requests yet.</p>:<div className="license-request-list">{requests.map(item=><div key={item.id}><strong>{item.kind} · {item.bankName||item.tenantId||'Applicant'}</strong><span>{item.status} · {item.quotedPaise==null?'Price requires confirmation':rupees(item.quotedPaise)}</span>{item.status==='pending'&&item.kind!=='inquiry'&&<div><button disabled={busy} onClick={()=>{if(window.confirm('Confirm payment and approve this request?'))void perform(()=>callBankSetuWorker('/license-admin-decision',{requestId:item.id,action:'approve',paymentConfirmed:true}),'Request approved.');}}>Approve after payment</button><button disabled={busy} onClick={()=>void perform(()=>callBankSetuWorker('/license-admin-decision',{requestId:item.id,action:'reject'}),'Request rejected.')}>Reject</button></div>}</div>)}</div>}
       </div></div>
+      <div className="license-card"><h3>License Activity History</h3><div className="license-request-list">{activities.length===0?'No licensing activity yet.':activities.map((item,index)=><div key={`${item.at}-${index}`}><strong>{item.action.replaceAll('_',' ')}</strong><span>{item.tenantId||'Global pricing'} · {new Date(item.at).toLocaleString()}</span></div>)}</div></div>
       <div className="license-card"><h3>Tenant Licenses</h3><div className="license-request-list">{licenses.length===0?'No licenses assigned yet.':licenses.map(item=><div key={item.tenantId}><strong>{item.tenantId}</strong><span>{item.plan} · {item.status} {item.expiresAt&&`· Expires ${new Date(item.expiresAt).toLocaleDateString()}`}</span></div>)}</div></div>
     </>:<div className="license-card"><h3>{state?.license?`${state.license.plan} License`:'Existing Tenant · Review Pending'}</h3><p>Status: {state?.view.state.replaceAll('_',' ')||'Loading…'}{state?.license?.expiresAt&&` · Expires ${new Date(state.license.expiresAt).toLocaleDateString()}`}</p><p>{state?.legacyAccess?'Your existing account stays accessible while licensing is reviewed.':pricing.paymentInstructions}</p>{state?.license?.plan==='annual'&&<div className="license-actions"><button disabled={busy} onClick={()=>void perform(()=>callBankSetuWorker('/license-request-change',{kind:'renewal',requestId:crypto.randomUUID()}),'Renewal request submitted.')}>Renew License · {rupees(pricing.annualPaise)}</button><button disabled={busy} onClick={()=>void perform(()=>callBankSetuWorker('/license-request-change',{kind:'upgrade',requestId:crypto.randomUUID()}),'Upgrade request submitted.')}>Upgrade to Lifetime</button></div>}</div>}
     {error&&<p role="alert" className="license-error">{error}</p>}{notice&&<p role="status" className="license-success">{notice}</p>}
