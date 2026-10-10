@@ -814,7 +814,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
       window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day sample demo has ended. Contact the Master Admin to activate a paid production workspace."}}));
       return;
     }
-    if (licenseReadOnly && !["dashboard", "customers", "all-customer-data", "license-management", "sync-backup", "support"].includes(page)) {
+    if (licenseReadOnly && !["dashboard", "customers", "all-customer-data", "settings", "license-management", "sync-backup", "support"].includes(page)) {
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
     }
@@ -1386,7 +1386,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
           {activePage === "settings" && userRole === "admin" && (
 
-            <Settings userRole={userRole} />
+            licenseReadOnly ? <section style={{background:"white",color:"#10204b",padding:20,borderRadius:12}}><h2>Account Settings</h2><p>Business settings are available after license activation. Your account and local backup remain accessible.</p><button type="button" onClick={openPasswordModal}>Change Password</button><button type="button" onClick={()=>openPage("license-management")}>License Status</button></section> : <Settings userRole={userRole} />
 
           )}
 
