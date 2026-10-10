@@ -78,6 +78,7 @@ function doGet(e) {
         masterLocalSyncVersion: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "master-v1" : "",
         masterConnectionId: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? masterLocalConnectionId() : "",
         tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
+        licenseEnforcementVersion: 1,
         syncProtectionVersion: 1,
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
@@ -392,7 +393,7 @@ function requireAuthorizedUser(
   }
   if (tenantId && profile.licenseRequired === true && [
     "saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered",
-    "markPassbookPrinted", "uploadBankFormatSample", "publishLocalReset",
+    "markPassbookPrinted", "uploadBankFormatSample", "getBankFormatPreview", "publishLocalReset",
     "syncCustomerOperation"
   ].indexOf(action) !== -1) {
     const license = getFirestoreTenantLicense(tenantId, idToken);
@@ -620,18 +621,21 @@ function getFirestoreTenantLicense(tenantId, idToken) {
     tenantId: firestoreString(document, "tenantId"),
     plan: firestoreString(document, "plan"),
     status: firestoreString(document, "status"),
+    activatedAt: firestoreString(document, "activatedAt"),
     expiresAt: firestoreString(document, "expiresAt"),
     graceDays: Number(document.fields && document.fields.graceDays && document.fields.graceDays.integerValue || 7)
   };
 }
 
 function licenseAllowsWrite(license) {
-  if (!license || license.status !== "active") return false;
+  if (!license || (license.status !== "active" && license.status !== "scheduled")) return false;
+  const startsAt = Date.parse(license.activatedAt);
+  if (license.status === "scheduled" && !Number.isFinite(startsAt)) return false;
+  if (Number.isFinite(startsAt) && Date.now() < startsAt) return false;
   if (license.plan === "lifetime") return true;
   if (license.plan !== "annual") return false;
   const expiry = Date.parse(license.expiresAt);
-  const graceDays = Number.isInteger(license.graceDays) && license.graceDays >= 0 && license.graceDays <= 30 ? license.graceDays : 7;
-  return Number.isFinite(expiry) && Date.now() <= expiry + graceDays * 86400000;
+  return Number.isFinite(expiry) && Date.now() < expiry;
 }
 
 function getFirestoreTenantSettings(tenantId, idToken) {

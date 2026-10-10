@@ -69,6 +69,7 @@ type DashboardProps = {
   accountRole: string;
   licenseReadOnly?: boolean;
   licenseWarning?: string;
+  demoExpired?: boolean;
 
 };
 
@@ -266,7 +267,7 @@ type PageName =
   | "license-management"
   | "support";
 
-function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, licenseWarning = "" }: DashboardProps) {
+function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, licenseWarning = "", demoExpired = false }: DashboardProps) {
   useEffect(()=>startPresence(),[]);
 
   // The verified legacy Master Admin is represented as `admin` for backward
@@ -281,7 +282,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
     useState<PageName>("dashboard");
 
-  useEffect(() => { if (licenseReadOnly) setActivePage("license-management"); }, [licenseReadOnly]);
+  useEffect(() => { if (!licenseReadOnly)return;let active=true;queueMicrotask(()=>{if(active)setActivePage("license-management");});return()=>{active=false;}; }, [licenseReadOnly]);
 
   const [mobileMenuOpen, setMobileMenuOpen] =
 
@@ -394,7 +395,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
-  const canManageBankSettings = accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin";
+  const canManageBankSettings = sessionStorage.getItem("bankSetuDemoWorkspace")!=="active" && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
 
   const [bankInfoDraft, setBankInfoDraft] =
 
@@ -407,7 +408,17 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   useEffect(() => {
     const user = getAuth().currentUser;
     if (!user) return;
-    setBankSettingsReady(false); setBankSettingsError("");
+    if(sessionStorage.getItem("bankSetuDemoWorkspace")==="active"){
+      // Use an existing built-in document renderer with sample branding only;
+      // the demo never reads tenant bank settings or production PDF templates.
+      let active=true;
+      queueMicrotask(()=>{if(active){setBankInfo({...emptyBankInfo,bankName:"Bank Setu Demo",passbookBank:"Assam Gramin Bank"});setBankLogo("");setBankSettingsReady(true);setBankSettingsError("");}});
+      return()=>{active=false;};
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (active) { setBankSettingsReady(false); setBankSettingsError(""); }
+    });
     let receivedServer = false;
     const timeout = window.setTimeout(() => {
       if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
@@ -432,7 +443,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
       setBankSettingsError("Saved bank settings could not be loaded from Firebase. Please retry.");
       console.error("Workspace bank settings listener failed:", error);
     });
-    return () => { window.clearTimeout(timeout); unsubscribe(); };
+    return () => { active = false; window.clearTimeout(timeout); unsubscribe(); };
   }, [bankSettingsRetry, accountRole]);
 
   const hasBankInfo =
@@ -802,7 +813,14 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   };
 
   const openPage = (page: PageName) => {
-    if (licenseReadOnly && !["license-management", "sync-backup", "search", "support"].includes(page)) return;
+    if(demoExpired && !["license-management","support"].includes(page)){
+      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day sample demo has ended. Contact the Master Admin to activate a paid production workspace."}}));
+      return;
+    }
+    if (licenseReadOnly && !["dashboard", "customers", "all-customer-data", "settings", "license-management", "sync-backup", "support"].includes(page)) {
+      window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
+      return;
+    }
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -923,167 +941,24 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
         </div>
 
         <nav style={styles.nav}>
-
-          <NavButton
-
-            icon="🏠"
-
-            label="Dashboard"
-
-            active={
-
-              activePage === "dashboard"
-
-            }
-
-            onClick={() =>
-
-              openPage("dashboard")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="👤"
-
-            label="Customer Entry"
-
-            active={
-
-              activePage ===
-
-              "customer-entry"
-
-            }
-
-            onClick={() =>
-
-              openPage("customer-entry")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="📋"
-
-            label="Customers"
-
-            active={
-
-              activePage === "customers"
-
-            }
-
-            onClick={() =>
-
-              openPage("customers")
-
-            }
-
-          />
-
+          <NavButton icon="🏠" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
+          <NavButton icon="👤" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />
+          <NavButton icon="⚡" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />
+          <NavButton icon="🖨" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />
           <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-
-          <NavButton
-
-            icon="🖨"
-
-            label="Passbook Print"
-
-            active={
-
-              activePage === "passbook"
-
-            }
-
-            onClick={() =>
-
-              openPage("passbook")
-
-            }
-
-          />
-
-          <NavButton
-            icon="⚡"
-            label="Quick Passbook"
-            active={activePage === "quick-passbook"}
-            onClick={() => openPage("quick-passbook")}
-          />
-
-          <NavButton
-
-            icon="🔎"
-
-            label="Account Opening PDF Sample"
-
-            active={
-
-              activePage === "search"
-
-            }
-
-            onClick={() =>
-
-              openPage("search")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="📊"
-
-            label="Reports"
-
-            active={
-
-              activePage === "reports"
-
-            }
-
-            onClick={() =>
-
-              openPage("reports")
-
-            }
-
-          />
-
-          {userRole === "admin" && <NavButton
-
-            icon="⚙️"
-
-            label="Settings"
-
-            active={
-
-              activePage === "settings"
-
-            }
-
-            onClick={() =>
-
-              openPage("settings")
-
-            }
-
-          />}
-
+          <NavButton icon="📋" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+          <NavButton icon="🔎" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />
+          {userRole === "admin" && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
+          <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />
           {(accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
           {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
 
-        <button type="button" className={activePage === "support" ? "banksetu-nav-item banksetu-support-button active" : "banksetu-nav-item banksetu-support-button"} onClick={() => openPage("support")}>
-          <span>🎧</span><span>Support</span>{supportUnread > 0 && <b className="banksetu-support-badge">{supportUnread > 99 ? "99+" : supportUnread}</b>}
-        </button>
-
       </aside>
+
+      <button type="button" className="banksetu-floating-support" aria-label={supportUnread ? `Open Support Center, ${supportUnread} unread` : "Open Support Center"} title="Support Center" onClick={() => openPage("support")}>
+        <span aria-hidden="true">🎧</span>{supportUnread > 0 && <b className="banksetu-support-badge">{supportUnread > 99 ? "99+" : supportUnread}</b>}
+      </button>
 
       {/* MAIN AREA */}
 
@@ -1477,7 +1352,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
-        <ClientGoogleSetup enabled={accountRole === "client_admin"} />
+        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly && sessionStorage.getItem("bankSetuDemoWorkspace")!=="active"} />
 
         {["client_admin","client_user"].includes(accountRole) && <LicenseNotice open={() => openPage("license-management")} />}
 
@@ -1485,11 +1360,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
-          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} Search, backup and license requests remain available.</p>}
+          {sessionStorage.getItem("bankSetuDemoWorkspace")==="active" && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Sample-only data on this device. Production Google Sheets and Drive are disconnected. Sample records will not move into a paid workspace.</p>}
+          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Demo data remains isolated. Activation and support remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
+          {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
           {activePage === "dashboard" && !licenseReadOnly && (
 
             <DashboardHome
@@ -1512,17 +1389,18 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
           {activePage === "settings" && userRole === "admin" && (
 
-            <Settings userRole={userRole} />
+            licenseReadOnly ? <section style={{background:"white",color:"#10204b",padding:20,borderRadius:12}}><h2>Account Settings</h2><p>Business settings are available after license activation. Your account and local backup remain accessible.</p><button type="button" onClick={openPasswordModal}>Change Password</button><button type="button" onClick={()=>openPage("license-management")}>License Status</button></section> : <Settings userRole={userRole} />
 
           )}
 
-          {activePage === "customers" && (
+          {activePage === "customers" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
+          {activePage === "customers" && !licenseReadOnly && (
 
             <Customers />
 
           )}
 
-          {activePage === "all-customer-data" && <AllCustomerData />}
+          {activePage === "all-customer-data" && !demoExpired && (licenseReadOnly ? <LicenseReadOnlyCustomers /> : <AllCustomerData />)}
 
           {bankSettingsReady && activePage === "passbook" && (
 
@@ -1541,7 +1419,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
           {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
           {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
 
-          {activePage === "reports" && (
+          {activePage === "reports" && !licenseReadOnly && (
 
             <Reports />
 

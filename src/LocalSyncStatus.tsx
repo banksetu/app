@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import CustomerExcelExport from "./CustomerExcelExport";
 import "./LocalSyncStatus.css";
-import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, clearTemporaryLocalData, resetLocalDatabase, syncNow, pauseSync, resumeSync } from "./core/localData";
+import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, clearTemporaryLocalData, resetLocalDatabase, syncNow, pauseSync, resumeSync, getConnectionHealth } from "./core/localData";
 import type { QueueOperation } from "./core/schema";
 import { callBankSetuWorker } from "./workerApi";
 
@@ -11,6 +11,7 @@ const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading:
 export default function LocalSyncStatus({ visible = true, readOnly = false }: { visible?: boolean; readOnly?: boolean }) {
   const [conflicts, setConflicts] = useState<QueueOperation[]>([]);
   const [status, setStatus] = useState<Status>(emptyStatus);
+  const [health,setHealth]=useState(getConnectionHealth);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [excelOpen,setExcelOpen] = useState(false);
@@ -25,6 +26,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
     void Promise.all([getLocalStatus(), getConflicts(), getLocalSnapshot()]).then(([nextStatus, nextConflicts, nextSnapshot]) => {
       setStatus(nextStatus); setConflicts(nextConflicts); setSnapshot(nextSnapshot);
     }).catch(reason => setError(reason instanceof Error ? reason.message : "Local database could not be read."));
+    setHealth(getConnectionHealth());
     if (window.bankSetuDesktop?.storage) void window.bankSetuDesktop.storage().then(result => setNativeStorage(result)).catch(() => setNativeStorage(null));
     else if (navigator.storage?.estimate) void navigator.storage.estimate().then(result => setStorage({ used: result.usage || 0, quota: result.quota || 0 }));
   };
@@ -32,7 +34,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
   useEffect(() => {
     const changed=()=>{if(visible)refresh();};
     window.addEventListener("banksetu-sync-change",changed);window.addEventListener("banksetu-workspace-change",changed);changed();
-    if(visible){
+    if(visible && sessionStorage.getItem("bankSetuDemoWorkspace")!=="active"){
     void callBankSetuWorker<{ spreadsheetId?: string }>("/get-google-setup", {}).then(config => {
       const id = String(config.spreadsheetId || ""); setSheetUrl(id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "");
     }).catch(() => undefined);
@@ -42,6 +44,8 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
 
   if (!visible) return null;
   if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
+
+  if(sessionStorage.getItem("bankSetuDemoWorkspace")==="active") return <aside aria-label="Demo local data" className="sync-center"><header className="sync-header"><div><p>DEMO · SAMPLE ONLY</p><h2>Sample Data</h2><span>{status.records} records on this device. No production Google Sheet or Drive is connected.</span></div></header><section className="sync-body"><p>Sample records stay separate from a future paid workspace.</p><button type="button" className="backup-action" onClick={()=>void exportLocalBackup().catch(reason=>setError(reason instanceof Error?reason.message:"Sample backup failed."))}>Back Up Sample Data</button>{error&&<p role="alert">{error}</p>}</section></aside>;
 
   if (readOnly) return <aside aria-label="Local database backup" className="sync-center"><header className="sync-header"><div><p>DATA CONTROL CENTER</p><h2>Read-Only Backup</h2><span>Existing customer data and pending operations remain on this device.</span></div></header><section className="sync-body"><p>{status.records} local customer records · {status.pending} pending operations</p><button type="button" className="backup-action" onClick={() => void exportLocalBackup().catch(reason => setError(reason instanceof Error ? reason.message : "Backup failed."))}>◉ Backup Now</button>{error && <p role="alert">{error}</p>}</section></aside>;
 
@@ -84,6 +88,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
   return <aside aria-label="Local database sync" className="sync-center">
     <header className="sync-header"><div className="sync-header-icon">☁️</div><div><p>DATA CONTROL CENTER</p><h2>Sync &amp; Backup</h2><span>Local-first storage · Google Sheet sync · backup and restore</span></div><div className="sync-header-actions"><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs">⬇ Download Code.gs</a><button disabled={busy} onClick={runSync}>{busy ? "Syncing…" : "↻ Sync Now"}</button><button type="button" disabled={busy} onClick={()=>{if(status.paused)resumeSync();else pauseSync();refresh();}}>{status.paused?"▶ Resume Sync":"⏸ Pause Sync"}</button></div></header>
     <section className="sync-body"><div className="sync-summary"><div><b>✓</b><span><strong>Your data protection</strong><small>Local storage with verified Google Sheet sync and backup.</small></span></div><em className={error||status.error?"error":status.pending?"pending":""}>{statusText}</em></div>
+    <details><summary>System Health: {health.state === "healthy" ? "Healthy" : health.state === "recovering" ? "Recovering" : "Attention Required"}</summary><p>Recovery attempts use bounded retries. Customer records and pending operations remain in local storage.</p>{health.history.length>0 && <ol>{health.history.map((entry,index)=><li key={`${entry.at}-${index}`}>{new Date(entry.at).toLocaleString()} · {entry.category} · {entry.action} · {entry.result}</li>)}</ol>}</details>
     <div className="sync-card-grid">{cards.map(card => <article key={card.key} className={`sync-card sync-card-${card.key}`}><div className="sync-card-icon">{cardIcons[card.key]}</div><div className="sync-card-copy"><span>{card.label}</span><p>{card.hint}</p></div><strong>{card.value}</strong><button onClick={() => card.key === "sheet" && sheetUrl ? window.open(sheetUrl, "_blank", "noopener,noreferrer") : setViewer(card.key)}>{card.action} ›</button></article>)}</div>
     {(error || status.error || status.conflicts > 0) && <div style={styles.errorCard}><strong>Sync attention needed</strong><p>{error || status.error || `${status.conflicts} record(s) need review.`}</p></div>}
     <div className="sync-actions"><button type="button" className="backup-action" onClick={() => void exportLocalBackup().catch(reason => setError(reason.message))}>◉ Backup Now</button><button type="button" className="excel-action" onClick={() => setExcelOpen(true)}>▣ Export to Excel</button><label className="restore-action"><span>Restore Backup</span><input aria-label="Restore local backup" type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (!window.confirm("Merge this backup into the current workspace?")) return; void file.text().then(restoreLocalBackup).then(report => setError(`Restored ${report.records} records and ${report.operations} operations.`)).catch(reason => setError(reason.message)); }} /></label></div>

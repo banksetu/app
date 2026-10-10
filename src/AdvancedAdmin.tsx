@@ -36,6 +36,16 @@ type UpdateManifest = {
 
 type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
 
+async function saveVerifiedBridgeUrl(uid: string, apiUrl: string) {
+  if (sessionStorage.getItem("bankSetuLicenseRequired") === "true") {
+    if (apiUrl && apiUrl === getTenantApiUrl()) return;
+    throw new Error("Use the verified Google Sheet / Drive connection setup to change this workspace bridge. The existing connection was retained.");
+  }
+  await setDoc(doc(db, ...tenantSettingsPath(uid)), {
+    apiUrl, ...tenantSettingsWriteMetadata(uid), updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
 function Settings(props: AdvancedAdminProps) {
   return <ConnectionSettings {...props} />;
 }
@@ -161,16 +171,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
         }
 
         if (!cloudUrl && localUrl.trim()) {
-          await setDoc(
-            settingsRef,
-            {
-              apiUrl: localUrl.trim(),
-              ...tenantSettingsWriteMetadata(user.uid),
-              updatedAt:
-                serverTimestamp(),
-            },
-            { merge: true }
-          );
+          await saveVerifiedBridgeUrl(user.uid, localUrl.trim());
         }
       } catch (error) {
         console.error(
@@ -372,15 +373,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
     }
 
     try {
-      await setDoc(
-        doc(db, ...tenantSettingsPath(user.uid)),
-        {
-          apiUrl: cleanUrl,
-          ...tenantSettingsWriteMetadata(user.uid),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await saveVerifiedBridgeUrl(user.uid, cleanUrl);
 
       setTenantApiUrl(cleanUrl);
 
@@ -398,7 +391,9 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
       );
 
       setMessage(
-        "Database connection could not be saved to Firebase Cloud. Please try again."
+        error instanceof Error && error.message.includes("verified Google Sheet / Drive connection setup")
+          ? error.message
+          : "Database connection could not be saved to Firebase Cloud. Please try again."
       );
     }
   };
@@ -550,15 +545,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
     }
 
     try {
-      await setDoc(
-        doc(db, ...tenantSettingsPath(user.uid)),
-        {
-          apiUrl: "",
-          ...tenantSettingsWriteMetadata(user.uid),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await saveVerifiedBridgeUrl(user.uid, "");
 
       removeTenantApiUrl();
 

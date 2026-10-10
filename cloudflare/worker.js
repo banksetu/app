@@ -228,13 +228,14 @@ async function verifyActor(request, env) {
   // New invited tenants require an active server-side license. Existing users
   // without the explicit marker retain their existing access during rollout.
   // Licensing, setup reads and account recovery remain available after expiry.
-  if (profile.licenseRequired === true && !["/license-me", "/license-request-change", "/get-google-setup", "/get-offline-session"].includes(new URL(request.url).pathname)) {
+  if (profile.licenseRequired === true && !["/license-me", "/license-request-change", "/get-offline-session"].includes(new URL(request.url).pathname)) {
     const path = `/tenantLicenses/${encodeURIComponent(String(profile.tenantId || ""))}`;
     const document = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
     const license = decodeFields(document?.fields || {});
     const pricing = decodeFields((await firestoreRequest(env, "/appSettings/licensing").catch(error => error.status === 404 ? null : Promise.reject(error)))?.fields || {}).pricing || {};
     const view = licenseView(license.tenantId ? license : {status:"pending"}, Date.now(), Number.isInteger(pricing.graceDays) ? pricing.graceDays : 7);
-    if (!view.canWrite) return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
+    if(license.plan==="demo")return {error:json({error:"Demo access is limited to the separate sample workspace. Production Google services are unavailable."},403)};
+    if (!view.canWrite && new URL(request.url).pathname !== "/get-google-setup") return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
   }
   return {
     uid: account.localId,
@@ -387,6 +388,14 @@ function licenseTenant(actor) {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)) throw new Error("A verified tenant is required.");
   return tenantId;
 }
+function licenseStartDate(value) {
+  if(value === undefined || value === "")return undefined;
+  if(typeof value!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const [year,month,day]=value.split("-").map(Number);
+  const date=new Date(Date.UTC(year,month-1,day));
+  if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return null;
+  return new Date(`${value}T00:00:00+05:30`).toISOString();
+}
 async function handleLicensing(request, env, actor, route) {
   const settings = await licenseSettings(env);
   const master = actor && isMasterActor(actor);
@@ -457,38 +466,47 @@ async function handleLicensing(request, env, actor, route) {
       return { records, truncated: Boolean(pageToken) };
     };
     const [requestPage, licensePage, tenantPage] = await Promise.all([query("licenseRequests"), query("tenantLicenses"), query("tenants")]);
-    const licenses = licensePage.records;
+    const tenantNames=new Map(tenantPage.records.map(item=>[item.tenantId||item.id,item.bankName||""]));
+    const licenses = licensePage.records.map(item=>({...item,bankName:tenantNames.get(item.tenantId)||""}));
+    const requests=requestPage.records.map(item=>({...item,bankName:item.bankName||tenantNames.get(item.tenantId)||"",clientName:item.clientName||item.name||""}));
     const stateCount = state => licenses.filter(item => {
       try { return licenseView(item, Date.now(), settings.pricing.graceDays).state === state; }
       catch { return false; }
     }).length;
-    return json({ requests: requestPage.records, licenses,
+    return json({ requests, licenses,
       tenants: tenantPage.records.map(item => ({ tenantId: item.tenantId || item.id, bankName: item.bankName || "" })),
-      summary: { total: tenantPage.records.length, active: stateCount("active") + stateCount("expiring_soon") + stateCount("grace"), soon: stateCount("expiring_soon"), expired: stateCount("expired"), pending: requestPage.records.filter(item => item.status === "pending").length },
+      summary: { total: tenantPage.records.length, active: stateCount("active") + stateCount("expiring_soon"), soon: stateCount("expiring_soon"), expired: stateCount("expired"), scheduled:stateCount("scheduled"), suspended:stateCount("suspended")+stateCount("revoked"), demo:stateCount("demo_active"), pending: requests.filter(item => item.status === "pending").length },
       truncated: requestPage.truncated || licensePage.truncated || tenantPage.truncated });
   }
   if (route === "/license-admin-history") {
     if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body=await request.json().catch(()=>({}));
+    const cursor=body.cursor;
+    if(cursor && (typeof cursor.at!=="string"||!/^[0-9TZ:.+-]{20,40}$/.test(cursor.at)||typeof cursor.name!=="string"||!cursor.name.startsWith(`projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/licenseAudit/`)||cursor.name.length>320))
+      return json({error:"Invalid activity cursor."},400);
     const rows = await firestoreRequest(env, ":runQuery", {
-      method: "POST", body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "licenseAudit" }], orderBy: [{ field: { fieldPath: "at" }, direction: "DESCENDING" }], limit: 100 } }),
+      method: "POST", body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "licenseAudit" }], orderBy: [{ field: { fieldPath: "at" }, direction: "DESCENDING" },{field:{fieldPath:"__name__"},direction:"DESCENDING"}],...(cursor?{startAt:{values:[{stringValue:cursor.at},{referenceValue:cursor.name}],before:false}}:{}), limit: 51 } }),
     });
-    return json({ activities: rows.filter(row => row.document).map(row => licenseFields(row.document)) });
+    const documents=rows.filter(row=>row.document).map(row=>row.document);
+    const page=documents.slice(0,50);
+    const last=page.at(-1);
+    return json({ activities:page.map(doc=>({...licenseFields(doc),id:doc.name.split('/').at(-1)})),nextCursor:documents.length>50&&last?{at:String(licenseFields(last).at||""),name:last.name}:null });
   }
   if (route === "/license-me") {
     if (master) return json({ master: true, pricing: settings.pricing, flags: settings.flags });
     const tenantId = licenseTenant(actor);
     const license = licenseFields(await licenseDoc(env, `/tenantLicenses/${encodeURIComponent(tenantId)}`));
     const found = Boolean(license.tenantId);
-    const view = licenseView(found ? license : null, Date.now(), settings.pricing.graceDays);
+    const view = licenseView(found ? license : actor.profile.licenseRequired === true ? {status:"pending"} : null, Date.now(), settings.pricing.graceDays);
     const serverTime = Date.now();
     let receipt = null;
-    if (actor.profile.licenseRequired === true && found) {
-      const expiry = license.plan === "annual" ? Date.parse(license.expiresAt) + (Number.isInteger(license.graceDays) ? license.graceDays : 7) * 86400000 : Infinity;
-      const validUntil = Math.min(serverTime + 8 * 3600000, expiry);
+    if (actor.profile.licenseRequired === true && found && view.canWrite) {
+      const expiry = ["annual","demo"].includes(license.plan) ? Date.parse(license.expiresAt) : Infinity;
+      const validUntil = Math.min(serverTime + 5 * 86400000, expiry);
       const signed = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, { purpose: "banksetu-license-v1", uid: actor.uid, tenantId, revision: license.revision, state: view.state, issuedAt: serverTime, validUntil, expiresAt: license.expiresAt, plan: license.plan });
       receipt = { payload: signed.payload, signature: signed.signature };
     }
-    return json({ license: found ? license : null, view, receipt, pricing: settings.pricing, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess: !found && !settings.flags.existingClientEnforcement });
+    return json({ license: found ? license : null, view, receipt, pricing: settings.pricing, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess: !found && actor.profile.licenseRequired !== true && !settings.flags.existingClientEnforcement });
   }
   if (route === "/license-request-change") {
     if (master || String(actor.profile.role).toLowerCase() !== "client_admin") return json({ error: "Only the Client Admin can request a license change." }, 403);
@@ -503,7 +521,8 @@ async function handleLicensing(request, env, actor, route) {
     const quote = kind === "renewal" ? settings.pricing.annualPaise : upgradeAmount(settings.pricing, license).duePaise;
     if (kind === "renewal" && !settings.pricing.annualAvailable) return json({ error: "Renewals are currently unavailable." }, 409);
     const now = new Date().toISOString();
-    await licenseCommit(env, [licenseWrite(env, "licenseRequests", id, { id, kind, tenantId, requestedBy: actor.uid, status: "pending", paymentStatus: "not_paid", quotedPaise: quote, quoteRequiresConfirmation: true, pricingRevisionAt: settings.document?.updateTime || "", createdAt: now, updatedAt: now })]);
+    const tenant=licenseFields(await licenseDoc(env,`/tenants/${tenantId}`));
+    await licenseCommit(env, [licenseWrite(env, "licenseRequests", id, { id, kind, tenantId, requestedBy: actor.uid, clientName:String(actor.profile.name||""), email:actor.email, bankName:String(tenant.bankName||""), status: "pending", paymentStatus: "not_paid", quotedPaise: quote, quoteRequiresConfirmation: true, pricingRevisionAt: settings.document?.updateTime || "", createdAt: now, updatedAt: now })]);
     return json({ success: true, referenceId: id, quotedPaise: quote });
   }
   if (route === "/license-admin-assign") {
@@ -513,6 +532,10 @@ async function handleLicensing(request, env, actor, route) {
     const plan = String(body.plan || "");
     const id = String(body.requestId || "");
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId) || !["annual", "lifetime"].includes(plan) || !/^[a-f0-9-]{36}$/.test(id) || body.paymentConfirmed !== true) return json({ error: "Select a tenant and plan, then confirm payment." }, 400);
+    const startAt=licenseStartDate(body.startDate);
+    if(startAt===null)return json({error:"Select a valid India activation date."},400);
+    const durationMonths=body.durationMonths === undefined ? 12 : Number(body.durationMonths);
+    if(plan==="annual"&&(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120))return json({error:"Select a duration from 1 to 120 months."},400);
     const tenant = await licenseDoc(env, `/tenants/${tenantId}`);
     if (!tenant || licenseFields(tenant).status !== "active") return json({ error: "Active tenant not found." }, 409);
     const existing = await licenseDoc(env, `/tenantLicenses/${tenantId}`);
@@ -523,13 +546,15 @@ async function handleLicensing(request, env, actor, route) {
     }
     const price = plan === "annual" ? settings.pricing.annualPaise : settings.pricing.lifetimePaise;
     if (!price || !settings.pricing[plan === "annual" ? "annualAvailable" : "lifetimeAvailable"]) return json({ error: "Plan is not available. Configure pricing first." }, 409);
+    const paidPaise=body.paidPaise === undefined ? price : Number(body.paidPaise);
+    if(!Number.isSafeInteger(paidPaise)||paidPaise<=0||paidPaise>100_000_000)return json({error:"Confirm a valid paid amount in paise."},400);
     const now = new Date().toISOString();
-    const license = transitionLicense(null, { kind: plan, id, quotedPaise: price }, now, settings.pricing);
+    const license = transitionLicense(null, { kind: plan, id, quotedPaise: paidPaise, startAt, durationMonths }, now, settings.pricing);
     license.tenantId = tenantId;
     license.graceDays = settings.pricing.graceDays;
     const writes = [
       licenseWrite(env, "tenantLicenses", tenantId, license),
-      licenseWrite(env, "licenseAudit", id, { action: "assigned", requestId: id, tenantId, actorUid: actor.uid, at: now, plan, paidPaise: price, paymentStatus: "payment_confirmed" }),
+      licenseWrite(env, "licenseAudit", id, { action: "assigned", requestId: id, tenantId, actorUid: actor.uid, at: now, plan, quotedPaise: price, paidPaise, activatedAt: license.activatedAt, expiresAt: license.expiresAt, durationMonths:license.durationMonths, paymentStatus: "payment_confirmed" }),
     ];
     const ownerUid = String(licenseFields(tenant).ownerUid || "");
     const ownerDoc = ownerUid ? await licenseDoc(env, `/users/${encodeURIComponent(ownerUid)}`) : null;
@@ -540,6 +565,45 @@ async function handleLicensing(request, env, actor, route) {
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "License already assigned. Refresh before retrying." }, 409); throw error; }
     return json({ success: true, tenantId, license });
+  }
+  if (route === "/license-admin-demo") {
+    if(!master)return json({error:"Master Admin access is required."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(body.tenantId||""),id=String(body.requestId||"");
+    if(!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)||!/^[a-f0-9-]{36}$/.test(id))return json({error:"Select a valid invited tenant."},400);
+    const tenantDoc=await licenseDoc(env,`/tenants/${tenantId}`),tenant=licenseFields(tenantDoc);
+    if(tenant.status!=="active")return json({error:"Active invited tenant not found."},409);
+    const existing=await licenseDoc(env,`/tenantLicenses/${tenantId}`);
+    if(existing){if(licenseFields(existing).lastRequestId===id)return json({success:true,repeated:true});return json({error:"A license or demo already exists for this tenant."},409);}
+    const ownerUid=String(tenant.ownerUid||""),ownerDoc=ownerUid?await licenseDoc(env,`/users/${encodeURIComponent(ownerUid)}`):null,owner=licenseFields(ownerDoc);
+    const workspace=licenseFields(await licenseDoc(env,`/tenantSettings/${tenantId}`));
+    if(!ownerDoc||owner.tenantId!==tenantId||owner.licensingInvite!==true||workspace.spreadsheetId||workspace.photoFolderId)return json({error:"Demo requires a newly invited tenant without a production Google workspace."},409);
+    const nowMs=Date.now(),now=new Date(nowMs).toISOString();
+    const license={tenantId,plan:"demo",status:"active",demoOnly:true,activatedAt:now,expiresAt:new Date(nowMs+5*86400000).toISOString(),paidPaise:0,revision:1,updatedAt:now,lastRequestId:id};
+    const writes=[licenseWrite(env,"tenantLicenses",tenantId,license),licenseWrite(env,"licenseAudit",id,{action:"demo_activated",actorUid:actor.uid,tenantId,at:now,expiresAt:license.expiresAt})];
+    if(owner.status==="pending")writes.push(licenseWrite(env,"users",ownerUid,{...owner,status:"approved",subscriptionStatus:"active",updatedAt:now,updatedBy:actor.uid},{updateTime:ownerDoc.updateTime}));
+    try{await licenseCommit(env,writes);}catch(error){if(error.status===409)return json({error:"Demo state changed. Refresh before retrying."},409);throw error;}
+    return json({success:true,license});
+  }
+  if(route==="/license-admin-demo-convert"){
+    if(!master)return json({error:"Master Admin access is required."},403);
+    const body=await request.json().catch(()=>({}));const tenantId=String(body.tenantId||""),id=String(body.requestId||""),plan=String(body.plan||"");
+    if(!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)||!/^[a-f0-9-]{36}$/.test(id)||!["annual","lifetime"].includes(plan)||body.paymentConfirmed!==true)return json({error:"Select the plan and confirm payment."},400);
+    const doc=await licenseDoc(env,`/tenantLicenses/${tenantId}`),current=licenseFields(doc);
+    if(current.lastRequestId===id)return json({success:true,repeated:true});
+    if(current.plan!=="demo"||!current.demoOnly)return json({error:"This tenant has no sample-only demo to convert."},409);
+    const price=plan==="annual"?settings.pricing.annualPaise:settings.pricing.lifetimePaise;
+    const paidPaise=body.paidPaise===undefined?price:Number(body.paidPaise);
+    if(!settings.pricing[plan==="annual"?"annualAvailable":"lifetimeAvailable"]||!Number.isSafeInteger(paidPaise)||paidPaise<=0||paidPaise>100_000_000)return json({error:"Confirm an available paid plan and amount."},400);
+    const now=new Date().toISOString();const startAt=licenseStartDate(body.startDate);
+    if(startAt===null)return json({error:"Select a valid India activation date."},400);
+    const durationMonths=body.durationMonths===undefined?12:Number(body.durationMonths);
+    if(plan==="annual"&&(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120))return json({error:"Select a valid paid duration."},400);
+    const next=transitionLicense(null,{kind:plan,id,quotedPaise:paidPaise,startAt,durationMonths},now,settings.pricing);
+    Object.assign(next,{tenantId,firstActivatedAt:next.activatedAt,demoOnly:false,revision:Number(current.revision||0)+1});
+    try{await licenseCommit(env,[licenseWrite(env,"tenantLicenses",tenantId,next,{updateTime:doc.updateTime}),licenseWrite(env,"licenseAudit",id,{action:"demo_converted",actorUid:actor.uid,tenantId,at:now,before:{plan:"demo",expiresAt:current.expiresAt},after:{plan,status:next.status,activatedAt:next.activatedAt,expiresAt:next.expiresAt},paidPaise})]);}
+    catch(error){if(error.status===409)return json({error:"License changed. Refresh before retrying."},409);throw error;}
+    return json({success:true,license:next,productionWorkspaceRequiresConnection:true});
   }
   if (route === "/license-admin-decision") {
     if (!master) return json({ error: "Master Admin access is required." }, 403);
@@ -564,13 +628,21 @@ async function handleLicensing(request, env, actor, route) {
     const approved = action === "approve";
     if (approved && body.paymentConfirmed !== true) return json({ error: "Master Admin must confirm payment before approval." }, 400);
     const decided = { ...item, status: approved ? "approved" : "rejected", paymentStatus: approved ? "payment_confirmed" : "rejected", decidedAt: now, decidedBy: actor.uid, updatedAt: now };
-    const writes = [licenseWrite(env, "licenseRequests", id, decided, { updateTime: requestDoc.updateTime }), licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: approved ? "approved" : "rejected", requestId: id, tenantId, actorUid: actor.uid, at: now, previousRevision: current.revision || 0 })];
+    const startAt=licenseStartDate(body.startDate);
+    if(startAt===null)return json({error:"Select a valid India activation date."},400);
+    const durationMonths=body.durationMonths===undefined?12:Number(body.durationMonths);
+    const paidPaise=body.paidPaise===undefined?Number(item.quotedPaise):Number(body.paidPaise);
+    if(approved&&(!Number.isSafeInteger(paidPaise)||paidPaise<0||paidPaise>100_000_000||!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120))return json({error:"Confirm the paid amount and valid duration."},400);
+    const audit={ action: approved ? "approved" : "rejected", requestId: id, tenantId, actorUid: actor.uid, at: now, previousRevision: current.revision || 0, before:currentDoc?{plan:current.plan,status:current.status,expiresAt:current.expiresAt}:null, paymentStatus:decided.paymentStatus, paidPaise:approved?paidPaise:null };
+    const writes = [licenseWrite(env, "licenseRequests", id, decided, { updateTime: requestDoc.updateTime })];
     if (approved) {
-      const next = transitionLicense(currentDoc ? current : null, { ...item, id }, now, settings.pricing);
+      const next = transitionLicense(currentDoc ? current : null, { ...item, id, quotedPaise:paidPaise, startAt, durationMonths }, now, settings.pricing);
       next.tenantId = tenantId;
       next.graceDays = settings.pricing.graceDays;
+      audit.after={plan:next.plan,status:next.status,activatedAt:next.activatedAt,expiresAt:next.expiresAt,revision:next.revision};
       writes.push(licenseWrite(env, "tenantLicenses", tenantId, next, currentDoc ? { updateTime: currentDoc.updateTime } : { exists: false }));
     }
+    writes.push(licenseWrite(env,"licenseAudit",crypto.randomUUID(),audit));
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "License changed during approval. Refresh and retry." }, 409); throw error; }
     return json({ success: true, status: decided.status });
@@ -756,10 +828,24 @@ async function handleMasterOperation(request, env, actor, route) {
       const issuedAt=Date.now();return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:`master:${actor.uid}`,role:role==="admin"?"admin":"master_owner",status:"approved",subscriptionStatus:"active",connectionId:config.masterConnectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:issuedAt+8*60*60*1000}));
     }
     if (!["client_admin","client_user"].includes(role)) return json({error:"Offline customer access requires a client workspace."},403);
+    if(actor.profile.licenseRequired===true){
+      const demo=licenseFields(await licenseDoc(env,`/tenantLicenses/${encodeURIComponent(actor.profile.tenantId)}`));
+      const demoView=licenseView(demo.tenantId?demo:{status:"pending"},Date.now());
+      if(demo.plan==="demo"){
+        if(!demoView.canWrite)return json({error:"Demo has expired. Sample data remains on this device."},403);
+        const issuedAt=Date.now();return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",licenseRequired:true,demoOnly:true,connectionId:"demo-sample",apiUrl:"https://script.google.com/macros/s/banksetu-demo-local/exec",issuedAt,expiresAt:Math.min(issuedAt+5*86400000,Date.parse(demo.expiresAt))}));
+      }
+    }
     const config=await getGoogleSetupConfig(env,actor).then(response=>response.json());
     if(config.connectionMode!=="option-b" || !config.dataApiReady || !config.hasWorkspace || config.workspaceStatus!=="active") return json({error:"Connect an active Option B workspace before enabling offline access."},409);
     const issuedAt=Date.now();
-    return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",licenseRequired:actor.profile.licenseRequired === true,connectionId:config.connectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:issuedAt+8*60*60*1000}));
+    let offlineUntil=issuedAt+8*3600000;
+    if(actor.profile.licenseRequired === true){
+      const license=licenseFields(await licenseDoc(env,`/tenantLicenses/${encodeURIComponent(actor.profile.tenantId)}`));
+      const view=licenseView(license.tenantId?license:{status:"pending"},issuedAt);
+      if(view.canWrite)offlineUntil=Math.min(issuedAt+5*86400000,license.plan==="annual"?Date.parse(license.expiresAt):Infinity);
+    }
+    return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",licenseRequired:actor.profile.licenseRequired === true,connectionId:config.connectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:offlineUntil}));
   }
 
   if (route === "/connect-option-b") {
@@ -784,6 +870,7 @@ async function handleMasterOperation(request, env, actor, route) {
     const statusResponse = await fetch(`${bridgeUrl}?action=status`, { signal: AbortSignal.timeout(10000) });
     const status = await statusResponse.json();
     if (!statusResponse.ok || status.tenantIsolationVersion !== "v3" || status.tenantId !== tenantId || status.spreadsheetId !== spreadsheetId || status.photoFolderId !== photoFolderId || String(status.ownerEmail || "").toLowerCase() !== actor.email.toLowerCase()) return json({ error: "The bridge must run as your Google account and be bound to this tenant, Sheet and folder." }, 409);
+    if (actor.profile.licenseRequired === true && status.licenseEnforcementVersion !== 1) return json({ error: "Deploy the current Bank Setu Apps Script bridge with license enforcement before connecting this licensed workspace." }, 409);
     const headersRead = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:X1`, { headers: { authorization: `Bearer ${token}` } });
     if (!headersRead.ok) return json({ error: "Sheet1 is missing or not accessible." }, 409);
     const row = (await headersRead.json()).values?.[0] || [];
@@ -810,6 +897,7 @@ async function handleMasterOperation(request, env, actor, route) {
 
   if (route === "/configure-tenant-data") {
     if (role !== "client_admin") return json({ error: "Only the Client Admin can connect their own Google workspace." }, 403);
+    if (actor.profile.licenseRequired === true) return json({ error: "Use the verified Option B connection for this licensed workspace." }, 409);
     const body = await request.json().catch(() => ({}));
     const tenantId = String(body.tenantId || "").trim();
     const spreadsheetId = String(body.spreadsheetId || "").trim();
@@ -1269,7 +1357,7 @@ export default {
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
-        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-request-change", "/license-admin-decision", "/license-admin-state",
+        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);

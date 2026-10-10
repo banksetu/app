@@ -28,3 +28,11 @@ test('signed tenant license receipt is bounded and cannot be forged or reused fo
   exports.saveLicenseReceipt(receipt, 'uid-a', 'tenant-a', now);
   assert.equal((await exports.cachedLicenseReceipt('uid-a', 'tenant-a')).uid, 'uid-a');
 });
+
+test('signed sample demo receipt ends exactly at server expiry and cannot use paid state',async()=>{
+ const now=Date.now();
+ const claims={purpose:'banksetu-license-v1',uid:'uid-demo',tenantId:'tenant-demo',revision:1,state:'demo_active',plan:'demo',issuedAt:now,validUntil:now+86400000,expiresAt:new Date(now+5*86400000).toISOString()};
+ assert.equal((await exports.verifyLicenseReceipt(create(claims),'uid-demo','tenant-demo',now)).plan,'demo');
+ await assert.rejects(exports.verifyLicenseReceipt(create({...claims,state:'active'}),'uid-demo','tenant-demo',now));
+ await assert.rejects(exports.verifyLicenseReceipt(create({...claims,validUntil:now+6*86400000}),'uid-demo','tenant-demo',now));
+});

@@ -26,7 +26,7 @@ globalThis.fetch=async(...args)=>{
  return handler(...args);
 };
 globalThis.__repository=repository;
-let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";','const isAndroid=()=>false;const shareAndroidBackup=async()=>{};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
+let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";','const isAndroid=()=>false;const shareAndroidBackup=async()=>{};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { requireLicensedWrite } from "./licenseAccess";','const requireLicensedWrite=async()=>{};').replace('import { classifyRecovery, recoveryJournal, type RecoveryCategory } from "./recovery";','const classifyRecovery=()=>"sync";const recoveryJournal=()=>({list:()=>[],add:()=>{},clear:()=>{}});').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
 globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
 source=source.replace('import { makeBackup, parseBackup, mergeBackup } from "./backup";','const {makeBackup,parseBackup,mergeBackup}=globalThis.__backup;');
 const engine=await import(compile(source));

@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       name: ${{ steps.prepare.outputs.name }}
       code: ${{ steps.prepare.outputs.code }}
@@ -24,6 +25,10 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+      - name: Require verified backend deployment for the current source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-backend-release-gate.mjs
       - name: Select unused version and commit consistent metadata
         id: prepare
         env:

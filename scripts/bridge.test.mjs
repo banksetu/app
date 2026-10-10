@@ -3,12 +3,25 @@ function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new 
  const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
+test('current client bridge advertises tenant isolation and license enforcement',()=>{
+ const {context}=bridge();
+ context.getBankSetuScriptProperty=key=>({BANKSETU_CLIENT_TENANT_ID:'synthetic-tenant',BANKSETU_CLIENT_SPREADSHEET_ID:'synthetic-sheet',BANKSETU_CLIENT_FOLDER_ID:'synthetic-folder'})[key]||'';
+ context.Session={getEffectiveUser:()=>({getEmail:()=>user.email})};
+ const status=context.doGet({parameter:{action:'status'}});
+ assert.equal(status.tenantIsolationVersion,'v3');
+ assert.equal(status.licenseEnforcementVersion,1);
+});
 test('licensed tenant bridge blocks direct customer writes after expiry while keeping reads available',()=>{
   const {context}=bridge();
   context.verifyFirebaseIdToken=()=>({localId:'synthetic-user',email:'owner@example.invalid'});
   context.getFirestoreUserProfile=()=>({role:'client_admin',status:'approved',subscriptionStatus:'active',tenantId:'synthetic-tenant',licenseRequired:true});
   context.getFirestoreTenantSettings=()=>({workspaceOwnerUid:'synthetic-user',connectionId:'synthetic-connection',spreadsheetId:'synthetic-sheet',photoFolderId:'synthetic-folder'});
   context.getFirestoreTenant=()=>({status:'active',ownerUid:'synthetic-user'});
+  context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status:'pending'});
+  assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'saveCustomer'),/License renewal/);
+  assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation'),/License renewal/);
+  assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'getBankFormatPreview'),/License renewal/);
+  assert.equal(context.requireAuthorizedUser('synthetic-token',false,'getAllCustomers').tenantId,'synthetic-tenant');
   context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status:'active',expiresAt:'2020-01-01T00:00:00.000Z',graceDays:7});
   assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation'),/License renewal/);
   assert.equal(context.requireAuthorizedUser('synthetic-token',false,'getAllCustomers').tenantId,'synthetic-tenant');

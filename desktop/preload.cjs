@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('bankSetuDesktop', {
   read: scope => ipcRenderer.invoke('local:read',scope),
   storage: () => ipcRenderer.invoke('local:storage'),
-  commit: (scope,before,after) => ipcRenderer.invoke('local:commit',scope,before,after),
+  commit: (scope,before,after,receipt) => ipcRenderer.invoke('local:commit',scope,before,after,receipt),
   copyText: text => ipcRenderer.invoke('clipboard:write-text',text),
   shareImage: image => ipcRenderer.invoke('clipboard:share-image',image),
   version: () => ipcRenderer.invoke('update:version'),

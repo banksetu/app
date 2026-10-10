@@ -15,6 +15,8 @@ import {
 
 import { getAuth } from "firebase/auth";
 import { getCustomerSearchApiUrl } from "./tenantApi";
+import { requireLicensedWrite } from "./core/licenseAccess";
+import { loadPdfCustomers } from "./core/pdfSelection";
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
 
@@ -233,11 +235,26 @@ export default function Customers() {
   const pdfChosen = pdfMode === "search" ? pdfMatches.filter(record => pdfSelected.has(pdfKey(record))) : pdfMatches;
 
   const openPdfSelection = async () => {
+    if (pdfLoading || pdfGenerating.current) return;
     setError(""); setPdfOpen(true); setPdfLoading(true); setPdfSelected(new Set());
     try {
-      const [records, status] = await Promise.all([getLocalExportCustomers(), getLocalStatus()]);
-      setPdfRecords(records); setPdfIncomplete(status.downloading || status.cacheLimited);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read local customers."); setPdfOpen(false); }
+      await requireLicensedWrite();
+      const [records, status] = localModeEnabled()
+        ? await Promise.all([getLocalExportCustomers(), getLocalStatus()])
+        : [[], {downloading:false,cacheLimited:false}];
+      // A preview can load from Google before local reconciliation completes.
+      // Only the bound, verified tenant bridge may supply missing pages.
+      const requestPage=navigator.onLine && getCustomerSearchApiUrl(localModeEnabled())
+        ? async (page:number,pageSize:number) => apiRequest({action:"getAllCustomers",page,pageSize}) : undefined;
+      try {
+        const selection=await loadPdfCustomers(records,status.downloading || status.cacheLimited,navigator.onLine,requestPage);
+        setPdfRecords(selection.records);setPdfIncomplete(selection.incomplete);
+      } catch (reason) {
+        if (!records.length) throw reason;
+        setPdfRecords(records);setPdfIncomplete(true);
+        setError("Google customer pages are unavailable. Only this device's cached customers are selected; review the partial count before generating.");
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read customers for PDF preview."); }
     finally { setPdfLoading(false); }
   };
 
@@ -471,7 +488,7 @@ export default function Customers() {
 
   ======================================================= */
 
-  const printCustomer = () => {
+  const printCustomer = async () => {
 
     if (!customer) {
 
@@ -487,7 +504,8 @@ export default function Customers() {
 
     setError("");
 
-    window.print();
+    try { await requireLicensedWrite(); window.print(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "License verification is required to print."); }
 
   };
 
@@ -528,6 +546,7 @@ export default function Customers() {
   const shareCustomer = async () => {
     if (!customer) return;
     try {
+      await requireLicensedWrite();
       const blob = await snapshot(customer as unknown as Record<string, unknown>);
       const name = "BankSetu-customer-preview.png";
       if (isAndroid()) {
@@ -572,10 +591,15 @@ export default function Customers() {
     </style></head><body><div class="export-toolbar"><strong id="progress">Loading local customers…</strong><button id="print" disabled>Save PDF / Print</button><button id="cancel">Cancel</button></div><div id="pages"></div></body></html>`);
     popup.document.close();
     popup.document.getElementById("cancel")?.addEventListener("click", () => { cancelled = true; popup.close(); });
-    popup.document.getElementById("print")?.addEventListener("click", () => popup.print());
+    popup.document.getElementById("print")?.addEventListener("click", () => {
+      void requireLicensedWrite().then(() => { if (!popup.closed) popup.print(); }).catch(reason => {
+        if (!popup.closed) popup.document.getElementById("progress")!.textContent = reason instanceof Error ? reason.message : "License verification is required to print.";
+      });
+    });
     setPdfLoading(true);
     void (async () => {
       try {
+        await requireLicensedWrite();
         setPdfOpen(false);
         const pages = popup.document.getElementById("pages")!;
         const progress = popup.document.getElementById("progress")!;
@@ -1957,6 +1981,7 @@ export default function Customers() {
       {pdfOpen && <div className="match-modal-backdrop" role="presentation" onMouseDown={event => { if(event.target === event.currentTarget && !pdfLoading) setPdfOpen(false); }}>
         <div className="pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
           <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
+          {error && <p role="alert">{error}</p>}
           <p>Select which customers' preview PDFs you want to generate and download.</p>
           <div className="pdf-layout">
             <div className="pdf-modes">{([['all','All Customers'],['date','Date Wise'],['account','Account Number Range'],['search','Search Customer']] as const).map(([mode,label]) => <label className="pdf-mode" key={mode}><input type="radio" name="pdf-mode" checked={pdfMode === mode} onChange={() => {setPdfMode(mode);setPdfFrom('');setPdfTo('');setPdfSelected(new Set());}}/><strong>{label}</strong></label>)}</div>

@@ -1,14 +1,16 @@
 import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";
 import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
+import { requireLicensedWrite } from "./licenseAccess";
+import { classifyRecovery, recoveryJournal, type RecoveryCategory } from "./recovery";
 import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
 const IDLE_RECONCILE_MS=60*60*1000;
-export const localModeEnabled = () => sessionStorage.getItem("bankSetuConnectionMode")==="option-b" || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
+export const localModeEnabled = () => ["option-b","demo"].includes(sessionStorage.getItem("bankSetuConnectionMode")||"") || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
 const identity = () => {
   const uid = auth.currentUser?.uid;
-  const tenant = sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true" ? `master:${uid}` : sessionStorage.getItem("bankSetuTenantId");
+  const tenant = sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true" ? `master:${uid}` : sessionStorage.getItem("bankSetuConnectionMode")==="demo" ? `demo:${sessionStorage.getItem("bankSetuTenantId")||""}` : sessionStorage.getItem("bankSetuTenantId");
   const connection = sessionStorage.getItem("bankSetuConnectionId");
   if (!uid || !tenant || !connection || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") throw new Error("An active, verified client connection is required.");
   if (!navigator.onLine && Date.now() > Number(sessionStorage.getItem("bankSetuOfflineUntil") || 0)) throw new Error("Offline access expired. Reconnect to verify account permissions; local records are retained.");
@@ -24,9 +26,11 @@ const fold = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const supportedReads = new Set(["searchCustomer", "getCustomerByRowNumber", "getAllCustomers"]);
 const supportedWrites = new Set(["saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered", "markPassbookPrinted"]);
 export async function localDataFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (!localModeEnabled() || init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
+  if (init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
+  if (supportedWrites.has(String(payload.action || ""))) await requireLicensedWrite();
+  if (!localModeEnabled()) return networkFetch(input, init);
   const url = String(input);
   const verifiedUrl = sessionStorage.getItem("bankSetuBridgeUrl") || "";
   if (url !== verifiedUrl && (!verifiedUrl || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true"))
@@ -35,8 +39,10 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   // scope, while every cloud action below is sent only to the bound endpoint.
   if(sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true"){payload.masterLocalSync=true;init={...init,body:JSON.stringify(payload)};}
   const action = String(payload.action || "");
+  const demo=sessionStorage.getItem("bankSetuConnectionMode")==="demo";
   const scope = identity();
   const cloudRead=async(_target: RequestInfo | URL, options?: RequestInit)=>{
+    if(demo)throw new Error("The demo is a local sample workspace and cannot access production Google data.");
     const user=auth.currentUser!;const idToken=await user.getIdToken();
     if(identity()!==scope || sessionStorage.getItem("bankSetuBridgeUrl")!==verifiedUrl)throw new Error("Workspace changed.");
     const body=JSON.parse(String(options?.body||"{}"));
@@ -47,13 +53,13 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   const state = await repository.read(scope);
   if (supportedReads.has(action)) {
     // Bulk online export must read every cloud page, even when only part is cached.
-    if(action === "getAllCustomers" && navigator.onLine){
+    if(action === "getAllCustomers" && navigator.onLine && !demo){
       const response=await cloudRead(input,init);const value=await response.clone().json();
       if(value.success)await cacheResponse(scope,value);return await hideLocallyDeleted(scope,value,response);
     }
     const query = fold(payload.query);
     const hits = state.records.filter(record => !record.deleted && (action === "getAllCustomers" || (action === "getCustomerByRowNumber" ? record.rowNumber === Number(payload.rowNumber) : query && ["enrolId","accountNo","name","pan","aofNo","contact","uidaiNo"].some(field => fold(record.customer[field]).includes(query)))));
-    if (hits.length || !navigator.onLine) {
+    if (hits.length || !navigator.onLine || demo) {
       if (!hits.length) return resultResponse({success:false,message:"Customer is not in this device's offline cache."});
       const first = hits[0];
       const page = Math.max(1,Number(payload.page)||1);const pageSize=Math.min(250,Math.max(1,Number(payload.pageSize)||50));
@@ -69,6 +75,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (action === "getBankFormatPreview") {
     const key=String(payload.formatType || "");
     if (!navigator.onLine && state.documents?.[key]) return resultResponse(state.documents[key]);
+    if(demo)return resultResponse(state.documents?.[key]||{success:false,message:"No sample PDF template is installed for this demo workspace."});
     const response=await cloudRead(input,init);const value=await response.clone().json();
     if (value.success) await repository.transact(scope,current=>{current.documents ||= {};current.documents[key]=value;});
     return response;
@@ -114,13 +121,13 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
   announce();
-  actionNotice("warning", action === "deleteCustomer" ? "Deleted locally" : "Saved locally", "Google Sheet and Drive sync pending.");
-  if (syncPaused) resumeSync(); else window.dispatchEvent(new Event("banksetu-sync-request"));
+  actionNotice(demo?"success":"warning", action === "deleteCustomer" ? "Deleted locally" : "Saved locally", demo?"Sample data stays on this device and is never uploaded to production Google services.":"Google Sheet and Drive sync pending.");
+  if (!demo) {if (syncPaused) resumeSync(); else window.dispatchEvent(new Event("banksetu-sync-request"));}
   if (action === "deleteCustomer") {
-    return resultResponse({success:false,deleted:true,queued:true,rowNumber:localRow,recordId,message:"Deleted locally; Google Sheet and Drive deletion is pending sync."});
+    return resultResponse({success:false,deleted:true,queued:!demo,rowNumber:localRow,recordId,message:demo?"Deleted from this sample-only demo workspace.":"Deleted locally; Google Sheet and Drive deletion is pending sync."});
   }
   return resultResponse({success:true,queued:true,rowNumber:localRow,recordId,
-    message:"Saved on this device. Google sync starts immediately; keep this device's data until sync completes.",
+    message:demo?"Saved to the sample-only demo workspace on this device.":"Saved on this device. Google sync starts immediately; keep this device's data until sync completes.",
     photo:customer.photoDataUrl ? {previewDataUrl:customer.photoDataUrl} : null});
 }
 async function hideLocallyDeleted(scope: string, value: Record<string, unknown>, response: Response): Promise<Response> {
@@ -190,7 +197,7 @@ export function resumeSync() {
 /** A new authenticated session must not inherit another account's pause/job. */
 export function resetSyncSession() {
   for (const controller of syncControllers.values()) controller.abort(new DOMException("Account changed.","AbortError"));
-  syncPaused = false;
+  syncPaused = false;recoveryLog.clear();recoveringCategory=undefined;healthError="";
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
@@ -225,6 +232,7 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
   announce();
 }
 export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
+  if(sessionStorage.getItem("bankSetuConnectionMode")==="demo")return Promise.resolve();
   if (syncPaused || !navigator.onLine || !localModeEnabled() || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true") return Promise.resolve();
   let scope: string;
   try { scope=identity(); } catch(error) { return Promise.reject(error); }
@@ -232,7 +240,7 @@ export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   const existing=running.get(scope);if(existing)return existing;
   const controller=new AbortController();syncControllers.set(scope,controller);
   const combinedSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
-  const task=runSync(refresh,combinedSignal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
+  const task=requireLicensedWrite().then(()=>runSync(refresh,combinedSignal)).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
   running.set(scope,task);announce();return task;
 }
 async function runSync(refresh: boolean, signal?:AbortSignal) {
@@ -497,9 +505,11 @@ export async function getLocalSnapshot() {
 export async function exportLocalBackup() { const state=await repository.read(identity());if(isAndroid()){await shareAndroidBackup(JSON.stringify(makeBackup(identity(),state),null,2));return;}const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 let recoverWorkspace: ((signal?:AbortSignal)=>Promise<void>) | undefined;
 let healthError="";
+const recoveryLog=recoveryJournal();
+let recoveringCategory: RecoveryCategory | undefined;
 let lastBackendCheck=0,lastHostingCheck=0,nextRetryAt=0;
 export function configureConnectionRecovery(recover: ((signal?:AbortSignal)=>Promise<void>) | undefined){recoverWorkspace=recover;lastBackendCheck=0;}
-export function getConnectionHealth(){return {online:navigator.onLine,error:healthError,lastBackendCheck,lastHostingCheck,nextRetryAt};}
+export function getConnectionHealth(){return {online:navigator.onLine,error:healthError,lastBackendCheck,lastHostingCheck,nextRetryAt,history:recoveryLog.list(),state:healthError?nextRetryAt?"recovering":"attention":recoveringCategory?"recovering":"healthy"};}
 let syncUsers=0;
 let stopScheduler: (()=>void) | undefined;
 export function startLocalSync() {
@@ -527,9 +537,10 @@ export function startLocalSync() {
             // Independent, low-frequency public version check; never blocks sync.
             void networkFetch("https://banksetu-app.web.app/version.json",{cache:"no-store",signal:AbortSignal.timeout(10000)}).catch(()=>undefined);
           }
+          if(recoveringCategory){recoveryLog.add({at:Date.now(),category:recoveringCategory,action:"retry original sync",result:"verified"});recoveringCategory=undefined;}
           failures=0;healthError="";
         }
-      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
+      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;recoveringCategory=classifyRecovery(error);recoveryLog.add({at:Date.now(),category:recoveringCategory,action:actionRequired?"manual review required":"bounded retry",result:actionRequired?"attention":"recovering"});const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
       finally{
         activeController=undefined;busy=false;if(!stopped){
           if(syncPaused||actionRequired){clearTimeout(timer);nextRetryAt=0;}
@@ -557,6 +568,7 @@ export function startLocalSync() {
 
 export async function getConflicts() { return (await repository.read(identity())).operations.filter(op=>op.state!=="pending"); }
 export async function resolveConflict(operationId: string, choice: "local" | "cloud") {
+  await requireLicensedWrite();
   if (!["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) throw new Error("Client Admin review is required.");
   const scope=identity();
   await repository.transact(scope,state=>{
@@ -582,6 +594,7 @@ export async function getDataIdToken(forceRefresh = false): Promise<string> {
 }
 
 export async function restoreLocalBackup(text: string) {
+  await requireLicensedWrite();
   const scope=identity();const backup=parseBackup(text,scope);
   let report={records:0,operations:0,conflicts:0};
   await repository.transact(scope,state=>{report=mergeBackup(state,backup);if(JSON.stringify(state).length>90*1024*1024)throw new Error("Merged backup exceeds local storage limit. Existing data was not changed.");});

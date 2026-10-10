@@ -74,3 +74,14 @@ test('update backups retain the first good copy and bound rolling snapshots',()=
  assert.equal(JSON.parse(first.prepare('SELECT payload FROM workspaces').get().payload).state.operations[0].id,'pending');first.close();
  fs.rmSync(directory,{recursive:true,force:true});
 });
+test('licensed workspace marker is atomic, survives restart and cannot be downgraded by an ordinary commit',()=>{
+ const directory=fixture(),scope='user:tenant:connection';
+ let store=createStore(directory);
+ store.commit(scope,empty,{records:[{id:'one'}],operations:[]},true);
+ assert.equal(store.isLicensed(scope),true);store.close();
+ store=createStore(directory);
+ assert.equal(store.isLicensed(scope),true);
+ store.commit(scope,store.read(scope),{records:[{id:'one'}],operations:[]});
+ assert.equal(store.isLicensed(scope),true);store.close();
+ fs.rmSync(directory,{recursive:true,force:true});
+});
