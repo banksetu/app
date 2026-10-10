@@ -29,4 +29,8 @@ test('signed offline active entitlement allows bounded local work, and a new onl
  await assert.rejects(exports.requireLicensedWrite(),/pending or expired/);assert.equal(calls,1);
   cached=async()=>({issuedAt:Date.now()-16*60000,state:'active'});
   await assert.rejects(exports.requireLicensedWrite(),/pending or expired/);assert.equal(calls,2,'an online write rechecks a stale same-day entitlement');
+  remote=async()=>{throw Object.assign(Error('temporary outage'),{status:503});};
+  await exports.requireLicensedWrite();assert.equal(calls,3,'a temporary outage retains a valid signed offline entitlement');
+  remote=async()=>{throw Object.assign(Error('license denied'),{status:403});};
+  await assert.rejects(exports.requireLicensedWrite(),/license denied/);assert.equal(calls,4,'a server denial never falls back to the cached entitlement');
 });

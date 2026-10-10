@@ -21,12 +21,23 @@ export async function requireLicensedWrite(): Promise<void> {
     let claims;
     try { claims = await cachedLicenseReceipt(uid, tenantId); } catch { /* Online verification may renew the receipt. */ }
     if (navigator.onLine && (!claims || indiaDay(claims.issuedAt) !== indiaDay(Date.now()) || Date.now()-claims.issuedAt>=ONLINE_WRITE_VERIFICATION_MS)) {
-      const result = await callBankSetuWorker<{ view: { canWrite: boolean }; receipt: LicenseReceipt | null }>("/license-me", {});
+      let result: { view: { canWrite: boolean }; receipt: LicenseReceipt | null };
+      try { result = await callBankSetuWorker("/license-me", {}); }
+      catch (error) {
+        const status=(error as {status?:number})?.status;
+        const temporary=status===429 || (typeof status==="number" && status>=500) || error instanceof TypeError || (error instanceof Error && (error.name==="TimeoutError" || error.name==="AbortError"));
+        if (!temporary || !claims) throw error;
+        // The signed, unexpired receipt supports bounded local work during a
+        // transient service outage. A real 401/403 denial never falls back.
+        result = {view:{canWrite:true},receipt:null};
+      }
       if (auth.currentUser?.uid !== uid || sessionStorage.getItem("bankSetuTenantId") !== tenantId) throw new Error("The signed-in workspace changed.");
-      if (!result.view.canWrite || !result.receipt) throw new Error("Your Bank Setu license is pending or expired. Please renew or activate your license to continue.");
-      claims = await verifyLicenseReceipt(result.receipt, uid, tenantId);
-      try { saveLicenseReceipt(result.receipt, uid, tenantId); }
-      catch { /* The current verified online request remains valid; offline access will need a fresh saved receipt. */ }
+      if (!result.view.canWrite) throw new Error("Your Bank Setu license is pending or expired. Please renew or activate your license to continue.");
+      if (result.receipt) {
+        claims = await verifyLicenseReceipt(result.receipt, uid, tenantId);
+        try { saveLicenseReceipt(result.receipt, uid, tenantId); }
+        catch { /* The current verified online request remains valid; offline access will need a fresh saved receipt. */ }
+      } else if (!claims) throw new Error("Connect to the internet to verify your Bank Setu license.");
     }
     if (!claims || !["active", "expiring_soon", "demo_active"].includes(claims.state)) throw new Error("Connect to the internet to verify your Bank Setu license.");
     if (auth.currentUser?.uid !== uid || sessionStorage.getItem("bankSetuTenantId") !== tenantId || sessionStorage.getItem("bankSetuLicenseRequired") !== "true") throw new Error("The signed-in workspace changed.");

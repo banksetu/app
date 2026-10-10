@@ -34,7 +34,7 @@ export async function callBankSetuWorker<T>(
     message?: string;
   };
   if (!response.ok) {
-    throw new Error(result.message || result.error || `Account service failed (${response.status}).`);
+    throw Object.assign(new Error(result.message || result.error || `Account service failed (${response.status}).`), {status:response.status});
   }
   return result as T;
 }
