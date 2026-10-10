@@ -1,0 +1,13 @@
+name: Bank Setu — One Click App Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  select-production-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require production branch for release
+        run: |
+          echo "::error::Run this workflow with branch codex/spark-client-workspace-20261001."
+          exit 1
