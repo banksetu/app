@@ -94,6 +94,13 @@ test('licensing mutation endpoints require an approved signed-in actor', async (
   }
 });
 
+test('an unverified URL-only Google bridge route is unavailable', async () => {
+  const response = await worker.fetch(new Request('https://worker.example/save-client-bridge-url', {
+    method: 'POST', headers: { origin: 'https://banksetu-app.web.app', 'content-type': 'application/json' }, body: '{}'
+  }), env);
+  assert.equal(response.status, 404);
+});
+
 test('public inquiry fails closed without CAPTCHA keys', async () => {
   const {generateKeyPairSync}=await import('node:crypto');
   const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
