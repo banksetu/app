@@ -17,6 +17,12 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: License settings Firestore rules isolation
+        run: npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project synthetic-banksetu-license 'node scripts/license-settings-rules.test.mjs'
       - run: npm run check:schema
       - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs
       - run: npm run build

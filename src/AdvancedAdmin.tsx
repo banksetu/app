@@ -23,6 +23,7 @@ import {
 import { auth, db } from "./firebase";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
+import { callBankSetuWorker } from "./workerApi";
 declare const __APP_VERSION__: string;
 
 const CURRENT_APP_VERSION = __APP_VERSION__;
@@ -35,6 +36,16 @@ type UpdateManifest = {
 };
 
 type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
+
+async function saveVerifiedBridgeUrl(uid: string, apiUrl: string) {
+  if (sessionStorage.getItem("bankSetuLicenseRequired") === "true") {
+    await callBankSetuWorker("/save-client-bridge-url", { apiUrl });
+    return;
+  }
+  await setDoc(doc(db, ...tenantSettingsPath(uid)), {
+    apiUrl, ...tenantSettingsWriteMetadata(uid), updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
 
 function Settings(props: AdvancedAdminProps) {
   return <ConnectionSettings {...props} />;
@@ -161,16 +172,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
         }
 
         if (!cloudUrl && localUrl.trim()) {
-          await setDoc(
-            settingsRef,
-            {
-              apiUrl: localUrl.trim(),
-              ...tenantSettingsWriteMetadata(user.uid),
-              updatedAt:
-                serverTimestamp(),
-            },
-            { merge: true }
-          );
+          await saveVerifiedBridgeUrl(user.uid, localUrl.trim());
         }
       } catch (error) {
         console.error(
@@ -372,15 +374,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
     }
 
     try {
-      await setDoc(
-        doc(db, ...tenantSettingsPath(user.uid)),
-        {
-          apiUrl: cleanUrl,
-          ...tenantSettingsWriteMetadata(user.uid),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await saveVerifiedBridgeUrl(user.uid, cleanUrl);
 
       setTenantApiUrl(cleanUrl);
 
@@ -550,15 +544,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
     }
 
     try {
-      await setDoc(
-        doc(db, ...tenantSettingsPath(user.uid)),
-        {
-          apiUrl: "",
-          ...tenantSettingsWriteMetadata(user.uid),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await saveVerifiedBridgeUrl(user.uid, "");
 
       removeTenantApiUrl();
 

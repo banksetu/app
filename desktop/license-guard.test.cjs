@@ -1,7 +1,11 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {generateKeyPairSync,sign}=require('node:crypto');
+const fs=require('node:fs');
+const os=require('node:os');
+const path=require('node:path');
 const {createLicenseGuard}=require('./license-guard.cjs');
+const {createStore}=require('./store.cjs');
 
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const authorize=createLicenseGuard(publicKey.export({format:'jwk'}));
@@ -39,4 +43,22 @@ test('sample demo grant and receipt stay within their dedicated workspace',()=>{
   assert.equal(authorize(fake(demoGrant),demoScope,receipt({state:'demo_active',plan:'demo'}),now),true);
   assert.throws(()=>authorize(fake(demoGrant),scope,receipt({state:'demo_active',plan:'demo'}),now),/does not match/);
   assert.throws(()=>authorize(fake(demoGrant),demoScope,receipt({state:'active'}),now),/pending, expired/);
+});
+
+test('licensed SQLite customer and pending operation survive restart and grant removal without a write bypass',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-license-test-'));
+ try{
+  let store=createStore(directory),empty={records:[],operations:[]};
+  store.commit(`offline:${uid}`,empty,{...empty,offlineSession:grant()});
+  const after={records:[{scope,recordId:'synthetic-customer'}],operations:[{scope,operationId:'synthetic-pending'}]};
+  store.commit(scope,empty,after,authorize(store,scope,receipt(),now));
+  store.close();store=createStore(directory);
+  assert.deepEqual(store.read(scope),after);
+  assert.equal(store.isLicensed(scope),true);
+  const oldGrant=store.read(`offline:${uid}`);
+  store.commit(`offline:${uid}`,oldGrant,empty);
+  assert.throws(()=>authorize(store,scope,receipt(),now),/Verify this workspace online/);
+  assert.deepEqual(store.read(scope),after);
+  store.close();
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
