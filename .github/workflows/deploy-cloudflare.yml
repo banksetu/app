@@ -111,3 +111,25 @@ jobs:
             '',
           ].join('\n'));
           NODE
+
+      - name: Verify live licensing endpoints
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 \
+            https://banksetu-client-api.banksetu2026.workers.dev/license-public-key \
+            --output "$RUNNER_TEMP/license-public-key.json"
+          curl --fail --silent --show-error --max-time 15 \
+            -H 'Origin: https://banksetu-app.web.app' -H 'Content-Type: application/json' \
+            -d '{}' https://banksetu-client-api.banksetu2026.workers.dev/license-public \
+            --output "$RUNNER_TEMP/license-public.json"
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const key=JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/license-public-key.json`,'utf8'));
+          const publicState=JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/license-public.json`,'utf8'));
+          assert.equal(key.issuer,'banksetu-69e2f');
+          assert.equal(key.publicKey?.kty,'RSA');
+          assert.match(key.publicKey?.n||'',/^[-_A-Za-z0-9]{300,}$/);
+          assert.ok(publicState.turnstileSiteKey && publicState.turnstileSiteKey.length>10);
+          assert.ok(publicState.pricing && typeof publicState.pricing==='object');
+          NODE
