@@ -802,7 +802,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   };
 
   const openPage = (page: PageName) => {
-    if (licenseReadOnly && !["license-management", "sync-backup", "search", "support"].includes(page)) return;
+    if (licenseReadOnly && !["dashboard", "customers", "all-customer-data", "license-management", "sync-backup", "support"].includes(page)) {
+      window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
+      return;
+    }
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -923,167 +926,24 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
         </div>
 
         <nav style={styles.nav}>
-
-          <NavButton
-
-            icon="🏠"
-
-            label="Dashboard"
-
-            active={
-
-              activePage === "dashboard"
-
-            }
-
-            onClick={() =>
-
-              openPage("dashboard")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="👤"
-
-            label="Customer Entry"
-
-            active={
-
-              activePage ===
-
-              "customer-entry"
-
-            }
-
-            onClick={() =>
-
-              openPage("customer-entry")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="📋"
-
-            label="Customers"
-
-            active={
-
-              activePage === "customers"
-
-            }
-
-            onClick={() =>
-
-              openPage("customers")
-
-            }
-
-          />
-
+          <NavButton icon="🏠" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
+          <NavButton icon="👤" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />
+          <NavButton icon="⚡" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />
+          <NavButton icon="🖨" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />
           <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-
-          <NavButton
-
-            icon="🖨"
-
-            label="Passbook Print"
-
-            active={
-
-              activePage === "passbook"
-
-            }
-
-            onClick={() =>
-
-              openPage("passbook")
-
-            }
-
-          />
-
-          <NavButton
-            icon="⚡"
-            label="Quick Passbook"
-            active={activePage === "quick-passbook"}
-            onClick={() => openPage("quick-passbook")}
-          />
-
-          <NavButton
-
-            icon="🔎"
-
-            label="Account Opening PDF Sample"
-
-            active={
-
-              activePage === "search"
-
-            }
-
-            onClick={() =>
-
-              openPage("search")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="📊"
-
-            label="Reports"
-
-            active={
-
-              activePage === "reports"
-
-            }
-
-            onClick={() =>
-
-              openPage("reports")
-
-            }
-
-          />
-
-          {userRole === "admin" && <NavButton
-
-            icon="⚙️"
-
-            label="Settings"
-
-            active={
-
-              activePage === "settings"
-
-            }
-
-            onClick={() =>
-
-              openPage("settings")
-
-            }
-
-          />}
-
+          <NavButton icon="📋" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+          <NavButton icon="🔎" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />
+          {userRole === "admin" && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
+          <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />
           {(accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
           {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
 
-        <button type="button" className={activePage === "support" ? "banksetu-nav-item banksetu-support-button active" : "banksetu-nav-item banksetu-support-button"} onClick={() => openPage("support")}>
-          <span>🎧</span><span>Support</span>{supportUnread > 0 && <b className="banksetu-support-badge">{supportUnread > 99 ? "99+" : supportUnread}</b>}
-        </button>
-
       </aside>
+
+      <button type="button" className="banksetu-floating-support" aria-label={supportUnread ? `Open Support Center, ${supportUnread} unread` : "Open Support Center"} title="Support Center" onClick={() => openPage("support")}>
+        <span aria-hidden="true">🎧</span>{supportUnread > 0 && <b className="banksetu-support-badge">{supportUnread > 99 ? "99+" : supportUnread}</b>}
+      </button>
 
       {/* MAIN AREA */}
 
@@ -1477,7 +1337,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
-        <ClientGoogleSetup enabled={accountRole === "client_admin"} />
+        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly} />
 
         {["client_admin","client_user"].includes(accountRole) && <LicenseNotice open={() => openPage("license-management")} />}
 
@@ -1485,11 +1345,12 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
-          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} Search, backup and license requests remain available.</p>}
+          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} Customer viewing, backup and license requests remain available.</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
+          {activePage === "dashboard" && licenseReadOnly && <LicenseReadOnlyCustomers />}
           {activePage === "dashboard" && !licenseReadOnly && (
 
             <DashboardHome
@@ -1516,13 +1377,14 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
 
           )}
 
-          {activePage === "customers" && (
+          {activePage === "customers" && licenseReadOnly && <LicenseReadOnlyCustomers />}
+          {activePage === "customers" && !licenseReadOnly && (
 
             <Customers />
 
           )}
 
-          {activePage === "all-customer-data" && <AllCustomerData />}
+          {activePage === "all-customer-data" && (licenseReadOnly ? <LicenseReadOnlyCustomers /> : <AllCustomerData />)}
 
           {bankSettingsReady && activePage === "passbook" && (
 
@@ -1541,7 +1403,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
           {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
           {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
 
-          {activePage === "reports" && (
+          {activePage === "reports" && !licenseReadOnly && (
 
             <Reports />
 

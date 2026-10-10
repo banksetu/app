@@ -17,14 +17,25 @@ test('annual expiry uses calendar year including leap days and renewal extends e
   const expired=transitionLicense(first,{kind:'renewal',id:'three',quotedPaise:150000},'2025-03-20T12:00:00.000Z',DEFAULT_PRICING);
   assert.equal(expired.expiresAt,'2026-03-20T12:00:00.000Z');
 });
-test('derived reminder, grace, expiry and lifetime state preserve record identity',()=>{
+test('annual expiry blocks new writes at the exact timestamp without a write-enabled grace period',()=>{
   const record={tenantId:'same',plan:'annual',status:'active',expiresAt:'2026-10-10T00:00:00.000Z',paidPaise:149900};
   assert.equal(licenseView(record,Date.parse('2026-09-15T00:00:00Z')).state,'expiring_soon');
-  assert.equal(licenseView(record,Date.parse('2026-10-11T00:00:00Z')).state,'grace');
+  assert.equal(licenseView(record,Date.parse('2026-10-09T23:59:59.999Z')).canWrite,true);
+  assert.deepEqual(licenseView(record,Date.parse('2026-10-10T00:00:00Z')),{state:'expired',daysRemaining:0,canWrite:false});
   assert.equal(licenseView(record,Date.parse('2026-10-18T00:00:00Z')).state,'expired');
   const next=transitionLicense(record,{kind:'upgrade',id:'upgrade',quotedPaise:350000},'2026-10-18T00:00:00Z',DEFAULT_PRICING);
   assert.equal(next.tenantId,'same');assert.equal(next.plan,'lifetime');assert.equal(next.expiresAt,null);
   assert.equal(licenseView(next,Date.parse('2030-10-18T00:00:00Z')).state,'active');
+});
+test('future India activation remains scheduled and calendar month duration clamps leap day',()=>{
+  const now='2024-02-20T10:00:00.000Z';
+  const future='2024-02-28T18:30:00.000Z';
+  const license=transitionLicense(null,{kind:'annual',id:'future',quotedPaise:149900,startAt:future,durationMonths:12},now,DEFAULT_PRICING);
+  assert.equal(license.status,'scheduled');
+  assert.equal(license.expiresAt,'2025-02-27T18:30:00.000Z');
+  assert.equal(licenseView(license,Date.parse(now)).canWrite,false);
+  assert.equal(licenseView(license,Date.parse(future)).canWrite,true);
+  assert.throws(()=>transitionLicense(null,{kind:'annual',startAt:'invalid',durationMonths:1},now,DEFAULT_PRICING));
 });
 test('prices are exact paise and upgrade credit is bounded',()=>{
   const pricing=validatePricing({...DEFAULT_PRICING,annualPaise:149900,lifetimePaise:499900,annualAvailable:true,lifetimeAvailable:true,upgradeCreditEnabled:true,maxCreditPaise:149900});

@@ -57,7 +57,7 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const key=await crypto.subtle.importKey('jwk',publicKey,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
     const signature=Uint8Array.from(atob(receipt.signature.replace(/-/g,'+').replace(/_/g,'/')),char=>char.charCodeAt(0));
     assert(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,signature,new TextEncoder().encode(receipt.payload)));
-    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=8*3600000);
+    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=5*86400000);assert(claims.validUntil<=Date.parse(first.expiresAt));
     const renewal='12345678-89ab-4cde-8fab-0123456789ab';
     assert.equal((await call('client','/license-request-change',{kind:'renewal',requestId:renewal})).status,200);
     assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve'})).status,400);

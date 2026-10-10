@@ -14,7 +14,7 @@ export async function verifyLicenseReceiptWithKey(receipt:LicenseReceipt,keyJwk:
   const valid=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,decode(receipt.signature),new TextEncoder().encode(receipt.payload));
   if(!valid)throw new Error('License receipt signature is invalid.');
   const claims=JSON.parse(receipt.payload) as LicenseClaims;
-  if(claims.purpose!=='banksetu-license-v1'||claims.uid!==uid||claims.tenantId!==tenantId||!Number.isInteger(claims.revision)||!['annual','lifetime'].includes(claims.plan)||!['active','expiring_soon','grace','expired','suspended','revoked','pending'].includes(claims.state)||!Number.isFinite(claims.issuedAt)||!Number.isFinite(claims.validUntil)||claims.validUntil-claims.issuedAt>8*3600000||claims.issuedAt>now+300000||now<lastTrusted-300000||now>claims.validUntil)throw new Error('License verification expired. Reconnect to verify your license.');
+  if(claims.purpose!=='banksetu-license-v1'||claims.uid!==uid||claims.tenantId!==tenantId||!Number.isInteger(claims.revision)||!['annual','lifetime'].includes(claims.plan)||!['active','expiring_soon'].includes(claims.state)||!Number.isFinite(claims.issuedAt)||!Number.isFinite(claims.validUntil)||claims.validUntil<=claims.issuedAt||claims.validUntil-claims.issuedAt>5*86400000||claims.issuedAt>now+300000||now<lastTrusted-300000||now>=claims.validUntil||(claims.plan==='annual'&&(!claims.expiresAt||!Number.isFinite(Date.parse(claims.expiresAt))||now>=Date.parse(claims.expiresAt)||claims.validUntil>Date.parse(claims.expiresAt))))throw new Error('License verification expired. Reconnect to verify your license.');
   return claims;
 }
 export function saveLicenseReceipt(receipt:LicenseReceipt,uid:string,tenantId:string,at=Date.now()):void{

@@ -3634,6 +3634,12 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 .banksetu-support-button{margin-top:auto!important;display:flex!important;align-items:center!important;gap:10px!important;text-align:left!important;position:sticky!important;bottom:10px!important;background:rgba(20,18,86,.28)!important;border:1px solid rgba(255,255,255,.22)!important;backdrop-filter:blur(10px)!important}
 .banksetu-support-button.active{background:#fff!important;color:#6955df!important}
 .banksetu-support-badge{margin-left:auto;background:#ef334e;color:#fff;border:2px solid rgba(255,255,255,.85);border-radius:99px;min-width:23px;height:23px;display:grid;place-items:center;padding:0 5px;font-size:10px;line-height:1}
+.banksetu-floating-support{position:fixed;right:18px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:35;width:54px;height:54px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.45);border-radius:50%;background:linear-gradient(145deg,#087da3,#034d7c);box-shadow:0 10px 28px rgba(4,69,106,.28);color:white;font-size:25px;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}
+.banksetu-floating-support:hover,.banksetu-floating-support:focus-visible{transform:translateY(-2px);box-shadow:0 13px 30px rgba(4,69,106,.35)}
+.banksetu-floating-support .banksetu-support-badge{position:absolute;top:-5px;right:-4px;margin:0}
+body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dialog[open]) .banksetu-floating-support{display:none}
+@media(max-width:700px){.banksetu-floating-support{right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:48px;height:48px}}
+@media(prefers-reduced-motion:reduce){.banksetu-floating-support{transition:none}.banksetu-floating-support:hover{transform:none}}
 .banksetu-main-workspace{flex:1!important;width:auto!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--bs-bg)!important;color:var(--bs-text)!important;box-sizing:border-box!important;overflow:visible!important}
 /* No purple footer/strip can show below the dashboard. */
 .banksetu-main-workspace::after{display:none!important}

@@ -1,6 +1,7 @@
 import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";
 import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
+import { requireLicensedWrite } from "./licenseAccess";
 import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
@@ -24,9 +25,11 @@ const fold = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const supportedReads = new Set(["searchCustomer", "getCustomerByRowNumber", "getAllCustomers"]);
 const supportedWrites = new Set(["saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered", "markPassbookPrinted"]);
 export async function localDataFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (!localModeEnabled() || init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
+  if (init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
+  if (supportedWrites.has(String(payload.action || ""))) await requireLicensedWrite();
+  if (!localModeEnabled()) return networkFetch(input, init);
   const url = String(input);
   const verifiedUrl = sessionStorage.getItem("bankSetuBridgeUrl") || "";
   if (url !== verifiedUrl && (!verifiedUrl || sessionStorage.getItem("bankSetuWorkspaceReady") !== "true"))
@@ -232,7 +235,7 @@ export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   const existing=running.get(scope);if(existing)return existing;
   const controller=new AbortController();syncControllers.set(scope,controller);
   const combinedSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
-  const task=runSync(refresh,combinedSignal).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
+  const task=requireLicensedWrite().then(()=>runSync(refresh,combinedSignal)).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
   running.set(scope,task);announce();return task;
 }
 async function runSync(refresh: boolean, signal?:AbortSignal) {
@@ -557,6 +560,7 @@ export function startLocalSync() {
 
 export async function getConflicts() { return (await repository.read(identity())).operations.filter(op=>op.state!=="pending"); }
 export async function resolveConflict(operationId: string, choice: "local" | "cloud") {
+  await requireLicensedWrite();
   if (!["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"")) throw new Error("Client Admin review is required.");
   const scope=identity();
   await repository.transact(scope,state=>{
@@ -582,6 +586,7 @@ export async function getDataIdToken(forceRefresh = false): Promise<string> {
 }
 
 export async function restoreLocalBackup(text: string) {
+  await requireLicensedWrite();
   const scope=identity();const backup=parseBackup(text,scope);
   let report={records:0,operations:0,conflicts:0};
   await repository.transact(scope,state=>{report=mergeBackup(state,backup);if(JSON.stringify(state).length>90*1024*1024)throw new Error("Merged backup exceeds local storage limit. Existing data was not changed.");});

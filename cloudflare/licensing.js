@@ -21,16 +21,32 @@ export function addCalendarYear(iso) {
 
 export function licenseView(license, now, graceDays = 7) {
   if (!license) return { state: "legacy_unreviewed", daysRemaining: null, canWrite: true };
-  if (["pending", "suspended", "revoked"].includes(license.status)) return { state: license.status, daysRemaining: null, canWrite: license.status === "pending" ? false : false };
-  if (license.status !== "active" || !["annual", "lifetime"].includes(license.plan)) throw new Error("Invalid license state.");
+  if (["pending", "suspended", "revoked"].includes(license.status)) return { state: license.status, daysRemaining: null, canWrite: false };
+  if (license.status !== "active" && license.status !== "scheduled") throw new Error("Invalid license state.");
+  if (!["annual", "lifetime"].includes(license.plan)) throw new Error("Invalid license plan.");
+  const startsAt = Date.parse(license.activatedAt);
+  if (license.status === "scheduled" && !Number.isFinite(startsAt)) throw new Error("Scheduled license needs an activation date.");
+  if (Number.isFinite(startsAt) && now < startsAt)
+    return { state: "scheduled", daysRemaining: null, canWrite: false };
   if (license.plan === "lifetime") return { state: "active", daysRemaining: null, canWrite: true };
   const expiry = Date.parse(license.expiresAt);
   if (!Number.isFinite(expiry)) throw new Error("Invalid license expiry.");
   const days = Math.ceil((expiry - now) / DAY);
   if (days > 30) return { state: "active", daysRemaining: days, canWrite: true };
   if (days > 0) return { state: "expiring_soon", daysRemaining: days, canWrite: true };
-  if (now <= expiry + graceDays * DAY) return { state: "grace", daysRemaining: 0, canWrite: true };
+  // The historical grace setting remains in pricing for compatibility; it never authorizes writes after expiry.
   return { state: "expired", daysRemaining: 0, canWrite: false };
+}
+
+export function addCalendarMonthsIndia(iso, months) {
+  if (!Number.isInteger(months) || months < 1 || months > 120) throw new Error("Invalid license duration.");
+  const instant = Date.parse(iso);
+  if (!Number.isFinite(instant)) throw new Error("Invalid activation date.");
+  const local = new Date(instant + 330 * 60_000);
+  const year = local.getUTCFullYear(), month = local.getUTCMonth(), day = local.getUTCDate();
+  const target = new Date(Date.UTC(year, month + months, 1));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), Math.min(day, last), local.getUTCHours(), local.getUTCMinutes(), local.getUTCSeconds(), local.getUTCMilliseconds()) - 330 * 60_000).toISOString();
 }
 
 export function upgradeAmount(pricing, license) {
@@ -46,10 +62,15 @@ export function transitionLicense(current, request, now, pricing) {
   if (request.kind === "upgrade" && (current?.plan !== "annual" || current.status === "revoked")) throw new Error("Only an annual license can be upgraded.");
   if (["annual", "lifetime"].includes(request.kind) && current?.status === "active") throw new Error("This tenant already has an active license.");
   const lifetime = ["lifetime", "upgrade"].includes(request.kind);
-  const base = request.kind === "renewal" && Date.parse(current.expiresAt) > Date.parse(now) ? current.expiresAt : now;
+  const start = request.startAt || now;
+  if (!Number.isFinite(Date.parse(start)) || Date.parse(start) < Date.parse(now) - 60_000 || Date.parse(start) > Date.parse(now) + 2 * 365 * DAY) throw new Error("Activation date is outside the permitted range.");
+  const months = request.durationMonths === undefined ? 12 : request.durationMonths;
+  if (!lifetime && (!Number.isInteger(months) || months < 1 || months > 120)) throw new Error("Invalid license duration.");
+  const base = request.kind === "renewal" && Date.parse(current.expiresAt) > Date.parse(start) ? current.expiresAt : start;
+  const activatedAt = request.kind === "renewal" ? (current?.activatedAt || start) : request.kind === "upgrade" ? (current?.activatedAt || start) : start;
   return {
-    ...previous, plan: lifetime ? "lifetime" : "annual", status: "active",
-    activatedAt: current?.activatedAt || now, expiresAt: lifetime ? null : addCalendarYear(base),
+    ...previous, plan: lifetime ? "lifetime" : "annual", status: Date.parse(start) > Date.parse(now) ? "scheduled" : "active",
+    activatedAt, expiresAt: lifetime ? null : addCalendarMonthsIndia(base, months), durationMonths: lifetime ? null : months,
     paidPaise: request.quotedPaise, revision: (previous.revision || 0) + 1,
     updatedAt: now, lastRequestId: request.id,
   };

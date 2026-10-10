@@ -2,6 +2,7 @@ import { auth } from "../firebase";
 import { callBankSetuWorker } from "../workerApi";
 import { customerRepository } from "./customerRepository";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "../tenantApi";
+import trustedKey from "../generated/licensePublicKey.json";
 export type OfflineClaims = {
   uid: string; tenantId: string; role: "client_admin" | "client_user" | "master_owner" | "admin";
   status: "approved"; subscriptionStatus: "active"; licenseRequired?: boolean;
@@ -11,13 +12,14 @@ export type SignedSession = {payload: string; signature: string; publicKey: Json
 const scope = (uid: string) => `offline:${uid}`;
 export async function verifyOfflineSession(session: SignedSession, uid: string, now = Date.now()): Promise<OfflineClaims> {
   if (!session || typeof session.payload !== "string" || session.payload.length>20000 || typeof session.signature!=="string") throw new Error("Offline permission is invalid.");
-  if (session.publicKey.kty!=="RSA" || session.publicKey.d) throw new Error("Invalid offline verification key.");
-  const key=await crypto.subtle.importKey("jwk",session.publicKey,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"]);
+  const pinned = trustedKey as JsonWebKey;
+  if (pinned.kty!=="RSA" || !pinned.n || !pinned.e || pinned.d) throw new Error("Trusted offline verification key is unavailable. Update Bank Setu.");
+  const key=await crypto.subtle.importKey("jwk",pinned,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"]);
   const binary=atob(session.signature.replace(/-/g,"+").replace(/_/g,"/"));
   const valid=await crypto.subtle.verify("RSASSA-PKCS1-v1_5",key,Uint8Array.from(binary,c=>c.charCodeAt(0)),new TextEncoder().encode(session.payload));
   if(!valid)throw new Error("Offline permission signature is invalid.");
   const claims=JSON.parse(session.payload) as OfflineClaims;
-  if(claims.uid!==uid || !claims.tenantId || !claims.connectionId || !["client_admin","client_user","master_owner","admin"].includes(claims.role) || claims.status!=="approved" || claims.subscriptionStatus!=="active" || !Number.isFinite(claims.expiresAt) || !Number.isFinite(claims.issuedAt) || claims.issuedAt>now+300000 || claims.expiresAt<=now || claims.expiresAt-claims.issuedAt>8*60*60*1000 || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(claims.apiUrl)) throw new Error("Offline access expired or belongs to another account. Connect to the internet; local records are retained.");
+  if(claims.uid!==uid || !claims.tenantId || !claims.connectionId || !["client_admin","client_user","master_owner","admin"].includes(claims.role) || claims.status!=="approved" || claims.subscriptionStatus!=="active" || !Number.isFinite(claims.expiresAt) || !Number.isFinite(claims.issuedAt) || claims.issuedAt>now+300000 || claims.expiresAt<=now || claims.expiresAt-claims.issuedAt>(claims.licenseRequired===true?5*86400000:8*3600000) || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(claims.apiUrl)) throw new Error("Offline access expired or belongs to another account. Connect to the internet; local records are retained.");
   if(["master_owner","admin"].includes(claims.role)&&claims.tenantId!==`master:${uid}`)throw new Error("Master offline scope is invalid.");
   if(["client_admin","client_user"].includes(claims.role)&&claims.tenantId.startsWith("master:"))throw new Error("Client offline scope is invalid.");
   return claims;
