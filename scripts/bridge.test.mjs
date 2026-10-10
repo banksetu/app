@@ -12,6 +12,7 @@ test('licensed tenant bridge blocks direct customer writes after expiry while ke
   context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status:'pending'});
   assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'saveCustomer'),/License renewal/);
   assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation'),/License renewal/);
+  assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'getBankFormatPreview'),/License renewal/);
   assert.equal(context.requireAuthorizedUser('synthetic-token',false,'getAllCustomers').tenantId,'synthetic-tenant');
   context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status:'active',expiresAt:'2020-01-01T00:00:00.000Z',graceDays:7});
   assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation'),/License renewal/);

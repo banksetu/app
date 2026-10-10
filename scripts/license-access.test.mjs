@@ -27,4 +27,6 @@ test('signed offline active entitlement allows bounded local work, and a new onl
  navigator.onLine=true;cached=async()=>({issuedAt:Date.now()-86400000,state:'active'});
  remote=async()=>({view:{canWrite:false},receipt:null});
  await assert.rejects(exports.requireLicensedWrite(),/pending or expired/);assert.equal(calls,1);
+  cached=async()=>({issuedAt:Date.now()-16*60000,state:'active'});
+  await assert.rejects(exports.requireLicensedWrite(),/pending or expired/);assert.equal(calls,2,'an online write rechecks a stale same-day entitlement');
 });

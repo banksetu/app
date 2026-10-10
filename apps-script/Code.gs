@@ -392,7 +392,7 @@ function requireAuthorizedUser(
   }
   if (tenantId && profile.licenseRequired === true && [
     "saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered",
-    "markPassbookPrinted", "uploadBankFormatSample", "publishLocalReset",
+    "markPassbookPrinted", "uploadBankFormatSample", "getBankFormatPreview", "publishLocalReset",
     "syncCustomerOperation"
   ].indexOf(action) !== -1) {
     const license = getFirestoreTenantLicense(tenantId, idToken);

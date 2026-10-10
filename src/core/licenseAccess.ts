@@ -3,6 +3,7 @@ import { callBankSetuWorker } from "../workerApi";
 import { cachedLicenseReceipt, saveLicenseReceipt, verifyLicenseReceipt, type LicenseReceipt } from "./licenseReceipt";
 
 const indiaDay = (time: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(time);
+const ONLINE_WRITE_VERIFICATION_MS=15*60_000;
 let verification: Promise<void> | undefined;
 let verificationKey = "";
 
@@ -19,7 +20,7 @@ export async function requireLicensedWrite(): Promise<void> {
   const task = (async () => {
     let claims;
     try { claims = await cachedLicenseReceipt(uid, tenantId); } catch { /* Online verification may renew the receipt. */ }
-    if (navigator.onLine && (!claims || indiaDay(claims.issuedAt) !== indiaDay(Date.now()))) {
+    if (navigator.onLine && (!claims || indiaDay(claims.issuedAt) !== indiaDay(Date.now()) || Date.now()-claims.issuedAt>=ONLINE_WRITE_VERIFICATION_MS)) {
       const result = await callBankSetuWorker<{ view: { canWrite: boolean }; receipt: LicenseReceipt | null }>("/license-me", {});
       if (auth.currentUser?.uid !== uid || sessionStorage.getItem("bankSetuTenantId") !== tenantId) throw new Error("The signed-in workspace changed.");
       if (!result.view.canWrite || !result.receipt) throw new Error("Your Bank Setu license is pending or expired. Please renew or activate your license to continue.");
