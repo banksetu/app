@@ -22,7 +22,7 @@
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
     "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
-    "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs desktop/testUpdater.test.cjs"
+    "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs scripts/verify-backend-release-gate.test.mjs desktop/testUpdater.test.cjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
