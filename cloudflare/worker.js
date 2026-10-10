@@ -1,4 +1,5 @@
 import { masterUsage } from "./masterStatus.js";
+import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validateInquiry, licenseView, upgradeAmount, transitionLicense } from "./licensing.js";
 import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 export function workspaceBankSettingsPath(actor) {
@@ -353,6 +354,200 @@ async function createFirebaseAccount(env, email, password, displayName) {
   return result.localId;
 }
 
+async function licenseDoc(env, path) {
+  try { return await firestoreRequest(env, path); }
+  catch (error) { if (error.status === 404) return null; throw error; }
+}
+function licenseFields(document) { return decodeFields(document?.fields || {}); }
+function licenseName(env, collection, id) { return firestoreDocumentName(env, `/${collection}/${encodeURIComponent(id)}`); }
+function licenseWrite(env, collection, id, fields, precondition = { exists: false }) {
+  return { update: { name: licenseName(env, collection, id), fields: encodeFields(fields) }, currentDocument: precondition };
+}
+async function licenseCommit(env, writes) {
+  return firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes }) });
+}
+async function licenseSettings(env) {
+  const document = await licenseDoc(env, "/appSettings/licensing");
+  const data = licenseFields(document);
+  return { flags: { ...DEFAULT_FLAGS, ...data.flags }, pricing: { ...DEFAULT_PRICING, ...data.pricing }, document };
+}
+function licenseTenant(actor) {
+  const tenantId = String(actor.profile?.tenantId || "");
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)) throw new Error("A verified tenant is required.");
+  return tenantId;
+}
+async function handleLicensing(request, env, actor, route) {
+  const settings = await licenseSettings(env);
+  const master = actor && isMasterActor(actor);
+  if (route === "/license-public") return json({ pricing: settings.pricing, uiEnabled: settings.flags.uiEnabled, turnstileSiteKey: String(env.LICENSE_TURNSTILE_SITE_KEY || "") });
+  if (route === "/license-inquiry") {
+    if (!env.LICENSE_TURNSTILE_SECRET || !env.LICENSE_TURNSTILE_SITE_KEY) return json({ error: "License inquiries are temporarily unavailable. Please try again later." }, 503);
+    if (Number(request.headers.get("content-length") || 0) > 4096) return json({ error: "Request is too large." }, 413);
+    const body = await request.json().catch(() => ({}));
+    const inquiry = validateInquiry(body);
+    const challenge = String(body.turnstileToken || "");
+    if (!challenge || challenge.length > 2048) return json({ error: "Complete the verification challenge." }, 400);
+    const challengeResult = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST", body: new URLSearchParams({ secret: env.LICENSE_TURNSTILE_SECRET, response: challenge, remoteip: request.headers.get("CF-Connecting-IP") || "", idempotency_key: inquiry.requestId }),
+    }).then(response => response.json());
+    if (!challengeResult.success || challengeResult.hostname !== "banksetu-app.web.app") return json({ error: "Verification failed. Please retry." }, 403);
+    const id = inquiry.requestId;
+    const existing = await licenseDoc(env, `/licenseRequests/${id}`);
+    if (existing) return json({ success: true, referenceId: id });
+    const ip = request.headers.get("CF-Connecting-IP") || "";
+    if (!ip) return json({ error: "Request verification is unavailable." }, 503);
+    const rateKey = await crypto.subtle.importKey("raw", encoder.encode(env.LICENSE_TURNSTILE_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const digest = async value => b64url(new Uint8Array(await crypto.subtle.sign("HMAC", rateKey, encoder.encode(value))));
+    const rateIds = await Promise.all([digest(`ip:${ip}`), digest(`phone:${inquiry.mobile.replace(/\D/g, "")}`)]);
+    const rateDocs = await Promise.all(rateIds.map(key => licenseDoc(env, `/licenseRequestLimits/${key}`)));
+    const nowMs = Date.now();
+    if (rateDocs.some(doc => nowMs - Number(licenseFields(doc).lastRequestMs || 0) < 15 * 60_000)) return json({ error: "Please wait 15 minutes before sending another request." }, 429);
+    const now = new Date(nowMs).toISOString();
+    const writes = [licenseWrite(env, "licenseRequests", id, { ...inquiry, kind: "inquiry", status: "pending", paymentStatus: "not_paid", createdAt: now, updatedAt: now, quotedPaise: null, quoteRequiresConfirmation: true })];
+    rateIds.forEach((key, index) => writes.push(licenseWrite(env, "licenseRequestLimits", key, { lastRequestMs: nowMs }, rateDocs[index] ? { updateTime: rateDocs[index].updateTime } : { exists: false })));
+    try { await licenseCommit(env, writes); }
+    catch (error) { if (error.status === 409) return json({ error: "Another request was just received. Please wait before retrying." }, 429); throw error; }
+    return json({ success: true, referenceId: id });
+  }
+  if (!actor) return json({ error: "Sign in is required." }, 401);
+  if (route === "/license-admin-settings") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    return json({ pricing: settings.pricing, flags: settings.flags });
+  }
+  if (route === "/license-save-settings") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const pricing = validatePricing(body.pricing);
+    // Enabling enforcement requires a separately verified migration. This route
+    // deliberately cannot activate it or reinterpret legacy missing records.
+    if (body.uiEnabled === true && (!env.LICENSE_TURNSTILE_SECRET || !env.LICENSE_TURNSTILE_SITE_KEY)) return json({ error: "Configure both Cloudflare Turnstile keys before enabling public onboarding." }, 409);
+    const flags = { ...settings.flags, uiEnabled: body.uiEnabled === true };
+    const now = new Date().toISOString();
+    const prev = settings.document?.updateTime ? { updateTime: settings.document.updateTime } : { exists: false };
+    await licenseCommit(env, [
+      licenseWrite(env, "appSettings", "licensing", { pricing, flags, updatedAt: now, updatedBy: actor.uid }, prev),
+      licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: "pricing_updated", actorUid: actor.uid, before: settings.pricing, after: pricing, at: now }),
+    ]);
+    return json({ success: true, pricing, flags });
+  }
+  if (route === "/license-admin-list") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const query = async collection => {
+      const records = [];
+      let pageToken = "";
+      for (let page = 0; page < 20; page++) {
+        const result = await firestoreRequest(env, `/${collection}?pageSize=100${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`);
+        records.push(...(result.documents || []).map(doc => ({ ...licenseFields(doc), id: doc.name.split("/").at(-1) })));
+        pageToken = result.nextPageToken || "";
+        if (!pageToken) break;
+      }
+      return { records, truncated: Boolean(pageToken) };
+    };
+    const [requestPage, licensePage, tenantPage] = await Promise.all([query("licenseRequests"), query("tenantLicenses"), query("tenants")]);
+    const licenses = licensePage.records;
+    const stateCount = state => licenses.filter(item => {
+      try { return licenseView(item, Date.now(), settings.pricing.graceDays).state === state; }
+      catch { return false; }
+    }).length;
+    return json({ requests: requestPage.records, licenses,
+      tenants: tenantPage.records.map(item => ({ tenantId: item.tenantId || item.id, bankName: item.bankName || "" })),
+      summary: { total: tenantPage.records.length, active: stateCount("active") + stateCount("expiring_soon") + stateCount("grace"), soon: stateCount("expiring_soon"), expired: stateCount("expired"), pending: requestPage.records.filter(item => item.status === "pending").length },
+      truncated: requestPage.truncated || licensePage.truncated || tenantPage.truncated });
+  }
+  if (route === "/license-me") {
+    if (master) return json({ master: true, pricing: settings.pricing, flags: settings.flags });
+    const tenantId = licenseTenant(actor);
+    const license = licenseFields(await licenseDoc(env, `/tenantLicenses/${encodeURIComponent(tenantId)}`));
+    const found = Boolean(license.tenantId);
+    const view = licenseView(found ? license : null, Date.now(), settings.pricing.graceDays);
+    return json({ license: found ? license : null, view, pricing: settings.pricing, flags: settings.flags, serverTime: new Date().toISOString(), legacyAccess: !found && !settings.flags.existingClientEnforcement });
+  }
+  if (route === "/license-request-change") {
+    if (master || String(actor.profile.role).toLowerCase() !== "client_admin") return json({ error: "Only the Client Admin can request a license change." }, 403);
+    const tenantId = licenseTenant(actor);
+    const body = await request.json().catch(() => ({}));
+    const kind = String(body.kind || "");
+    const id = String(body.requestId || "");
+    if (!/^[a-f0-9-]{36}$/.test(id) || !["renewal", "upgrade"].includes(kind)) return json({ error: "Invalid request." }, 400);
+    const license = licenseFields(await licenseDoc(env, `/tenantLicenses/${tenantId}`));
+    if (license.plan !== "annual" || license.status === "revoked") return json({ error: "An annual license is required." }, 409);
+    if (await licenseDoc(env, `/licenseRequests/${id}`)) return json({ success: true, referenceId: id });
+    const quote = kind === "renewal" ? settings.pricing.annualPaise : upgradeAmount(settings.pricing, license).duePaise;
+    if (kind === "renewal" && !settings.pricing.annualAvailable) return json({ error: "Renewals are currently unavailable." }, 409);
+    const now = new Date().toISOString();
+    await licenseCommit(env, [licenseWrite(env, "licenseRequests", id, { id, kind, tenantId, requestedBy: actor.uid, status: "pending", paymentStatus: "not_paid", quotedPaise: quote, quoteRequiresConfirmation: true, pricingRevisionAt: settings.document?.updateTime || "", createdAt: now, updatedAt: now })]);
+    return json({ success: true, referenceId: id, quotedPaise: quote });
+  }
+  if (route === "/license-admin-assign") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const tenantId = String(body.tenantId || "");
+    const plan = String(body.plan || "");
+    const id = String(body.requestId || "");
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId) || !["annual", "lifetime"].includes(plan) || !/^[a-f0-9-]{36}$/.test(id) || body.paymentConfirmed !== true) return json({ error: "Select a tenant and plan, then confirm payment." }, 400);
+    const tenant = await licenseDoc(env, `/tenants/${tenantId}`);
+    if (!tenant || licenseFields(tenant).status !== "active") return json({ error: "Active tenant not found." }, 409);
+    const existing = await licenseDoc(env, `/tenantLicenses/${tenantId}`);
+    if (existing) {
+      const data = licenseFields(existing);
+      if (data.lastRequestId === id) return json({ success: true, repeated: true });
+      return json({ error: "Tenant already has a license. Use renewal or upgrade." }, 409);
+    }
+    const price = plan === "annual" ? settings.pricing.annualPaise : settings.pricing.lifetimePaise;
+    if (!price || !settings.pricing[plan === "annual" ? "annualAvailable" : "lifetimeAvailable"]) return json({ error: "Plan is not available. Configure pricing first." }, 409);
+    const now = new Date().toISOString();
+    const license = transitionLicense(null, { kind: plan, id, quotedPaise: price }, now, settings.pricing);
+    license.tenantId = tenantId;
+    const writes = [
+      licenseWrite(env, "tenantLicenses", tenantId, license),
+      licenseWrite(env, "licenseAudit", id, { action: "assigned", requestId: id, tenantId, actorUid: actor.uid, at: now, plan, paidPaise: price, paymentStatus: "payment_confirmed" }),
+    ];
+    const ownerUid = String(licenseFields(tenant).ownerUid || "");
+    const ownerDoc = ownerUid ? await licenseDoc(env, `/users/${encodeURIComponent(ownerUid)}`) : null;
+    const owner = licenseFields(ownerDoc);
+    if (owner.licensingInvite === true && owner.tenantId === tenantId && owner.status === "pending") {
+      writes.push(licenseWrite(env, "users", ownerUid, { ...owner, status: "approved", subscriptionStatus: "active", updatedAt: now, updatedBy: actor.uid }, { updateTime: ownerDoc.updateTime }));
+    }
+    try { await licenseCommit(env, writes); }
+    catch (error) { if (error.status === 409) return json({ error: "License already assigned. Refresh before retrying." }, 409); throw error; }
+    return json({ success: true, tenantId, license });
+  }
+  if (route === "/license-admin-decision") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const id = String(body.requestId || "");
+    if (!/^[a-f0-9-]{36}$/.test(id)) return json({ error: "Invalid request ID." }, 400);
+    const requestDoc = await licenseDoc(env, `/licenseRequests/${id}`);
+    if (!requestDoc) return json({ error: "License request not found." }, 404);
+    const item = licenseFields(requestDoc);
+    if (item.status === "approved" || item.status === "rejected") return json({ success: true, status: item.status, repeated: true });
+    if (item.status !== "pending") return json({ error: "Request is not pending." }, 409);
+    const action = String(body.action || "");
+    if (!["approve", "reject"].includes(action)) return json({ error: "Invalid decision." }, 400);
+    if (item.kind === "inquiry") return json({ error: "First create or associate the client using the existing Master Admin provisioning flow; then assign a license to the verified tenant." }, 409);
+    const tenantId = String(item.tenantId || "");
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)) return json({ error: "Invalid tenant." }, 400);
+    const tenantDoc = await licenseDoc(env, `/tenants/${tenantId}`);
+    if (!tenantDoc || licenseFields(tenantDoc).status !== "active") return json({ error: "Active tenant not found." }, 409);
+    const currentDoc = await licenseDoc(env, `/tenantLicenses/${tenantId}`);
+    const current = licenseFields(currentDoc);
+    const now = new Date().toISOString();
+    const approved = action === "approve";
+    if (approved && body.paymentConfirmed !== true) return json({ error: "Master Admin must confirm payment before approval." }, 400);
+    const decided = { ...item, status: approved ? "approved" : "rejected", paymentStatus: approved ? "payment_confirmed" : "rejected", decidedAt: now, decidedBy: actor.uid, updatedAt: now };
+    const writes = [licenseWrite(env, "licenseRequests", id, decided, { updateTime: requestDoc.updateTime }), licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: approved ? "approved" : "rejected", requestId: id, tenantId, actorUid: actor.uid, at: now, previousRevision: current.revision || 0 })];
+    if (approved) {
+      const next = transitionLicense(currentDoc ? current : null, { ...item, id }, now, settings.pricing);
+      next.tenantId = tenantId;
+      writes.push(licenseWrite(env, "tenantLicenses", tenantId, next, currentDoc ? { updateTime: currentDoc.updateTime } : { exists: false }));
+    }
+    try { await licenseCommit(env, writes); }
+    catch (error) { if (error.status === 409) return json({ error: "License changed during approval. Refresh and retry." }, 409); throw error; }
+    return json({ success: true, status: decided.status });
+  }
+  return json({ error: "Not found." }, 404);
+}
+
 async function handleMasterOperation(request, env, actor, route) {
   const role = String(actor.profile.role || "").toLowerCase();
   if (route === "/bootstrap-master-owner") {
@@ -395,6 +590,40 @@ async function handleMasterOperation(request, env, actor, route) {
     }
     await putDocument(env, "/appSettings/googleSetup", { oauthClientId, apiUrl, executorEmail, updatedBy: actor.uid, updatedAt: new Date().toISOString() });
     return json({ success: true });
+  }
+
+  if (route === "/create-client-invite") {
+    if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can invite clients." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const bankName = String(body.bankName || "").trim();
+    if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || !bankName || bankName.length > 120) return json({ error: "Enter a valid name, email and bank name." }, 400);
+    const setup = licenseFields(await licenseDoc(env, "/appSettings/googleSetup"));
+    setup.oauthClientId ||= env.BANKSETU_GOOGLE_OAUTH_CLIENT_ID;
+    setup.apiUrl ||= env.BANKSETU_APPS_SCRIPT_URL;
+    setup.executorEmail ||= env.BANKSETU_APPS_SCRIPT_EXECUTOR_EMAIL;
+    if (!setup.oauthClientId || !setup.apiUrl || !setup.executorEmail) return json({ error: "Complete the one-time Google setup first." }, 409);
+    const password = `${crypto.randomUUID()}${crypto.randomUUID()}aA1!`;
+    let uid;
+    try { uid = await createFirebaseAccount(env, email, password, name); }
+    catch (error) { return json({ error: error.status === 400 ? "This email already has an account. Associate its existing tenant instead." : "Could not create the client invitation." }, 409); }
+    const tenantId = crypto.randomUUID().replaceAll("-", "");
+    try {
+      const now = new Date().toISOString();
+      await licenseCommit(env, [
+        licenseWrite(env, "tenants", tenantId, { tenantId, clientId: tenantId, ownerUid: uid, bankName, maxUsers: 2, clientUserCount: 0, status: "active", createdAt: now, createdBy: actor.uid }),
+        licenseWrite(env, "tenantSettings", tenantId, { tenantId, bankName, apiUrl: String(setup.apiUrl), spreadsheetId: "", photoFolderId: "", bankInfo: {}, bankLogo: "", updatedAt: now, updatedBy: actor.uid }),
+        licenseWrite(env, "users", uid, { name, email, role: "client_admin", tenantId, clientId: tenantId, parentClientUid: actor.uid, bankName, maxUsers: 2, status: "pending", subscriptionStatus: "inactive", licensingInvite: true, createdAt: now, createdBy: actor.uid }),
+        licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: "client_invited", actorUid: actor.uid, tenantId, at: now }),
+      ]);
+    } catch (error) { await authDelete(env, uid).catch(() => undefined); throw error; }
+    // Firebase sends a one-time password setup link. No password is returned or stored.
+    const emailResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(env.FIREBASE_WEB_API_KEY)}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
+    });
+    if (!emailResponse.ok) return json({ success: true, uid, tenantId, emailDelivered: false, warning: "Account created pending licensing, but password setup email could not be delivered. Use Firebase account recovery before activation." });
+    return json({ success: true, uid, tenantId, emailDelivered: true });
   }
 
   if (route === "/create-client") {
@@ -969,16 +1198,19 @@ export default {
     const route = new URL(request.url).pathname;
     try {
       const supportedRoutes = [
-        "/account-action", "/delete-user", "/create-client-user", "/create-client",
+        "/account-action", "/delete-user", "/create-client-user", "/create-client", "/create-client-invite",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
+        "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-assign", "/license-request-change", "/license-admin-decision",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
       }
       let actor;
-      if (route === "/bootstrap-master-owner") {
+      if (route === "/license-public" || route === "/license-inquiry") {
+        actor = null;
+      } else if (route === "/bootstrap-master-owner") {
         const idToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
         if (!idToken) return json({ error: "Sign in is required." }, 401, cors);
         const identity = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(env.FIREBASE_WEB_API_KEY)}`, {
@@ -990,9 +1222,11 @@ export default {
       } else {
         actor = await verifyActor(request, env);
       }
-      if (actor.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
-      const result = migratedRoutes.includes(route)
+      if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
+      const migratedRoutes = ["/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
+      const result = route.startsWith("/license-")
+        ? await handleLicensing(request, env, actor, route)
+        : migratedRoutes.includes(route)
         ? await handleMasterOperation(request, env, actor, route)
         : route === "/create-client-user"
           ? await createClientUser(request, env, actor)

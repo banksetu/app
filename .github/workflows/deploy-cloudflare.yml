@@ -33,7 +33,7 @@ jobs:
           node-version: '22'
 
       - name: Test Worker request checks
-        run: node --test cloudflare/worker.test.js
+        run: npm run test:worker
 
       - name: Check deployment credential is configured
         env:

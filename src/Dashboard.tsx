@@ -44,6 +44,8 @@ import CustomerEntry from "./CustomerEntry";
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
 import MasterClients from "./MasterClients";
+import LicenseManagement from "./LicenseManagement";
+import LicenseNotice from "./LicenseNotice";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 import BankFormats from "./BankFormats";
 
@@ -258,6 +260,7 @@ type PageName =
 
   | "settings"
   | "sync-backup"
+  | "license-management"
   | "support";
 
 function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
@@ -1068,6 +1071,7 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
           />}
 
           {(accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
+          {["master_owner","admin","client_admin"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
 
         <button type="button" className={activePage === "support" ? "banksetu-nav-item banksetu-support-button active" : "banksetu-nav-item banksetu-support-button"} onClick={() => openPage("support")}>
@@ -1470,11 +1474,14 @@ function Dashboard({ onLogout, userRole, accountRole }: DashboardProps) {
 
         <ClientGoogleSetup enabled={accountRole === "client_admin"} />
 
+        {accountRole === "client_admin" && <LicenseNotice open={() => openPage("license-management")} />}
+
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} />
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
+          {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} />}
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && (

@@ -49,7 +49,7 @@ jobs:
           if gh release view "v$NEXT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "v$NEXT" >/dev/null 2>&1; then echo 'Version already exists'; exit 1; fi
           node scripts/release.mjs "$NEXT"
           npm ci
-          npm run test:local && npm run test:bridge && npm run check:schema && npm run build
+          npm run test:worker && npm run test:local && npm run test:bridge && npm run check:schema && npm run build
           git config user.name 'banksetu-release-bot'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json package-lock.json public/version.json

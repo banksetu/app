@@ -86,3 +86,29 @@ test("Option B validates exact Google resource hosts and verified resource owner
   const sheet={...owner,id,mimeType:'application/vnd.google-apps.spreadsheet',parents:['folder']};const folder={...owner,id:'folder',mimeType:'application/vnd.google-apps.folder'};
   validateResourceOwnership(sheet,folder,'owner@example.com');assert.throws(()=>validateResourceOwnership(sheet,folder,'other@example.com'),/belong/);assert.throws(()=>validateResourceOwnership({...sheet,parents:['another']},folder,'owner@example.com'),/inside/);
 });
+
+test('licensing mutation endpoints require an approved signed-in actor', async () => {
+  for (const path of ['/license-admin-settings','/license-save-settings','/license-admin-list','/license-admin-assign','/license-admin-decision','/license-me','/license-request-change','/create-client-invite']) {
+    const response=await worker.fetch(new Request(`https://worker.example${path}`,{method:'POST',headers:{origin:'https://banksetu-app.web.app','content-type':'application/json'},body:'{}'}),env);
+    assert.equal(response.status,401,path);
+  }
+});
+
+test('public inquiry fails closed without CAPTCHA keys', async () => {
+  const {generateKeyPairSync}=await import('node:crypto');
+  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+  const realFetch=globalThis.fetch;
+  globalThis.fetch=async url => {
+    const path=String(url);
+    if(path.includes('oauth2.googleapis.com/token')) return new Response(JSON.stringify({access_token:'test',expires_in:3600}),{status:200});
+    if(path.includes('/appSettings/licensing')) return new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
+    throw new Error(`Unexpected remote request: ${path}`);
+  };
+  try {
+    const response=await worker.fetch(new Request('https://worker.example/license-inquiry',{
+      method:'POST',headers:{origin:'https://banksetu-app.web.app','content-type':'application/json'},body:'{}'
+    }),{...env,FIREBASE_PROJECT_ID:'synthetic-test',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.invalid',private_key:privateKey.export({type:'pkcs8',format:'pem'})})});
+    assert.equal(response.status,503);
+    assert.match((await response.json()).error,/temporarily unavailable/);
+  } finally { globalThis.fetch=realFetch; }
+});

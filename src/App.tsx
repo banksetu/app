@@ -14,6 +14,7 @@ import { doc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
+import LicenseOnboarding, { getPublicLicenseSettings } from "./LicenseOnboarding";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
@@ -83,6 +84,9 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<BankSetuRole>("user");
   const [accountRole, setAccountRole] = useState("user");
+  const [licenseWelcome, setLicenseWelcome] = useState<Awaited<ReturnType<typeof getPublicLicenseSettings>>>(null);
+  const [showLicenseWelcome, setShowLicenseWelcome] = useState(true);
+
 
   const loginAttemptRef = useRef(false);
   const activeProfile = useRef<UserProfile | null>(null);
@@ -90,6 +94,12 @@ function App() {
   const recoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ownerBootstrapAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
+
+  useEffect(() => {
+    void getPublicLicenseSettings().then(settings => {
+      if (settings?.uiEnabled && settings.turnstileSiteKey) setLicenseWelcome(settings);
+    }).catch(() => { /* Existing login stays available during a backend outage. */ });
+  }, []);
 
   const clearProfileListener = useCallback(() => {
     if (profileUnsubscribeRef.current) {
@@ -399,6 +409,10 @@ function App() {
         <p>Loading Bank Setu...</p>
       </main>
     );
+  }
+
+  if (!isLoggedIn && showLicenseWelcome && licenseWelcome) {
+    return <LicenseOnboarding settings={licenseWelcome} onSignIn={() => setShowLicenseWelcome(false)} />;
   }
 
   if (loginSuccess) {
