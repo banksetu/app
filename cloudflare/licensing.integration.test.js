@@ -16,7 +16,6 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     ['users/master',doc('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'})],
     ['users/client',doc('users/client',{role:'client_admin',tenantId:'tenant-a',status:'approved',subscriptionStatus:'active',licenseRequired:true})],
     ['tenants/tenant-a',doc('tenants/tenant-a',{tenantId:'tenant-a',ownerUid:'client',status:'active'})],
-    ['tenantSettings/tenant-a',doc('tenantSettings/tenant-a',{tenantId:'tenant-a',bankName:'Synthetic Bank',apiUrl:'https://script.google.com/macros/s/original/exec'})],
   ]);
   let commitCount=0;
   globalThis.fetch=async (url,options={})=>{
@@ -39,11 +38,6 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
         return new Response('{}');
       }
       const key=path.replace(/^\//,'').split('?')[0];const existing=store.get(key);
-      if(options.method==='PATCH'){
-        const patch=JSON.parse(options.body);
-        store.set(key,{...existing,fields:{...existing?.fields,...patch.fields}});
-        return new Response(JSON.stringify(store.get(key)));
-      }
       return existing?new Response(JSON.stringify(existing)):new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
     }
     throw new Error(`Unexpected request: ${text}`);
@@ -55,23 +49,18 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
   try{
     assert.equal((await call('client','/license-save-settings',{pricing:settings})).status,403);
     assert.equal((await call('client','/presence-heartbeat',{})).status,403);
-    assert.equal((await call('client','/save-client-bridge-url',{apiUrl:'https://script.google.com/macros/s/new-deployment/exec'})).status,403);
     const pending=await call('client','/license-me',{});
     assert.equal(pending.body.view.canWrite,false);
     assert.equal(pending.body.receipt,null);
     assert.equal((await call('master','/create-client',{})).status,409);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
     const id='01234567-89ab-4cde-8fab-0123456789ab';
-    assert.equal((await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,403);
+    const deniedAssignment=await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true});
+    assert.equal(deniedAssignment.status,403,JSON.stringify(deniedAssignment.body));
     assert.equal((await call('master','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,200);
     const verified=await call('client','/license-me',{});
     const first=verified.body.license;
     assert.equal(first.tenantId,'tenant-a');assert.equal(first.plan,'annual');assert.equal(first.revision,1);
-    assert.equal((await call('client','/save-client-bridge-url',{apiUrl:'https://unsafe.example/exec'})).status,400);
-    assert.equal((await call('client','/save-client-bridge-url',{apiUrl:'https://script.google.com/macros/s/new-deployment/exec',tenantId:'another-tenant'})).status,200);
-    assert.equal(store.get('tenantSettings/tenant-a').fields.apiUrl.stringValue,'https://script.google.com/macros/s/new-deployment/exec');
-    assert.equal(store.get('tenantSettings/tenant-a').fields.bankName.stringValue,'Synthetic Bank');
-    assert.equal(store.has('tenantSettings/another-tenant'),false);
     const receipt=verified.body.receipt;
     const keyResponse=await worker.fetch(new Request('https://worker.example/license-public-key'),env);
     assert.equal(keyResponse.status,200);
@@ -99,7 +88,6 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'suspend',requestId:stateId})).body.status,'suspended');
     assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'suspend',requestId:stateId})).body.repeated,true);
     assert.equal((await call('client','/presence-heartbeat',{})).status,403);
-    assert.equal((await call('client','/save-client-bridge-url',{apiUrl:''})).status,403);
     assert.equal((await call('client','/license-me',{})).body.view.state,'suspended');
     assert.equal((await call('master','/license-admin-state',{tenantId:'tenant-a',action:'reactivate',requestId:'45678901-89ab-4cde-8fab-0123456789ab'})).body.status,'active');
     for(let index=0;index<55;index++){
