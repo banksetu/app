@@ -16,6 +16,7 @@ import {
 import { getAuth } from "firebase/auth";
 import { getCustomerSearchApiUrl } from "./tenantApi";
 import { requireLicensedWrite } from "./core/licenseAccess";
+import { loadPdfCustomers } from "./core/pdfSelection";
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
 
@@ -241,26 +242,12 @@ export default function Customers() {
       const [records, status] = localModeEnabled()
         ? await Promise.all([getLocalExportCustomers(), getLocalStatus()])
         : [[], {downloading:false,cacheLimited:false}];
-      if (records.length && (!navigator.onLine || (!status.downloading && !status.cacheLimited))) {
-        setPdfRecords(records); setPdfIncomplete(false);
-      } else if (navigator.onLine && getCustomerSearchApiUrl(localModeEnabled())) {
-        // A preview can load from Google before the local download completes.
-        // Fetch verified tenant pages, never the visible search result alone.
-        const all: Record<string, unknown>[] = [];
-        const seen = new Set<string>();
-        for (let page = 1; page <= 1000; page++) {
-          const result = await apiRequest({action:"getAllCustomers",page,pageSize:100});
-          for (const item of (result.customers || []) as Record<string, unknown>[]) {
-            const key = String(item.recordId || item.rowNumber || `${item.accountNo}:${item.enrolId}`);
-            if (!seen.has(key)) {seen.add(key); all.push(item);}
-          }
-          if (!result.hasNextPage) break;
-          if (page === 1000) throw new Error("Customer export exceeds the safe page limit. Contact support; no customer records were changed.");
-        }
-        setPdfRecords(all); setPdfIncomplete(false);
-      } else {
-        setPdfRecords(records); setPdfIncomplete(status.downloading || status.cacheLimited);
-      }
+      // A preview can load from Google before local reconciliation completes.
+      // Only the bound, verified tenant bridge may supply missing pages.
+      const requestPage=navigator.onLine && getCustomerSearchApiUrl(localModeEnabled())
+        ? async (page:number,pageSize:number) => apiRequest({action:"getAllCustomers",page,pageSize}) : undefined;
+      const selection=await loadPdfCustomers(records,status.downloading || status.cacheLimited,navigator.onLine,requestPage);
+      setPdfRecords(selection.records);setPdfIncomplete(selection.incomplete);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read customers for PDF preview."); }
     finally { setPdfLoading(false); }
   };

@@ -395,7 +395,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
-  const canManageBankSettings = accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin";
+  const canManageBankSettings = sessionStorage.getItem("bankSetuDemoWorkspace")!=="active" && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
 
   const [bankInfoDraft, setBankInfoDraft] =
 
@@ -408,6 +408,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = false, l
   useEffect(() => {
     const user = getAuth().currentUser;
     if (!user) return;
+    if(sessionStorage.getItem("bankSetuDemoWorkspace")==="active"){
+      // Use an existing built-in document renderer with sample branding only;
+      // the demo never reads tenant bank settings or production PDF templates.
+      let active=true;
+      queueMicrotask(()=>{if(active){setBankInfo({...emptyBankInfo,bankName:"Bank Setu Demo",passbookBank:"Assam Gramin Bank"});setBankLogo("");setBankSettingsReady(true);setBankSettingsError("");}});
+      return()=>{active=false;};
+    }
     setBankSettingsReady(false); setBankSettingsError("");
     let receivedServer = false;
     const timeout = window.setTimeout(() => {

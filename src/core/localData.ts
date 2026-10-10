@@ -2,6 +2,7 @@ import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";
 import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
 import { requireLicensedWrite } from "./licenseAccess";
+import { classifyRecovery, recoveryJournal, type RecoveryCategory } from "./recovery";
 import { customerRepository as repository } from "./customerRepository";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
@@ -123,7 +124,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   actionNotice(demo?"success":"warning", action === "deleteCustomer" ? "Deleted locally" : "Saved locally", demo?"Sample data stays on this device and is never uploaded to production Google services.":"Google Sheet and Drive sync pending.");
   if (!demo) {if (syncPaused) resumeSync(); else window.dispatchEvent(new Event("banksetu-sync-request"));}
   if (action === "deleteCustomer") {
-    return resultResponse({success:false,deleted:true,queued:true,rowNumber:localRow,recordId,message:"Deleted locally; Google Sheet and Drive deletion is pending sync."});
+    return resultResponse({success:false,deleted:true,queued:!demo,rowNumber:localRow,recordId,message:demo?"Deleted from this sample-only demo workspace.":"Deleted locally; Google Sheet and Drive deletion is pending sync."});
   }
   return resultResponse({success:true,queued:true,rowNumber:localRow,recordId,
     message:demo?"Saved to the sample-only demo workspace on this device.":"Saved on this device. Google sync starts immediately; keep this device's data until sync completes.",
@@ -196,7 +197,7 @@ export function resumeSync() {
 /** A new authenticated session must not inherit another account's pause/job. */
 export function resetSyncSession() {
   for (const controller of syncControllers.values()) controller.abort(new DOMException("Account changed.","AbortError"));
-  syncPaused = false;
+  syncPaused = false;recoveryLog.clear();recoveringCategory=undefined;healthError="";
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
@@ -504,9 +505,11 @@ export async function getLocalSnapshot() {
 export async function exportLocalBackup() { const state=await repository.read(identity());if(isAndroid()){await shareAndroidBackup(JSON.stringify(makeBackup(identity(),state),null,2));return;}const url=URL.createObjectURL(new Blob([JSON.stringify(makeBackup(identity(),state),null,2)],{type:"application/json"}));const link=document.createElement("a");link.href=url;link.download="BankSetu-local-backup.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 let recoverWorkspace: ((signal?:AbortSignal)=>Promise<void>) | undefined;
 let healthError="";
+const recoveryLog=recoveryJournal();
+let recoveringCategory: RecoveryCategory | undefined;
 let lastBackendCheck=0,lastHostingCheck=0,nextRetryAt=0;
 export function configureConnectionRecovery(recover: ((signal?:AbortSignal)=>Promise<void>) | undefined){recoverWorkspace=recover;lastBackendCheck=0;}
-export function getConnectionHealth(){return {online:navigator.onLine,error:healthError,lastBackendCheck,lastHostingCheck,nextRetryAt};}
+export function getConnectionHealth(){return {online:navigator.onLine,error:healthError,lastBackendCheck,lastHostingCheck,nextRetryAt,history:recoveryLog.list(),state:healthError?nextRetryAt?"recovering":"attention":recoveringCategory?"recovering":"healthy"};}
 let syncUsers=0;
 let stopScheduler: (()=>void) | undefined;
 export function startLocalSync() {
@@ -534,9 +537,10 @@ export function startLocalSync() {
             // Independent, low-frequency public version check; never blocks sync.
             void networkFetch("https://banksetu-app.web.app/version.json",{cache:"no-store",signal:AbortSignal.timeout(10000)}).catch(()=>undefined);
           }
+          if(recoveringCategory){recoveryLog.add({at:Date.now(),category:recoveringCategory,action:"retry original sync",result:"verified"});recoveringCategory=undefined;}
           failures=0;healthError="";
         }
-      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
+      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;recoveringCategory=classifyRecovery(error);recoveryLog.add({at:Date.now(),category:recoveringCategory,action:actionRequired?"manual review required":"bounded retry",result:actionRequired?"attention":"recovering"});const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
       finally{
         activeController=undefined;busy=false;if(!stopped){
           if(syncPaused||actionRequired){clearTimeout(timer);nextRetryAt=0;}
