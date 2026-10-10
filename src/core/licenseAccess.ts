@@ -9,7 +9,9 @@ let verificationKey = "";
 
 /** Protect every new local business mutation with the tenant's signed entitlement. */
 export async function requireLicensedWrite(): Promise<void> {
-  if (sessionStorage.getItem("bankSetuLicenseRequired") !== "true") return;
+  const required = sessionStorage.getItem("bankSetuLicenseRequired");
+  if (required === "false") return; // Existing approved legacy workspaces remain available during rollout.
+  if (required !== "true") throw new Error("Verify your account and license before changing customer data.");
   const uid = auth.currentUser?.uid;
   const tenantId = sessionStorage.getItem("bankSetuTenantId");
   if (!uid || !tenantId) throw new Error("Sign in to the licensed client workspace again.");

@@ -21,6 +21,12 @@ test('pending or expired license cannot mutate local customer data even with a c
  await assert.rejects(exports.requireLicensedWrite(),/Connect to the internet/);
 });
 
+test('account switching never treats a missing licensing decision as legacy access',async()=>{
+ storage.delete('bankSetuLicenseRequired');
+ await assert.rejects(exports.requireLicensedWrite(),/Verify your account and license/);
+ storage.set('bankSetuLicenseRequired','true');
+});
+
 test('signed offline active entitlement allows bounded local work, and a new online day checks the server',async()=>{
  cached=async()=>({issuedAt:Date.now(),state:'active'});navigator.onLine=false;
  await exports.requireLicensedWrite();assert.equal(calls,0);
