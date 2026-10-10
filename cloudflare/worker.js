@@ -870,6 +870,7 @@ async function handleMasterOperation(request, env, actor, route) {
     const statusResponse = await fetch(`${bridgeUrl}?action=status`, { signal: AbortSignal.timeout(10000) });
     const status = await statusResponse.json();
     if (!statusResponse.ok || status.tenantIsolationVersion !== "v3" || status.tenantId !== tenantId || status.spreadsheetId !== spreadsheetId || status.photoFolderId !== photoFolderId || String(status.ownerEmail || "").toLowerCase() !== actor.email.toLowerCase()) return json({ error: "The bridge must run as your Google account and be bound to this tenant, Sheet and folder." }, 409);
+    if (actor.profile.licenseRequired === true && status.licenseEnforcementVersion !== 1) return json({ error: "Deploy the current Bank Setu Apps Script bridge with license enforcement before connecting this licensed workspace." }, 409);
     const headersRead = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:X1`, { headers: { authorization: `Bearer ${token}` } });
     if (!headersRead.ok) return json({ error: "Sheet1 is missing or not accessible." }, 409);
     const row = (await headersRead.json()).values?.[0] || [];
@@ -896,6 +897,7 @@ async function handleMasterOperation(request, env, actor, route) {
 
   if (route === "/configure-tenant-data") {
     if (role !== "client_admin") return json({ error: "Only the Client Admin can connect their own Google workspace." }, 403);
+    if (actor.profile.licenseRequired === true) return json({ error: "Use the verified Option B connection for this licensed workspace." }, 409);
     const body = await request.json().catch(() => ({}));
     const tenantId = String(body.tenantId || "").trim();
     const spreadsheetId = String(body.spreadsheetId || "").trim();
