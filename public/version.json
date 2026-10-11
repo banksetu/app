@@ -1,18 +1,18 @@
 {
-  "latestVersion": "1.0.64",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.64/BankSetu-Setup-1.0.64-x64.exe",
+  "latestVersion": "1.0.65",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.65/BankSetu-Setup-1.0.65-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.64",
-  "releaseTag": "v1.0.64",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.64",
+  "version": "1.0.65",
+  "releaseTag": "v1.0.65",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.65",
   "releaseDate": "2026-10-11",
-  "windowsVersion": "1.0.64",
-  "androidBuild": 1000064,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.64/BankSetu-Setup-1.0.64-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.64/BankSetu-Android-1000064.apk",
+  "windowsVersion": "1.0.65",
+  "androidBuild": 1000065,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.65/BankSetu-Setup-1.0.65-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.65/BankSetu-Android-1000065.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.64",
+      "version": "1.0.65",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
@@ -23,10 +23,11 @@
       }
     },
     "android": {
-      "version": "1.0.64",
+      "version": "1.0.65",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
+          "Repair Android xxxhdpi splash PNG resources for AAPT2.",
           "Place draggable support button nearer safe-area bottom on mobile.",
           "Notify on tenant license activation transitions.",
           "Modernize licensing, native alerts, updates and Bank Setu branding."
