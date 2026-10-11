@@ -14,9 +14,11 @@ test('first and later platform releases classify only committed app changes',()=
   {subject:'Revert "feat: prior feature"',paths:['src/App.tsx']},
   {subject:'feat: prior feature',paths:['src/App.tsx']},
   {subject:'Release metadata v1.0.99',paths:['public/version.json']},
+  {subject:'Expose synthetic license denial reason in Worker regression test',paths:['cloudflare/worker.test.js']},
  ];
  assert.deepEqual(notesFor(changes,'windows'),{'Bug Fixes':['Recover paused sync after account switch.'],'Performance & Stability':['Reduce unnecessary sync requests.']});
  assert.deepEqual(notesFor(changes,'android'),{'New Features':['Improve customer search recovery.'],'Performance & Stability':['Reduce unnecessary sync requests.']});
+ assert.equal(classify('fix: Add a customer feature with regression coverage',['src/customer.ts','src/customer.test.ts']).category,'Bug Fixes');
 });
 test('unclear or sensitive subjects use a neutral summary without leaking secrets or PII',()=>{
  assert.equal(classify('fix: private key abc@example.com', ['src/App.tsx']).text,'Maintenance and reliability updates.');
