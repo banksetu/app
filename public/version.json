@@ -1,31 +1,35 @@
 {
-  "latestVersion": "1.0.63",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.63/BankSetu-Setup-1.0.63-x64.exe",
+  "latestVersion": "1.0.64",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.64/BankSetu-Setup-1.0.64-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.63",
-  "releaseTag": "v1.0.63",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.63",
+  "version": "1.0.64",
+  "releaseTag": "v1.0.64",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.64",
   "releaseDate": "2026-10-11",
-  "windowsVersion": "1.0.63",
-  "androidBuild": 1000063,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.63/BankSetu-Setup-1.0.63-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.63/BankSetu-Android-1000063.apk",
+  "windowsVersion": "1.0.64",
+  "androidBuild": 1000064,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.64/BankSetu-Setup-1.0.64-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.64/BankSetu-Android-1000064.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.63",
+      "version": "1.0.64",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Maintenance and reliability updates."
+          "Place draggable support button nearer safe-area bottom on mobile.",
+          "Notify on tenant license activation transitions.",
+          "Modernize licensing, native alerts, updates and Bank Setu branding."
         ]
       }
     },
     "android": {
-      "version": "1.0.63",
+      "version": "1.0.64",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Maintenance and reliability updates."
+          "Place draggable support button nearer safe-area bottom on mobile.",
+          "Notify on tenant license activation transitions.",
+          "Modernize licensing, native alerts, updates and Bank Setu branding."
         ]
       }
     }
