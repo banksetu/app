@@ -882,7 +882,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       <aside
 
-        className={`banksetu-sidebar ${
+        className={`banksetu-sidebar ${activePage === "license-management" ? "reference-sidebar" : ""} ${
 
           mobileMenuOpen ? "open" : ""
 
