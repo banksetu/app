@@ -5,6 +5,7 @@ on:
     branches: [codex/spark-client-workspace-20261001]
     paths:
       - 'portfolio/**'
+      - 'public/version.json'
       - 'firebase.portfolio.json'
       - '.github/workflows/portfolio-deploy.yml'
 permissions:
