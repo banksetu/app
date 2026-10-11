@@ -3785,12 +3785,8 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 }
 .banksetu-floating-support{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(140deg,#00bdea,#2265ed 53%,#7a3be6);box-shadow:0 12px 26px #123d9a66;touch-action:none;user-select:none}.banksetu-floating-support:hover,.banksetu-floating-support:focus-visible{box-shadow:0 15px 31px #1833a879}.banksetu-floating-support svg{pointer-events:none}@media(max-width:700px){.banksetu-floating-support{right:9px;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
 .login-page .banksetu-logo{width:160px!important;height:160px!important;border-radius:0!important;background-size:contain!important;box-shadow:none!important;overflow:visible!important}.login-page .banksetu-logo::after{display:none}
-/* License workspace sidebar matches the approved desktop reference; other menu themes stay available elsewhere. */
-.banksetu-sidebar.reference-sidebar{background:linear-gradient(165deg,#061537 0%,#0c2250 58%,#111a59 100%)!important;border-right:1px solid #234484!important;box-shadow:12px 0 30px #08235a34!important}
-.banksetu-sidebar.reference-sidebar nav{gap:4px!important}
-.banksetu-sidebar.reference-sidebar .banksetu-nav-item{min-height:49px!important;padding:10px 13px!important;border-radius:12px!important;font-size:14px!important;font-weight:680!important;gap:14px!important;color:#f1f6ff!important}
-.banksetu-sidebar.reference-sidebar .banksetu-nav-item span:first-child{font-size:24px!important;width:27px;min-width:27px;line-height:1.1;text-align:center;filter:drop-shadow(0 2px 2px #06153755)}
-.banksetu-sidebar.reference-sidebar .banksetu-nav-item:hover{background:#1b3c7e!important}
-.banksetu-sidebar.reference-sidebar .banksetu-nav-item.active{background:linear-gradient(105deg,#00aeed,#2458ed 55%,#a52ce9)!important;color:white!important;box-shadow:0 9px 23px #146ff472!important}
-.banksetu-sidebar.reference-sidebar .banksetu-nav-item.active:before{display:none!important}
-@media(max-width:760px){.banksetu-sidebar.reference-sidebar{padding-bottom:calc(18px + env(safe-area-inset-bottom))!important}}
+/* Improve menu legibility uniformly without changing the configured menu colors. */
+.banksetu-sidebar .banksetu-nav-item{min-height:48px!important;font-size:16px!important;font-weight:650!important;display:flex!important;align-items:center!important;gap:10px!important;line-height:1.25!important}
+.banksetu-sidebar .banksetu-nav-item span:first-child{flex:0 0 27px;font-size:25px!important;line-height:1!important;text-align:center}
+.banksetu-sidebar .banksetu-nav-item span:last-child{min-width:0;text-align:left;overflow-wrap:break-word}
+@media(max-width:350px){.banksetu-sidebar .banksetu-nav-item{font-size:15px!important}}
