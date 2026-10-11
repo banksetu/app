@@ -6,7 +6,7 @@ const CATEGORIES=['New Features','Bug Fixes','Improvements','Performance & Stabi
 const blocked=/\b(?:password|secret|token|private.key|api.key|credential|customer.name|account.number|aadhaar|uidai|otp)\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}|https?:\/\/|\b\d{9,}\b/i;
 export function classify(subject,paths){
   if (/^revert\b|^release metadata\b/i.test(subject)) return null;
-  const names=paths.filter(Boolean);
+  const names=paths.filter(path=>path && !/(?:^|\/)(?:__tests__|tests?)\/|(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(path));
   const app=names.some(path=>/^(src\/|desktop\/|android\/|apps-script\/|cloudflare\/)/.test(path));
   if(!app)return null;
   const windows=names.some(path=>/^(desktop\/|src\/)/.test(path));
