@@ -1,31 +1,33 @@
 {
-  "latestVersion": "1.0.61",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.61/BankSetu-Setup-1.0.61-x64.exe",
+  "latestVersion": "1.0.62",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.62/BankSetu-Setup-1.0.62-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.61",
-  "releaseTag": "v1.0.61",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.61",
-  "releaseDate": "2026-10-10",
-  "windowsVersion": "1.0.61",
-  "androidBuild": 1000061,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.61/BankSetu-Setup-1.0.61-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.61/BankSetu-Android-1000061.apk",
+  "version": "1.0.62",
+  "releaseTag": "v1.0.62",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.62",
+  "releaseDate": "2026-10-11",
+  "windowsVersion": "1.0.62",
+  "androidBuild": 1000062,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.62/BankSetu-Setup-1.0.62-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.62/BankSetu-Android-1000062.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.61",
-      "releaseDate": "2026-10-10",
+      "version": "1.0.62",
+      "releaseDate": "2026-10-11",
       "categories": {
-        "Bug Fixes": [
-          "Recover verified workspace and sync sessions; refresh login and release notes."
+        "Improvements": [
+          "Expose synthetic license denial reason in Worker regression test.",
+          "Bank Setu licensing safety and stability fixes."
         ]
       }
     },
     "android": {
-      "version": "1.0.61",
-      "releaseDate": "2026-10-10",
+      "version": "1.0.62",
+      "releaseDate": "2026-10-11",
       "categories": {
-        "Bug Fixes": [
-          "Recover verified workspace and sync sessions; refresh login and release notes."
+        "Improvements": [
+          "Expose synthetic license denial reason in Worker regression test.",
+          "Bank Setu licensing safety and stability fixes."
         ]
       }
     }
