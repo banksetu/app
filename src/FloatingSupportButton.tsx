@@ -3,7 +3,8 @@ const storageKey='bankSetuSupportPositionV2';
 type Position={x:number;y:number};
 const margin=8;
 function clamp(position:Position,size=54):Position{
-  const safeBottom=window.innerWidth<700?76:Math.max(12,Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'))||12);
+  const configuredSafeBottom=Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'))||0;
+  const safeBottom=Math.max(window.innerWidth<700?16:12,configuredSafeBottom);
   return {x:Math.max(margin,Math.min(position.x,window.innerWidth-size-margin)),y:Math.max(margin,Math.min(position.y,window.innerHeight-size-safeBottom))};
 }
 export default function FloatingSupportButton({unread,open}:{unread:number;open:()=>void}){
