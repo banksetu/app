@@ -93,6 +93,7 @@ function App() {
   const licensePermission = useSyncExternalStore(subscribeLicensePermission, getLicensePermission);
   const licenseReadOnly = !licensePermission.canWrite;
   const licenseWarning = licensePermission.warning;
+  const lastNativeLicense=useRef<{tenantId:string;state:string;revision:number}|null>(null);
   useEffect(()=>{if(!isLoggedIn)return startNotificationNavigation();},[isLoggedIn]);
   useEffect(()=>{
     if(!isLoggedIn)return;
@@ -103,8 +104,10 @@ function App() {
   useEffect(()=>{
     if(!isLoggedIn||!licensePermission.tenantId)return;
     const {state,plan,revision,daysRemaining}=licensePermission;
+    const previous=lastNativeLicense.current;
+    lastNativeLicense.current={tenantId:licensePermission.tenantId,state,revision};
     const demo=plan==='demo';
-    const alert=state==='suspended'||state==='revoked'?{title:'License access paused',body:`Bank Setu license ${state}. Open License Management.`}:state==='expired'||state==='demo_expired'?{title:demo?'Demo expired':'License expired',body:'Customer changes are paused. Open License Management.'}:state==='expiring_soon'||demo&&state==='demo_active'&&daysRemaining!==null&&daysRemaining<=2?{title:demo?'Demo ending soon':'License expiring soon',body:`${daysRemaining} day(s) remaining. Review renewal options.`}:state==='active'&&revision>1?{title:'License activated or renewed',body:'Bank Setu license permissions are active.'}:null;
+    const alert=state==='suspended'||state==='revoked'?{title:'License access paused',body:`Bank Setu license ${state}. Open License Management.`}:state==='expired'||state==='demo_expired'?{title:demo?'Demo expired':'License expired',body:'Customer changes are paused. Open License Management.'}:state==='expiring_soon'||demo&&state==='demo_active'&&daysRemaining!==null&&daysRemaining<=2?{title:demo?'Demo ending soon':'License expiring soon',body:`${daysRemaining} day(s) remaining. Review renewal options.`}:state==='active'&&previous?.tenantId===licensePermission.tenantId&&(previous.state!=='active'||previous.revision!==revision)?{title:'License activated or renewed',body:'Bank Setu license permissions are active.'}:null;
     if(alert)notifySystem({key:`license:${state}:${revision}:${daysRemaining&&daysRemaining<=2?'soon':''}`,title:alert.title,body:alert.body,page:'license-management',category:'license',cooldownMs:24*60*60_000});
   },[isLoggedIn,licensePermission]);
   const [knownAccount, setKnownAccount] = useState(() => { try { return localStorage.getItem("bankSetuKnownAccount") === "true"; } catch { return false; } });
