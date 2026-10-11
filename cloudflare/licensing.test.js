@@ -37,6 +37,11 @@ test('future India activation remains scheduled and calendar month duration clam
   assert.equal(licenseView(license,Date.parse(future)).canWrite,true);
   assert.throws(()=>transitionLicense(null,{kind:'annual',startAt:'invalid',durationMonths:1},now,DEFAULT_PRICING));
 });
+test('future renewal or upgrade cannot silently shorten an active paid entitlement',()=>{
+  const active=transitionLicense(null,{kind:'annual',id:'one',quotedPaise:149900},'2026-01-01T12:00:00.000Z',DEFAULT_PRICING);
+  assert.throws(()=>transitionLicense(active,{kind:'renewal',id:'two',startAt:'2027-02-01T00:00:00.000Z',quotedPaise:149900},'2026-10-01T12:00:00.000Z',DEFAULT_PRICING),/gap/);
+  assert.throws(()=>transitionLicense(active,{kind:'upgrade',id:'three',startAt:'2026-10-13T00:00:00.000Z',quotedPaise:499900},'2026-10-11T12:00:00.000Z',DEFAULT_PRICING),/now/);
+});
 test('prices are exact paise and upgrade credit is bounded',()=>{
   const pricing=validatePricing({...DEFAULT_PRICING,annualPaise:149900,lifetimePaise:499900,annualAvailable:true,lifetimeAvailable:true,upgradeCreditEnabled:true,maxCreditPaise:149900});
   assert.deepEqual(upgradeAmount(pricing,{plan:'annual',paidPaise:149900}),{duePaise:350000,creditPaise:149900});

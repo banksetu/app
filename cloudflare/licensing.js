@@ -3,6 +3,12 @@ const DAY = 86_400_000;
 export const DEFAULT_FLAGS = Object.freeze({ uiEnabled: false, newClientRequired: true, existingClientEnforcement: false, verificationEnforcement: false });
 export const DEFAULT_PRICING = Object.freeze({ annualPaise: 0, lifetimePaise: 0, annualAvailable: false, lifetimeAvailable: false, upgradeCreditEnabled: false, maxCreditPaise: 0, graceDays: 7, paymentInstructions: "Contact the Master Admin for payment details." });
 
+// Offboarding keeps the tenant document for audit and retry safety. Only a
+// completed offboarding (or a deleted document) removes it from client totals.
+export function currentTenantRecords(records) {
+  return records.filter(item => item.status !== "offboarded" && item.deletedAt == null);
+}
+
 export function validatePricing(input) {
   const money = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000_000;
   if (!input || !money(input.annualPaise) || !money(input.lifetimePaise) || !money(input.maxCreditPaise) || !Number.isInteger(input.graceDays) || input.graceDays < 0 || input.graceDays > 30 || typeof input.annualAvailable !== "boolean" || typeof input.lifetimeAvailable !== "boolean" || typeof input.upgradeCreditEnabled !== "boolean" || typeof input.paymentInstructions !== "string" || input.paymentInstructions.length > 500) throw new Error("Invalid license pricing settings.");
@@ -73,6 +79,8 @@ export function transitionLicense(current, request, now, pricing) {
   if (!Number.isFinite(Date.parse(start)) || Date.parse(start) < Date.parse(now) - 60_000 || Date.parse(start) > Date.parse(now) + 2 * 365 * DAY) throw new Error("Activation date is outside the permitted range.");
   const months = request.durationMonths === undefined ? 12 : request.durationMonths;
   if (!lifetime && (!Number.isInteger(months) || months < 1 || months > 120)) throw new Error("Invalid license duration.");
+  if(request.kind === "renewal" && current && licenseView(current,Date.parse(now),pricing.graceDays).canWrite && Date.parse(start)>Date.parse(current.expiresAt))throw new Error("Renewal start cannot leave a gap after the active license expires.");
+  if(request.kind === "upgrade" && current && licenseView(current,Date.parse(now),pricing.graceDays).canWrite && Date.parse(start)>Date.parse(now))throw new Error("Upgrade the active annual license now to avoid pausing existing access.");
   const base = request.kind === "renewal" && Date.parse(current.expiresAt) > Date.parse(start) ? current.expiresAt : start;
   const currentlyWritable = current ? licenseView(current, Date.parse(now), pricing.graceDays).canWrite : false;
   const activatedAt = request.kind === "renewal" && !currentlyWritable ? start

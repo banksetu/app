@@ -4,6 +4,7 @@ import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import SlideNotifications from "./SlideNotifications";
 import SupportCenter, { useSupportUnread } from "./SupportCenter";
+import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -61,7 +62,7 @@ import Reports from "./Reports";
 
 
 
-import bankSetuLogo from "./assets/bank-setu-logo.png";
+const bankSetuLogo = "/banksetu-icon.png";
 
 type DashboardProps = {
 
@@ -830,6 +831,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     setAdminMenuOpen(false);
 
   };
+  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page)openPage(page);};window.addEventListener('banksetu-open-page',open);return()=>window.removeEventListener('banksetu-open-page',open);});
 
   const handleLogoUpload = async (event:ChangeEvent<HTMLInputElement>) => {
     const file=event.target.files?.[0]; event.target.value="";
@@ -958,9 +960,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       </aside>
 
-      <button type="button" className="banksetu-floating-support" aria-label={supportUnread ? `Open Support Center, ${supportUnread} unread` : "Open Support Center"} title="Support Center" onClick={() => openPage("support")}>
-        <span aria-hidden="true">🎧</span>{supportUnread > 0 && <b className="banksetu-support-badge">{supportUnread > 99 ? "99+" : supportUnread}</b>}
-      </button>
+      <FloatingSupportButton unread={supportUnread} open={() => openPage("support")} />
 
       {/* MAIN AREA */}
 
@@ -3806,7 +3806,7 @@ const styles: Record<
 
       `url(${bankSetuLogo})`,
 
-    backgroundSize: "cover",
+    backgroundSize: "contain",
 
     backgroundPosition: "center",
 

@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const source=fs.readFileSync('src/platform/systemNotifications.ts','utf8').replace("import { Capacitor, registerPlugin } from '@capacitor/core';",'const Capacitor=globalThis.__platform;const registerPlugin=()=>globalThis.__android;');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText;
+const sent=[];let permissions=0,tenant='tenant-a';
+globalThis.__platform={getPlatform:()=>globalThis.__device};globalThis.__device='android';
+globalThis.__android={requestPermissions:async()=>{permissions++;return {granted:true};},show:async value=>{sent.push(value);},addListener:async()=>({remove:async()=>{}})};
+globalThis.window=new EventTarget();globalThis.sessionStorage={getItem:()=>tenant};globalThis.localStorage={getItem:()=>null};
+window.bankSetuDesktop={notify:async value=>{sent.push(value);}};
+const {notifySystem}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const event={key:'sync-failure',title:'Sync needs attention',body:'Local changes remain safe.',page:'sync-backup',category:'sync'};
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('Android permission and tenant-scoped cooldown suppress repeated native alerts without a server history',async()=>{
+ notifySystem(event);notifySystem(event);await tick();assert.equal(permissions,1);assert.equal(sent.length,1);
+ tenant='tenant-b';notifySystem(event);await tick();assert.equal(sent.length,2);assert.equal(sent[1].body,event.body);
+});
+test('Windows native notifications use the bridge; user setting disables delivery',async()=>{
+ globalThis.__device='electron';tenant='tenant-c';notifySystem(event);await tick();assert.equal(sent.length,3);
+ localStorage.getItem=()=> 'off';notifySystem({...event,key:'another'});await tick();assert.equal(sent.length,3);
+});

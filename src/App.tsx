@@ -19,6 +19,7 @@ import { bindLicenseAccount, resetLicensePermission, refreshLicensePermission, d
 import { requiresTenantLicense } from "./core/licensePolicy";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
+import { notifySystem, startNotificationNavigation } from "./platform/systemNotifications";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
@@ -92,6 +93,20 @@ function App() {
   const licensePermission = useSyncExternalStore(subscribeLicensePermission, getLicensePermission);
   const licenseReadOnly = !licensePermission.canWrite;
   const licenseWarning = licensePermission.warning;
+  useEffect(()=>{if(!isLoggedIn)return startNotificationNavigation();},[isLoggedIn]);
+  useEffect(()=>{
+    if(!isLoggedIn)return;
+    let prior=navigator.onLine;
+    const changed=()=>{if(prior===navigator.onLine)return;prior=navigator.onLine;notifySystem({key:`network:${prior?'online':'offline'}`,title:prior?'Internet restored':'Internet connection lost',body:prior?'Bank Setu will resume sync.':'Saved local changes will sync after reconnection.',page:'sync-backup',category:'network',cooldownMs:10*60_000});};
+    window.addEventListener('online',changed);window.addEventListener('offline',changed);return()=>{window.removeEventListener('online',changed);window.removeEventListener('offline',changed);};
+  },[isLoggedIn]);
+  useEffect(()=>{
+    if(!isLoggedIn||!licensePermission.tenantId)return;
+    const {state,plan,revision,daysRemaining}=licensePermission;
+    const demo=plan==='demo';
+    const alert=state==='suspended'||state==='revoked'?{title:'License access paused',body:`Bank Setu license ${state}. Open License Management.`}:state==='expired'||state==='demo_expired'?{title:demo?'Demo expired':'License expired',body:'Customer changes are paused. Open License Management.'}:state==='expiring_soon'||demo&&state==='demo_active'&&daysRemaining!==null&&daysRemaining<=2?{title:demo?'Demo ending soon':'License expiring soon',body:`${daysRemaining} day(s) remaining. Review renewal options.`}:state==='active'&&revision>1?{title:'License activated or renewed',body:'Bank Setu license permissions are active.'}:null;
+    if(alert)notifySystem({key:`license:${state}:${revision}:${daysRemaining&&daysRemaining<=2?'soon':''}`,title:alert.title,body:alert.body,page:'license-management',category:'license',cooldownMs:24*60*60_000});
+  },[isLoggedIn,licensePermission]);
   const [knownAccount, setKnownAccount] = useState(() => { try { return localStorage.getItem("bankSetuKnownAccount") === "true"; } catch { return false; } });
 
 
@@ -464,8 +479,7 @@ function App() {
     return (
       <main className="app-loader">
         <div className="loader-logo">
-          <span className="loader-bank">B</span>
-          <span className="loader-setu">S</span>
+          <img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/>
         </div>
         <p>Loading Bank Setu...</p>
       </main>

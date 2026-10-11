@@ -268,7 +268,7 @@ function AdminUsers({ embedded = false }: Props) {
         if (currentRole !== "master_owner" && currentRole !== "admin") {
           throw new Error("Only the Master Admin can delete accounts.");
         }
-        await callBankSetuWorker<{ success: boolean }>("/delete-user", { uid: user.uid });
+        await callBankSetuWorker<{ success: boolean }>("/delete-user", { uid: user.uid, ...(targetRole==='client_admin'&&user.tenantId?{tenantId:user.tenantId}:{}) });
       } else {
         await callBankSetuWorker<{ success: boolean }>("/account-action", {
           uid: user.uid,

@@ -1,4 +1,5 @@
 import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";
+import { notifySystem } from "../platform/systemNotifications";
 import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
 import { requireLicensedWrite } from "./licenseAccess";
@@ -147,15 +148,19 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
   return resultResponse(masked);
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
+const remoteDiscoveries=new Map<string,number>();
 async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
+  let discovered=0,notifyRemote=false;
   await repository.transact(scope, state => {
+    const hadPreviousSync=Boolean(state.pull?.lastCompletedAt);
     if (value.fullSnapshot === true) { const incoming = new Set(list.map(customer => String(customer.recordId))); state.records.forEach(record => { if (!record.pending && !incoming.has(record.recordId)) record.deleted = true; }); }
     for (const customer of list) {
       const recordId = String(customer.recordId || "");
       if (!recordId) continue;
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending || previous?.deleted) continue;
+      if(checkpoint&&hadPreviousSync&&!previous)discovered++;
       const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId;
       const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (samePhoto?previous?.customer.photoPreview:"") || ""},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,photoRetryAt:samePhoto?previous?.photoRetryAt:undefined,photoFailures:samePhoto?previous?.photoFailures:undefined,pending:false};
       if((value.photoNotFound===true||record.customer.photoAvailable===false)&&!record.customer.photoPreview){record.photoMissingRef=photoRef(record);record.photoRetryAt=undefined;record.photoFailures=undefined;}
@@ -168,10 +173,11 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if(value.hasNextPage){
         if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
         state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
-      }else state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize};
+      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize};notifyRemote=true;}
     }
     trimCache(state);
   });
+  if(checkpoint){const count=(remoteDiscoveries.get(scope)||0)+discovered;if(notifyRemote){remoteDiscoveries.delete(scope);if(count>0)notifySystem({key:`remote-records:${Date.now()}`,title:'New customer records synced',body:`${count} new customer record${count===1?'':'s'} synced from another device.`,page:'sync-backup',category:'sync',cooldownMs:30*60_000});}else remoteDiscoveries.set(scope,count);if(remoteDiscoveries.size>5)remoteDiscoveries.delete(remoteDiscoveries.keys().next().value!);}
   announce();
 }
 const running = new Map<string, Promise<void>>();
@@ -539,10 +545,10 @@ export function startLocalSync() {
             // Independent, low-frequency public version check; never blocks sync.
             void networkFetch("https://banksetu-app.web.app/version.json",{cache:"no-store",signal:AbortSignal.timeout(10000)}).catch(()=>undefined);
           }
-          if(recoveringCategory){recoveryLog.add({at:Date.now(),category:recoveringCategory,action:"retry original sync",result:"verified"});recoveringCategory=undefined;}
+          if(recoveringCategory){recoveryLog.add({at:Date.now(),category:recoveringCategory,action:"retry original sync",result:"verified"});recoveringCategory=undefined;notifySystem({key:'sync-recovered',title:'Sync recovered',body:'Bank Setu sync has resumed successfully.',page:'sync-backup',category:'sync'});}
           failures=0;healthError="";
         }
-      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;recoveringCategory=classifyRecovery(error);recoveryLog.add({at:Date.now(),category:recoveringCategory,action:actionRequired?"manual review required":"bounded retry",result:actionRequired?"attention":"recovering"});const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
+      }catch(error){if(signal.aborted&&signal.reason?.message==="Background sync paused on this device."){healthError="";failures=0;delay=250;}else if(signal.aborted&&(stopped||!navigator.onLine)){if(!stopped)healthError="Offline — local changes remain pending.";}else{healthError=error instanceof Error?error.message:String(error);actionRequired=!!(error as {permanent?:boolean})?.permanent;recoveringCategory=classifyRecovery(error);recoveryLog.add({at:Date.now(),category:recoveringCategory,action:actionRequired?"manual review required":"bounded retry",result:actionRequired?"attention":"recovering"});if(actionRequired||failures>=1)notifySystem({key:actionRequired?'sync-stopped':'sync-failing',title:actionRequired?'Sync needs attention':'Sync is failing',body:actionRequired?'Open Sync & Backup to review the error. Local changes remain safe.':'Repeated sync attempts have failed. Local changes remain pending.',page:'sync-backup',category:'sync'});const backoff=Math.min(300000,5000*2**Math.min(failures++,6));delay=Math.max(Number((error as {retryAfterMs?:number})?.retryAfterMs)||0,Math.round(backoff*(0.8+Math.random()*0.4)));}}
       finally{
         activeController=undefined;busy=false;if(!stopped){
           if(syncPaused||actionRequired){clearTimeout(timer);nextRetryAt=0;}

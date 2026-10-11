@@ -32,9 +32,9 @@ export async function shareAndroidBackup(text: string) {
   }
 }
 
-export async function downloadAndroidUpdate(url: string, onProgress: (percent: number) => void) {
+export async function downloadAndroidUpdate(url: string, onProgress: (percent: number, bytes?: {downloaded:number;total:number}) => void) {
   const listener = await NativeUpdate.addListener('downloadProgress', (event) => {
-    if (event.percent >= 0) onProgress(Math.min(100, Math.max(0, event.percent)));
+    onProgress(event.percent >= 0 ? Math.min(100, Math.max(0, event.percent)) : -1,{downloaded:event.downloaded,total:event.total});
   });
   try {
     await NativeUpdate.downloadAndInstall({ url });

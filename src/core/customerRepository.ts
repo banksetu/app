@@ -12,6 +12,8 @@ declare global {
     version(): Promise<string>;
     checkUpdate(): Promise<unknown>;
     installUpdate(): Promise<void>;
+    notify?(value:import('../platform/systemNotifications').SystemNotice):Promise<void>;
+    onNotificationOpen?(callback:(page:string)=>void):()=>void;
   } }
 }
 let serial: Promise<unknown> = Promise.resolve();

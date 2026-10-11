@@ -1,4 +1,4 @@
-const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage,clipboard,dialog} = require('electron');
+const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage,clipboard,dialog,Notification} = require('electron');
 const {execFileSync} = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -19,6 +19,7 @@ const trusted = event => {
 };
 const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{10,250}$/.test(scope)) throw new Error('Invalid workspace scope.');};
 if(primaryInstance)app.whenReady().then(async()=>{
+  if(process.platform==='win32')app.setAppUserModelId('in.banksetu.desktop');
   const dataDirectory = resolveDataDirectory();
   store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
   const publicKey=require('../src/generated/licensePublicKey.json');
@@ -29,6 +30,14 @@ if(primaryInstance)app.whenReady().then(async()=>{
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  ipcMain.handle('system-notification:show',(event,value)=>{
+    trusted(event);
+    if(!value||!['update','sync','network','license'].includes(value.category)||!['dashboard','sync-backup','license-management'].includes(value.page)||typeof value.title!=='string'||typeof value.body!=='string'||value.title.length>100||value.body.length>250)throw Error('Invalid system notification.');
+    if(process.platform!=='win32'||!Notification.isSupported())return false;
+    const notice=new Notification({title:value.title,body:value.body,silent:false});
+    notice.on('click',()=>{if(window&&!window.isDestroyed()){window.show();window.focus();window.webContents.send('system-notification:open',value.page);}});
+    notice.show();return true;
+  });
   const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,parentWindow:window,authorize:()=>licenseAuthority.protectedAction()});
   printPreview.attach(window);
   // Customer print previews use document.write() into an about:blank window.

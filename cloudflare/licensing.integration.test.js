@@ -57,7 +57,12 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const id='01234567-89ab-4cde-8fab-0123456789ab';
     const deniedAssignment=await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true});
     assert.equal(deniedAssignment.status,403,JSON.stringify(deniedAssignment.body));
-    assert.equal((await call('master','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true})).status,200);
+    const indiaToday=new Date(Date.now()+330*60_000).toISOString().slice(0,10);
+    assert.equal((await call('master','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true,startDate:indiaToday})).status,200,'a selected India date of today activates immediately');
+    store.set('tenants/tenant-future',doc('tenants/tenant-future',{tenantId:'tenant-future',ownerUid:'future',status:'active'}));
+    const futureDate=new Date(Date.now()+3*86400000+330*60_000).toISOString().slice(0,10);
+    const future=(await call('master','/license-admin-assign',{tenantId:'tenant-future',plan:'annual',requestId:'67890123-89ab-4cde-8fab-0123456789ab',paymentConfirmed:true,startDate:futureDate,durationMonths:12,paidPaise:149900}));
+    assert.equal(future.status,200,JSON.stringify(future.body));assert.equal(future.body.license.status,'scheduled');assert.equal(future.body.license.activatedAt,new Date(`${futureDate}T00:00:00+05:30`).toISOString());
     const verified=await call('client','/license-me',{});
     const first=verified.body.license;
     assert.equal(first.tenantId,'tenant-a');assert.equal(first.plan,'annual');assert.equal(first.revision,1);
@@ -100,5 +105,43 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert(secondPage.body.activities.length>=5);assert.equal(secondPage.body.nextCursor,null);
     assert.equal(new Set([...firstPage.body.activities,...secondPage.body.activities].map(item=>item.id)).size,firstPage.body.activities.length+secondPage.body.activities.length);
     assert.equal((await call('client','/license-admin-history',{})).status,403);
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+test('authoritative license listing excludes fully offboarded and orphaned tenants while preserving active, expired demo, suspended and user counts',async()=>{
+  const store=new Map([
+    ['users/master',doc('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'})],
+    ['tenants/paid',doc('tenants/paid',{tenantId:'paid',bankName:'Paid CSP',status:'active'})],
+    ['tenants/demo',doc('tenants/demo',{tenantId:'demo',status:'active'})],
+    ['tenants/deleted',doc('tenants/deleted',{tenantId:'deleted',status:'offboarded'})],
+    ['tenantLicenses/paid',doc('tenantLicenses/paid',{tenantId:'paid',plan:'lifetime',status:'suspended',revision:1})],
+    ['tenantLicenses/demo',doc('tenantLicenses/demo',{tenantId:'demo',plan:'demo',status:'active',activatedAt:'2026-09-01T00:00:00.000Z',expiresAt:'2026-09-06T00:00:00.000Z'})],
+    ['tenantLicenses/deleted',doc('tenantLicenses/deleted',{tenantId:'deleted',plan:'demo',status:'active',activatedAt:'2026-09-01T00:00:00.000Z',expiresAt:'2026-09-06T00:00:00.000Z'})],
+    ['licenseRequests/orphan',doc('licenseRequests/orphan',{tenantId:'deleted',status:'pending'})],
+  ]);
+  globalThis.fetch=async(url,options={})=>{
+    const text=String(url);
+    if(text.includes('oauth2.googleapis.com/token'))return new Response(JSON.stringify({access_token:'synthetic',expires_in:3600}));
+    if(text.includes('accounts:lookup'))return new Response(JSON.stringify({users:[{localId:'master',email:'owner@example.invalid',emailVerified:true}]}));
+    if(text.includes('firestore.googleapis.com')){
+      const path=decodeURIComponent(text.split('/documents')[1]||'');
+      if(path.startsWith('/tenantLicenses?')||path.startsWith('/tenants?')||path.startsWith('/licenseRequests?')){
+        const collection=path.split('?')[0].slice(1);
+        return new Response(JSON.stringify({documents:[...store].filter(([key])=>key.startsWith(`${collection}/`)).map(([,value])=>value)}));
+      }
+      const key=path.replace(/^\//,'').split('?')[0],value=store.get(key);
+      return value?new Response(JSON.stringify(value)):new Response('{}',{status:404});
+    }
+    throw Error(`Unexpected request ${text} ${options.method}`);
+  };
+  const list=async()=>{const response=await worker.fetch(new Request('https://worker.example/license-admin-list',{method:'POST',headers:{origin:'https://banksetu-app.web.app',authorization:'Bearer master','content-type':'application/json'},body:'{}'}),env);assert.equal(response.status,200);return response.json();};
+  try{
+    let result=await list();assert.equal(result.summary.total,2);assert.equal(result.summary.demo,1);assert.equal(result.summary.expired,1);assert.equal(result.summary.suspended,1);assert.equal(result.summary.pending,0);assert.equal(result.licenses.length,2);
+    store.set('users/new-user',doc('users/new-user',{role:'client_user',tenantId:'paid'}));assert.equal((await list()).summary.total,2);
+    store.delete('users/new-user');assert.equal((await list()).summary.total,2);
+    store.set('tenants/new',doc('tenants/new',{tenantId:'new',status:'active'}));assert.equal((await list()).summary.total,3);
+    store.set('tenants/demo',doc('tenants/demo',{tenantId:'demo',status:'offboarding'}));assert.equal((await list()).summary.total,3,'partial offboarding remains counted');
+    store.set('tenants/demo',doc('tenants/demo',{tenantId:'demo',status:'offboarded'}));result=await list();assert.equal(result.summary.total,2);assert.equal(result.summary.demo,0);assert.equal(result.summary.expired,0);
+    store.delete('tenants/paid');result=await list();assert.equal(result.summary.total,1);assert.equal(result.summary.suspended,0);
   }finally{globalThis.fetch=originalFetch;}
 });

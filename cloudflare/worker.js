@@ -1,5 +1,5 @@
 import { masterUsage } from "./masterStatus.js";
-import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validateInquiry, licenseView, upgradeAmount, transitionLicense } from "./licensing.js";
+import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validateInquiry, licenseView, upgradeAmount, transitionLicense, currentTenantRecords } from "./licensing.js";
 import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 export function workspaceBankSettingsPath(actor) {
@@ -394,6 +394,9 @@ function licenseStartDate(value) {
   const [year,month,day]=value.split("-").map(Number);
   const date=new Date(Date.UTC(year,month-1,day));
   if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return null;
+  // A selected India calendar date of today means activation now. Returning
+  // midnight would be interpreted as a past instant later in the same day.
+  if(value===new Date(Date.now()+330*60_000).toISOString().slice(0,10))return undefined;
   return new Date(`${value}T00:00:00+05:30`).toISOString();
 }
 async function handleLicensing(request, env, actor, route) {
@@ -466,16 +469,17 @@ async function handleLicensing(request, env, actor, route) {
       return { records, truncated: Boolean(pageToken) };
     };
     const [requestPage, licensePage, tenantPage] = await Promise.all([query("licenseRequests"), query("tenantLicenses"), query("tenants")]);
-    const tenantNames=new Map(tenantPage.records.map(item=>[item.tenantId||item.id,item.bankName||""]));
-    const licenses = licensePage.records.map(item=>({...item,bankName:tenantNames.get(item.tenantId)||""}));
-    const requests=requestPage.records.map(item=>({...item,bankName:item.bankName||tenantNames.get(item.tenantId)||"",clientName:item.clientName||item.name||""}));
+    const currentTenants=currentTenantRecords(tenantPage.records);
+    const tenantNames=new Map(currentTenants.map(item=>[item.tenantId||item.id,item.bankName||""]));
+    const licenses = licensePage.records.filter(item=>tenantNames.has(item.tenantId)).map(item=>({...item,bankName:tenantNames.get(item.tenantId)||""}));
+    const requests=requestPage.records.filter(item=>!item.tenantId||tenantNames.has(item.tenantId)).map(item=>({...item,bankName:item.bankName||tenantNames.get(item.tenantId)||"",clientName:item.clientName||item.name||""}));
     const stateCount = state => licenses.filter(item => {
       try { return licenseView(item, Date.now(), settings.pricing.graceDays).state === state; }
       catch { return false; }
     }).length;
     return json({ requests, licenses,
-      tenants: tenantPage.records.map(item => ({ tenantId: item.tenantId || item.id, bankName: item.bankName || "" })),
-      summary: { total: tenantPage.records.length, active: stateCount("active") + stateCount("expiring_soon"), soon: stateCount("expiring_soon"), expired: stateCount("expired"), scheduled:stateCount("scheduled"), suspended:stateCount("suspended")+stateCount("revoked"), demo:stateCount("demo_active"), pending: requests.filter(item => item.status === "pending").length },
+      tenants: currentTenants.map(item => ({ tenantId: item.tenantId || item.id, bankName: item.bankName || "" })),
+      summary: { total: currentTenants.length, active: stateCount("active") + stateCount("expiring_soon"), soon: stateCount("expiring_soon"), expired: stateCount("expired")+stateCount("demo_expired"), scheduled:stateCount("scheduled"), suspended:stateCount("suspended")+stateCount("revoked"), demo:licenses.filter(item=>item.plan==="demo").length, pending: requests.filter(item => item.status === "pending").length },
       truncated: requestPage.truncated || licensePage.truncated || tenantPage.truncated });
   }
   if (route === "/license-admin-history") {
@@ -1197,10 +1201,21 @@ async function cascadeClientAdminAction(env, actor, target, action) {
   await updateTenantStatus(env, tenantId, suspend ? "blocked" : "active", actor.uid);
 }
 
-async function deleteClientWorkspace(env, actor, uid) {
+async function deleteClientWorkspace(env, actor, uid, tenantHint = "") {
   if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can remove a client workspace." }, 403);
   if (!uid || uid.length > 128 || uid === actor.uid) return json({ error: "Select a valid Client Admin account." }, 400);
   const profile = await getProfile(env, uid);
+  if (!profile && /^[a-zA-Z0-9_-]{1,128}$/.test(tenantHint)) {
+    const pending=await licenseDoc(env,`/tenants/${tenantHint}`);
+    const data=licenseFields(pending);
+    if(data.ownerUid===uid && data.status==="offboarding") {
+      const users=await listWorkspaceUsers(env,tenantHint);
+      if(users.some(user=>!["client_admin","client_user"].includes(String(user.role||"").toLowerCase())))return json({error:"Unexpected workspace role; no accounts were changed."},409);
+      for(const user of users){await authDelete(env,user.uid).catch(error=>{if(error.status!==404&&error.status!==400)throw error;});await firestoreRequest(env,`/users/${encodeURIComponent(user.uid)}`,{method:"DELETE"}).catch(error=>{if(error.status!==404)throw error;});}
+      await updateTenantStatus(env,tenantHint,"offboarded",actor.uid);
+      return json({success:true,message:"Interrupted workspace offboarding completed. Client-owned Google files were kept."});
+    }
+  }
   if (!profile || String(profile.role || "").toLowerCase() !== "client_admin" || !profile.tenantId) {
     return json({ error: "Select a Client Admin with an assigned workspace." }, 404);
   }
@@ -1264,7 +1279,7 @@ async function deleteClientWorkspace(env, actor, uid) {
 
 async function handleDeleteClientWorkspace(request, env, actor) {
   const body = await request.json().catch(() => ({}));
-  return deleteClientWorkspace(env, actor, String(body.uid || "").trim());
+  return deleteClientWorkspace(env, actor, String(body.uid || "").trim(), String(body.tenantId || "").trim());
 }
 
 function canManage(actor, target) {
@@ -1287,6 +1302,7 @@ async function handleAccountAction(request, env, actor, deleting) {
     return json({ error: "Only the Master Admin can delete accounts." }, 403);
   }
   const target = await getProfile(env, uid);
+  if (!target && deleting && body.tenantId) return deleteClientWorkspace(env,actor,uid,String(body.tenantId).trim());
   if (!target) return json({ error: "The account no longer exists." }, 404);
   if (!canManage(actor.profile, target)) return json({ error: "You cannot manage this account." }, 403);
   const targetRole = String(target.role || "user").toLowerCase();

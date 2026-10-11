@@ -4,6 +4,8 @@ import { downloadAndroidUpdate, isAndroid } from "./platform/android/runtime";
 import { checkAndroidUpdate } from "./platform/android/updates";
 import type { ReleaseChangelog } from "./platform/releaseNotes";
 import type { UpdateManifest } from "./platform/updateManifest";
+import { notifySystem } from "./platform/systemNotifications";
+import "./SoftwareUpdateNotice.css";
 
 declare const __APP_VERSION__: string;
 
@@ -11,7 +13,8 @@ type DesktopBridge = {
   version(): Promise<string>;
   checkUpdate(): Promise<unknown>;
   installUpdate(): Promise<void>;
-  onUpdateProgress(callback: (progress: { percent?: number }) => void): () => void;
+  onUpdateProgress(callback: (progress: { percent?: number;transferred?:number;total?:number;bytesPerSecond?:number }) => void): () => void;
+  onUpdateReady?(callback:()=>void):()=>void;
 };
 
 type UpdateNoticeState = {
@@ -22,6 +25,7 @@ type UpdateNoticeState = {
   changelog?: ReleaseChangelog;
   releaseDate?: string;
   platform: "web" | "android" | "windows";
+  currentVersion:string;
 };
 
 const desktopBridge = () =>
@@ -51,6 +55,7 @@ async function findUpdate(): Promise<UpdateNoticeState> {
       changelog: result.changelog,
       releaseDate: result.releaseDate,
       platform: "android",
+      currentVersion:result.currentVersion,
     };
   }
 
@@ -70,6 +75,7 @@ async function findUpdate(): Promise<UpdateNoticeState> {
       changelog: result.changelog,
       releaseDate: result.releaseDate,
       platform: "windows",
+      currentVersion:installedVersion,
     };
   }
 
@@ -87,6 +93,7 @@ async function findUpdate(): Promise<UpdateNoticeState> {
     changelog: manifest.changelog?.windows?.version === latestVersion ? manifest.changelog.windows : undefined,
     releaseDate: manifest.releaseDate,
     platform: "web",
+    currentVersion:current,
   };
 }
 
@@ -95,14 +102,19 @@ export default function SoftwareUpdateNotice() {
   const [message, setMessage] = useState("");
   const [installing, setInstalling] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  const [bytes,setBytes]=useState<{downloaded:number;total:number;speed:number}|null>(null);
+  const [stage,setStage]=useState<'ready'|'downloading'|'install-ready'|'installing'|'error'>('ready');
 
   useEffect(() => {
     const bridge = desktopBridge();
-    return bridge?.onUpdateProgress?.(event => {
-      const percent = Math.min(100, Math.max(0, Number(event.percent || 0)));
-      setProgress(percent);
-      setMessage(`Downloading Windows update… ${Math.round(percent)}%`);
+    const stop=bridge?.onUpdateProgress?.(event => {
+      const percent=Number(event.percent);
+      setProgress(Number.isFinite(percent)?Math.min(100,Math.max(0,percent)):null);
+      setBytes({downloaded:Number(event.transferred)||0,total:Number(event.total)||0,speed:Number(event.bytesPerSecond)||0});
+      setStage('downloading');setMessage('Downloading Windows update…');
     });
+    const ready=bridge?.onUpdateReady?.(()=>{setStage('install-ready');setMessage('Download verified by the updater. Ready to install.');});
+    return ()=>{stop?.();ready?.();};
   }, []);
 
   useEffect(() => {
@@ -113,7 +125,7 @@ export default function SoftwareUpdateNotice() {
       if (!result.available) { setNotice(null); return; }
       let dismissed = "";
       try { dismissed = sessionStorage.getItem("bankSetuUpdateDismissed") || ""; } catch { /* Storage is optional. */ }
-      if (dismissed !== result.latestVersion) setNotice(result);
+      if (dismissed !== result.latestVersion){setNotice(result);if(result.platform!=='web')notifySystem({key:`update:${result.platform}:${result.latestVersion}`,title:'Bank Setu update available',body:`Version ${result.latestVersion} is ready to download.`,page:'dashboard',category:'update',cooldownMs:24*60*60_000});}
     });
     return () => { active = false; stop(); };
   }, []);
@@ -129,21 +141,22 @@ export default function SoftwareUpdateNotice() {
   const install = async () => {
     if (installing) return;
     setInstalling(true);
-    setProgress(0);
+    setProgress(null);setBytes(null);setStage('downloading');setMessage('');
     let handedToInstaller = false;
     try {
       if (notice.platform === "android") {
         setMessage("Downloading Android update…");
-        await downloadAndroidUpdate(notice.downloadUrl, percent => { setProgress(percent); setMessage(`Downloading Android update… ${Math.round(percent)}%`); });
-        setProgress(100);
+        let last={at:Date.now(),bytes:0};
+        await downloadAndroidUpdate(notice.downloadUrl,(percent,transfer)=>{setProgress(percent<0?null:percent);if(transfer){const now=Date.now(),elapsed=(now-last.at)/1000;const speed=elapsed>=.5?Math.max(0,(transfer.downloaded-last.bytes)/elapsed):0;if(elapsed>=.5)last={at:now,bytes:transfer.downloaded};setBytes({downloaded:transfer.downloaded,total:transfer.total,speed});}setMessage('Downloading Android update…');});
+        setStage('installing');
         setMessage("Download complete. Android installer opened; approve the system installation prompt.");
         handedToInstaller = true;
         return;
       }
       if (notice.platform === "windows" && desktopBridge()) {
-        setMessage("Downloading and verifying the Windows update…");
+        setMessage("Downloading Windows update…");
         await desktopBridge()!.installUpdate();
-        setProgress(100);
+        setStage('installing');
         setMessage("Update downloaded. Installing and restarting Bank Setu…");
         handedToInstaller = true;
         return;
@@ -154,6 +167,7 @@ export default function SoftwareUpdateNotice() {
       }
       window.location.reload();
     } catch (error) {
+      setStage('error');
       setMessage(
         error instanceof Error
           ? error.message
@@ -162,84 +176,13 @@ export default function SoftwareUpdateNotice() {
     } finally { if (!handedToInstaller) setInstalling(false); }
   };
 
-  return (
-    <aside
-      role="status"
-      aria-live="polite"
-      style={{
-        position: "fixed",
-        top: 16,
-        right: 16,
-        zIndex: 3000,
-        width: "min(380px, calc(100vw - 32px))",
-        padding: "16px 18px",
-        borderRadius: 16,
-        color: "#fff",
-        background:
-          "linear-gradient(135deg, rgba(11,56,83,.98), rgba(15,126,123,.98))",
-        boxShadow: "0 18px 44px rgba(4,25,42,.28)",
-        border: "1px solid rgba(255,255,255,.2)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <strong style={{ display: "block", fontSize: 15 }}>
-            Bank Setu Update Available
-          </strong>
-          <span style={{ display: "block", marginTop: 4, fontSize: 13, opacity: 0.9 }}>
-            Version {notice.latestVersion} is ready to download.
-          </span>
-          {notice.releaseDate && <span style={{display:"block",marginTop:3,fontSize:12,opacity:.8}}>Released {notice.releaseDate}</span>}
-        </div>
-        <button
-          type="button"
-          aria-label="Dismiss update notification"
-          onClick={dismiss}
-          style={{
-            border: 0,
-            background: "transparent",
-            color: "#fff",
-            fontSize: 22,
-            cursor: "pointer",
-            lineHeight: 1,
-          }}
-        >
-          ×
-        </button>
-      </div>
-      {groups.length > 0 && <div style={{marginTop:14,maxHeight:"min(34vh,220px)",overflowY:"auto",paddingRight:6}}>
-        <strong style={{fontSize:14}}>What&apos;s New in This Version</strong>
-        {groups.map(([heading,items])=><section key={heading} style={{marginTop:9}}><strong style={{fontSize:12}}>{heading}</strong><ul style={{margin:"5px 0 0",paddingLeft:20,fontSize:12,lineHeight:1.45}}>{items.map((item,index)=><li key={`${heading}-${index}`}>{item}</li>)}</ul></section>)}
-      </div>}
-      {!groups.length && notice.notes && (
-        <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.88 }}>
-          {notice.notes}
-        </p>
-      )}
-      {message && (
-        <p style={{ margin: "10px 0 0", fontSize: 12, color: "#ffe3a8" }}>
-          {message}
-        </p>
-      )}
-      {progress !== null && installing && <div role="progressbar" aria-label="Update download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} style={{marginTop:12,height:12,borderRadius:8,background:"#ffffff44",overflow:"hidden"}}><div style={{width:`${progress}%`,height:"100%",background:"#d7ff75",transition:"width .2s"}} /></div>}
-      {progress !== null && installing && <strong style={{display:"block",marginTop:4,fontSize:12}}>{Math.round(progress)}%</strong>}
-      <button
-        type="button"
-        disabled={installing}
-        onClick={() => void install()}
-        style={{
-          marginTop: 14,
-          padding: "9px 14px",
-          border: 0,
-          borderRadius: 9,
-          background: "#d7ff75",
-          color: "#153c34",
-          fontWeight: 800,
-          cursor: "pointer",
-        }}
-      >
-        {installing ? "Downloading…" : "Download / Install update"}
-      </button>
-    </aside>
-  );
+  const formatBytes=(value:number)=>value>=1024*1024?`${(value/1024/1024).toFixed(1)} MB`:`${Math.round(value/1024)} KB`;
+  return <div className="update-backdrop" role="presentation"><aside className="update-dialog" role="dialog" aria-modal="true" aria-label="Bank Setu update available">
+    <button type="button" className="update-close" aria-label="Close update popup" onClick={dismiss}>×</button>
+    <header className="update-header"><img src="/banksetu-icon.png" alt="Bank Setu"/><div><h2>Bank Setu Update Available</h2><p>A new version is ready with improvements and new features.</p></div></header>
+    <div className="update-versions"><div><small>Current version</small><strong>v{notice.currentVersion||'Unknown'}</strong></div><span aria-hidden="true">→</span><div><small>Latest version</small><strong>v{notice.latestVersion}</strong></div></div>
+    {(installing||progress!==null||stage==='error')&&<div className="update-progress"><div className="update-progress-heading"><strong>{stage==='error'?'Download failed':stage==='install-ready'?'Ready to install':stage==='installing'?'Opening installer…':'Downloading update…'}</strong>{progress!==null&&<strong>{Math.round(progress)}%</strong>}</div>{progress!==null&&<div role="progressbar" aria-label="Update download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} className="update-track"><div style={{width:`${progress}%`}}/></div>}{bytes&&<div className="update-transfer"><span>{formatBytes(bytes.downloaded)}{bytes.total>0?` / ${formatBytes(bytes.total)}`:''}</span>{bytes.speed>0&&<span>{formatBytes(bytes.speed)}/s</span>}</div>}{message&&<p role={stage==='error'?'alert':'status'}>{message}</p>}</div>}
+    <section className="update-notes"><h3>▤ What&apos;s New in v{notice.latestVersion}</h3>{groups.length?groups.map(([heading,items])=><div key={heading}><strong>{heading}</strong><ul>{items.map((item,index)=><li key={`${heading}-${index}`}>{item}</li>)}</ul></div>):<p>{notice.notes||'See release details for this version.'}</p>}{notice.releaseDate&&<small>Released {notice.releaseDate}</small>}</section>
+    <footer className="update-actions"><button type="button" className="update-later" onClick={dismiss}>Install Later</button><button type="button" className="update-install" disabled={installing} onClick={()=>void install()}>{installing?'Downloading…':stage==='error'?'Retry Download':notice.platform==='web'?'Open Download':'Download & Install'}</button></footer>
+  </aside></div>;
 }
