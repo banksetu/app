@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.66",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.66/BankSetu-Setup-1.0.66-x64.exe",
+  "latestVersion": "1.0.67",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.67/BankSetu-Setup-1.0.67-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.66",
-  "releaseTag": "v1.0.66",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.66",
+  "version": "1.0.67",
+  "releaseTag": "v1.0.67",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.67",
   "releaseDate": "2026-10-11",
-  "windowsVersion": "1.0.66",
-  "androidBuild": 1000066,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.66/BankSetu-Setup-1.0.66-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.66/BankSetu-Android-1000066.apk",
+  "windowsVersion": "1.0.67",
+  "androidBuild": 1000067,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.67/BankSetu-Setup-1.0.67-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.67/BankSetu-Android-1000067.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.66",
+      "version": "1.0.67",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Repair customer PDF export and report Android storage accurately."
+          "Match approved license dashboard and sidebar layout."
         ]
       }
     },
     "android": {
-      "version": "1.0.66",
+      "version": "1.0.67",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Repair customer PDF export and report Android storage accurately."
+          "Match approved license dashboard and sidebar layout."
         ]
       }
     }
