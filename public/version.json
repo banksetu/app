@@ -16,7 +16,6 @@
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Expose synthetic license denial reason in Worker regression test.",
           "Bank Setu licensing safety and stability fixes."
         ]
       }
@@ -26,7 +25,6 @@
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Expose synthetic license denial reason in Worker regression test.",
           "Bank Setu licensing safety and stability fixes."
         ]
       }
