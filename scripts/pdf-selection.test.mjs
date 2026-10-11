@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import ts from 'typescript';
 
 const source=ts.transpileModule(fs.readFileSync('src/core/pdfSelection.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText;
-const {loadPdfCustomers}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {loadPdfCustomers,selectCustomerPdfRecords}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 test('complete local customer selection makes no cloud request',async()=>{
  const local=[{recordId:'one',name:'Local'}];let calls=0;
@@ -25,4 +25,12 @@ test('offline partial cache stays visibly partial; failed tenant page cannot pro
  const local=[{recordId:'one'}];
  assert.deepEqual(await loadPdfCustomers(local,true,false,undefined),{records:local,incomplete:true});
  await assert.rejects(loadPdfCustomers(local,true,true,async()=>({success:false,message:'Bridge unavailable'})),/Bridge unavailable/);
+});
+
+test('date and exact string account filters retain leading zeroes and tenant selection',()=>{
+ const rows=[{recordId:'one',accountNo:'00012',accountOpeningDate:'11/10/2026',name:'One'},{recordId:'two',accountNo:'0012',accountOpeningDate:'2026-10-12',name:'Two'}];
+ assert.deepEqual(selectCustomerPdfRecords(rows,'account','00012','',''),[rows[0]]);
+ assert.deepEqual(selectCustomerPdfRecords(rows,'date','2026-10-11','2026-10-11',''),[rows[0]]);
+ assert.deepEqual(selectCustomerPdfRecords(rows,'date','2026-10-13','2026-10-13',''),[]);
+ assert.deepEqual(selectCustomerPdfRecords(rows,'search','','','two'),[rows[1]]);
 });

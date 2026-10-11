@@ -1,5 +1,8 @@
 import type { CustomerRepository, LocalState } from "../../core/schema";
 let opened: Promise<IDBDatabase> | undefined;
+const writeError=(error:unknown)=>error instanceof DOMException && error.name==='QuotaExceededError'
+  ? new Error('Device or WebView storage is full. The customer was not saved. Free device space and retry; existing records and pending sync remain intact.')
+  : error || new Error('Local save failed; record was not queued.');
 function database() {
   return opened ||= new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open("banksetu-local-v1", 1);
@@ -28,11 +31,11 @@ export const indexedDbRepository: CustomerRepository = {
         try {
           const state: LocalState = request.result || {records:[], operations:[]};
           change(state); store.put(state, scope);
-        } catch (error) { tx.abort(); reject(error); }
+        } catch (error) { tx.abort(); reject(writeError(error)); }
       };
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || new Error("Local save failed; record was not queued."));
+      tx.onerror = () => reject(writeError(tx.error));
+      tx.onabort = () => reject(writeError(tx.error));
     });
   },
 };

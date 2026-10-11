@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BankSetuUpdatePlugin.class);
         registerPlugin(BankSetuSharePlugin.class);
         registerPlugin(BankSetuNotificationsPlugin.class);
+        registerPlugin(BankSetuStoragePlugin.class);
         super.onCreate(state);
     }
 }

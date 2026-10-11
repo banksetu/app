@@ -5,7 +5,9 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 export const isAndroid = () => Capacitor.getPlatform() === 'android';
-const NativePrint = registerPlugin<{ print(options?: {duplex?: boolean}): Promise<void> }>('BankSetuPrint');
+const NativePrint = registerPlugin<{ print(options?: {duplex?: boolean}): Promise<void>;printPdf(options:{base64:string}):Promise<void> }>('BankSetuPrint');
+const NativeStorage = registerPlugin<{info():Promise<{totalBytes:number;availableBytes:number;appDataBytes:number;appDataComplete:boolean}>}>('BankSetuStorage');
+export const androidStorageInfo = () => NativeStorage.info();
 const NativeUpdate = registerPlugin<{
   downloadAndInstall(options: { url: string }): Promise<void>;
   addListener(eventName: 'downloadProgress', listenerFunc: (event: { downloaded: number; total: number; percent: number }) => void): Promise<{ remove: () => Promise<void> }>;
@@ -21,6 +23,7 @@ export async function printAndroidDocument(duplex: boolean) {
   await requireLicensedWrite();
   await NativePrint.print({duplex});
 }
+export async function printAndroidPdf(base64:string){await requireLicensedWrite();await NativePrint.printPdf({base64});}
 export async function shareAndroidBackup(text: string) {
   const path = `BankSetu-backup-${Date.now()}.json`;
   const result = await Filesystem.writeFile({path, data: text, directory: Directory.Cache, encoding: Encoding.UTF8});

@@ -1,8 +1,11 @@
 import { snapshot } from "./AllCustomerData";
-import { isAndroid } from "./platform/android/runtime";
+import { isAndroid, printAndroidPdf } from "./platform/android/runtime";
+import { customerPdfBuilder } from "./core/customerPdf";
+import PdfDocumentPreview from "./PdfDocumentPreview";
+import { classifyRecovery } from "./core/recovery";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getLocalStatus } from "./core/localData";
+import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
 
@@ -16,9 +19,9 @@ import {
 import { getAuth } from "firebase/auth";
 import { getCustomerSearchApiUrl } from "./tenantApi";
 import { requireLicensedWrite } from "./core/licenseAccess";
-import { loadPdfCustomers } from "./core/pdfSelection";
+import { loadPdfCustomers, selectCustomerPdfRecords } from "./core/pdfSelection";
 
-const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>}}).bankSetuDesktop;
+const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>;saveCustomerPdf?: (base64:string)=>Promise<{saved?:boolean;cancelled?:boolean}>;openCustomerPdf?: (base64:string)=>Promise<{opened?:boolean}>}}).bankSetuDesktop;
 
 /* =========================================================
 
@@ -214,29 +217,19 @@ export default function Customers() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfIncomplete, setPdfIncomplete] = useState(false);
   const pdfGenerating = useRef(false);
+  const [pdfBlob,setPdfBlob]=useState<Blob|null>(null);
+  const [pdfCount,setPdfCount]=useState(0);
+  const [pdfProgress,setPdfProgress]=useState(0);
+  const [pdfBusy,setPdfBusy]=useState(false);
 
   const pdfKey = (record: Record<string, unknown>) => String(record.recordId || record.rowNumber);
-  const pdfMatches = pdfRecords.filter(record => {
-    if (pdfMode === "all") return true;
-    if (pdfMode === "date") {
-      const date = String(record.accountOpeningDate || "").trim();
-      // The opening date is the only existing date on customer records.
-      const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : /^\d{2}[-/]\d{2}[-/]\d{4}$/.test(date) ? `${date.slice(6)}-${date.slice(3,5)}-${date.slice(0,2)}` : "";
-      return !!day && day >= pdfFrom && day <= pdfTo;
-    }
-    if (pdfMode === "account") {
-      const account = String(record.accountNo || "").trim();
-      return !!account && account >= pdfFrom.trim() && account <= (pdfTo.trim() || pdfFrom.trim());
-    }
-    const term = pdfSearch.trim().toLocaleLowerCase();
-    return !!term && [record.name, record.accountNo, record.enrolId].some(value => String(value || "").toLocaleLowerCase().includes(term));
-  });
+  const pdfMatches = selectCustomerPdfRecords(pdfRecords,pdfMode,pdfFrom,pdfTo,pdfSearch);
   const pdfValid = !pdfLoading && (pdfMode === "all" || (pdfMode === "date" && !!pdfFrom && !!pdfTo && pdfFrom <= pdfTo) || (pdfMode === "account" && !!pdfFrom.trim() && (!pdfTo.trim() || pdfFrom.trim() <= pdfTo.trim())) || (pdfMode === "search" && !!pdfSearch.trim()));
   const pdfChosen = pdfMode === "search" ? pdfMatches.filter(record => pdfSelected.has(pdfKey(record))) : pdfMatches;
 
   const openPdfSelection = async () => {
     if (pdfLoading || pdfGenerating.current) return;
-    setError(""); setPdfOpen(true); setPdfLoading(true); setPdfSelected(new Set());
+    setError(""); setPdfBlob(null); setPdfOpen(true); setPdfLoading(true); setPdfSelected(new Set());
     try {
       await requireLicensedWrite();
       const [records, status] = localModeEnabled()
@@ -565,77 +558,74 @@ export default function Customers() {
     } catch (cause) {setError(cause instanceof Error?cause.message:"Could not share preview image.");}
   };
 
-  const makeAllCustomersPdf = (records: Record<string, unknown>[]) => {
-    if (!pdfValid || !records.length || pdfGenerating.current) return;
-    pdfGenerating.current = true;
-    setError("");
-    const popup = window.open("", "_blank", "width=1050,height=850");
-    if (!popup) { pdfGenerating.current = false; setError("Allow the PDF preview popup and try again."); return; }
-    let cancelled = false;
-    const originalStyles = document.querySelector(".customers-page > style")?.textContent || "";
-    popup.document.open();
-    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Bank Setu - All Customers PDF</title><style>${originalStyles}</style><style>
-      @page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}
-      body{margin:0;background:#e7ebf0;color:#111827;font-family:Arial,sans-serif}
-      .export-toolbar{position:sticky;top:0;z-index:2;background:#102d38;color:#fff;padding:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-      .export-toolbar button{padding:9px 16px;border:0;border-radius:7px;cursor:pointer}
-      .export-page{width:194mm;height:281mm;margin:12px auto;background:#fff;page-break-after:always;break-after:page;overflow:hidden;display:flex;flex-direction:column;gap:3mm;padding:0}
-      .export-page:last-child{page-break-after:auto;break-after:auto}
-      .export-slot{height:90mm;flex:none;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
-      .export-slot .customer-preview{width:1100px!important;min-height:420px!important;transform:scale(var(--card-scale,.66));transform-origin:top left;box-shadow:none!important;}
-      .export-slot .customer-grid{grid-template-columns:1fr 1.2fr 170px!important;gap:30px!important}
-      .export-slot .info-row{grid-template-columns:145px 12px 1fr!important}
-      .export-slot .photo-section{align-items:center!important}
-      @media print{html,body{background:white!important;margin:0!important;padding:0!important}body *{visibility:visible!important}.export-toolbar{display:none!important}.export-page{margin:0!important}.export-slot .customer-preview{position:static!important;padding:28px!important;border-radius:18px!important;width:1100px!important;transform:scale(var(--card-scale,.66))!important}.export-slot .customer-grid{grid-template-columns:1fr 1.2fr 170px!important}}
-      @media screen and (max-width:850px){.export-page{zoom:.55;margin:8px auto}}
-    </style></head><body><div class="export-toolbar"><strong id="progress">Loading local customers…</strong><button id="print" disabled>Save PDF / Print</button><button id="cancel">Cancel</button></div><div id="pages"></div></body></html>`);
-    popup.document.close();
-    popup.document.getElementById("cancel")?.addEventListener("click", () => { cancelled = true; popup.close(); });
-    popup.document.getElementById("print")?.addEventListener("click", () => {
-      void requireLicensedWrite().then(() => { if (!popup.closed) popup.print(); }).catch(reason => {
-        if (!popup.closed) popup.document.getElementById("progress")!.textContent = reason instanceof Error ? reason.message : "License verification is required to print.";
-      });
-    });
-    setPdfLoading(true);
-    void (async () => {
-      try {
-        await requireLicensedWrite();
-        setPdfOpen(false);
-        const pages = popup.document.getElementById("pages")!;
-        const progress = popup.document.getElementById("progress")!;
-        let skipped = 0;
-        let failed = 0;
-        for (let i = 0; i < records.length; i += 3) {
-          if (cancelled || popup.closed) return;
-          const page = popup.document.createElement("main"); page.className = "export-page";
-          for (const record of records.slice(i, i + 3)) {
-            const item = previewCustomer(record);
-            if (!item.name && !item.enrolId && !item.accountNo) { skipped++; continue; }
-            try {
-              const slot = popup.document.createElement("div"); slot.className = "export-slot";
-              slot.innerHTML = renderToStaticMarkup(<CustomerPreviewCard customer={item} />);
-              page.appendChild(slot);
-            } catch { failed++; }
-          }
-          if (page.childElementCount) {
-            pages.appendChild(page);
-            for (const card of page.querySelectorAll<HTMLElement>(".customer-preview")) {
-              card.style.setProperty("--card-scale",String(Math.min(.66,(90*96/25.4-2)/card.scrollHeight)));
-            }
-          }
-          if (i % 30 === 0) { progress.textContent = `Preparing ${Math.min(i + 3, records.length)} / ${records.length} local customers…`; await new Promise(resolve => setTimeout(resolve, 0)); }
-        }
-        await popup.document.fonts?.ready;
-        const images = [...popup.document.images];
-        await Promise.all(images.map(img => img.complete ? Promise.resolve() : new Promise<void>(resolve => { const timer=setTimeout(resolve,5000); img.onload = img.onerror = () => {clearTimeout(timer);resolve();}; })));
-        if (cancelled || popup.closed) return;
-        const incomplete = pdfIncomplete;
-        progress.textContent = `${records.length - skipped - failed} ready · ${skipped} skipped · ${failed} failed · ${pages.childElementCount} A4 pages${incomplete ? " · local download incomplete; partial export" : ""}`;
-        if (pages.childElementCount) popup.document.getElementById("print")!.removeAttribute("disabled");
-        setMessage(incomplete ? "Local download is incomplete. PDF preview is marked partial." : `PDF preview ready for ${records.length - skipped - failed} customers; ${skipped} skipped, ${failed} failed.`);
-      } catch (reason) { if (!popup.closed) popup.document.getElementById("progress")!.textContent = reason instanceof Error ? reason.message : "PDF preview failed."; setError(reason instanceof Error ? reason.message : "PDF preview failed."); }
-      finally { pdfGenerating.current = false; setPdfLoading(false); }
-    })();
+  const pdfBase64 = (blob:Blob) => new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('PDF data could not be read.'));reader.readAsDataURL(blob);});
+  const saveCustomersPdf = async () => {
+    if(!pdfBlob || pdfBusy)return;
+    setPdfBusy(true);setError('');
+    try{
+      await requireLicensedWrite();
+      const name='BankSetu-customers.pdf';
+      if(isAndroid()){
+        const file=await Filesystem.writeFile({path:name,data:await pdfBase64(pdfBlob),directory:Directory.Cache});
+        try{await Share.share({title:'Bank Setu Customers PDF',files:[file.uri],dialogTitle:'Save or share PDF'});}
+        finally{setTimeout(()=>void Filesystem.deleteFile({path:name,directory:Directory.Cache}).catch(()=>undefined),300000);}
+      }else if(desktopBridge()?.saveCustomerPdf){
+        const result=await desktopBridge()!.saveCustomerPdf!(await pdfBase64(pdfBlob));
+        if(result.saved)setMessage('PDF saved.');
+      }else{
+        const url=URL.createObjectURL(pdfBlob);const link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      }
+    }catch(reason){setError(reason instanceof Error?reason.message:'PDF could not be saved.');}
+    finally{setPdfBusy(false);}
+  };
+  const printCustomersPdf = async () => {
+    if(!pdfBlob||pdfBusy)return;
+    setPdfBusy(true);setError('');
+    try{
+      await requireLicensedWrite();
+      if(isAndroid()){await printAndroidPdf(await pdfBase64(pdfBlob));setMessage('Android print dialog opened. Printing or cancellation is controlled there.');}
+      else if(desktopBridge()?.openCustomerPdf){await desktopBridge()!.openCustomerPdf!(await pdfBase64(pdfBlob));setMessage('PDF opened in the system viewer. Choose Print there.');}
+      else {setError('Download this PDF and use your device PDF viewer to print it.');}
+    }catch(reason){setError(reason instanceof Error?reason.message:'Print dialog could not be opened.');}
+    finally{setPdfBusy(false);}
+  };
+  const makeAllCustomersPdf = async (records: Record<string, unknown>[]) => {
+    if(!pdfValid||!records.length||pdfGenerating.current)return;
+    pdfGenerating.current=true;setPdfLoading(true);setPdfBlob(null);setError('');setPdfProgress(0);
+    try{
+      await requireLicensedWrite();
+      const builder=customerPdfBuilder();
+      for(let index=0;index<records.length;index++){
+        const item=previewCustomer(records[index]);
+        const host=document.createElement('div');host.style.cssText='position:fixed;top:0;left:0;width:1100px;z-index:-1;pointer-events:none';
+        host.innerHTML=renderToStaticMarkup(<CustomerPreviewCard customer={item}/>);
+        document.body.appendChild(host);
+        try{
+          const card=host.querySelector<HTMLElement>('.customer-preview');
+          if(!card)throw Error('Customer preview layout is unavailable.');
+          card.style.cssText+=';width:1100px!important;max-height:none!important;overflow:visible!important';
+          const image=await snapshot(item as unknown as Record<string,unknown>,card);
+          const bitmap=await createImageBitmap(image);
+          try{
+            const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;
+            const context=canvas.getContext('2d');if(!context)throw Error('Customer PDF image is unavailable.');
+            context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0);
+            builder.add({dataUrl:canvas.toDataURL('image/jpeg',.88),width:canvas.width,height:canvas.height});
+            canvas.width=0;canvas.height=0;
+          }finally{bitmap.close();}
+        }finally{host.remove();}
+        setPdfProgress(index+1);
+        if(index%3===2)await new Promise(resolve=>setTimeout(resolve,0));
+      }
+      const file=builder.finish();if(file.size<1000)throw Error('PDF output is empty. Retry generation.');
+      await requireLicensedWrite();
+      setPdfBlob(file);setPdfCount(builder.count);
+      setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/3)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
+      recordSafeRecovery('pdf','generate','verified');
+    }catch(reason){
+      recordSafeRecovery(classifyRecovery(reason),'generate','attention');
+      setError(reason instanceof Error?reason.message:'PDF generation failed. You can retry without changing customer data.');
+    }finally{pdfGenerating.current=false;setPdfLoading(false);}
   };
 
   /* =======================================================
@@ -1881,7 +1871,7 @@ export default function Customers() {
         }
 
         .pdf-dialog{width:min(960px,96vw);max-height:90vh;overflow:auto;background:#fff;color:#15283a;border-radius:16px;box-shadow:0 20px 70px #102d3855;padding:24px}
-        .pdf-dialog h2{margin:0;font-size:26px}.pdf-dialog p{margin:5px 0 20px;color:#64748b}
+        .customer-pdf-preview{height:min(65vh,720px);overflow:auto;background:#dce5f2;border-radius:12px;padding:12px}.customer-pdf-page{display:grid;justify-items:center;gap:5px;margin:0 auto 14px;max-width:720px}.customer-pdf-page canvas{width:100%;background:#fff;box-shadow:0 4px 15px #34446b33}.pdf-dialog h2{margin:0;font-size:26px}.pdf-dialog p{margin:5px 0 20px;color:#64748b}
         .pdf-layout{display:grid;grid-template-columns:minmax(210px,38%) 1fr;gap:20px}
         .pdf-modes{display:grid;gap:10px}.pdf-mode{display:flex;align-items:center;gap:14px;border:1px solid #d9e2ed;border-radius:10px;padding:16px;cursor:pointer}.pdf-mode:has(input:checked){border-color:#2476f2;background:#eaf3ff}.pdf-mode input{accent-color:#1769dc}.pdf-detail{background:#f6f9fd;border:1px solid #dce8f5;border-radius:10px;padding:20px;min-height:220px}
         .pdf-fields{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.pdf-fields label{display:grid;gap:5px;flex:1;min-width:150px}.pdf-fields input{width:100%;padding:10px;border:1px solid #b9c8d9;border-radius:7px}
@@ -1983,7 +1973,7 @@ export default function Customers() {
           <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
           {error && <p role="alert">{error}</p>}
           <p>Select which customers' preview PDFs you want to generate and download.</p>
-          <div className="pdf-layout">
+          {pdfBlob ? <><p>{pdfCount} customers · {Math.ceil(pdfCount/3)} A4 pages{pdfIncomplete?' · Partial local/cloud data':''}</p><PdfDocumentPreview file={pdfBlob}/><div className="pdf-actions"><button type="button" onClick={()=>{setPdfBlob(null);setPdfOpen(false)}}>Close</button><button type="button" disabled={pdfBusy} onClick={()=>void saveCustomersPdf()}>Download / Save</button><button type="button" disabled={pdfBusy} onClick={()=>void printCustomersPdf()}>Print</button></div></> : <><div className="pdf-layout">
             <div className="pdf-modes">{([['all','All Customers'],['date','Date Wise'],['account','Account Number Range'],['search','Search Customer']] as const).map(([mode,label]) => <label className="pdf-mode" key={mode}><input type="radio" name="pdf-mode" checked={pdfMode === mode} onChange={() => {setPdfMode(mode);setPdfFrom('');setPdfTo('');setPdfSelected(new Set());}}/><strong>{label}</strong></label>)}</div>
             <div className="pdf-detail">
               <strong>{pdfMode === 'all' ? 'All Customers' : pdfMode === 'date' ? 'Account Opening Date' : pdfMode === 'account' ? 'Account Number Range' : 'Search Customer'}</strong>
@@ -1992,10 +1982,10 @@ export default function Customers() {
               {pdfMode === 'search' && <><div className="pdf-fields"><label>Name, account number or customer ID<input type="search" value={pdfSearch} onChange={event=>setPdfSearch(event.target.value)}/></label></div><label><input type="checkbox" checked={pdfMatches.length>0 && pdfMatches.every(record=>pdfSelected.has(pdfKey(record)))} onChange={event=>setPdfSelected(current=>{const next=new Set(current);pdfMatches.forEach(record=>{if(event.target.checked) next.add(pdfKey(record));else next.delete(pdfKey(record));});return next;})}/> Select all filtered results ({pdfMatches.length})</label><div className="pdf-results">{pdfMatches.map(record=><label key={pdfKey(record)}><input type="checkbox" checked={pdfSelected.has(pdfKey(record))} onChange={event=>setPdfSelected(current=>{const next=new Set(current);if(event.target.checked) next.add(pdfKey(record));else next.delete(pdfKey(record));return next;})}/>{String(record.name||'Unnamed')} · {String(record.accountNo||'No account')} · {String(record.enrolId||'No ID')}</label>)}</div></>}
               <p>{pdfLoading ? 'Loading local customers…' : `${pdfChosen.length} selected of ${pdfRecords.length} local customers`}</p>
               {pdfIncomplete && <p>Local download is incomplete. This export may be partial.</p>}
-              <small>Output: one A4 PDF preview with the existing customer layout. Choose “Save as PDF” in the print dialog; its file name is set there.</small>
+              <small>Output: one A4 PDF preview with the existing customer layout. The PDF has three customer sections per A4 page. Preview, save and print controls appear after generation.</small>
             </div>
           </div>
-          <div className="pdf-actions"><button type="button" onClick={()=>setPdfOpen(false)} disabled={pdfLoading}>Cancel</button><button type="button" disabled={!pdfValid || !pdfChosen.length} onClick={()=>makeAllCustomersPdf(pdfChosen)}>Generate PDFs</button></div>
+          <div className="pdf-actions"><button type="button" onClick={()=>setPdfOpen(false)} disabled={pdfLoading}>Cancel</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
         </div>
       </div>}
 

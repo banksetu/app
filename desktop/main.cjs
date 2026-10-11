@@ -27,6 +27,26 @@ if(primaryInstance)app.whenReady().then(async()=>{
   ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);});
   ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);});
   ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);});
+  const validPdf = encoded => {
+    if(typeof encoded!=='string'||encoded.length>40_000_000||!/^[A-Za-z0-9+/=]+$/.test(encoded))throw Error('Invalid PDF data.');
+    const bytes=Buffer.from(encoded,'base64');
+    if(bytes.length<5||bytes.subarray(0,5).toString()!=='%PDF-')throw Error('Invalid PDF file.');
+    return bytes;
+  };
+  ipcMain.handle('customer-pdf:save',async(event,encoded)=>{
+    trusted(event);licenseAuthority.protectedAction();const bytes=validPdf(encoded);
+    const choice=await dialog.showSaveDialog(window,{defaultPath:path.join(app.getPath('documents'),'BankSetu-customers.pdf'),filters:[{name:'PDF document',extensions:['pdf']}]});
+    if(choice.canceled||!choice.filePath)return {cancelled:true};
+    await fs.promises.writeFile(choice.filePath,bytes,{flag:'w'});return {saved:true};
+  });
+  ipcMain.handle('customer-pdf:open',async(event,encoded)=>{
+    trusted(event);licenseAuthority.protectedAction();const bytes=validPdf(encoded);
+    const directory=path.join(app.getPath('userData'),'pdf-previews');await fs.promises.mkdir(directory,{recursive:true,mode:0o700});
+    const file=path.join(directory,`BankSetu-customers-${Date.now()}-${require('node:crypto').randomBytes(8).toString('hex')}.pdf`);
+    await fs.promises.writeFile(file,bytes,{flag:'wx',mode:0o600});
+    try{const result=await shell.openPath(file);if(result)throw Error(result);setTimeout(()=>void fs.promises.unlink(file).catch(()=>{}),300000);return {opened:true};}
+    catch(error){await fs.promises.unlink(file).catch(()=>{});throw error;}
+  });
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});

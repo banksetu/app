@@ -514,6 +514,11 @@ export async function exportLocalBackup() { const state=await repository.read(id
 let recoverWorkspace: ((signal?:AbortSignal)=>Promise<void>) | undefined;
 let healthError="";
 const recoveryLog=recoveryJournal();
+export function recordSafeRecovery(category:RecoveryCategory,action:string,result:"recovering"|"verified"|"attention"){
+  if(!/^[a-z -]{1,40}$/.test(action))return;
+  recoveryLog.add({at:Date.now(),category,action,result});
+  window.dispatchEvent(new Event('banksetu-sync-change'));
+}
 let recoveringCategory: RecoveryCategory | undefined;
 let lastBackendCheck=0,lastHostingCheck=0,nextRetryAt=0;
 export function configureConnectionRecovery(recover: ((signal?:AbortSignal)=>Promise<void>) | undefined){recoverWorkspace=recover;lastBackendCheck=0;}

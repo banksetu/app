@@ -1,9 +1,12 @@
-export type RecoveryCategory="auth"|"bridge"|"database-lock"|"network"|"photo"|"license"|"sync";
+export type RecoveryCategory="auth"|"bridge"|"database-lock"|"network"|"photo"|"license"|"sync"|"pdf"|"storage"|"print";
 export type RecoveryEvent={at:number;category:RecoveryCategory;action:string;result:"recovering"|"verified"|"attention"};
 
 export function classifyRecovery(error: unknown): RecoveryCategory {
   const message=String(error instanceof Error?error.message:error).toLowerCase();
   if(/license|entitlement|renewal/.test(message))return "license";
+  if(/quota|storage full|no space|insufficient storage/.test(message))return "storage";
+  if(/pdf|preview|canvas/.test(message))return "pdf";
+  if(/print|printer/.test(message))return "print";
   if(/lock timeout|sync busy|another process/.test(message))return "database-lock";
   if(/bridge|workspace connection/.test(message))return "bridge";
   if(/token|authentication|sign in|permission/.test(message))return "auth";

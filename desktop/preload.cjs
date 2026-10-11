@@ -3,6 +3,8 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
   licenseSession: uid => ipcRenderer.invoke('license:session',uid),
   licenseStatus: signed => ipcRenderer.invoke('license:status',signed),
   licenseReceipt: signed => ipcRenderer.invoke('license:receipt',signed),
+  saveCustomerPdf: data => ipcRenderer.invoke('customer-pdf:save',data),
+  openCustomerPdf: data => ipcRenderer.invoke('customer-pdf:open',data),
   read: scope => ipcRenderer.invoke('local:read',scope),
   storage: () => ipcRenderer.invoke('local:storage'),
   commit: (scope,before,after,receipt) => ipcRenderer.invoke('local:commit',scope,before,after,receipt),
