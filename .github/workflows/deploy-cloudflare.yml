@@ -7,6 +7,7 @@ on:
     paths:
       - cloudflare/**
       - firestore.rules
+      - scripts/enforce-client-licenses*
       - .github/workflows/deploy-cloudflare.yml
   workflow_dispatch:
 
@@ -35,7 +36,7 @@ jobs:
       - name: Verify tenant licensing rules before deployment
         run: npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project synthetic-banksetu-license 'node scripts/license-settings-rules.test.mjs'
       - name: Critical licensing and data-preservation tests
-        run: npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && npm run check:schema && npm run build
+        run: npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && node --test scripts/enforce-client-licenses.test.mjs && npm run check:schema && npm run build
       - name: Prepare Firebase credential
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}

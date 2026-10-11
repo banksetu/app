@@ -1,5 +1,5 @@
 import {readFileSync,appendFileSync} from 'node:fs';
-import {createSign} from 'node:crypto';
+import {createSign,createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 
 /** Additive metadata migration for old apps/bridges which used the rollout flag. */
@@ -36,7 +36,17 @@ export async function enforceClientLicenses({projectId,token,fetchImpl=fetch}){
   const statusResponse=await fetchImpl(`${bridge}?action=status`,{signal:AbortSignal.timeout(15000)});
   if(!statusResponse.ok)throw Error('A deployed tenant bridge cannot be verified.');
   const status=await statusResponse.json();
-  if(status.tenantId!==tenantId||status.tenantIsolationVersion!=='v3'||!Number.isInteger(status.licenseEnforcementVersion)||status.licenseEnforcementVersion<1)throw Error('A tenant Apps Script lacks verified license enforcement. Deploy the bundled Code.gs before releasing.');
+  const failures=[];
+  if(status.tenantId!==tenantId)failures.push('tenant binding mismatch');
+  if(status.tenantIsolationVersion!=='v3')failures.push('tenant isolation v3 missing');
+  if(!Number.isInteger(status.licenseEnforcementVersion)||status.licenseEnforcementVersion<1)failures.push('license enforcement version missing');
+  if(failures.length){
+   // Report the configuration failure without exposing tenant IDs, bridge URLs or owner details.
+   const reference=createHash('sha256').update(tenantId).digest('hex').slice(0,12);
+   const report=`A tenant Apps Script lacks verified license enforcement (${reference}: ${failures.join(', ')}). Deploy the bundled Code.gs before releasing. Client metadata: ${checked} checked, ${updated} upgraded; ${bridges} bridges verified before this failure. No customer data or queues modified.`;
+   if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,`\n${report}\n`);
+   throw Error(report);
+  }
   bridges++;if(status.licenseEnforcementVersion===1)legacyBridges++;
  }
  return {checked,updated,bridges,legacyBridges};
