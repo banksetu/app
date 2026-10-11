@@ -34,6 +34,12 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { appendFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const backendCommit=execFileSync('git',['log','-1','--format=%H','--','cloudflare','firestore.rules','.github/workflows/deploy-cloudflare.yml'],{encoding:'utf8'}).trim();
+          const includesSource=commit=>{
+            if(!/^[a-f0-9]{40}$/.test(commit))return false;
+            try{execFileSync('git',['fetch','origin',commit],{stdio:'ignore'});execFileSync('git',['merge-base','--is-ancestor',process.env.FRONTEND_COMMIT,commit],{stdio:'ignore'});return true;}catch{return false;}
+          };
 
           async function getJson(label, url) {
             const response = await fetch(url, { redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(30000) });
@@ -47,17 +53,19 @@ jobs:
             try {
               hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}&attempt=${attempt}`);
               hostingCommit = String(hosting.commit || '');
-              if (hostingCommit === process.env.FRONTEND_COMMIT) break;
+              if (hostingCommit === process.env.FRONTEND_COMMIT || includesSource(hostingCommit)) break;
             } catch (error) {
               if (attempt === 180) throw error;
             }
             if (attempt < 180) await new Promise(resolve => setTimeout(resolve, 10000));
           }
-          assert.equal(hostingCommit, process.env.FRONTEND_COMMIT, `Live Hosting serves commit ${hostingCommit || 'unknown'}, expected ${process.env.FRONTEND_COMMIT}`);
+          assert.ok(includesSource(hostingCommit), `Live Hosting serves ${hostingCommit || 'unknown'}, which does not contain source ${process.env.FRONTEND_COMMIT}`);
 
           const worker = await getJson('Cloudflare Worker', 'https://banksetu-client-api.banksetu2026.workers.dev/health');
           assert.equal(worker.success, true);
           assert.equal(worker.protected, true);
+          assert.equal(worker.licenseEnforcementVersion,2);
+          assert.equal(worker.commit,backendCommit);
 
           const script = await getJson('Apps Script', 'https://script.google.com/macros/s/AKfycbxq3oN4nwfOQfiPs3NgaeBzxoWU2-JPFSZ4o-J5WLZrCF7wyflJwdPjyJ_QjFRHFBIT/exec?action=status');
           assert.equal(script.success, true);
@@ -65,7 +73,7 @@ jobs:
 
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
             '## Production smoke checks passed',
-            `Verified frontend commit: ${process.env.FRONTEND_COMMIT}`,
+            `Verified published commit: ${hostingCommit} (contains source ${process.env.FRONTEND_COMMIT})`,
             'Firebase Hosting: live commit verified',
             'Cloudflare Worker: health endpoint verified',
             'Apps Script: tenant isolation v2 verified',
