@@ -1,5 +1,12 @@
 name: Build Android testing APK
 on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/core/license*.ts
+      - desktop/license-guard.cjs
+      - .github/workflows/android-test.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,6 +29,8 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0
           log-accepted-android-sdk-licenses: false
       - run: npm ci
+      - name: Critical licensing tests before building the APK
+        run: npm run test:worker && npm run test:local && npm run test:bridge && npm run check:schema
       - run: npm run android:sync
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
