@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.67",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.67/BankSetu-Setup-1.0.67-x64.exe",
+  "latestVersion": "1.0.68",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.68/BankSetu-Setup-1.0.68-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.67",
-  "releaseTag": "v1.0.67",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.67",
+  "version": "1.0.68",
+  "releaseTag": "v1.0.68",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.68",
   "releaseDate": "2026-10-11",
-  "windowsVersion": "1.0.67",
-  "androidBuild": 1000067,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.67/BankSetu-Setup-1.0.67-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.67/BankSetu-Android-1000067.apk",
+  "windowsVersion": "1.0.68",
+  "androidBuild": 1000068,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.68/BankSetu-Setup-1.0.68-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.68/BankSetu-Android-1000068.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.67",
+      "version": "1.0.68",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Match approved license dashboard and sidebar layout."
+          "Keep configured sidebar colors on licensing page and enlarge menu content."
         ]
       }
     },
     "android": {
-      "version": "1.0.67",
+      "version": "1.0.68",
       "releaseDate": "2026-10-11",
       "categories": {
         "Improvements": [
-          "Match approved license dashboard and sidebar layout."
+          "Keep configured sidebar colors on licensing page and enlarge menu content."
         ]
       }
     }
