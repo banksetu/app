@@ -20,8 +20,8 @@ export function addCalendarYear(iso) {
 }
 
 export function licenseView(license, now, graceDays = 7) {
-  if (!license) return { state: "legacy_unreviewed", daysRemaining: null, canWrite: true };
-  if (["pending", "suspended", "revoked"].includes(license.status)) return { state: license.status, daysRemaining: null, canWrite: false };
+  if (!license) return { state: "pending", daysRemaining: null, canWrite: false };
+  if (["pending", "expired", "suspended", "revoked"].includes(license.status)) return { state: license.status, daysRemaining: null, canWrite: false };
   if (license.status !== "active" && license.status !== "scheduled") throw new Error("Invalid license state.");
   if (license.plan === "demo") {
     const began=Date.parse(license.activatedAt),ends=Date.parse(license.expiresAt);

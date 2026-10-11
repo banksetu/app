@@ -14,7 +14,7 @@ const originalFetch=globalThis.fetch;
 test('server-only annual activation, renewal and duplicate approval are atomic and tenant scoped',async()=>{
   const store=new Map([
     ['users/master',doc('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'})],
-    ['users/client',doc('users/client',{role:'client_admin',tenantId:'tenant-a',status:'approved',subscriptionStatus:'active',licenseRequired:true})],
+    ['users/client',doc('users/client',{role:'client_admin',tenantId:'tenant-a',status:'approved',subscriptionStatus:'active'})],
     ['tenants/tenant-a',doc('tenants/tenant-a',{tenantId:'tenant-a',ownerUid:'client',status:'active'})],
   ]);
   let commitCount=0;

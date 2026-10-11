@@ -27,13 +27,14 @@ test('native customer commits need matching signed workspace and current license
   assert.throws(()=>authorize(fake(grant()),scope,forged,now),/signature|invalid/);
 });
 
-test('native guard keeps legacy data but cannot create an unverified workspace or downgrade a licensed one',()=>{
+test('native guard retains legacy data without treating it as a client entitlement',()=>{
   assert.throws(()=>authorize(fake(undefined),scope,undefined,now),/Verify this workspace online/);
-  assert.equal(authorize(fake(undefined,false,true),scope,undefined,now),false);
+  assert.throws(()=>authorize(fake(undefined,false,true),scope,undefined,now),/Verify this workspace online/);
   assert.throws(()=>authorize(fake(undefined,true,true),scope,undefined,now),/Verify this workspace online/);
   const legacy=grant({licenseRequired:false,expiresAt:now+7*3600000});
-  assert.throws(()=>authorize(fake(legacy,true,true),scope,undefined,now),/current signed license/);
-  assert.equal(authorize(fake(legacy,false,true),scope,undefined,now),false);
+  assert.throws(()=>authorize(fake(legacy,true,true),scope,undefined,now),/Signed workspace authorization/);
+  assert.throws(()=>authorize(fake(legacy,false,true),scope,undefined,now),/Signed workspace authorization/);
+  assert.equal(authorize(fake(legacy,false,true),scope,receipt(),now),true);
   assert.equal(authorize(fake(undefined),`offline:${uid}`,undefined,now),false);
 });
 
@@ -60,5 +61,28 @@ test('licensed SQLite customer and pending operation survive restart and grant r
   assert.throws(()=>authorize(store,scope,receipt(),now),/Verify this workspace online/);
   assert.deepEqual(store.read(scope),after);
   store.close();
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('native authorization persists suspension revision across restart, blocks printing and preserves pending customer/photo data',()=>{
+ const {createLicenseAuthority}=require('./license-guard.cjs');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-authority-test-'));
+ const status=(state,revision)=>signed({purpose:'banksetu-license-status-v1',uid,tenantId,revision,state,canWrite:state==='active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000});
+ try{
+  let store=createStore(directory),empty={records:[],operations:[]};
+  store.commit(`offline:${uid}`,empty,{...empty,offlineSession:grant({licenseRequired:undefined})});
+  const data={records:[{scope,recordId:'customer',customer:{photoDataUrl:'retained-photo'}}],operations:[{scope,operationId:'pending'}]};
+  store.commit(scope,empty,data,true);
+  let authority=createLicenseAuthority(publicKey.export({format:'jwk'}),store);
+  authority.session(uid);authority.status(status('active',1),now);authority.acceptReceipt(receipt(),now);authority.protectedAction();
+  authority.status(status('suspended',2),now);
+  assert.throws(()=>authority.protectedAction());assert.throws(()=>authorize(store,scope,receipt(),now),/superseded/);
+  store.close();store=createStore(directory);authority=createLicenseAuthority(publicKey.export({format:'jwk'}),store);authority.session(uid);
+  assert.throws(()=>authority.status(status('active',1),now),/stale/);
+  assert.throws(()=>authority.acceptReceipt(receipt(),now),/superseded/);
+  assert.deepEqual(store.read(scope),data);
+  authority.status(status('active',3),now);authority.acceptReceipt(receipt({revision:3}),now);authority.protectedAction();
+  authority.session('another-user');assert.throws(()=>authority.protectedAction());assert.throws(()=>authority.commit(scope,receipt({revision:3})),/invalid|changed/i);
+  assert.deepEqual(store.read(scope),data);store.close();
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });

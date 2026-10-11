@@ -1,3 +1,4 @@
+import { requireLicensedWrite } from "../../core/licenseAccess";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -11,12 +12,13 @@ const NativeUpdate = registerPlugin<{
 }>('BankSetuUpdate');
 export function startAndroidRuntime() {
   if (!isAndroid()) return;
-  window.print = () => { void NativePrint.print().catch(() => window.alert('Printing could not be started. Please retry.')); };
+  window.print = () => { void printAndroidDocument(false).catch(error => window.alert(error instanceof Error?error.message:'Printing could not be started. Please retry.')); };
   void App.addListener('appStateChange', ({ isActive }) => {
     if (isActive) window.dispatchEvent(new Event('online'));
   });
 }
 export async function printAndroidDocument(duplex: boolean) {
+  await requireLicensedWrite();
   await NativePrint.print({duplex});
 }
 export async function shareAndroidBackup(text: string) {

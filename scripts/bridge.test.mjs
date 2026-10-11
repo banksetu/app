@@ -9,14 +9,19 @@ test('current client bridge advertises tenant isolation and license enforcement'
  context.Session={getEffectiveUser:()=>({getEmail:()=>user.email})};
  const status=context.doGet({parameter:{action:'status'}});
  assert.equal(status.tenantIsolationVersion,'v3');
- assert.equal(status.licenseEnforcementVersion,1);
+ assert.equal(status.licenseEnforcementVersion,2);
 });
 test('licensed tenant bridge blocks direct customer writes after expiry while keeping reads available',()=>{
   const {context}=bridge();
   context.verifyFirebaseIdToken=()=>({localId:'synthetic-user',email:'owner@example.invalid'});
-  context.getFirestoreUserProfile=()=>({role:'client_admin',status:'approved',subscriptionStatus:'active',tenantId:'synthetic-tenant',licenseRequired:true});
+  context.getFirestoreUserProfile=()=>({role:'client_admin',status:'approved',subscriptionStatus:'active',tenantId:'synthetic-tenant'});
   context.getFirestoreTenantSettings=()=>({workspaceOwnerUid:'synthetic-user',connectionId:'synthetic-connection',spreadsheetId:'synthetic-sheet',photoFolderId:'synthetic-folder'});
   context.getFirestoreTenant=()=>({status:'active',ownerUid:'synthetic-user'});
+  for(const status of ['pending','suspended','revoked','expired']){
+    context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status});
+    for(const action of ['saveCustomer','updateCustomer','deleteCustomer','markPassbookPrinted','markPassbookDelivered','syncCustomerOperation','uploadBankFormatSample','getBankFormatPreview','publishLocalReset'])assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,action),/License renewal/);
+    assert.equal(context.requireAuthorizedUser('synthetic-token',false,'getAllCustomers').tenantId,'synthetic-tenant');
+  }
   context.getFirestoreTenantLicense=()=>({tenantId:'synthetic-tenant',plan:'annual',status:'pending'});
   assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'saveCustomer'),/License renewal/);
   assert.throws(()=>context.requireAuthorizedUser('synthetic-token',false,'syncCustomerOperation'),/License renewal/);

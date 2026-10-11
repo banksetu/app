@@ -1,3 +1,4 @@
+import { requireLicensedWrite } from "./core/licenseAccess";
 import { isAndroid, startAndroidRuntime } from "./platform/android/runtime";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -5,6 +6,10 @@ import "./index.css";
 import App from "./App.tsx";
 
 startAndroidRuntime();
+if(!isAndroid() && location.protocol!=="banksetu:"){
+  const browserPrint=window.print.bind(window);
+  window.print=()=>{void requireLicensedWrite().then(browserPrint).catch(error=>window.alert(error instanceof Error?error.message:"Verify your license before printing."));};
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

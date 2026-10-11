@@ -3778,3 +3778,8 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 .match-card,.dashboard-status-row{transition:background-color .17s ease,transform .17s ease}
 @media(prefers-reduced-motion:reduce){.login-page:before,.login-page:after,.login-card,.login-page .banksetu-logo,.login-page .error-message,.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel,.customer-camera-dialog{animation:none!important}.login-page .sign-in,.banksetu-main-workspace button,.banksetu-sidebar button,.banksetu-sidebar,.mobile-menu-button,.match-card,.dashboard-status-row{transition:none!important}}
 @media print{.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel{animation:none!important}}
+
+/* Expired/suspended business documents must not reach browser print output. */
+@media print {
+  body[data-banksetu-license-write="false"] * { visibility: hidden !important; }
+}

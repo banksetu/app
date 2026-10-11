@@ -22,6 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs desktop/print-preview.test.cjs desktop/app-protocol.test.cjs
+      - run: npm run test:local
       - run: npm run check:schema
       - run: npm run build
         env:

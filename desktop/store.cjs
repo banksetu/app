@@ -13,7 +13,7 @@ function createStore(directory, legacyCipher = {}) {
   fs.mkdirSync(directory, {recursive:true});
   const file=path.join(directory,'customers.sqlite');
   const db=new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS workspaces (scope TEXT PRIMARY KEY, payload BLOB NOT NULL); CREATE TABLE IF NOT EXISTS licensed_workspaces (scope TEXT PRIMARY KEY);');
+  db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS workspaces (scope TEXT PRIMARY KEY, payload BLOB NOT NULL); CREATE TABLE IF NOT EXISTS licensed_workspaces (scope TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS license_authorizations (identity TEXT PRIMARY KEY, payload TEXT NOT NULL);');
   const version=db.prepare('PRAGMA user_version').get().user_version;
   if(version>FORMAT){db.close();throw Error('This database uses a newer storage format. Update Bank Setu; no data was changed.');}
   const integrity=db.prepare('PRAGMA quick_check').get();
@@ -76,7 +76,10 @@ function createStore(directory, legacyCipher = {}) {
       db.exec('COMMIT');
     }catch(error){db.exec('ROLLBACK');throw error;}
   };
-  return {read,commit,isLicensed,backup(){
+  return {read,commit,isLicensed,
+    getLicenseAuthorization(identity){const row=db.prepare("SELECT payload FROM license_authorizations WHERE identity=?").get(identity);return row?JSON.parse(row.payload):null;},
+    saveLicenseAuthorization(identity,value){db.prepare("INSERT INTO license_authorizations(identity,payload) VALUES(?,?) ON CONFLICT(identity) DO UPDATE SET payload=excluded.payload").run(identity,JSON.stringify(value));},
+    backup(){
     const target=snapshot('customers-before-update');
     const legacy=path.join(directory,'customers-before-update.sqlite');
     if(!fs.existsSync(legacy))fs.copyFileSync(target,legacy,fs.constants.COPYFILE_EXCL);

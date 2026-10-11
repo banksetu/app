@@ -56,7 +56,7 @@ function previewHtml(pdf,printers) {
     'async function run(action){$("print").disabled=true;try{const result=await window.bankSetuPrintPreview.action(action,settings());if(result.pdf)$("preview").src="data:application/pdf;base64,"+result.pdf+"#toolbar=0";$("status").textContent=result.accepted?"Print request accepted by the system.":result.message||"";if(result.accepted)setTimeout(()=>window.close(),350)}catch(error){$("status").textContent=action==="print"?"Print Failed/Error: "+error.message:error.message}finally{$("print").disabled=false}}'+
     'for(const id of ["layout","paper","pages","scale"])$(id).onchange=()=>run("preview");$("print").onclick=()=>run($("destination").value==="pdf"?"save":"print");$("cancel").onclick=()=>window.close();document.addEventListener("keydown",e=>{if(e.key==="Escape")window.close()});</script></body></html>';
 }
-function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow}) {
+function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,authorize=()=>{}}) {
   const sources=new Set(),previews=new Map(),active=new Map();
   function attach(source){
     // Cache Electron objects while alive: BrowserWindow.webContents throws after close.
@@ -81,6 +81,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow}) {
   });
   ipcMain.handle('print:preview',async(event,html,requested={})=>{
     if(!sources.has(event.sender)||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted print request.');
+    authorize();
     if(typeof html!=='string'||html.length>60*1024*1024)throw Error('Print document is too large.');
     if(active.has(event.sender)){const existing=active.get(event.sender);if(existing.preview&&!existing.preview.isDestroyed())existing.preview.focus();return existing.completion;}
     const source=event.sender;
@@ -121,6 +122,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow}) {
   ipcMain.handle('print:action',async(event,action,input)=>{
     const state=previews.get(event.sender);
     if(!state||event.senderFrame!==event.sender.mainFrame)throw Error('Untrusted print preview.');
+    authorize();
     if(!['preview','save','print'].includes(action))throw Error('Invalid print action.');
     const options={paper:input?.paper,landscape:input?.landscape===true,duplex:input?.duplex===true,scale:Number(input?.scale),copies:Number(input?.copies),pageRanges:String(input?.pageRanges||'').trim(),deviceName:String(input?.deviceName||'')};
     if(!['document','A4','Letter'].includes(options.paper)||!Number.isFinite(options.scale)||options.scale<25||options.scale>200||!Number.isInteger(options.copies)||options.copies<1||options.copies>99)throw Error('Invalid print settings.');

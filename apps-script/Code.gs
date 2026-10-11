@@ -78,7 +78,7 @@ function doGet(e) {
         masterLocalSyncVersion: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "master-v1" : "",
         masterConnectionId: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? masterLocalConnectionId() : "",
         tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
-        licenseEnforcementVersion: 1,
+        licenseEnforcementVersion: 2,
         syncProtectionVersion: 1,
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
@@ -391,13 +391,13 @@ function requireAuthorizedUser(
   if (tenantId && !["client_admin", "client_user"].includes(role)) {
     throw new Error("Only a client account assigned to this workspace may access its data.");
   }
-  if (tenantId && profile.licenseRequired === true && [
+  if (tenantId && [
     "saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered",
     "markPassbookPrinted", "uploadBankFormatSample", "getBankFormatPreview", "publishLocalReset",
     "syncCustomerOperation"
   ].indexOf(action) !== -1) {
     const license = getFirestoreTenantLicense(tenantId, idToken);
-    if (!licenseAllowsWrite(license)) {
+    if (!license || license.tenantId !== tenantId || !licenseAllowsWrite(license)) {
       throw new Error("License renewal is required. Pending customer changes remain saved locally.");
     }
   }

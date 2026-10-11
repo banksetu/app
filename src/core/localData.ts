@@ -29,7 +29,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
-  if (supportedWrites.has(String(payload.action || ""))) await requireLicensedWrite();
+  if (supportedWrites.has(String(payload.action || "")) || ["uploadPDF","uploadBankFormatSample","getBankFormatPreview","publishLocalReset","syncCustomerOperation"].includes(String(payload.action || ""))) await requireLicensedWrite();
   if (!localModeEnabled()) return networkFetch(input, init);
   const url = String(input);
   const verifiedUrl = sessionStorage.getItem("bankSetuBridgeUrl") || "";
@@ -448,6 +448,7 @@ export async function getLocalExportCustomers() {
   }));
 }
 export async function clearTemporaryLocalData() {
+  await requireLicensedWrite();
   const scope=identity();let cleared=0;
   await repository.transact(scope,state=>{
     for(const record of state.records){
@@ -460,6 +461,7 @@ export async function clearTemporaryLocalData() {
   announce();return cleared;
 }
 export async function resetLocalDatabase() {
+  await requireLicensedWrite();
   if(!navigator.onLine)throw new Error("Connect to the internet before resetting local data.");
   if(!["client_admin","master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||""))throw new Error("Administrator permission is required.");
   const scope=identity();

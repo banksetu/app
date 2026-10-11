@@ -225,14 +225,14 @@ async function verifyActor(request, env) {
       return { error: json({ error: "This client workspace is blocked or unavailable." }, 403) };
     }
   }
-  // New invited tenants require an active server-side license. Existing users
-  // without the explicit marker retain their existing access during rollout.
+  // Every client write requires the tenant entitlement, independent of profile flags.
   // Licensing, setup reads and account recovery remain available after expiry.
-  if (profile.licenseRequired === true && !["/license-me", "/license-request-change", "/get-offline-session"].includes(new URL(request.url).pathname)) {
+  if (["client_admin", "client_user"].includes(role) && !["/license-me", "/license-request-change", "/get-offline-session"].includes(new URL(request.url).pathname)) {
     const path = `/tenantLicenses/${encodeURIComponent(String(profile.tenantId || ""))}`;
     const document = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
     const license = decodeFields(document?.fields || {});
     const pricing = decodeFields((await firestoreRequest(env, "/appSettings/licensing").catch(error => error.status === 404 ? null : Promise.reject(error)))?.fields || {}).pricing || {};
+    if (license.tenantId && license.tenantId !== profile.tenantId) return {error:json({error:"License tenant mismatch."},403)};
     const view = licenseView(license.tenantId ? license : {status:"pending"}, Date.now(), Number.isInteger(pricing.graceDays) ? pricing.graceDays : 7);
     if(license.plan==="demo")return {error:json({error:"Demo access is limited to the separate sample workspace. Production Google services are unavailable."},403)};
     if (!view.canWrite && new URL(request.url).pathname !== "/get-google-setup") return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
@@ -497,16 +497,18 @@ async function handleLicensing(request, env, actor, route) {
     const tenantId = licenseTenant(actor);
     const license = licenseFields(await licenseDoc(env, `/tenantLicenses/${encodeURIComponent(tenantId)}`));
     const found = Boolean(license.tenantId);
-    const view = licenseView(found ? license : actor.profile.licenseRequired === true ? {status:"pending"} : null, Date.now(), settings.pricing.graceDays);
+    if (found && license.tenantId !== tenantId) return json({error:"License tenant mismatch."},403);
+    const view = licenseView(found ? license : {status:"pending"}, Date.now(), settings.pricing.graceDays);
     const serverTime = Date.now();
     let receipt = null;
-    if (actor.profile.licenseRequired === true && found && view.canWrite) {
+    if (found && view.canWrite) {
       const expiry = ["annual","demo"].includes(license.plan) ? Date.parse(license.expiresAt) : Infinity;
       const validUntil = Math.min(serverTime + 5 * 86400000, expiry);
       const signed = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, { purpose: "banksetu-license-v1", uid: actor.uid, tenantId, revision: license.revision, state: view.state, issuedAt: serverTime, validUntil, expiresAt: license.expiresAt, plan: license.plan });
       receipt = { payload: signed.payload, signature: signed.signature };
     }
-    return json({ license: found ? license : null, view, receipt, pricing: settings.pricing, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess: !found && actor.profile.licenseRequired !== true && !settings.flags.existingClientEnforcement });
+    const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:serverTime+5*86400000});
+    return json({ license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
   }
   if (route === "/license-request-change") {
     if (master || String(actor.profile.role).toLowerCase() !== "client_admin") return json({ error: "Only the Client Admin can request a license change." }, 403);
@@ -828,7 +830,7 @@ async function handleMasterOperation(request, env, actor, route) {
       const issuedAt=Date.now();return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:`master:${actor.uid}`,role:role==="admin"?"admin":"master_owner",status:"approved",subscriptionStatus:"active",connectionId:config.masterConnectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:issuedAt+8*60*60*1000}));
     }
     if (!["client_admin","client_user"].includes(role)) return json({error:"Offline customer access requires a client workspace."},403);
-    if(actor.profile.licenseRequired===true){
+    if(["client_admin","client_user"].includes(role)){
       const demo=licenseFields(await licenseDoc(env,`/tenantLicenses/${encodeURIComponent(actor.profile.tenantId)}`));
       const demoView=licenseView(demo.tenantId?demo:{status:"pending"},Date.now());
       if(demo.plan==="demo"){
@@ -840,12 +842,12 @@ async function handleMasterOperation(request, env, actor, route) {
     if(config.connectionMode!=="option-b" || !config.dataApiReady || !config.hasWorkspace || config.workspaceStatus!=="active") return json({error:"Connect an active Option B workspace before enabling offline access."},409);
     const issuedAt=Date.now();
     let offlineUntil=issuedAt+8*3600000;
-    if(actor.profile.licenseRequired === true){
+    if(["client_admin","client_user"].includes(role)){
       const license=licenseFields(await licenseDoc(env,`/tenantLicenses/${encodeURIComponent(actor.profile.tenantId)}`));
       const view=licenseView(license.tenantId?license:{status:"pending"},issuedAt);
       if(view.canWrite)offlineUntil=Math.min(issuedAt+5*86400000,license.plan==="annual"?Date.parse(license.expiresAt):Infinity);
     }
-    return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",licenseRequired:actor.profile.licenseRequired === true,connectionId:config.connectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:offlineUntil}));
+    return json(await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT,{uid:actor.uid,tenantId:actor.profile.tenantId,role,status:"approved",subscriptionStatus:"active",licenseRequired:true,connectionId:config.connectionId,apiUrl:config.apiUrl,issuedAt,expiresAt:offlineUntil}));
   }
 
   if (route === "/connect-option-b") {
@@ -870,7 +872,7 @@ async function handleMasterOperation(request, env, actor, route) {
     const statusResponse = await fetch(`${bridgeUrl}?action=status`, { signal: AbortSignal.timeout(10000) });
     const status = await statusResponse.json();
     if (!statusResponse.ok || status.tenantIsolationVersion !== "v3" || status.tenantId !== tenantId || status.spreadsheetId !== spreadsheetId || status.photoFolderId !== photoFolderId || String(status.ownerEmail || "").toLowerCase() !== actor.email.toLowerCase()) return json({ error: "The bridge must run as your Google account and be bound to this tenant, Sheet and folder." }, 409);
-    if (actor.profile.licenseRequired === true && status.licenseEnforcementVersion !== 1) return json({ error: "Deploy the current Bank Setu Apps Script bridge with license enforcement before connecting this licensed workspace." }, 409);
+    if (status.licenseEnforcementVersion !== 2) return json({ error: "Deploy the current Bank Setu Apps Script bridge with license enforcement before connecting this licensed workspace." }, 409);
     const headersRead = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:X1`, { headers: { authorization: `Bearer ${token}` } });
     if (!headersRead.ok) return json({ error: "Sheet1 is missing or not accessible." }, 409);
     const row = (await headersRead.json()).values?.[0] || [];
@@ -897,7 +899,7 @@ async function handleMasterOperation(request, env, actor, route) {
 
   if (route === "/configure-tenant-data") {
     if (role !== "client_admin") return json({ error: "Only the Client Admin can connect their own Google workspace." }, 403);
-    if (actor.profile.licenseRequired === true) return json({ error: "Use the verified Option B connection for this licensed workspace." }, 409);
+    if (["client_admin","client_user"].includes(role)) return json({ error: "Use the verified Option B connection for this licensed workspace." }, 409);
     const body = await request.json().catch(() => ({}));
     const tenantId = String(body.tenantId || "").trim();
     const spreadsheetId = String(body.spreadsheetId || "").trim();
@@ -1049,7 +1051,7 @@ async function createClientUser(request, env, actor) {
       bankName: String(tenantData.bankName || ""),
       status: "approved",
       subscriptionStatus: "active",
-      licenseRequired: actor.profile.licenseRequired === true,
+      licenseRequired: true,
       createdAt: new Date().toISOString(),
       createdBy: actor.uid,
     };
@@ -1336,7 +1338,7 @@ export default {
       catch { return json({ error: "License verification key is unavailable." }, 503); }
     }
     if (new URL(request.url).pathname === "/health" && request.method === "GET") {
-      return json({ success: true, protected: true, message: "Bank Setu API is running" });
+      return json({ success: true, protected: true, message: "Bank Setu API is running",licenseEnforcementVersion:2,commit:env.RELEASE_COMMIT||null });
     }
     const origins = String(env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
     const origin = request.headers.get("origin") || "";

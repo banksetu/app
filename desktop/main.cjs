@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const {createStore} = require('./store.cjs');
-const {createLicenseGuard} = require('./license-guard.cjs');
+const {createLicenseAuthority} = require('./license-guard.cjs');
 const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 const primaryInstance=app.requestSingleInstanceLock();
@@ -21,11 +21,15 @@ const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{
 if(primaryInstance)app.whenReady().then(async()=>{
   const dataDirectory = resolveDataDirectory();
   store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
-  const authorizeLocalCommit=createLicenseGuard(require('../src/generated/licensePublicKey.json'));
+  const publicKey=require('../src/generated/licensePublicKey.json');
+  const licenseAuthority=createLicenseAuthority(publicKey,store);
+  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);});
+  ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);});
+  ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);});
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
-  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,parentWindow:window});
+  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,parentWindow:window,authorize:()=>licenseAuthority.protectedAction()});
   printPreview.attach(window);
   // Customer print previews use document.write() into an about:blank window.
   // Allow only that local preview; it has no preload or database IPC privileges.
@@ -92,7 +96,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     trusted(event);scopeCheck(scope);
     if (!before || !after || !Array.isArray(after.records) || !Array.isArray(after.operations) || JSON.stringify(after).length>100*1024*1024) throw new Error('Invalid local transaction.');
     if ([...after.records,...after.operations].some(value=>value.scope!==scope)) throw new Error('Cross-workspace transaction rejected.');
-    const licensed=authorizeLocalCommit(store,scope,receipt);
+    const licensed=licenseAuthority.commit(scope,receipt);
     store.commit(scope,before,after,licensed);
   });
   ipcMain.handle('clipboard:write-text',(event,value)=>{trusted(event);if(typeof value!=='string'||value.length>10000)throw new Error('Invalid clipboard text.');clipboard.writeText(value);});

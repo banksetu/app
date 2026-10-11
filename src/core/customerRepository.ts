@@ -6,6 +6,9 @@ declare global {
     read(scope: string): Promise<LocalState>;
     storage(): Promise<{ path: string; databasePath: string; usedBytes: number; freeBytes: number | null; totalBytes: number | null }>;
     commit(scope: string, before: LocalState, after: LocalState, receipt?: LicenseReceipt): Promise<void>;
+    licenseSession(uid:string): Promise<void>;
+    licenseStatus(authorization:LicenseReceipt): Promise<void>;
+    licenseReceipt(receipt:LicenseReceipt): Promise<void>;
     version(): Promise<string>;
     checkUpdate(): Promise<unknown>;
     installUpdate(): Promise<void>;

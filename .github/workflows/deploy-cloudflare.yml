@@ -34,11 +34,16 @@ jobs:
       - run: npm ci
       - name: Verify tenant licensing rules before deployment
         run: npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project synthetic-banksetu-license 'node scripts/license-settings-rules.test.mjs'
+      - name: Critical licensing and data-preservation tests
+        run: npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && npm run check:schema && npm run build
       - name: Prepare Firebase credential
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
         run: node scripts/firebase-credential.mjs
   deploy:
+    permissions:
+      contents: read
+      actions: write
     needs: preflight
     if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
     runs-on: ubuntu-latest
@@ -84,7 +89,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: c67c1c38d8481b01e9b9fbca5cb0f9b5
           wranglerVersion: '4.146.0'
-          command: deploy --config cloudflare/wrangler.toml
+          command: deploy --config cloudflare/wrangler.toml --var RELEASE_COMMIT:${{ github.sha }}
         env:
           WRANGLER_SEND_METRICS: 'false'
 
@@ -110,6 +115,8 @@ jobs:
           const health = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/banksetu-worker-health.json`, 'utf8'));
           assert.equal(health.success, true);
           assert.equal(health.protected, true);
+          assert.equal(health.licenseEnforcementVersion, 2);
+          assert.equal(health.commit, process.env.GITHUB_SHA);
           assert.equal(health.message, 'Bank Setu API is running');
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
             '## Cloudflare Worker deployment succeeded',
@@ -145,3 +152,13 @@ jobs:
 
       - name: Deploy validated Firestore rules after the compatible Worker
         run: npx --yes firebase-tools@15.31.0 deploy --config firebase.json --only firestore:rules --project banksetu-69e2f --non-interactive
+
+      - name: Enforce license metadata for older client apps and verify deployed tenant bridges
+        run: node scripts/enforce-client-licenses.mjs
+
+      - name: Start the verified app release when explicitly requested by this commit
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[release-apps]')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run publish-app-release.yml --repo "$GITHUB_REPOSITORY" --ref codex/spark-client-workspace-20261001

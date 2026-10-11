@@ -16,8 +16,8 @@ try{
  const foreign=env.authenticatedContext('foreign').firestore();
  await assertSucceeds(getDoc(doc(licensed,'tenantSettings','licensed-tenant')));
  await assertFails(getDoc(doc(foreign,'tenantSettings','licensed-tenant')));
- await assertSucceeds(setDoc(doc(legacy,'tenantSettings','legacy-tenant'),{bankInfo:{branch:'Synthetic'},updatedBy:'legacy',updatedAt:serverTimestamp()},{merge:true}));
+ await assertFails(setDoc(doc(legacy,'tenantSettings','legacy-tenant'),{bankInfo:{branch:'Synthetic'},updatedBy:'legacy',updatedAt:serverTimestamp()},{merge:true}));
  await assertFails(setDoc(doc(licensed,'tenantSettings','licensed-tenant'),{bankInfo:{branch:'Bypass'},updatedBy:'licensed',updatedAt:serverTimestamp()},{merge:true}));
  await assertFails(setDoc(doc(licensed,'tenantSettings','foreign-tenant'),{bankInfo:{branch:'Foreign'},updatedBy:'licensed',updatedAt:serverTimestamp()},{merge:true}));
- console.log('Tenant settings: legacy writes retained, licensed direct writes denied, reads tenant scoped.');
+ console.log('Tenant settings: all client direct writes denied, reads tenant scoped.');
 }finally{await env.cleanup();}

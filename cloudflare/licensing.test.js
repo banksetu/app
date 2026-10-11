@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validateInquiry, addCalendarYear, licenseView, upgradeAmount, transitionLicense } from './licensing.js';
 
-test('legacy tenants remain accessible until migration and enforcement', () => {
+test('missing tenant entitlement never grants client write access', () => {
   assert.equal(DEFAULT_FLAGS.existingClientEnforcement, false);
   assert.equal(DEFAULT_FLAGS.newClientRequired, true);
-  assert.deepEqual(licenseView(null, Date.now()), {state:'legacy_unreviewed',daysRemaining:null,canWrite:true});
+  assert.deepEqual(licenseView(null, Date.now()), {state:'pending',daysRemaining:null,canWrite:false});
 });
 test('annual expiry uses calendar year including leap days and renewal extends existing expiry', () => {
   assert.equal(addCalendarYear('2024-02-29T12:00:00.000Z'), '2025-02-28T12:00:00.000Z');

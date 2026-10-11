@@ -17,7 +17,7 @@ const env = {
 test("keeps the existing health check available", async () => {
   const response = await worker.fetch(new Request("https://worker.example/health"), env);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { success: true, protected: true, message: "Bank Setu API is running" });
+  assert.deepEqual(await response.json(), { success: true, protected: true, message: "Bank Setu API is running",licenseEnforcementVersion:2,commit:null });
 });
 
 test("allows the configured app origin to preflight the account API", async () => {
@@ -108,6 +108,7 @@ test('public inquiry fails closed without CAPTCHA keys', async () => {
   globalThis.fetch=async url => {
     const path=String(url);
     if(path.includes('oauth2.googleapis.com/token')) return new Response(JSON.stringify({access_token:'test',expires_in:3600}),{status:200});
+    if(path.includes('/tenantLicenses/')) return new Response('{}',{status:404});
     if(path.includes('/appSettings/licensing')) return new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
     throw new Error(`Unexpected remote request: ${path}`);
   };
@@ -131,6 +132,7 @@ test('client admin cannot change global licensing prices or approve licenses', a
     if(path.includes('oauth2.googleapis.com/token')) return new Response(JSON.stringify({access_token:'test',expires_in:3600}));
     if(path.endsWith('/users/client-uid')) return new Response(JSON.stringify({fields:{role:field('client_admin'),tenantId:field('tenant-a'),status:field('approved'),subscriptionStatus:field('active')}}));
     if(path.endsWith('/tenants/tenant-a')) return new Response(JSON.stringify({fields:{status:field('active')}}));
+    if(path.includes('/tenantLicenses/')) return new Response('{}',{status:404});
     if(path.includes('/appSettings/licensing')) return new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
     throw new Error(`Unexpected request: ${path}`);
   };

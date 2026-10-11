@@ -42,6 +42,7 @@ test("authenticated saves persist only the actor's tenant and preserve all three
   }
   const formats=Object.fromEntries(["passbook","quickPassbook","accountOpening"].map(type=>[type,{fileId:"A-"+type,bankKey:"union bank of india"}]));
   for(const id of ["A","B"]){
+    documents.set("tenantLicenses/"+id,{fields:encodeFields({tenantId:id,status:"active",plan:"lifetime",revision:1,activatedAt:new Date(Date.now()-86400000).toISOString(),expiresAt:null})});
     documents.set("tenants/"+id,{fields:encodeFields({status:"active",ownerUid:"admin"+id})});
     documents.set("tenantSettings/"+id,{fields:encodeFields({spreadsheetId:"sheet"+id,photoFolderId:"drive"+id,bankFormats:id==="A"?formats:{}})});
   }
@@ -113,6 +114,7 @@ function appsHarness(){
   // Double only external identity/Firestore reads; keep authorization, routing,
   // sheet access, customer operations, audit writes and Drive parent checks real.
   context.verifyFirebaseIdToken=uid=>({localId:uid,email:uid+"@example.invalid"});
+  context.getFirestoreTenantLicense=(tenantId)=>({tenantId,status:"active",plan:"lifetime",activatedAt:new Date(Date.now()-86400000).toISOString()});
   context.getFirestoreUserProfile=uid=>profiles[uid]||{};
   context.getFirestoreTenant=id=>tenants[id];
   context.getFirestoreTenantSettings=id=>settings[id];

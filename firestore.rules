@@ -138,7 +138,7 @@ service cloud.firestore {
       allow get: if sameTenant(tenantId);
       allow list: if false;
       allow create: if isClientAdmin()
-        && profile().get('licenseRequired', false) != true
+        && false // Client business settings are written only through the licensed Worker.
         && request.resource.data.tenantId == tenantId
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.updatedAt == request.time
@@ -174,7 +174,7 @@ service cloud.firestore {
         && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
         && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
         || (isClientAdmin()
-          && profile().get('licenseRequired', false) != true
+          && false // Client business settings are written only through the licensed Worker.
           && resource.data.tenantId == tenantId
           && request.resource.data.tenantId == tenantId
           && request.resource.data.updatedBy == request.auth.uid

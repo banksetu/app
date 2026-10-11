@@ -1,3 +1,4 @@
+import { requireLicensedWrite } from "../core/licenseAccess";
 import { isAndroid, printAndroidDocument } from "./android/runtime";
 
 export type PrintOutcome = { accepted: boolean; cancelled?: boolean; confirmation: "printer" | "dialog" };
@@ -9,6 +10,7 @@ declare global {
 }
 
 export async function printCurrentDocument(duplex: boolean): Promise<PrintOutcome> {
+  await requireLicensedWrite();
   if (window.bankSetuPrintJob) {
     const result = await window.bankSetuPrintJob({duplex});
     return {accepted:result.accepted === true,cancelled:result.cancelled === true,confirmation:"printer"};

@@ -10,7 +10,7 @@ const jwk = publicKey.export({ format: 'jwk' });
 const values = new Map();
 const source = ts.transpileModule(readFileSync(new URL('../src/core/licenseReceipt.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports = {};
-vm.runInNewContext(source, { exports, require: () => jwk, crypto: webcrypto, atob, TextEncoder, Uint8Array, Date, JSON, localStorage: { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) } });
+vm.runInNewContext(source, { exports, require: () => jwk, crypto: webcrypto, atob, TextEncoder, Uint8Array, Date, JSON, localStorage: { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem:key=>values.delete(key) } });
 const create = (claims) => {
   const payload = JSON.stringify(claims);
   return { payload, signature: sign('sha256', Buffer.from(payload), privateKey).toString('base64url') };

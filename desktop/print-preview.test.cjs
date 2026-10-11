@@ -71,3 +71,10 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   const third=handlers.get('print:preview')(nextEvent,'<html/>');await new Promise(resolve=>setImmediate(resolve));
   windows.at(-1).close();await third;next.close();
 });
+
+test('native print IPC rejects suspended entitlement before creating a PDF or printer window',async()=>{
+ const handlers=new Map(),source={webContents:new EventEmitter(),once(){}};
+ source.webContents.mainFrame={};
+ installPrintPreview({app:{},BrowserWindow:class{constructor(){throw Error('Must not create a print window');}},ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},dialog:{},authorize:()=>{throw Error('License suspended');}}).attach(source);
+ await assert.rejects(handlers.get('print:preview')({sender:source.webContents,senderFrame:source.webContents.mainFrame},'<html/>'),/License suspended/);
+});
