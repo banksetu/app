@@ -817,7 +817,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const openPage = (page: PageName) => {
     if(demoExpired && !canOpenLicensePage(page,licenseReadOnly,true)){
-      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day sample demo has ended. Contact the Master Admin to activate a paid production workspace."}}));
+      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day Demo has ended. Request a paid license to continue using protected features."}}));
       return;
     }
     if (!canOpenLicensePage(page,licenseReadOnly,demoExpired)) {

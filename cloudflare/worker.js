@@ -892,7 +892,6 @@ async function handleMasterOperation(request, env, actor, route) {
 
   if (route === "/create-client") {
     if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can create Client Admin accounts." }, 403);
-    const { flags } = await licenseSettings(env);
     // Profile is the single Master Admin provisioning entry point. Licensing
     // still starts unassigned and is granted separately by the Master Admin.
     const body = await request.json().catch(() => ({}));
