@@ -20,6 +20,7 @@ import { requiresTenantLicense } from "./core/licensePolicy";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { notifySystem, startNotificationNavigation } from "./platform/systemNotifications";
+import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPush";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
@@ -95,6 +96,13 @@ function App() {
   const licenseWarning = licensePermission.warning;
   const lastNativeLicense=useRef<{tenantId:string;state:string;revision:number}|null>(null);
   useEffect(()=>{if(!isLoggedIn)return startNotificationNavigation();},[isLoggedIn]);
+  useEffect(()=>{
+    if(!isLoggedIn)return;
+    void registerAndroidPush();
+    const resume=()=>{if(document.visibilityState==='visible')void registerAndroidPush();};
+    document.addEventListener('visibilitychange',resume);
+    return()=>document.removeEventListener('visibilitychange',resume);
+  },[isLoggedIn]);
   useEffect(()=>{
     if(!isLoggedIn)return;
     let prior=navigator.onLine;
@@ -453,6 +461,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      await unregisterAndroidPush();
       clearProfileListener();
       workspaceRequestRef.current++;activeProfile.current=null;setTenantWorkspaceReady(false);resetSyncSession();
       await signOut(auth);
