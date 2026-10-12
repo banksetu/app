@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch } from "./worker.js";
+import { generateKeyPairSync } from "node:crypto";
+import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch, validatePushRegistration, sendTenantPush } from "./worker.js";
 
 
 test("builds Firestore commit resource names without REST URL prefixes", () => {
@@ -40,7 +41,7 @@ test("rejects an unconfigured website origin", async () => {
 });
 
 test("requires Firebase sign-in before account and tenant setup actions", async () => {
-  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings"]) {
+  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/push-register", "/push-unregister"]) {
     const response = await worker.fetch(new Request(`https://worker.example${path}`, {
       method: "POST",
       headers: { origin: "https://banksetu-app.web.app", "content-type": "application/json" },
@@ -49,6 +50,72 @@ test("requires Firebase sign-in before account and tenant setup actions", async 
     assert.equal(response.status, 401, path);
     assert.match((await response.json()).error, /Sign in is required/, path);
   }
+});
+
+test("Android push registration refuses wrong platforms and malformed device tokens", () => {
+  const valid = { platform: "android", deviceId: "12345678-1234-1234-1234-123456789abc", token: "A".repeat(100) };
+  assert.equal(validatePushRegistration(valid), true);
+  assert.equal(validatePushRegistration({...valid, platform:"windows"}), false);
+  assert.equal(validatePushRegistration({...valid, token:"short"}), false);
+  assert.equal(validatePushRegistration({...valid, deviceId:"../another-user"}), false);
+});
+
+test("push device ownership follows the authenticated account and unregister cannot remove another account", async () => {
+  const previous = globalThis.fetch;
+  const deviceId = "12345678-1234-1234-1234-123456789abc";
+  const {privateKey} = generateKeyPairSync('rsa',{modulusLength:2048});
+  let stored = null;
+  const fields = data => Object.fromEntries(Object.entries(data).map(([key,value]) => [key,{stringValue:value}]));
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    if (target.includes('accounts:lookup')) return Response.json({users:[{localId:JSON.parse(options.body).idToken,email:'user@example.test',emailVerified:true}]});
+    if (target.includes('oauth2.googleapis.com/token')) return Response.json({access_token:'test',expires_in:3600});
+    if (target.includes('/documents/users/')) return Response.json({fields:fields({role:'client_user',tenantId:'tenant-one',status:'approved',subscriptionStatus:'active'})});
+    if (target.includes('/documents/tenants/')) return Response.json({fields:fields({status:'active'})});
+    if (target.includes('/documents:runQuery')) return Response.json([]);
+    if (target.includes(`/documents/pushDevices/${deviceId}`)) {
+      if (options.method === 'DELETE') { stored = null; return Response.json({}); }
+      if (options.method === 'PATCH') { stored = JSON.parse(options.body).fields; return Response.json({fields:stored}); }
+      return stored ? Response.json({fields:stored}) : Response.json({}, {status:404});
+    }
+    throw Error(`Unexpected backend request: ${target}`);
+  };
+  const call = (uid,route,body) => worker.fetch(new Request(`https://worker.example${route}`,{method:'POST',headers:{origin:env.ALLOWED_ORIGINS,authorization:`Bearer ${uid}`},body:JSON.stringify(body)}),{...env,FIREBASE_PROJECT_ID:'synthetic',FIREBASE_WEB_API_KEY:'synthetic',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.test',private_key:privateKey.export({type:'pkcs8',format:'pem'})})});
+  try {
+    const body={platform:'android',deviceId,token:'A'.repeat(100)};
+    assert.equal((await call('first','/push-register',body)).status,200);
+    assert.equal(stored.uid.stringValue,'first');
+    assert.equal((await call('second','/push-register',{...body,token:'B'.repeat(100)})).status,200);
+    assert.equal(stored.uid.stringValue,'second');
+    assert.equal((await call('first','/push-unregister',{deviceId})).status,200);
+    assert.equal(stored.uid.stringValue,'second');
+    assert.equal((await call('second','/push-unregister',{deviceId})).status,200);
+    assert.equal(stored,null);
+  } finally { globalThis.fetch = previous; }
+});
+
+test("push sender checks each recipient's tenant and account status before FCM delivery", async () => {
+  const previous = globalThis.fetch;
+  const {privateKey} = generateKeyPairSync('rsa',{modulusLength:2048});
+  const sent=[];
+  const fields = data => Object.fromEntries(Object.entries(data).map(([key,value])=>[key,{stringValue:value}]));
+  globalThis.fetch = async (url,options={}) => {
+    const target=String(url);
+    if(target.includes('oauth2.googleapis.com/token'))return Response.json({access_token:'test',expires_in:3600});
+    if(target.includes('/documents/tenants/tenant-a'))return Response.json({fields:fields({status:'active'})});
+    if(target.includes('/documents:runQuery'))return Response.json([
+      {document:{fields:fields({uid:'same',tenantId:'tenant-a',token:'A'.repeat(100),expiresAt:new Date(Date.now()+86400000).toISOString()})}},
+      {document:{fields:fields({uid:'other',tenantId:'tenant-a',token:'B'.repeat(100),expiresAt:new Date(Date.now()+86400000).toISOString()})}},
+    ]);
+    if(target.includes('/documents/users/same'))return Response.json({fields:fields({tenantId:'tenant-a',status:'approved',subscriptionStatus:'active'})});
+    if(target.includes('/documents/users/other'))return Response.json({fields:fields({tenantId:'tenant-b',status:'approved',subscriptionStatus:'active'})});
+    if(target.includes('fcm.googleapis.com')){sent.push(JSON.parse(options.body).message.token);return Response.json({name:'test'});}
+    throw Error(`Unexpected backend request: ${target}`);
+  };
+  try {
+    await sendTenantPush({FIREBASE_PROJECT_ID:'synthetic',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.test',private_key:privateKey.export({type:'pkcs8',format:'pem'})})},'tenant-a',{id:'event-1',title:'License updated',body:'Open the app.'});
+    assert.deepEqual(sent,['A'.repeat(100)]);
+  } finally {globalThis.fetch=previous;}
 });
 
 test("bank samples require the currently selected bank and never replace built-in Assam formats", () => {
