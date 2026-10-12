@@ -30,8 +30,13 @@ export async function enforceClientLicenses({projectId,token,fetchImpl=fetch}){
   if(response.status===404)continue;
   if(!response.ok)throw Error(`Cannot verify tenant bridge configuration (${response.status}).`);
   const fields=(await response.json()).fields||{};
+  // Invitation records inherit the master API URL before their own Google
+  // workspace is connected. That URL is not a tenant bridge. The application
+  // keeps customer writes locked until the Sheet, folder and bridge are bound.
+  const connected=Boolean(fields.spreadsheetId?.stringValue||fields.photoFolderId?.stringValue||fields.bridgeUrl?.stringValue||fields.connectionMode?.stringValue==='option-b');
+  if(!connected)continue;
   const bridge=fields.bridgeUrl?.stringValue||fields.apiUrl?.stringValue;
-  if(!bridge)continue;
+  if(!bridge)throw Error('A connected tenant is missing its Apps Script bridge URL.');
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(bridge))throw Error('An invalid tenant bridge URL needs review.');
   const statusResponse=await fetchImpl(`${bridge}?action=status`,{signal:AbortSignal.timeout(15000)});
   if(!statusResponse.ok)throw Error('A deployed tenant bridge cannot be verified.');

@@ -18,3 +18,20 @@ test('an unverified deployed bridge blocks the release gate',async()=>{
   return new Response(JSON.stringify({tenantId:'t',tenantIsolationVersion:'v3'}));
  }}),/lacks verified license enforcement/);
 });
+test('an invited tenant with no connected Google workspace does not validate the shared master URL as its bridge',async()=>{
+ let bridgeRequests=0;
+ const result=await enforceClientLicenses({projectId:'synthetic',token:'test',fetchImpl:async(url)=>{
+  if(url.includes('/users?'))return new Response(JSON.stringify({documents:[{fields:{role:{stringValue:'client_admin'},tenantId:{stringValue:'invited'},licenseRequired:{booleanValue:true}}}]}));
+  if(url.includes('tenantSettings'))return new Response(JSON.stringify({fields:{apiUrl:{stringValue:'https://script.google.com/macros/s/master/exec'},spreadsheetId:{stringValue:''},photoFolderId:{stringValue:''}}}));
+  bridgeRequests++;throw Error('Shared master URL should not be called');
+ }});
+ assert.deepEqual(result,{checked:1,updated:0,bridges:0,legacyBridges:0});assert.equal(bridgeRequests,0);
+});
+test('a partly configured tenant still fails closed if its bridge is missing or unbound',async()=>{
+ const users={documents:[{fields:{role:{stringValue:'client_admin'},tenantId:{stringValue:'connected'},licenseRequired:{booleanValue:true}}}]};
+ await assert.rejects(enforceClientLicenses({projectId:'synthetic',token:'test',fetchImpl:async(url)=>{
+  if(url.includes('/users?'))return new Response(JSON.stringify(users));
+  if(url.includes('tenantSettings'))return new Response(JSON.stringify({fields:{connectionMode:{stringValue:'option-b'},spreadsheetId:{stringValue:'sheet'}}}));
+  throw Error('No bridge should be contacted');
+ }}),/missing its Apps Script bridge URL/);
+});
