@@ -43,3 +43,15 @@ if (content.project_info?.project_id !== project || !content.client?.some(client
 }
 writeFileSync('android/app/google-services.json', `${JSON.stringify(content)}\n`, {mode:0o600});
 console.log('Verified Firebase Android app config for production package.');
+// A dry run cannot notify a real device; distinguish disabled API or missing IAM from a fake token.
+const check = await fetch(`https://fcm.googleapis.com/v1/projects/${project}/messages:send`, {
+  method:'POST', headers:{authorization:`Bearer ${auth.access_token}`,'content-type':'application/json'},
+  body:JSON.stringify({validate_only:true,message:{token:'A'.repeat(160),notification:{title:'Bank Setu',body:'Sender preflight only'}}}),
+});
+const checkResult = await check.json().catch(() => ({}));
+const invalidSyntheticToken = check.status === 400 && checkResult.error?.status === 'INVALID_ARGUMENT'
+  || check.status === 404 && checkResult.error?.details?.some(item => item.errorCode === 'UNREGISTERED');
+if (!check.ok && !invalidSyntheticToken) {
+  throw Error(`FCM HTTP v1 sender preflight failed (${check.status}: ${checkResult.error?.status || 'unavailable'}). Check API enablement and service-account messaging permission.`);
+}
+console.log('FCM HTTP v1 sender API accepted the credential; no notification was delivered.');

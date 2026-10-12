@@ -24,7 +24,7 @@ export async function registerAndroidPush() {
   const uid = user.uid;
   try {
     if (lastAccount && lastAccount !== uid) {
-      await native.clearPushToken();
+      try { await native.clearPushToken(); } catch { /* Rebind the existing token to this account below. */ }
       lastAccount = ''; localStorage.removeItem(accountKey);
     }
     if (localStorage.getItem('bankSetuSystemNotifications') === 'off') { await unregisterAndroidPush(); return; }

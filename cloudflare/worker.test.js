@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch, validatePushRegistration } from "./worker.js";
+import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch, validatePushRegistration, sendTenantPush } from "./worker.js";
 
 
 test("builds Firestore commit resource names without REST URL prefixes", () => {
@@ -92,6 +92,29 @@ test("push device ownership follows the authenticated account and unregister can
     assert.equal((await call('second','/push-unregister',{deviceId})).status,200);
     assert.equal(stored,null);
   } finally { globalThis.fetch = previous; }
+});
+
+test("push sender checks each recipient's tenant and account status before FCM delivery", async () => {
+  const previous = globalThis.fetch;
+  const {privateKey} = generateKeyPairSync('rsa',{modulusLength:2048});
+  const sent=[];
+  const fields = data => Object.fromEntries(Object.entries(data).map(([key,value])=>[key,{stringValue:value}]));
+  globalThis.fetch = async (url,options={}) => {
+    const target=String(url);
+    if(target.includes('oauth2.googleapis.com/token'))return Response.json({access_token:'test',expires_in:3600});
+    if(target.includes('/documents:runQuery'))return Response.json([
+      {document:{fields:fields({uid:'same',tenantId:'tenant-a',token:'A'.repeat(100),expiresAt:new Date(Date.now()+86400000).toISOString()})}},
+      {document:{fields:fields({uid:'other',tenantId:'tenant-a',token:'B'.repeat(100),expiresAt:new Date(Date.now()+86400000).toISOString()})}},
+    ]);
+    if(target.includes('/documents/users/same'))return Response.json({fields:fields({tenantId:'tenant-a',status:'approved',subscriptionStatus:'active'})});
+    if(target.includes('/documents/users/other'))return Response.json({fields:fields({tenantId:'tenant-b',status:'approved',subscriptionStatus:'active'})});
+    if(target.includes('fcm.googleapis.com')){sent.push(JSON.parse(options.body).message.token);return Response.json({name:'test'});}
+    throw Error(`Unexpected backend request: ${target}`);
+  };
+  try {
+    await sendTenantPush({FIREBASE_PROJECT_ID:'synthetic',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.test',private_key:privateKey.export({type:'pkcs8',format:'pem'})})},'tenant-a',{id:'event-1',title:'License updated',body:'Open the app.'});
+    assert.deepEqual(sent,['A'.repeat(100)]);
+  } finally {globalThis.fetch=previous;}
 });
 
 test("bank samples require the currently selected bank and never replace built-in Assam formats", () => {

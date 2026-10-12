@@ -309,7 +309,7 @@ async function handlePushRegistration(request, env, actor, route) {
   return json({ success: true });
 }
 
-async function sendTenantPush(env, tenantId, event) {
+export async function sendTenantPush(env, tenantId, event) {
   // Called only after a committed server-side license transition. Delivery is best effort.
   try {
     const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
@@ -669,6 +669,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const writes=[licenseWrite(env,"tenantLicenses",tenantId,license),licenseWrite(env,"licenseAudit",id,{action:"demo_activated",actorUid:actor.uid,tenantId,at:now,expiresAt:license.expiresAt})];
     if(owner.status==="pending")writes.push(licenseWrite(env,"users",ownerUid,{...owner,status:"approved",subscriptionStatus:"active",updatedAt:now,updatedBy:actor.uid},{updateTime:ownerDoc.updateTime}));
     try{await licenseCommit(env,writes);}catch(error){if(error.status===409)return json({error:"Demo state changed. Refresh before retrying."},409);throw error;}
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu demo activated", body: "Your five-day sample workspace is ready. Open Bank Setu for details." }));
     return json({success:true,license});
   }
   if(route==="/license-admin-demo-convert"){
@@ -689,6 +690,7 @@ async function handleLicensing(request, env, actor, route, context) {
     Object.assign(next,{tenantId,firstActivatedAt:next.activatedAt,demoOnly:false,revision:Number(current.revision||0)+1});
     try{await licenseCommit(env,[licenseWrite(env,"tenantLicenses",tenantId,next,{updateTime:doc.updateTime}),licenseWrite(env,"licenseAudit",id,{action:"demo_converted",actorUid:actor.uid,tenantId,at:now,before:{plan:"demo",expiresAt:current.expiresAt},after:{plan,status:next.status,activatedAt:next.activatedAt,expiresAt:next.expiresAt},paidPaise})]);}
     catch(error){if(error.status===409)return json({error:"License changed. Refresh before retrying."},409);throw error;}
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license updated", body: "Your paid license was approved. Open Bank Setu for details." }));
     return json({success:true,license:next,productionWorkspaceRequiresConnection:true});
   }
   if (route === "/license-admin-decision") {
