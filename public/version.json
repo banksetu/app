@@ -1,31 +1,33 @@
 {
-  "latestVersion": "1.0.68",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.68/BankSetu-Setup-1.0.68-x64.exe",
+  "latestVersion": "1.0.69",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.69/BankSetu-Setup-1.0.69-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.68",
-  "releaseTag": "v1.0.68",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.68",
-  "releaseDate": "2026-10-11",
-  "windowsVersion": "1.0.68",
-  "androidBuild": 1000068,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.68/BankSetu-Setup-1.0.68-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.68/BankSetu-Android-1000068.apk",
+  "version": "1.0.69",
+  "releaseTag": "v1.0.69",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.69",
+  "releaseDate": "2026-10-12",
+  "windowsVersion": "1.0.69",
+  "androidBuild": 1000069,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.69/BankSetu-Setup-1.0.69-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.69/BankSetu-Android-1000069.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.68",
-      "releaseDate": "2026-10-11",
+      "version": "1.0.69",
+      "releaseDate": "2026-10-12",
       "categories": {
         "Improvements": [
-          "Keep configured sidebar colors on licensing page and enlarge menu content."
+          "Add authenticated Android FCM registration and closed-app license alerts.",
+          "Stage tenant-scoped Android push backend without app release."
         ]
       }
     },
     "android": {
-      "version": "1.0.68",
-      "releaseDate": "2026-10-11",
+      "version": "1.0.69",
+      "releaseDate": "2026-10-12",
       "categories": {
         "Improvements": [
-          "Keep configured sidebar colors on licensing page and enlarge menu content."
+          "Add authenticated Android FCM registration and closed-app license alerts.",
+          "Stage tenant-scoped Android push backend without app release."
         ]
       }
     }
