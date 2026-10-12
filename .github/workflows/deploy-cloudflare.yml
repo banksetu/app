@@ -8,6 +8,7 @@ on:
       - cloudflare/**
       - firestore.rules
       - scripts/enforce-client-licenses*
+      - scripts/verify-backend-release-gate.mjs
       - .github/workflows/deploy-cloudflare.yml
   workflow_dispatch:
 

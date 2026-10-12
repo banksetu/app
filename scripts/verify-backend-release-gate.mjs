@@ -13,7 +13,7 @@ export async function verifyBackendReleaseGate({repository,token,sourceCommit,fe
 }
 
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
- const sourceCommit=execFileSync('git',['log','-1','--format=%H','--','cloudflare','firestore.rules','.github/workflows/deploy-cloudflare.yml'],{encoding:'utf8'}).trim();
+ const sourceCommit=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
  const verified=await verifyBackendReleaseGate({repository:process.env.GITHUB_REPOSITORY,token:process.env.GH_TOKEN,sourceCommit});
  console.log(`Backend deployment confirmed for ${verified}.`);
 }
