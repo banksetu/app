@@ -3823,23 +3823,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-        setPhotoDataUrl(
-
-          ""
-
-        );
-
-        setPhotoReview("");
-
-
-
-
-
-        setPhotoFileName(
-
-          ""
-
-        );
+        clearFormOnly();
+        setSearchText("");
 
 
 
