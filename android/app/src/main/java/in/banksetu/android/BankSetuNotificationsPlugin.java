@@ -15,12 +15,20 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.RemoteMessage;
 
 @CapacitorPlugin(name="BankSetuNotifications", permissions={@Permission(alias="system", strings={Manifest.permission.POST_NOTIFICATIONS})})
 public class BankSetuNotificationsPlugin extends Plugin {
     @PluginMethod public void requestPermissions(PluginCall call) {
         if (Build.VERSION.SDK_INT >= 33 && !hasRequiredPermissions()) { requestPermissionForAlias("system", call, "permissionResult"); return; }
         permissionResult(call);
+    }
+    static void createChannels(android.content.Context context) {
+        if (Build.VERSION.SDK_INT < 26) return;
+        NotificationManager manager = (NotificationManager) context.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+        for (String category : new String[]{"license", "update", "sync", "network"})
+            manager.createNotificationChannel(new NotificationChannel("banksetu_" + category, category + " alerts", NotificationManager.IMPORTANCE_DEFAULT));
     }
     @PermissionCallback public void permissionResult(PluginCall call) {
         JSObject result=new JSObject();
@@ -42,6 +50,34 @@ public class BankSetuNotificationsPlugin extends Plugin {
         manager.notify(id,new NotificationCompat.Builder(getContext(),channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build());
         call.resolve();
     }
-    @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); String page=intent.getStringExtra("banksetuPage");if(page!=null){JSObject value=new JSObject();value.put("page",page);notifyListeners("notificationOpened",value);intent.removeExtra("banksetuPage");} }
-    @PluginMethod public void getPendingTap(PluginCall call) {JSObject result=new JSObject();Intent intent=getActivity().getIntent();String page=intent==null?null:intent.getStringExtra("banksetuPage");if(page!=null){result.put("page",page);intent.removeExtra("banksetuPage");}call.resolve(result);}
+    @PluginMethod public void getPushToken(PluginCall call) {
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
+            if (!task.isSuccessful() || task.getResult() == null) { call.reject("FCM registration is unavailable."); return; }
+            JSObject result = new JSObject(); result.put("token", task.getResult()); call.resolve(result);
+        });
+    }
+    @PluginMethod public void clearPushToken(PluginCall call) {
+        FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(task -> {
+            getContext().getSharedPreferences("banksetu_push", android.content.Context.MODE_PRIVATE).edit().remove("token").apply();
+            if (task.isSuccessful()) call.resolve(); else call.reject("FCM token could not be invalidated.");
+        });
+    }
+    static void showPush(android.content.Context context, RemoteMessage message) {
+        String page = message.getData().get("page");
+        String category = message.getData().get("category");
+        if (page == null || !page.matches("dashboard|sync-backup|license-management") || category == null || !category.matches("update|sync|network|license")) return;
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return;
+        RemoteMessage.Notification notice = message.getNotification();
+        if (notice == null || notice.getTitle() == null || notice.getBody() == null) return;
+        NotificationManager manager = (NotificationManager) context.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+        String channel = "banksetu_" + category;
+        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(channel, category + " alerts", NotificationManager.IMPORTANCE_DEFAULT));
+        String event = message.getData().get("eventId");
+        int id = event == null ? (int) System.currentTimeMillis() : event.hashCode();
+        Intent intent = new Intent(context, MainActivity.class); intent.setAction("banksetu.push." + id); intent.putExtra("banksetuPage", page);
+        PendingIntent pending = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        manager.notify(id, new NotificationCompat.Builder(context, channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(notice.getTitle()).setContentText(notice.getBody()).setAutoCancel(true).setContentIntent(pending).build());
+    }
+    @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); String page=intent.getStringExtra("banksetuPage");if(page==null)page=intent.getStringExtra("page");if(page!=null){JSObject value=new JSObject();value.put("page",page);notifyListeners("notificationOpened",value);intent.removeExtra("banksetuPage");intent.removeExtra("page");} }
+    @PluginMethod public void getPendingTap(PluginCall call) {JSObject result=new JSObject();Intent intent=getActivity().getIntent();String page=intent==null?null:intent.getStringExtra("banksetuPage");if(page==null&&intent!=null)page=intent.getStringExtra("page");if(page!=null){result.put("page",page);intent.removeExtra("banksetuPage");intent.removeExtra("page");}call.resolve(result);}
 }

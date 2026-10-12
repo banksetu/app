@@ -134,6 +134,7 @@ function decodeFields(fields = {}) {
 }
 
 function encodeValue(value) {
+  if (value instanceof Date) return { timestampValue: value.toISOString() };
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "boolean") return { booleanValue: value };
   if (typeof value === "number") return Number.isInteger(value)
@@ -227,7 +228,7 @@ async function verifyActor(request, env) {
   }
   // Every client write requires the tenant entitlement, independent of profile flags.
   // Licensing, setup reads and account recovery remain available after expiry.
-  if (["client_admin", "client_user"].includes(role) && !["/license-me", "/license-request-change", "/get-offline-session"].includes(new URL(request.url).pathname)) {
+  if (["client_admin", "client_user"].includes(role) && !["/license-me", "/license-request-change", "/get-offline-session", "/push-register", "/push-unregister"].includes(new URL(request.url).pathname)) {
     const path = `/tenantLicenses/${encodeURIComponent(String(profile.tenantId || ""))}`;
     const document = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
     const license = decodeFields(document?.fields || {});
@@ -271,6 +272,84 @@ async function putDocument(env, path, fields) {
     method: "PATCH",
     body: JSON.stringify({ fields: encodeFields(fields) }),
   });
+}
+
+const pushTokenPattern = /^[A-Za-z0-9_:\-]{80,4096}$/;
+const pushDevicePattern = /^[a-f0-9-]{36}$/;
+export function validatePushRegistration(body) {
+  if (!pushDevicePattern.test(String(body.deviceId || "")) || !pushTokenPattern.test(String(body.token || ""))) return false;
+  return body.platform === "android";
+}
+
+async function handlePushRegistration(request, env, actor, route) {
+  const body = await request.json().catch(() => ({}));
+  const deviceId = String(body.deviceId || "");
+  if (!pushDevicePattern.test(deviceId)) return json({ error: "Invalid device registration." }, 400);
+  if (route === "/push-register" && !validatePushRegistration(body)) return json({ error: "Invalid Android push token." }, 400);
+  const tenantId = isMasterActor(actor) ? `master:${actor.uid}` : String(actor.profile.tenantId || "");
+  if (!tenantId) return json({ error: "A verified workspace is required." }, 403);
+  const path = `/pushDevices/${encodeURIComponent(deviceId)}`;
+  const existing = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
+  const old = decodeFields(existing?.fields || {});
+  // An installation can belong to only one account/tenant at a time.
+  const now = Date.now();
+  if (route === "/push-unregister") {
+    if (old.uid === actor.uid) await firestoreRequest(env, path, { method: "DELETE" });
+    return json({ success: true });
+  }
+  if (old.uid === actor.uid && Date.parse(old.updatedAt || "") > now - 60_000) return json({ success: true, throttled: true });
+  if (!existing) {
+    const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: "pushDevices" }],
+      where: { fieldFilter: { field: { fieldPath: "uid" }, op: "EQUAL", value: { stringValue: actor.uid } } }, limit: 5,
+    } }) });
+    if (rows.filter(row => Date.parse(decodeFields(row.document?.fields || {}).expiresAt || "") > now).length >= 5) return json({ error: "Too many registered devices." }, 429);
+  }
+  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
+  return json({ success: true });
+}
+
+async function sendTenantPush(env, tenantId, event) {
+  // Called only after a committed server-side license transition. Delivery is best effort.
+  try {
+    const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: "pushDevices" }],
+      where: { fieldFilter: { field: { fieldPath: "tenantId" }, op: "EQUAL", value: { stringValue: tenantId } } }, limit: 100,
+    } }) });
+    const now = Date.now();
+    for (const row of rows) {
+      const record = decodeFields(row.document?.fields || {});
+      if (record.tenantId !== tenantId || !record.uid) continue;
+      const profile = await getProfile(env, record.uid);
+      if (profile?.tenantId !== tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active") continue;
+      {
+        if (!pushTokenPattern.test(String(record.token || "")) || Date.parse(record.expiresAt || "") < now) continue;
+        const result = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`, {
+          method: "POST", headers: { authorization: `Bearer ${await serviceAccessToken(env)}`, "content-type": "application/json" },
+          body: JSON.stringify({ message: { token: record.token, notification: { title: event.title, body: event.body },
+            data: { page: "license-management", category: "license", eventId: event.id },
+            android: { priority: "HIGH", notification: { channel_id: "banksetu_license", tag: event.id, click_action: "BANKSETU_PUSH" } } } }),
+        });
+        if (!result.ok) {
+          const error = await result.json().catch(() => ({}));
+          const code = error.error?.details?.[0]?.errorCode;
+          if (code === "UNREGISTERED") await firestoreRequest(env, `/pushDevices/${encodeURIComponent(row.document.name.split('/').pop())}`, {method:"DELETE"});
+          else console.warn("Bank Setu push delivery failed", result.status);
+        }
+      }
+    }
+  } catch (error) { console.warn("Bank Setu push delivery unavailable", error instanceof Error ? error.message : "unknown"); }
+}
+
+async function purgeExpiredPushDevices(env) {
+  const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+    from: [{ collectionId: "pushDevices" }],
+    where: { fieldFilter: { field: { fieldPath: "expiresAt" }, op: "LESS_THAN_OR_EQUAL", value: { timestampValue: new Date().toISOString() } } }, limit: 100,
+  } }) });
+  for (const row of rows) {
+    const id = row.document?.name?.split('/').pop();
+    if (id && pushDevicePattern.test(id)) await firestoreRequest(env, `/pushDevices/${id}`, { method: "DELETE" });
+  }
 }
 
 async function getGoogleSetupConfig(env, actor) {
@@ -399,7 +478,7 @@ function licenseStartDate(value) {
   if(value===new Date(Date.now()+330*60_000).toISOString().slice(0,10))return undefined;
   return new Date(`${value}T00:00:00+05:30`).toISOString();
 }
-async function handleLicensing(request, env, actor, route) {
+async function handleLicensing(request, env, actor, route, context) {
   const settings = await licenseSettings(env);
   const master = actor && isMasterActor(actor);
   if (route === "/license-public") return json({ pricing: settings.pricing, uiEnabled: settings.flags.uiEnabled, turnstileSiteKey: String(env.LICENSE_TURNSTILE_SITE_KEY || "") });
@@ -570,6 +649,7 @@ async function handleLicensing(request, env, actor, route) {
     }
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "License already assigned. Refresh before retrying." }, 409); throw error; }
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license updated", body: "Your license has been assigned. Open Bank Setu for details." }));
     return json({ success: true, tenantId, license });
   }
   if (route === "/license-admin-demo") {
@@ -651,6 +731,7 @@ async function handleLicensing(request, env, actor, route) {
     writes.push(licenseWrite(env,"licenseAudit",crypto.randomUUID(),audit));
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "License changed during approval. Refresh and retry." }, 409); throw error; }
+    if (approved) context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license approved", body: "Your license request has been approved. Open Bank Setu for details." }));
     return json({ success: true, status: decided.status });
   }
   if (route === "/license-admin-state") {
@@ -672,6 +753,7 @@ async function handleLicensing(request, env, actor, route) {
       licenseWrite(env, "tenantLicenses", tenantId, { ...current, status, revision: Number(current.revision || 0) + 1, updatedAt: now, lastRequestId: id }, { updateTime: document.updateTime }),
       licenseWrite(env, "licenseAudit", id, { action, actorUid: actor.uid, tenantId, before: current.status, after: status, at: now }),
     ]);
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: status === "active" ? "Bank Setu license reactivated" : `Bank Setu license ${status}`, body: "Open Bank Setu for details about your license." }));
     return json({ success: true, status });
   }
   return json({ error: "Not found." }, 404);
@@ -1348,7 +1430,10 @@ async function licensePublicKey(env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async scheduled(_event, env) {
+    await purgeExpiredPushDevices(env);
+  },
+  async fetch(request, env, context) {
     if (new URL(request.url).pathname === "/license-public-key" && request.method === "GET") {
       try { return json({ publicKey: await licensePublicKey(env), issuer: env.FIREBASE_PROJECT_ID }); }
       catch { return json({ error: "License verification key is unavailable." }, 503); }
@@ -1376,6 +1461,7 @@ export default {
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
+        "/push-register", "/push-unregister",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -1398,7 +1484,9 @@ export default {
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
       const migratedRoutes = ["/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
-        ? await handleLicensing(request, env, actor, route)
+        ? await handleLicensing(request, env, actor, route, context)
+        : route.startsWith("/push-")
+        ? await handlePushRegistration(request, env, actor, route)
         : migratedRoutes.includes(route)
         ? await handleMasterOperation(request, env, actor, route)
         : route === "/create-client-user"

@@ -3,6 +3,7 @@ import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
+        BankSetuNotificationsPlugin.createChannels(this);
         registerPlugin(BankSetuPrintPlugin.class);
         registerPlugin(BankSetuUpdatePlugin.class);
         registerPlugin(BankSetuSharePlugin.class);

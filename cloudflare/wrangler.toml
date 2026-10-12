@@ -2,6 +2,9 @@ name = "banksetu-client-api"
 main = "worker.js"
 compatibility_date = "2026-10-02"
 
+[triggers]
+crons = ["0 4 * * *"]
+
 [vars]
 ALLOW_LOCAL_FIRST_PREVIEW = "true"
 FIREBASE_PROJECT_ID = "banksetu-69e2f"
