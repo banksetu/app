@@ -312,6 +312,8 @@ async function handlePushRegistration(request, env, actor, route) {
 export async function sendTenantPush(env, tenantId, event) {
   // Called only after a committed server-side license transition. Delivery is best effort.
   try {
+    const tenant = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch(error => error.status === 404 ? null : Promise.reject(error));
+    if (decodeFields(tenant?.fields || {}).status !== "active") return;
     const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
       from: [{ collectionId: "pushDevices" }],
       where: { fieldFilter: { field: { fieldPath: "tenantId" }, op: "EQUAL", value: { stringValue: tenantId } } }, limit: 100,

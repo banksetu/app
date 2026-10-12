@@ -102,6 +102,7 @@ test("push sender checks each recipient's tenant and account status before FCM d
   globalThis.fetch = async (url,options={}) => {
     const target=String(url);
     if(target.includes('oauth2.googleapis.com/token'))return Response.json({access_token:'test',expires_in:3600});
+    if(target.includes('/documents/tenants/tenant-a'))return Response.json({fields:fields({status:'active'})});
     if(target.includes('/documents:runQuery'))return Response.json([
       {document:{fields:fields({uid:'same',tenantId:'tenant-a',token:'A'.repeat(100),expiresAt:new Date(Date.now()+86400000).toISOString()})}},
       {document:{fields:fields({uid:'other',tenantId:'tenant-a',token:'B'.repeat(100),expiresAt:new Date(Date.now()+86400000).toISOString()})}},
