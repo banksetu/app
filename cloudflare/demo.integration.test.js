@@ -11,7 +11,7 @@ const document=(path,value)=>({name:`${base}/${path}`,fields:fields(value),updat
 const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const env={ALLOWED_ORIGINS:'https://banksetu-app.web.app',FIREBASE_PROJECT_ID:project,FIREBASE_WEB_API_KEY:'synthetic-key',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'synthetic@example.invalid',private_key:privateKey.export({type:'pkcs8',format:'pem'})})};
 
-test('demo is server-owned, single-use, sample-only and converts without moving customer records',async()=>{
+test('demo is server-owned, single-use, permits setup and converts without moving customer records',async()=>{
   const store=new Map([
     ['users/master',document('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'})],
     ['users/demo-user',document('users/demo-user',{role:'client_admin',tenantId:'trial-a',status:'pending',subscriptionStatus:'inactive',licenseRequired:true,licensingInvite:true})],
@@ -27,6 +27,7 @@ test('demo is server-owned, single-use, sample-only and converts without moving 
     if(text.includes('accounts:lookup'))return new Response(JSON.stringify({users:[{localId:JSON.parse(options.body).idToken==='master'?'master':'demo-user',email:'synthetic@example.invalid',emailVerified:true}]}));
     if(text.includes('firestore.googleapis.com')){
       const path=decodeURIComponent(text.split('/documents')[1]||'');
+      if(path===':runQuery')return new Response('[]');
       if(path===':commit'){
         const writes=JSON.parse(options.body).writes;
         for(const write of writes){const key=write.update.name.slice(base.length+1),old=store.get(key);if((write.currentDocument?.exists===false&&old)||(write.currentDocument?.updateTime&&old?.updateTime!==write.currentDocument.updateTime))return new Response('{}',{status:409});}
@@ -48,15 +49,26 @@ test('demo is server-owned, single-use, sample-only and converts without moving 
     assert.equal((await call('master','/license-admin-demo',{tenantId:'trial-a',requestId:'22222222-2222-4222-8222-222222222222'})).status,409);
     const me=await call('demo','/license-me');
     assert.equal(me.body.view.state,'demo_active');assert.equal(JSON.parse(me.body.receipt.payload).plan,'demo');
-    assert.equal((await call('demo','/get-google-setup')).status,403);
-    assert.equal((await call('demo','/connect-option-b',{})).status,403);
+    assert.equal((await call('demo','/get-google-setup')).status,200);
     const grant=await call('demo','/get-offline-session');
-    assert.equal(grant.status,200);assert.equal(JSON.parse(grant.body.payload).demoOnly,true);
+    assert.equal(grant.status,409,'offline access awaits a verified tenant workspace');
+    const upgradeId='44444444-4444-4444-8444-444444444444';
+    const upgrade=await call('demo','/license-request-change',{kind:'upgrade',plan:'annual',requestId:upgradeId});
+    assert.equal(upgrade.status,200,JSON.stringify(upgrade.body));
+    assert.equal(store.get(`licenseRequests/${upgradeId}`).fields.requestedPlan.stringValue,'annual');
+    assert.equal((await call('demo','/license-admin-decision',{requestId:upgradeId,action:'approve',paymentConfirmed:true})).status,403);
+    assert.equal((await call('master','/license-admin-decision',{requestId:upgradeId,action:'reject'})).status,200);
     assert.equal((await call('demo','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true})).status,403);
     const converted=await call('master','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true});
     assert.equal(converted.status,200);assert.equal(converted.body.license.demoOnly,false);
-    assert.equal(converted.body.productionWorkspaceRequiresConnection,true);
     assert.equal((await call('master','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true})).body.repeated,true);
+    // Simulate a separate Demo tenant snapshot to cover the client request path.
+    store.set('tenantLicenses/trial-a',document('tenantLicenses/trial-a',activated.body.license));
+    const requested='55555555-5555-4555-8555-555555555555';
+    assert.equal((await call('demo','/license-request-change',{kind:'upgrade',plan:'lifetime',requestId:requested})).status,200);
+    const approved=await call('master','/license-admin-decision',{requestId:requested,action:'approve',paymentConfirmed:true,paidPaise:499900});
+    assert.equal(approved.status,200,JSON.stringify(approved.body));
+    assert.equal((await call('demo','/license-me')).body.license.plan,'lifetime');
     assert.equal(store.get('tenantSettings/trial-a').fields.spreadsheetId.stringValue,'');
     assert.equal(beforeKeys.some(key=>key.startsWith('customers/')),false);
     assert.equal([...store.keys()].some(key=>key.startsWith('customers/')),false);

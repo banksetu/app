@@ -2,6 +2,17 @@
 const DAY = 86_400_000;
 export const DEFAULT_FLAGS = Object.freeze({ uiEnabled: false, newClientRequired: true, existingClientEnforcement: false, verificationEnforcement: false });
 export const DEFAULT_PRICING = Object.freeze({ annualPaise: 0, lifetimePaise: 0, annualAvailable: false, lifetimeAvailable: false, upgradeCreditEnabled: false, maxCreditPaise: 0, graceDays: 7, paymentInstructions: "Contact the Master Admin for payment details." });
+export const DEFAULT_PAYMENT_DETAILS = Object.freeze({accountHolder:"",bankName:"",accountNumber:"",ifsc:"",upiId:""});
+export function validatePaymentDetails(input) {
+  if(!input || typeof input!=="object")throw new Error("Enter valid payment account details.");
+  const details=Object.fromEntries(Object.keys(DEFAULT_PAYMENT_DETAILS).map(key=>[key,String(input[key]??"").trim()]));
+  if(details.accountHolder.length>100||details.bankName.length>100||details.accountNumber.length>34||details.ifsc.length>11||details.upiId.length>100||
+    (details.accountNumber&&!/^[0-9]{6,34}$/.test(details.accountNumber))||
+    (details.ifsc&&!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(details.ifsc))||
+    (details.upiId&&!/^[A-Za-z0-9._-]{2,64}@[A-Za-z0-9.-]{2,35}$/.test(details.upiId))||
+    ([details.accountHolder,details.bankName,details.accountNumber,details.ifsc].some(Boolean)&&![details.accountHolder,details.bankName,details.accountNumber,details.ifsc].every(Boolean)))throw new Error("Complete the holder, bank, account number and IFSC together, or leave all blank.");
+  return details;
+}
 
 // Offboarding keeps the tenant document for audit and retry safety. Only a
 // completed offboarding (or a deleted document) removes it from client totals.
@@ -100,6 +111,6 @@ export function validateInquiry(input) {
   const s = (key, max) => typeof input[key] === "string" && input[key].trim().length <= max ? input[key].trim() : null;
   const name = s("name", 100), mobile = s("mobile", 20), email = s("email", 254), bankName = s("bankName", 120);
   const location = s("location", 120), message = s("message", 500);
-  if (!name || !bankName || !mobile || !/^\+?[0-9][0-9\s-]{7,18}$/.test(mobile) || email === null || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || location === null || message === null || !["annual", "lifetime", "undecided"].includes(input.plan) || !/^[a-f0-9-]{36}$/.test(input.requestId || "")) throw new Error("Enter valid contact details and a request ID.");
+  if (!name || !bankName || !mobile || !/^\+?[0-9][0-9\s-]{7,18}$/.test(mobile) || email === null || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || location === null || message === null || !["demo", "annual", "lifetime", "undecided"].includes(input.plan) || !/^[a-f0-9-]{36}$/.test(input.requestId || "")) throw new Error("Enter valid contact details and a request ID.");
   return { name, mobile, email, bankName, location, message, plan: input.plan, requestId: input.requestId };
 }

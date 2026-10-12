@@ -52,7 +52,9 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const pending=await call('client','/license-me',{});
     assert.equal(pending.body.view.canWrite,false);
     assert.equal(pending.body.receipt,null);
-    assert.equal((await call('master','/create-client',{})).status,409);
+    assert.equal((await call('client','/save-workspace-bank-settings',{bankInfo:{}})).status,400,'pending clients can enter setup but cannot skip validation');
+    assert.equal((await call('client','/presence-heartbeat',{})).status,403,'pending clients remain blocked from operations');
+    assert.equal((await call('master','/create-client',{})).status,400);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
     const id='01234567-89ab-4cde-8fab-0123456789ab';
     const deniedAssignment=await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true});
@@ -75,12 +77,14 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,signature,new TextEncoder().encode(receipt.payload)));
     const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=5*86400000);assert(claims.validUntil<=Date.parse(first.expiresAt));
     const renewal='12345678-89ab-4cde-8fab-0123456789ab';
-    assert.equal((await call('client','/license-request-change',{kind:'renewal',requestId:renewal})).status,200);
+    assert.equal((await call('client','/license-request-change',{kind:'renewal',requestId:renewal,transactionId:'UTR12345678',paymentDate:indiaToday,paidPaise:149900})).status,200);
+    assert.equal(store.get(`licenseRequests/${renewal}`).fields.paymentStatus.stringValue,'client_reported');
     assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve'})).status,400);
     assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve',paymentConfirmed:true})).status,200);
     assert.equal((await call('master','/license-admin-decision',{requestId:renewal,action:'approve',paymentConfirmed:true})).body.repeated,true);
     const current=(await call('client','/license-me',{})).body.license;
     assert.equal(current.revision,2);assert(new Date(current.expiresAt)>new Date(first.expiresAt));
+    assert.equal((await call('client','/license-request-change',{kind:'upgrade',requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',transactionId:'UTR12345678'})).status,409,'one UTR cannot be reused for another request');
     const upgrade='23456789-89ab-4cde-8fab-0123456789ab';
     const request=(await call('client','/license-request-change',{kind:'upgrade',requestId:upgrade}));
     assert.equal(request.status,200);assert.equal(request.body.quotedPaise,350000);
@@ -125,7 +129,7 @@ test('authoritative license listing excludes fully offboarded and orphaned tenan
     if(text.includes('accounts:lookup'))return new Response(JSON.stringify({users:[{localId:'master',email:'owner@example.invalid',emailVerified:true}]}));
     if(text.includes('firestore.googleapis.com')){
       const path=decodeURIComponent(text.split('/documents')[1]||'');
-      if(path.startsWith('/tenantLicenses?')||path.startsWith('/tenants?')||path.startsWith('/licenseRequests?')){
+      if(path.startsWith('/tenantLicenses?')||path.startsWith('/tenants?')||path.startsWith('/licenseRequests?')||path.startsWith('/users?')){
         const collection=path.split('?')[0].slice(1);
         return new Response(JSON.stringify({documents:[...store].filter(([key])=>key.startsWith(`${collection}/`)).map(([,value])=>value)}));
       }

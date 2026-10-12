@@ -79,8 +79,8 @@ test('account switching rejects in-flight authorizations and prevents cross-tena
  assert.equal(h.api.getLicensePermission().canWrite,false);assert.equal(h.api.getLicensePermission().uid,'user-b');
  h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
 });
-test('separate valid five-day sample-only demo remains allowed, then expires',async()=>{
- const h=harness();h.session.set('bankSetuConnectionMode','demo');h.setRemote(()=>h.response('demo_active',1,{plan:'demo'}));await h.api.requireLicensedWrite();
+test('valid five-day demo permits verified tenant workspace writes, then expires',async()=>{
+ const h=harness();h.session.set('bankSetuConnectionMode','option-b');h.setRemote(()=>h.response('demo_active',1,{plan:'demo'}));await h.api.requireLicensedWrite();
  assert.equal(h.session.get('bankSetuDemoWorkspace'),'active');h.navigator.onLine=false;h.advance(5*86400000);
  await assert.rejects(h.api.requireLicensedWrite());assert.equal(h.session.get('bankSetuDemoWorkspace'),'expired');
 });

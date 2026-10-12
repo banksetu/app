@@ -52,7 +52,7 @@ export async function resumeOfflineSession(uid: string, expected?: {role:string;
   const master=["master_owner","admin"].includes(claims.role);
   if(master){if(claims.tenantId!==`master:${uid}`)throw new Error("Master offline scope is invalid.");sessionStorage.removeItem("bankSetuTenantId");sessionStorage.setItem("bankSetuMasterLocalEnabled","true");}else{sessionStorage.removeItem("bankSetuMasterLocalEnabled");sessionStorage.setItem("bankSetuTenantId",claims.tenantId);}
   sessionStorage.setItem("bankSetuAccountRole",claims.role);sessionStorage.setItem("bankSetuRole",claims.role!=="client_user"?"admin":"user");
-  sessionStorage.setItem("bankSetuConnectionMode",master?"master-local":claims.demoOnly?"demo":"option-b");sessionStorage.setItem("bankSetuDemoWorkspace",claims.demoOnly?"active":"false");sessionStorage.setItem("bankSetuConnectionId",claims.connectionId);sessionStorage.setItem("bankSetuBridgeUrl",claims.apiUrl);sessionStorage.setItem("bankSetuOfflineUntil",String(claims.expiresAt));
+  sessionStorage.setItem("bankSetuConnectionMode",master?"master-local":claims.demoOnly?"demo":"option-b");sessionStorage.setItem("bankSetuConnectionId",claims.connectionId);sessionStorage.setItem("bankSetuBridgeUrl",claims.apiUrl);sessionStorage.setItem("bankSetuOfflineUntil",String(claims.expiresAt));
   setTenantApiUrl(claims.apiUrl);setTenantWorkspaceReady(true);return claims;
 }
 export async function clearOfflineSession(uid: string) {

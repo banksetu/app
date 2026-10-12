@@ -38,8 +38,8 @@ function createLicenseGuard(publicKey) {
         (!Number.isInteger(claim.revision) || claim.revision<0) || !Number.isFinite(claim.issuedAt) ||
         !Number.isFinite(claim.validUntil) || claim.issuedAt > now + 300000 ||
         claim.validUntil <= now || claim.validUntil<=claim.issuedAt || claim.validUntil - claim.issuedAt > 5 * 86400000 || !['annual','lifetime','demo'].includes(claim.plan) ||
-        !(['active', 'expiring_soon'].includes(claim.state) || (grant.demoOnly && claim.state === 'demo_active')) ||
-        (!grant.demoOnly && claim.plan === 'demo') || (grant.demoOnly && claim.plan !== 'demo') ||
+        !(['active', 'expiring_soon'].includes(claim.state) || (claim.plan === 'demo' && claim.state === 'demo_active')) ||
+        (grant.demoOnly && claim.plan !== 'demo') ||
         ((claim.plan === 'annual' || claim.plan === 'demo') &&
           (!Number.isFinite(Date.parse(claim.expiresAt)) || now >= Date.parse(claim.expiresAt) || claim.validUntil > Date.parse(claim.expiresAt))))
       throw Error('License is pending, expired or belongs to another workspace. Local data was retained.');

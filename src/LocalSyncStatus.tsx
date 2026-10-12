@@ -38,7 +38,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
   useEffect(() => {
     const changed=()=>{if(visible)refresh();};
     window.addEventListener("banksetu-sync-change",changed);window.addEventListener("banksetu-workspace-change",changed);changed();
-    if(visible && sessionStorage.getItem("bankSetuDemoWorkspace")!=="active"){
+    if(visible && sessionStorage.getItem("bankSetuConnectionMode")!=="demo"){
     void callBankSetuWorker<{ spreadsheetId?: string }>("/get-google-setup", {}).then(config => {
       const id = String(config.spreadsheetId || ""); setSheetUrl(id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "");
     }).catch(() => undefined);
@@ -50,7 +50,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
   if (!visible) return null;
   if (!localModeEnabled()) return <aside aria-label="Local database sync" style={styles.shell}><h2 style={styles.title}>Sync &amp; Backup</h2><p>Local sync चालू करने के लिए existing Master Apps Script में updated Code.gs लगाकर उसी deployment का नया version deploy करें, फिर login करें।</p><a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={styles.link}>Download updated Master Code.gs</a></aside>;
 
-  if(sessionStorage.getItem("bankSetuDemoWorkspace")==="active") return <aside aria-label="Demo local data" className="sync-center"><header className="sync-header"><div><p>DEMO · SAMPLE ONLY</p><h2>Sample Data</h2><span>{status.records} records on this device. No production Google Sheet or Drive is connected.</span></div></header><section className="sync-body"><p>Sample records stay separate from a future paid workspace.</p><button type="button" className="backup-action" onClick={()=>void exportLocalBackup().catch(reason=>setError(reason instanceof Error?reason.message:"Sample backup failed."))}>Back Up Sample Data</button>{error&&<p role="alert">{error}</p>}</section></aside>;
+  if(sessionStorage.getItem("bankSetuConnectionMode")==="demo") return <aside aria-label="Legacy demo local data" className="sync-center"><header className="sync-header"><div><p>LEGACY SAMPLE DATA</p><h2>Previous Local Demo</h2><span>{status.records} older sample records on this device.</span></div></header><section className="sync-body"><p>Reconnect your verified tenant workspace for the current Demo license. Existing local sample records are retained.</p><button type="button" className="backup-action" onClick={()=>void exportLocalBackup().catch(reason=>setError(reason instanceof Error?reason.message:"Sample backup failed."))}>Back Up Sample Data</button>{error&&<p role="alert">{error}</p>}</section></aside>;
 
   if (readOnly) return <aside aria-label="Local database backup" className="sync-center"><header className="sync-header"><div><p>DATA CONTROL CENTER</p><h2>Read-Only Backup</h2><span>Existing customer data and pending operations remain on this device.</span></div></header><section className="sync-body"><p>{status.records} local customer records · {status.pending} pending operations</p><button type="button" className="backup-action" onClick={() => void exportLocalBackup().catch(reason => setError(reason instanceof Error ? reason.message : "Backup failed."))}>◉ Backup Now</button>{error && <p role="alert">{error}</p>}</section></aside>;
 
