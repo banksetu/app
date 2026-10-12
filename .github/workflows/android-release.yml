@@ -74,6 +74,7 @@ jobs:
       - name: Verify registered Firebase Android app and obtain build config
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+          BANKSETU_REGISTER_ANDROID_APP: 'true'
         run: node scripts/fetch-android-firebase-config.mjs
       - run: npm run test:local && npm run test:bridge && npm run check:schema
       - run: npm run android:sync

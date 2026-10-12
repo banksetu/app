@@ -21,8 +21,20 @@ async function api(path, options) {
   if (!response.ok) throw Error(`Firebase Management API ${response.status}: ${value.error?.message || 'unavailable'}`);
   return value;
 }
-const list = await api(`projects/${project}/androidApps?pageSize=100`);
-const matches = (list.apps || []).filter(app => app.packageName === packageName && app.state !== 'DELETED');
+let list = await api(`projects/${project}/androidApps?pageSize=100`);
+let matches = (list.apps || []).filter(app => app.packageName === packageName && app.state !== 'DELETED');
+if (!matches.length && process.env.BANKSETU_REGISTER_ANDROID_APP === 'true') {
+  const operation = await api(`projects/${project}/androidApps`, {method:'POST',body:JSON.stringify({packageName,displayName:'Bank Setu Android'})});
+  if (!operation.name?.includes('operations/')) throw Error('Firebase did not return an Android app registration operation.');
+  let done = operation;
+  for (let attempt = 0; !done.done && attempt < 20; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    done = await api(operation.name);
+  }
+  if (!done.done || done.error) throw Error(`Firebase Android app registration did not complete: ${done.error?.message || 'timed out'}`);
+  list = await api(`projects/${project}/androidApps?pageSize=100`);
+  matches = (list.apps || []).filter(app => app.packageName === packageName && app.state !== 'DELETED');
+}
 if (matches.length !== 1) throw Error(`Expected one Firebase Android app for ${packageName}; found ${matches.length}. Register it in Firebase Console, then retry.`);
 const config = await api(`${matches[0].name}/config`);
 const content = JSON.parse(Buffer.from(config.configFileContents || '', 'base64').toString('utf8'));
