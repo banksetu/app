@@ -861,8 +861,8 @@ async function handleMasterOperation(request, env, actor, route) {
 
   if (route === "/create-client") {
     if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can create Client Admin accounts." }, 403);
-    const { flags } = await licenseSettings(env);
-    if (flags.newClientRequired) return json({ error: "Use License Management to invite and activate a new client." }, 409);
+    // Client creation is centralized in Master Admin Profile. License assignment remains
+    // a separate, server-authorized step; the existing account is not granted a license here.
     const body = await request.json().catch(() => ({}));
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
