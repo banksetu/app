@@ -297,7 +297,9 @@ async function handlePushRegistration(request, env, actor, route) {
     if (old.uid === actor.uid) await firestoreRequest(env, path, { method: "DELETE" });
     return json({ success: true });
   }
-  if (old.uid === actor.uid && Date.parse(old.updatedAt || "") > now - 60_000) return json({ success: true, throttled: true });
+  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token &&
+      Date.parse(old.expiresAt || "") > now && Date.parse(old.updatedAt || "") > now - 60_000)
+    return json({ success: true, throttled: true });
   if (!existing) {
     const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
       from: [{ collectionId: "pushDevices" }],
@@ -352,6 +354,22 @@ async function purgeExpiredPushDevices(env) {
     const id = row.document?.name?.split('/').pop();
     if (id && pushDevicePattern.test(id)) await firestoreRequest(env, `/pushDevices/${id}`, { method: "DELETE" });
   }
+}
+
+async function purgeTenantPushDevices(env, tenantId) {
+  for (let page = 0; page < 20; page++) {
+    const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+      from: [{ collectionId: "pushDevices" }],
+      where: { fieldFilter: { field: { fieldPath: "tenantId" }, op: "EQUAL", value: { stringValue: tenantId } } }, limit: 100,
+    } }) });
+    const matches = rows.filter(row => decodeFields(row.document?.fields || {}).tenantId === tenantId);
+    if (!matches.length) return;
+    for (const row of matches) {
+      const id = row.document?.name?.split('/').pop();
+      if (id && pushDevicePattern.test(id)) await firestoreRequest(env, `/pushDevices/${encodeURIComponent(id)}`, { method: "DELETE" });
+    }
+  }
+  throw new Error("Push registration cleanup is incomplete; the workspace remains blocked for retry.");
 }
 
 async function getGoogleSetupConfig(env, actor) {
@@ -1287,6 +1305,30 @@ async function cascadeClientAdminAction(env, actor, target, action) {
   await updateTenantStatus(env, tenantId, suspend ? "blocked" : "active", actor.uid);
 }
 
+export async function purgeTenantSupportText(env, tenantId, users) {
+  for (const user of users) {
+    const uid = String(user.uid || "");
+    if (!uid || uid.length > 128) throw new Error("Invalid support conversation owner.");
+    const path = `/supportConversations/${encodeURIComponent(uid)}`;
+    const conversation = await firestoreRequest(env, path).catch(error => error.status === 404 ? null : Promise.reject(error));
+    if (conversation && decodeFields(conversation.fields || {}).tenantId !== tenantId) throw new Error("Support conversation tenant mismatch; cleanup stopped.");
+    // Delete children before their parent. Repeating this after a partial failure
+    // resumes from the remaining messages without touching another tenant.
+    for (let batch = 0; batch < 40; batch++) {
+      const listing = await firestoreRequest(env, `${path}/messages?pageSize=50`);
+      const messages = listing.documents || [];
+      if (!messages.length) break;
+      for (const message of messages) {
+        if (!message.name?.startsWith(`${firestoreDocumentName(env, path)}/messages/`)) throw new Error("Unexpected support message path.");
+        if (decodeFields(message.fields || {}).tenantId !== tenantId) throw new Error("Support message tenant mismatch; cleanup stopped.");
+        await firestoreRequest(env, `/${message.name.split('/documents/')[1]}`, { method: "DELETE" });
+      }
+      if (batch === 39) throw new Error("Support text cleanup is incomplete; the workspace remains blocked for retry.");
+    }
+    if (conversation) await firestoreRequest(env, path, { method: "DELETE" });
+  }
+}
+
 async function deleteClientWorkspace(env, actor, uid, tenantHint = "") {
   if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can remove a client workspace." }, 403);
   if (!uid || uid.length > 128 || uid === actor.uid) return json({ error: "Select a valid Client Admin account." }, 400);
@@ -1297,6 +1339,8 @@ async function deleteClientWorkspace(env, actor, uid, tenantHint = "") {
     if(data.ownerUid===uid && data.status==="offboarding") {
       const users=await listWorkspaceUsers(env,tenantHint);
       if(users.some(user=>!["client_admin","client_user"].includes(String(user.role||"").toLowerCase())))return json({error:"Unexpected workspace role; no accounts were changed."},409);
+      await purgeTenantSupportText(env,tenantHint,users);
+      await purgeTenantPushDevices(env,tenantHint);
       for(const user of users){await authDelete(env,user.uid).catch(error=>{if(error.status!==404&&error.status!==400)throw error;});await firestoreRequest(env,`/users/${encodeURIComponent(user.uid)}`,{method:"DELETE"}).catch(error=>{if(error.status!==404)throw error;});}
       await updateTenantStatus(env,tenantHint,"offboarded",actor.uid);
       return json({success:true,message:"Interrupted workspace offboarding completed. Client-owned Google files were kept."});
@@ -1328,6 +1372,8 @@ async function deleteClientWorkspace(env, actor, uid, tenantHint = "") {
         status: "blocked", subscriptionStatus: "inactive", updatedBy: actor.uid, updatedAt: new Date().toISOString(),
       });
     }
+    await purgeTenantSupportText(env, tenantId, orphanUsers);
+    await purgeTenantPushDevices(env, tenantId);
     for (const user of orphanUsers) {
       await authDelete(env, user.uid);
       await firestoreRequest(env, `/users/${encodeURIComponent(user.uid)}`, { method: "DELETE" }).catch((error) => {
@@ -1353,6 +1399,8 @@ async function deleteClientWorkspace(env, actor, uid, tenantHint = "") {
       status: "blocked", subscriptionStatus: "inactive", updatedBy: actor.uid, updatedAt: new Date().toISOString(),
     });
   }
+  await purgeTenantSupportText(env, tenantId, managed);
+  await purgeTenantPushDevices(env, tenantId);
   for (const user of managed) {
     await authDelete(env, user.uid);
     await firestoreRequest(env, `/users/${encodeURIComponent(user.uid)}`, { method: "DELETE" }).catch((error) => {

@@ -1,7 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch, validatePushRegistration, sendTenantPush } from "./worker.js";
+import worker, { firestoreDocumentName, bankFormatSelectionError, workspaceBankSettingsPath, validateWorkspaceBankPatch, validatePushRegistration, sendTenantPush, purgeTenantSupportText } from "./worker.js";
+
+test('support cleanup deletes only the verified tenant thread and its children', async () => {
+  const previous = globalThis.fetch;
+  const {privateKey} = generateKeyPairSync('rsa',{modulusLength:2048});
+  const deleted=[];
+  const doc='projects/test/databases/(default)/documents/supportConversations/client-a';
+  let present=true, messages=[`${doc}/messages/one`,`${doc}/messages/two`];
+  globalThis.fetch=async (url,options={})=>{
+    const target=String(url),method=options.method||'GET';
+    if(target.includes('oauth2.googleapis.com/token'))return Response.json({access_token:'test',expires_in:3600});
+    if(target.endsWith('/documents/supportConversations/client-a/messages?pageSize=50'))return Response.json({documents:messages.map(name=>({name,fields:{tenantId:{stringValue:'tenant-a'}}}))});
+    if(target.endsWith('/documents/supportConversations/client-a') && method==='GET')return present?Response.json({fields:{tenantId:{stringValue:'tenant-a'}}}):Response.json({}, {status:404});
+    if(method==='DELETE') { const path=target.split('/documents/')[1];deleted.push(path);if(path.includes('/messages/'))messages=messages.filter(name=>!name.endsWith(path.split('/').at(-1)));else present=false;return Response.json({}); }
+    throw Error(`Unexpected cleanup request ${target}`);
+  };
+  const env={FIREBASE_PROJECT_ID:'test',FIREBASE_SERVICE_ACCOUNT:JSON.stringify({client_email:'test@example.test',private_key:privateKey.export({type:'pkcs8',format:'pem'})})};
+  try {await purgeTenantSupportText(env,'tenant-a',[{uid:'client-a'}]);assert.equal(present,false);assert.equal(messages.length,0);assert.equal(deleted.length,3);} finally {globalThis.fetch=previous;}
+});
 
 
 test("builds Firestore commit resource names without REST URL prefixes", () => {
@@ -85,6 +103,8 @@ test("push device ownership follows the authenticated account and unregister can
     const body={platform:'android',deviceId,token:'A'.repeat(100)};
     assert.equal((await call('first','/push-register',body)).status,200);
     assert.equal(stored.uid.stringValue,'first');
+    assert.equal((await call('first','/push-register',{...body,token:'C'.repeat(100)})).status,200);
+    assert.equal(stored.token.stringValue,'C'.repeat(100),'a rotated FCM token must not be throttled');
     assert.equal((await call('second','/push-register',{...body,token:'B'.repeat(100)})).status,200);
     assert.equal(stored.uid.stringValue,'second');
     assert.equal((await call('first','/push-unregister',{deviceId})).status,200);

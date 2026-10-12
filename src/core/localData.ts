@@ -5,6 +5,7 @@ import { auth } from "../firebase";
 import { requireLicensedWrite } from "./licenseAccess";
 import { classifyRecovery, recoveryJournal, type RecoveryCategory } from "./recovery";
 import { customerRepository as repository } from "./customerRepository";
+import { mergeRemotePhoto, mergeUploadedPhoto } from "./photoState";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
 const IDLE_RECONCILE_MS=60*60*1000;
@@ -162,7 +163,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if (previous?.pending || previous?.deleted) continue;
       if(checkpoint&&hadPreviousSync&&!previous)discovered++;
       const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId;
-      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...customer,photoDataUrl:previous?.customer.photoDataUrl || customer.photoDataUrl, pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl, photoPreview:customer.photoPreview || (samePhoto?previous?.customer.photoPreview:"") || ""},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,photoRetryAt:samePhoto?previous?.photoRetryAt:undefined,photoFailures:samePhoto?previous?.photoFailures:undefined,pending:false};
+      const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...mergeRemotePhoto(customer,previous?.customer),pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,photoRetryAt:samePhoto?previous?.photoRetryAt:undefined,photoFailures:samePhoto?previous?.photoFailures:undefined,pending:false};
       if((value.photoNotFound===true||record.customer.photoAvailable===false)&&!record.customer.photoPreview){record.photoMissingRef=photoRef(record);record.photoRetryAt=undefined;record.photoFailures=undefined;}
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
     }
@@ -313,7 +314,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       state.operations=state.operations.filter(item => item.operationId !== op.operationId);
       const saved=state.records.find(item => item.recordId === op.recordId);
       if (value.deleted) { const deletedRecord=state.records.find(item=>item.recordId===op.recordId); if (deletedRecord) deletedRecord.deleted=true; }
-      if (saved) { if (!value.deleted) {saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);}saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer={...value.customer,photoDataUrl:saved.customer.photoDataUrl || value.customer.photoDataUrl,pdfDataUrl:saved.customer.pdfDataUrl || value.customer.pdfDataUrl}; }
+      if (saved) { if (!value.deleted) {saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);}saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer={...mergeUploadedPhoto(value.customer,saved.customer,op.customer),pdfDataUrl:saved.customer.pdfDataUrl || value.customer.pdfDataUrl}; }
     });
     if (value.success) actionNotice("success",op.action === "deleteCustomer" ? "Customer deleted" : "Cloud synced",op.action === "deleteCustomer" ? "Google Sheet row and Drive files confirmed deleted." : "Customer change synced to Google Sheet and Drive.");
   }

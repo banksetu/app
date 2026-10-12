@@ -1142,7 +1142,7 @@ function updateCustomer(
       folder lookup.
     */
 
-    if (!photo) {
+    if (!photo && !cleanValue(existingRow[19])) {
       photo =
         findPhotoByCustomerId(
           enrolId,
@@ -1468,12 +1468,8 @@ function savePhotoByCustomerId(
     );
 
 
-  /*
-    पहले उसी Customer ID की कोई भी
-    jpg/png/webp photo हटाएँ.
-  */
-
-  deletePhotosByCustomerId(customerId, photoFolderId);
+  // Keep the prior file until the new photo and its Sheet reference are saved.
+  // A failed upload or Sheet write must never destroy the active photo.
 
 
   const fileName =
