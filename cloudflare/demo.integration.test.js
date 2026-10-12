@@ -59,6 +59,12 @@ test('demo is server-owned, single-use, permits setup and converts without movin
     assert.equal((await call('demo','/license-admin-decision',{requestId:upgradeId,action:'approve',paymentConfirmed:true})).status,403);
     assert.equal((await call('master','/license-admin-decision',{requestId:upgradeId,action:'reject'})).status,200);
     assert.equal((await call('demo','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true})).status,403);
+    store.set('tenantLicenses/trial-a',document('tenantLicenses/trial-a',{...activated.body.license,status:'suspended'}));
+    assert.equal((await call('master','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true})).status,409,'suspended Demo cannot bypass its state');
+    store.set('tenantLicenses/trial-a',document('tenantLicenses/trial-a',activated.body.license));
+    store.set('tenants/trial-a',document('tenants/trial-a',{tenantId:'trial-a',ownerUid:'demo-user',status:'offboarding'}));
+    assert.equal((await call('master','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true})).status,409,'offboarding tenant cannot regain access');
+    store.set('tenants/trial-a',document('tenants/trial-a',{tenantId:'trial-a',ownerUid:'demo-user',status:'active'}));
     const converted=await call('master','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true});
     assert.equal(converted.status,200);assert.equal(converted.body.license.demoOnly,false);
     assert.equal((await call('master','/license-admin-demo-convert',{tenantId:'trial-a',plan:'annual',requestId:'33333333-3333-4333-8333-333333333333',paymentConfirmed:true})).body.repeated,true);
@@ -66,6 +72,9 @@ test('demo is server-owned, single-use, permits setup and converts without movin
     store.set('tenantLicenses/trial-a',document('tenantLicenses/trial-a',activated.body.license));
     const requested='55555555-5555-4555-8555-555555555555';
     assert.equal((await call('demo','/license-request-change',{kind:'upgrade',plan:'lifetime',requestId:requested})).status,200);
+    store.set('tenantLicenses/trial-a',document('tenantLicenses/trial-a',{...activated.body.license,status:'revoked'}));
+    assert.equal((await call('master','/license-admin-decision',{requestId:requested,action:'approve',paymentConfirmed:true,paidPaise:499900})).status,409,'pending request cannot reactivate a revoked Demo');
+    store.set('tenantLicenses/trial-a',document('tenantLicenses/trial-a',activated.body.license));
     const approved=await call('master','/license-admin-decision',{requestId:requested,action:'approve',paymentConfirmed:true,paidPaise:499900});
     assert.equal(approved.status,200,JSON.stringify(approved.body));
     assert.equal((await call('demo','/license-me')).body.license.plan,'lifetime');

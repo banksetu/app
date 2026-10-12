@@ -724,6 +724,9 @@ async function handleLicensing(request, env, actor, route, context) {
     const doc=await licenseDoc(env,`/tenantLicenses/${tenantId}`),current=licenseFields(doc);
     if(current.lastRequestId===id)return json({success:true,repeated:true});
     if(current.plan!=="demo")return json({error:"This tenant has no demo to convert."},409);
+    if(["suspended","revoked"].includes(current.status))return json({error:"Reactivate this tenant's Demo license before converting it."},409);
+    const tenant=licenseFields(await licenseDoc(env,`/tenants/${tenantId}`));
+    if(tenant.status!=="active")return json({error:"Active tenant not found."},409);
     const price=plan==="annual"?settings.pricing.annualPaise:settings.pricing.lifetimePaise;
     const paidPaise=body.paidPaise===undefined?price:Number(body.paidPaise);
     if(!settings.pricing[plan==="annual"?"annualAvailable":"lifetimeAvailable"]||!Number.isSafeInteger(paidPaise)||paidPaise<=0||paidPaise>100_000_000)return json({error:"Confirm an available paid plan and amount."},400);
@@ -770,6 +773,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const writes = [licenseWrite(env, "licenseRequests", id, decided, { updateTime: requestDoc.updateTime })];
     if (approved) {
       const demoConversion=current.plan==="demo";
+      if(demoConversion && ["suspended","revoked"].includes(current.status))return json({error:"Reactivate this tenant's Demo license before approving a paid conversion."},409);
       const next = transitionLicense(demoConversion ? null : currentDoc ? current : null, { ...item, kind:demoConversion?item.requestedPlan:item.kind, id, quotedPaise:paidPaise, startAt, durationMonths }, now, settings.pricing);
       if(demoConversion){next.revision=Number(current.revision||0)+1;next.firstActivatedAt=current.firstActivatedAt||current.activatedAt;next.demoOnly=false;}
       next.tenantId = tenantId;
