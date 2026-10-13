@@ -294,13 +294,20 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
   if (initial.operations.some(operation => operation.state === "pending")) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
+  let bridgeUpgradeError = "";
+  const deferredRecords = new Set<string>();
   for (const op of initial.operations.filter(operation => operation.state === "pending").slice(0,25)) {
+    if (deferredRecords.has(op.recordId)) continue;
     if (identity() !== scope || auth.currentUser?.uid !== user.uid) return;
     const current = await repository.read(scope);
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
     let value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
-    if(op.action === "markAfsmSent" && !value.success && /Unsupported queued operation/.test(String(value.message||"")))throw Error("Update this workspace Apps Script bridge to the AFSM version using the setup download. Local AFSM changes remain pending and will retry after the bridge update.");
+    if(op.action === "markAfsmSent" && !value.success && /Unsupported queued operation/.test(String(value.message||""))) {
+      bridgeUpgradeError = "Customer downloads can continue, but AFSM uploads remain pending. Update the deployment used by this workspace: Apps Script → Deploy → Manage deployments → Edit → New version → Deploy. Creating a separate deployment does not update the saved bridge URL.";
+      deferredRecords.add(op.recordId);
+      continue;
+    }
     if(!value.success && String(value.message||"").includes("Valid name, account number, customer ID and Aadhaar are required"))
       value={...value,code:"INVALID_INPUT",message:`Pending ${op.action} needs valid customer identity fields. Complete Name, Account Number, Customer ID and Aadhaar before retrying. The local change is retained for review.`};
     if (op.action === "deleteCustomer" && !value.success && !["CONFLICT","DUPLICATE","CONNECTION_CHANGED","FORBIDDEN","INVALID_INPUT"].includes(String(value.code||"")))
@@ -406,6 +413,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     }finally{window.removeEventListener("banksetu-sync-request",prioritizeUpload);}
   }
 
+  if (bridgeUpgradeError) throw new Error(bridgeUpgradeError);
 }
 function allowedStatus(field:string,value:string){return (field==="status"?["pending","active","inactive"]:field==="passbookStatus"?["pending","printed","delivered"]:[]).includes(value.toLowerCase());}
 const photoPresence=new Map<string,{checkedAt:number;ids:Set<string>}>();

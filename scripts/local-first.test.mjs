@@ -690,3 +690,21 @@ test('new account session clears pause and preserves the old account queue',asyn
  globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('switch-a');
  assert.equal((await engine.getLocalStatus()).pending,1);
 });
+
+test('old AFSM bridge retains pending events but still downloads desktop customers and retries after upgrade',async()=>{
+ storage.clear();connect('afsm-old-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:afsm-old-bridge',id=crypto.randomUUID(),operationId=crypto.randomUUID();
+ const event={operationId,recordId:id,action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}};
+ await repository.transact(scope,state=>{state.records=[{scope,key:id,recordId:id,revision:'r1',customer:{name:'Synthetic',photoUrl:'',...event.customer},pending:true}];state.operations=[event];});
+ let upgraded=false,pulls=0;const remoteId=crypto.randomUUID();
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='syncCustomerOperation')return Response.json(upgraded?{success:true,revision:'r2',rowNumber:2,customer:{recordId:id,name:'Synthetic',photoUrl:'',...event.customer}}:{success:false,message:'Unsupported queued operation.'});
+  if(body.action==='getCustomerPage'){pulls++;return Response.json({success:true,customers:[{recordId:id,revision:upgraded?'r2':'r1',rowNumber:2,name:'Synthetic',photoUrl:'',...(upgraded?event.customer:{})},{recordId:remoteId,revision:'desktop-r1',rowNumber:3,name:'Desktop addition',photoUrl:''}],hasNextPage:false});}
+  throw Error('Unexpected request');
+ };
+ try{
+  await assert.rejects(engine.syncNow(true),/AFSM uploads remain pending/);
+  let state=await repository.read(scope);assert.equal(pulls,1);assert.deepEqual(state.operations,[event]);assert(state.records.some(r=>r.recordId===remoteId));assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+  upgraded=true;await engine.syncNow(true);state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+ }finally{navigator.onLine=false;}
+});

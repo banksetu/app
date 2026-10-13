@@ -6,6 +6,8 @@ on:
       - codex/spark-client-workspace-20261001
     paths:
       - src/core/afsmPdf.ts
+      - src/core/localData.ts
+      - scripts/generate-sw.mjs
       - cloudflare/**
       - firestore.rules
       - scripts/enforce-client-licenses*
