@@ -1,3 +1,6 @@
+import AfsmConfirmation, { type AfsmBatch } from "./AfsmConfirmation";
+import { afsmDisplay } from "./core/afsm";
+import { identity } from "./core/localData";
 import { snapshot } from "./AllCustomerData";
 import { isAndroid, printAndroidPdf } from "./platform/android/runtime";
 import { customerPdfBuilder } from "./core/customerPdf";
@@ -5,10 +8,11 @@ import PdfDocumentPreview from "./PdfDocumentPreview";
 import { classifyRecovery } from "./core/recovery";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
+import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getActiveLocalCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
 
+  useEffect,
   useState,
   useRef,
 
@@ -30,6 +34,9 @@ const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?:
 ========================================================= */
 
 type Customer = {
+  recordId?: string;
+  afsmStatus?: string;
+  afsmSentAt?: string;
 
   enrolId: string;
 
@@ -186,6 +193,13 @@ export default function Customers() {
 
     useState<Customer | null>(null);
 
+  useEffect(()=>{
+    if(!customer?.recordId || !localModeEnabled())return;
+    let active=true;const scope=identity();
+    const refresh=()=>{void getActiveLocalCustomers().then(records=>{if(!active||identity()!==scope)return;const found=records.find(record=>record.recordId===customer.recordId);if(found)setCustomer(current=>current?.recordId===found.recordId?{...current,afsmStatus:String((found as Record<string,unknown>).afsmStatus||""),afsmSentAt:String((found as Record<string,unknown>).afsmSentAt||"")}:current);}).catch(()=>{});};
+    window.addEventListener("banksetu-sync-change",refresh);return()=>{active=false;window.removeEventListener("banksetu-sync-change",refresh);};
+  },[customer?.recordId]);
+
   const [loading, setLoading] =
 
     useState(false);
@@ -218,6 +232,7 @@ export default function Customers() {
   const [pdfIncomplete, setPdfIncomplete] = useState(false);
   const pdfGenerating = useRef(false);
   const [pdfBlob,setPdfBlob]=useState<Blob|null>(null);
+  const [afsmBatch,setAfsmBatch]=useState<AfsmBatch|null>(null);
   const [pdfCount,setPdfCount]=useState(0);
   const [pdfProgress,setPdfProgress]=useState(0);
   const [pdfBusy,setPdfBusy]=useState(false);
@@ -591,9 +606,11 @@ export default function Customers() {
   };
   const makeAllCustomersPdf = async (records: Record<string, unknown>[]) => {
     if(!pdfValid||!records.length||pdfGenerating.current)return;
-    pdfGenerating.current=true;setPdfLoading(true);setPdfBlob(null);setError('');setPdfProgress(0);
+    pdfGenerating.current=true;setPdfLoading(true);setPdfBlob(null);setAfsmBatch(null);setError('');setPdfProgress(0);
     try{
       await requireLicensedWrite();
+      const batchScope=localModeEnabled()?identity():null;
+      const batchIds=records.map(record=>String(record.recordId||""));
       const builder=customerPdfBuilder();
       for(let index=0;index<records.length;index++){
         const item=previewCustomer(records[index]);
@@ -619,7 +636,9 @@ export default function Customers() {
       }
       const file=builder.finish();if(file.size<1000)throw Error('PDF output is empty. Retry generation.');
       await requireLicensedWrite();
+      if(batchScope&&identity()!==batchScope)throw Error("Workspace changed. Generate the PDF again.");
       setPdfBlob(file);setPdfCount(builder.count);
+      if(batchScope&&batchIds.every(Boolean))setAfsmBatch({scope:batchScope,ids:batchIds,operationId:crypto.randomUUID()});
       setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/3)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
       recordSafeRecovery('pdf','generate','verified');
     }catch(reason){
@@ -1973,7 +1992,7 @@ export default function Customers() {
           <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
           {error && <p role="alert">{error}</p>}
           <p>Select which customers' preview PDFs you want to generate and download.</p>
-          {pdfBlob ? <><p>{pdfCount} customers · {Math.ceil(pdfCount/3)} A4 pages{pdfIncomplete?' · Partial local/cloud data':''}</p><PdfDocumentPreview file={pdfBlob}/><div className="pdf-actions"><button type="button" onClick={()=>{setPdfBlob(null);setPdfOpen(false)}}>Close</button><button type="button" disabled={pdfBusy} onClick={()=>void saveCustomersPdf()}>Download / Save</button><button type="button" disabled={pdfBusy} onClick={()=>void printCustomersPdf()}>Print</button></div></> : <><div className="pdf-layout">
+          {pdfBlob ? <><p>{pdfCount} customers · {Math.ceil(pdfCount/3)} A4 pages{pdfIncomplete?' · Partial local/cloud data':''}</p><PdfDocumentPreview file={pdfBlob}/>{afsmBatch ? <AfsmConfirmation key={afsmBatch.operationId} batch={afsmBatch}/> : <p>AFSM confirmation requires this workspace’s verified local database and stable customer IDs. Connect it in Sync &amp; Backup, then generate the PDF again.</p>}<div className="pdf-actions"><button type="button" onClick={()=>{setPdfBlob(null);setPdfOpen(false)}}>Close</button><button type="button" disabled={pdfBusy} onClick={()=>void saveCustomersPdf()}>Download / Save</button><button type="button" disabled={pdfBusy} onClick={()=>void printCustomersPdf()}>Print</button></div></> : <><div className="pdf-layout">
             <div className="pdf-modes">{([['all','All Customers'],['date','Date Wise'],['account','Account Number Range'],['search','Search Customer']] as const).map(([mode,label]) => <label className="pdf-mode" key={mode}><input type="radio" name="pdf-mode" checked={pdfMode === mode} onChange={() => {setPdfMode(mode);setPdfFrom('');setPdfTo('');setPdfSelected(new Set());}}/><strong>{label}</strong></label>)}</div>
             <div className="pdf-detail">
               <strong>{pdfMode === 'all' ? 'All Customers' : pdfMode === 'date' ? 'Account Opening Date' : pdfMode === 'account' ? 'Account Number Range' : 'Search Customer'}</strong>
@@ -2143,6 +2162,7 @@ export default function Customers() {
 
           </div>
 
+          <div style={{padding:"12px",background:"white",color:"#18354d",borderRadius:8}}><strong>Form Send to Branch</strong>: {afsmDisplay(customer as unknown as Record<string,unknown>)}</div>
           <CustomerPreviewCard customer={customer} />
 
           {/* =========================================
@@ -2247,7 +2267,7 @@ export default function Customers() {
 function previewCustomer(value: Record<string, unknown>): Customer {
   const field = (key: string) => String(value[key] ?? "");
   return {
-    ...emptyCustomer, enrolId:field("enrolId"), accountNo:field("accountNo"), name:field("name"),
+    ...emptyCustomer, afsmStatus:field("afsmStatus"),afsmSentAt:field("afsmSentAt"), enrolId:field("enrolId"), accountNo:field("accountNo"), name:field("name"),
     coName:field("coName") || field("fatherName"), status:field("status"), gender:field("gender"),
     contact:field("contact") || field("mobile"), accountOpeningDate:field("accountOpeningDate"),
     address:field("address"), nominee:field("nominee"), postOffice:field("postOffice"),

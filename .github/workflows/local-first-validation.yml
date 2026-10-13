@@ -36,6 +36,8 @@ jobs:
         run: npm run test:worker && npm run test:local && npm run test:updates
       - name: PDF canvas render and file replacement on mobile and desktop browsers
         run: node scripts/pdf-preview.browser.mjs
+      - name: AFSM ordered selection, 100 customers and exact confirmation on desktop/mobile
+        run: node scripts/afsm-ui.browser.mjs
       - name: Reference licensing dashboard desktop and mobile interaction
         run: node scripts/license-dashboard.browser.mjs
       - uses: actions/upload-artifact@v4

@@ -1,6 +1,9 @@
 name: Bank Setu — One Click App Release
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/spark-client-workspace-20261001]
+    paths: [src/core/afsm.ts]
 permissions:
   contents: read
 concurrency:
@@ -28,7 +31,14 @@ jobs:
       - name: Require verified backend deployment for the current source
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/verify-backend-release-gate.mjs
+        run: |
+          # AFSM also extends the authenticated Worker. Wait for its existing
+          # production pipeline before building native installers or Hosting.
+          for attempt in $(seq 1 30); do
+            if node scripts/verify-backend-release-gate.mjs; then exit 0; fi
+            if [ "$attempt" -eq 30 ]; then exit 1; fi
+            sleep 30
+          done
       - name: Select unused version and commit consistent metadata
         id: prepare
         env:

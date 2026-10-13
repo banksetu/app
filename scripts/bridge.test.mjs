@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import fs from 'node:fs';import crypto from 'node:crypto';
-function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new Map();const book={getSheetByName:name=>tabs.get(name),insertSheet(name){const tab=makeSheet([[]]);tabs.set(name,tab);return tab;}};function makeSheet(data){return {getParent:()=>book,hideSheet(){},getMaxColumns:()=>27,getLastRow:()=>data.length,appendRow:row=>data.push(row),deleteRow:row=>data.splice(row-1,1),getRange(start,col,count,width){return {getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[start+i-1]?.[col+j-1]||'')),getDisplayValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>String(data[start+i-1]?.[col+j-1]||''))),setValues(values){values.forEach((row,i)=>{data[start+i-1] ||= [];row.forEach((cell,j)=>data[start+i-1][col+j-1]=cell);});}};}};}const sheet=makeSheet(rows);
- const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
+function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new Map();const book={getSheetByName:name=>tabs.get(name),insertSheet(name){const tab=makeSheet([[]]);tabs.set(name,tab);return tab;}};function makeSheet(data){let maxColumns=27;return {getParent:()=>book,hideSheet(){},getMaxColumns:()=>maxColumns,getLastColumn:()=>Math.max(27,...data.map(row=>row.length)),insertColumnsAfter:(_col,count)=>{maxColumns+=count;},getLastRow:()=>data.length,appendRow:row=>data.push(row),deleteRow:row=>data.splice(row-1,1),getRange(start,col,count,width){return {getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[start+i-1]?.[col+j-1]||'')),getDisplayValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>String(data[start+i-1]?.[col+j-1]||''))),setValues(values){values.forEach((row,i)=>{data[start+i-1] ||= [];row.forEach((cell,j)=>data[start+i-1][col+j-1]=cell);});}};}};}const sheet=makeSheet(rows);
+ const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),formatDate:date=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata'}).format(date),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
 test('current client bridge advertises tenant isolation and license enforcement',()=>{
@@ -183,4 +183,31 @@ test('photo presence inventories only file names once, outside locks, without do
  const result=context.getPhotoPresence({connectionId:'bound'},{...user,photoFolderId:'tenant-folder'});
  assert(result.success&&result.complete);assert.deepEqual(Array.from(result.customerIds),['LEGACY','OTHER','UPDATED']);assert.equal(reads,1);assert.equal(JSON.stringify(rows),before);
  assert.equal(context.getPhotoPresence({connectionId:'foreign'},{...user,photoFolderId:'tenant-folder'}).code,'CONNECTION_CHANGED');assert.equal(reads,1);
+});
+
+test('AFSM client/master/user updates existing rows, appends unique far-right columns, preserves original date and replays safely',()=>{
+ for(const role of ['client_admin','client_user','master_owner']){
+ const {context,rows}=bridge();const actor={...user,role};const original=makeOp(crypto.randomUUID());
+ const saved=context.syncCustomerOperation({connectionId:'bound',operation:original},actor);const identity=rows[1].slice(0,24);
+ rows[0][27]='EXISTING CUSTOM COLUMN';rows[1][27]='KEEP THIS';
+ const event={recordId:original.recordId,operationId:crypto.randomUUID(),action:'markAfsmSent',baseRevision:saved.revision,customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID(),afsmResend:false}};
+ const sent=context.syncCustomerOperation({connectionId:'bound',operation:event},actor);
+ assert(sent.success);assert.equal(rows.length,2);assert.deepEqual(rows[1].slice(0,24),identity);assert.equal(rows[1][27],'KEEP THIS');assert.equal(rows[0][29],'Form Send to Branch');assert.equal(rows[1][29],'AFSM Send to Branch (13/10/2026)');
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:event},actor).replayed);
+ const pulled=context.localFirstRead({action:'getCustomerPage',cursor:0,pageSize:250},actor).customers[0];assert.equal(pulled.afsmSentAt,event.customer.afsmSentAt);
+ const again={...event,operationId:crypto.randomUUID(),baseRevision:sent.revision,customer:{...event.customer,afsmOperationId:crypto.randomUUID()}};
+ assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:again},actor).code,'CONFLICT');
+ const explicit={...again,customer:{...again.customer,afsmResend:true}};assert(context.syncCustomerOperation({connectionId:'bound',operation:explicit},actor).success);
+ assert.equal(rows[0].filter(x=>x==='Form Send to Branch').length,1);
+ // Stale second device never overwrites the authoritative event.
+ assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:{...event,operationId:crypto.randomUUID()}},actor).code,'CONFLICT');
+ assert.equal(context.syncCustomerOperation({connectionId:'other',operation:event},actor).code,'CONNECTION_CHANGED');
+ }
+});
+test('AFSM rejects missing customers, invalid dates and unauthorized roles without creating rows',()=>{
+ const {context,rows}=bridge();const original=makeOp(crypto.randomUUID());const saved=context.syncCustomerOperation({connectionId:'bound',operation:original},user);
+ const event={recordId:original.recordId,operationId:crypto.randomUUID(),action:'markAfsmSent',baseRevision:saved.revision,customer:{afsmStatus:'sent',afsmSentAt:'invalid',afsmOperationId:crypto.randomUUID()}};
+ assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:event},user),/Invalid AFSM/);
+ assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:event},{...user,role:'unknown'}),/permission/);
+ const missing={...event,recordId:crypto.randomUUID()};assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:missing},user).code,'CONFLICT');assert.equal(rows.length,2);
 });

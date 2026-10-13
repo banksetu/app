@@ -10,7 +10,7 @@ import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
 const IDLE_RECONCILE_MS=60*60*1000;
 export const localModeEnabled = () => ["option-b","demo"].includes(sessionStorage.getItem("bankSetuConnectionMode")||"") || (["master_owner","admin"].includes(sessionStorage.getItem("bankSetuAccountRole")||"") && sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true");
-const identity = () => {
+export const identity = () => {
   const uid = auth.currentUser?.uid;
   const tenant = sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true" ? `master:${uid}` : sessionStorage.getItem("bankSetuConnectionMode")==="demo" ? `demo:${sessionStorage.getItem("bankSetuTenantId")||""}` : sessionStorage.getItem("bankSetuTenantId");
   const connection = sessionStorage.getItem("bankSetuConnectionId");
@@ -300,6 +300,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if (current.operations.some(item => item.recordId === op.recordId && item.state !== "pending")) continue;
     const record = current.records.find(item => item.recordId === op.recordId);
     let value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
+    if(op.action === "markAfsmSent" && !value.success && /Unsupported queued operation/.test(String(value.message||"")))throw Error("Update this workspace Apps Script bridge to the AFSM version using the setup download. Local AFSM changes remain pending and will retry after the bridge update.");
     if(!value.success && String(value.message||"").includes("Valid name, account number, customer ID and Aadhaar are required"))
       value={...value,code:"INVALID_INPUT",message:`Pending ${op.action} needs valid customer identity fields. Complete Name, Account Number, Customer ID and Aadhaar before retrying. The local change is retained for review.`};
     if (op.action === "deleteCustomer" && !value.success && !["CONFLICT","DUPLICATE","CONNECTION_CHANGED","FORBIDDEN","INVALID_INPUT"].includes(String(value.code||"")))

@@ -56,6 +56,7 @@ import BankFormats from "./BankFormats";
 import SelectedBankDocument from "./SelectedBankDocument";
 
 import Customers from "./Customers";
+import FormsSendToBranch from "./FormsSendToBranch";
 import AllCustomerData from "./AllCustomerData";
 
 import Reports from "./Reports";
@@ -261,6 +262,7 @@ type PageName =
   | "quick-passbook"
   | "bank-formats"
 
+  | "forms-send-to-branch"
   | "search"
 
   | "reports"
@@ -952,6 +954,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
           <NavButton icon="📋" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
 {!licenseReadOnly && <NavButton icon="🔎" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="📤" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
           {(licenseReadOnly || userRole === "admin") && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
 {!licenseReadOnly && <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
@@ -1396,6 +1399,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           )}
 
           {activePage === "customers" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
+          {activePage === "forms-send-to-branch" && !licenseReadOnly && bankSettingsReady && <FormsSendToBranch bankName={bankInfo.bankName} />}
           {activePage === "customers" && !licenseReadOnly && (
 
             <Customers />
