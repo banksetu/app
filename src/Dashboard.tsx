@@ -1399,7 +1399,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           )}
 
           {activePage === "customers" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
-          {activePage === "forms-send-to-branch" && !licenseReadOnly && bankSettingsReady && <FormsSendToBranch bankName={bankInfo.bankName} />}
+          {activePage === "forms-send-to-branch" && !licenseReadOnly && bankSettingsReady && <FormsSendToBranch bankName={bankInfo.passbookBank} cspCode={bankInfo.cspCode} />}
           {activePage === "customers" && !licenseReadOnly && (
 
             <Customers />

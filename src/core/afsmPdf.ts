@@ -15,8 +15,8 @@ export function paginateAfsm(customers:Customer[], doc=new jsPDF({unit:'mm',form
   }
   if(current.length)pages.push(current);return pages;
 }
-export function makeAfsmPdf(bankName:string,customers:Customer[],date=new Date()):Blob {
-  if(!bankName.trim())throw Error('Save your bank name in Bank Information before generating AFSM.');
+export function makeAfsmPdf(bankName:string,customers:Customer[],date=new Date(),cspCode=""):Blob {
+  if(!bankName.trim())throw Error('Select your bank in Bank Information before generating AFSM.');
   if(!customers.length)throw Error('Select at least one customer.');
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   let serial=1;
@@ -24,7 +24,11 @@ export function makeAfsmPdf(bankName:string,customers:Customer[],date=new Date()
   pages.forEach((records,page)=>{
     if(page)doc.addPage();
     let y=page?18:52;
-    if(!page){doc.setFont('helvetica','bold');doc.setFontSize(16);while(doc.splitTextToSize(bankName.trim().toUpperCase(),180).length>2&&doc.getFontSize()>8)doc.setFontSize(doc.getFontSize()-1);doc.text(doc.splitTextToSize(bankName.trim().toUpperCase(),180),105,19,{align:'center'});doc.setFontSize(13);doc.text('AFSM — DATA SEND BRANCH',105,36,{align:'center'});doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`AFSM Form Date: ${afsmBusinessDate(date)}`,15,45);}
+    if(!page){doc.setFont('helvetica','bold');doc.setFontSize(16);while(doc.splitTextToSize(bankName.trim().toUpperCase(),180).length>2&&doc.getFontSize()>8)doc.setFontSize(doc.getFontSize()-1);doc.text(doc.splitTextToSize(bankName.trim().toUpperCase(),180),105,19,{align:'center'});doc.setFontSize(13);doc.text('AFSM — DATA SEND BRANCH',105,36,{align:'center'});doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`AFSM Form Date: ${afsmBusinessDate(date)}`,15,45);
+      const cspLabel=`CSP Code: ${cspCode.trim().replace(/\s+/g,' ') || 'Not Configured'}`;
+      doc.setFontSize(Math.min(10,10*88/Math.max(1,doc.getTextWidth(cspLabel))));
+      doc.text(cspLabel,195,45,{align:'right'});
+    }
     doc.setFontSize(9);doc.setFont('helvetica','bold');
     const row=(values:string[],height:number)=>{const xs=[15,28,87],widths=[13,59,108];values.forEach((text,i)=>{doc.rect(xs[i],y,widths[i],height);doc.text(text,xs[i]+3,y+5);});y+=height;};
     row(['SL','Account No','Name'],9);doc.setFont('helvetica','normal');

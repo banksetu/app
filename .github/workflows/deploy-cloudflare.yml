@@ -5,6 +5,7 @@ on:
     branches:
       - codex/spark-client-workspace-20261001
     paths:
+      - src/core/afsmPdf.ts
       - cloudflare/**
       - firestore.rules
       - scripts/enforce-client-licenses*
