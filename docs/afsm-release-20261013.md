@@ -33,7 +33,7 @@ First confirmed date is preserved. A second device's stale revision produces the
 
 ## Release and external verification
 
-The existing One Click App Release workflow automatically starts for production changes to `src/core/afsm.ts`, waits for the existing backend deployment gate, selects the next unused version, runs checks, builds signed Android and Windows packages, publishes artifacts, then deploys Hosting. Metadata commits do not retrigger the AFSM push path. Do not overwrite concurrent production commits.
+The existing One Click App Release workflow automatically starts for production changes to `src/core/afsm.ts`, waits for the existing backend deployment gate, selects the next unused version, runs checks, builds a signed Android APK and a Windows installer (the existing Windows pipeline deliberately does not code-sign the EXE), publishes artifacts, then deploys Hosting. Metadata commits do not retrigger the AFSM push path. Do not overwrite concurrent production commits.
 
 Apps Script project deployment requires the owner of each existing deployed script. A GitHub code release alone does not replace existing deployed Google Apps Script versions. Until that bridge is updated, local AFSM remains durable and pending with a specific update error.
 
