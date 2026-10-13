@@ -98,7 +98,7 @@ function App() {
   const licenseReadOnly = !licensePermission.canWrite;
   const licenseWarning = licensePermission.warning;
   const lastNativeLicense=useRef<{tenantId:string;state:string;revision:number}|null>(null);
-  useEffect(()=>{if(!isLoggedIn)return startNotificationNavigation();},[isLoggedIn]);
+  useEffect(()=>startNotificationNavigation(),[]);
   useEffect(()=>{
     if(!isLoggedIn)return;
     void registerAndroidPush();

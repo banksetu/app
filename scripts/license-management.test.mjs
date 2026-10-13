@@ -50,7 +50,7 @@ test('reference dashboard count cards expose accessible category actions',()=>{
 test('new tenant Manage popup includes three plans, a five-day Demo expiry and a real enabled assignment action',()=>{
  const start='2026-10-20';
  const html=render(true,{14:[],15:[{tenantId:'test-tenant',name:'Synthetic Client'}],18:'test-tenant',19:'demo',20:start,29:'tenants'});
- for(const label of ['Choose License Plan','Annual — 1 Year / Custom Duration','Lifetime — No Expiry','Demo — 5 Days Full Access','End Date (Auto Calculated)','2026-10-25','Confirm &amp; Activate Five-Day Demo'])assert(html.includes(label),label);
+ for(const label of ['Choose License Plan','1 Year License','Lifetime License','Demo License','5 Days Full Access','End Date (Auto Calculated)','2026-10-25','Confirm &amp; Activate Five-Day Demo'])assert(html.includes(label),label);
  assert(/<button type="button">Confirm &amp; Activate Five-Day Demo<\/button>/.test(html));
 });
 

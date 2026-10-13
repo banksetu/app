@@ -46,7 +46,7 @@ final class BankSetuPushRegistration {
         JSONObject auth=post("https://securetoken.googleapis.com/v1/token?key=AIzaSyDjm01ZjY9sHVtMLI9J2OG7HqR-w9lVnLo","application/x-www-form-urlencoded","grant_type=refresh_token&refresh_token="+java.net.URLEncoder.encode(account.getString("refreshToken"),"UTF-8"),null);
         if(!account.getString("uid").equals(auth.optString("user_id")))return;
         if(!original.equals(context.getSharedPreferences("banksetu_push",Context.MODE_PRIVATE).getString("binding","")))return;
-          post(account.getString("worker")+"/push-register","application/json",new JSONObject().put("platform","android").put("deviceId",account.getString("deviceId")).put("token",token).toString(),auth.getString("id_token"));
+          post(account.getString("worker")+"/push-register","application/json",new JSONObject().put("platform","android").put("scopedData",true).put("deviceId",account.getString("deviceId")).put("token",token).toString(),auth.getString("id_token"));
           synchronized(BankSetuPushRegistration.class){if(!original.equals(context.getSharedPreferences("banksetu_push",Context.MODE_PRIVATE).getString("binding","")))return;
           account.put("refreshToken",auth.optString("refresh_token",account.getString("refreshToken")));bind(context,account);}
         

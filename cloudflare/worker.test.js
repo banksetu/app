@@ -129,7 +129,7 @@ test("push sender checks each recipient's tenant and account status before FCM d
     ]);
     if(target.includes('/documents/users/same'))return Response.json({fields:fields({tenantId:'tenant-a',status:'approved',subscriptionStatus:'active'})});
     if(target.includes('/documents/users/other'))return Response.json({fields:fields({tenantId:'tenant-b',status:'approved',subscriptionStatus:'active'})});
-    if(target.includes('fcm.googleapis.com')){sent.push(JSON.parse(options.body).message.token);return Response.json({name:'test'});}
+    if(target.includes('fcm.googleapis.com')){const message=JSON.parse(options.body).message;sent.push(message.token);assert.equal(message.data.uid,'same');assert.equal(message.data.tenantId,'tenant-a');return Response.json({name:'test'});}
     throw Error(`Unexpected backend request: ${target}`);
   };
   try {

@@ -38,7 +38,7 @@ export async function registerAndroidPush() {
     if (auth.currentUser?.uid !== uid) return;
     const response = await fetch(`${worker}/push-register`, {
       method: 'POST', headers: { authorization: `Bearer ${await user.getIdToken()}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ platform: 'android', deviceId: await deviceId(), token }),
+      body: JSON.stringify({ platform: 'android', deviceId: await deviceId(), token, scopedData:true }),
       signal: AbortSignal.timeout(10000),
     });
     if (response.ok && auth.currentUser?.uid === uid) { lastAccount = uid; localStorage.setItem(accountKey,uid); }

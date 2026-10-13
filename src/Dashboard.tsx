@@ -831,7 +831,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     setAdminMenuOpen(false);
 
   };
-  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page)openPage(page);};window.addEventListener('banksetu-open-page',open);return()=>window.removeEventListener('banksetu-open-page',open);});
+  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(page);}};window.addEventListener('banksetu-open-page',open);const timer=window.setTimeout(()=>{const pending=sessionStorage.getItem('bankSetuPendingNotificationPage');if(['dashboard','sync-backup','license-management'].includes(pending||'')){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(pending as PageName);}},0);return()=>{window.clearTimeout(timer);window.removeEventListener('banksetu-open-page',open);};});
 
   const handleLogoUpload = async (event:ChangeEvent<HTMLInputElement>) => {
     const file=event.target.files?.[0]; event.target.value="";

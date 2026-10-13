@@ -54,7 +54,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     if(!value||!['update','sync','network','license'].includes(value.category)||!['dashboard','sync-backup','license-management'].includes(value.page)||typeof value.title!=='string'||typeof value.body!=='string'||value.title.length>100||value.body.length>250)throw Error('Invalid system notification.');
     if(process.platform!=='win32'||!Notification.isSupported())return false;
     const notice=new Notification({title:value.title,body:value.body,silent:false});
-    notice.on('click',()=>{if(window&&!window.isDestroyed()){window.show();window.focus();window.webContents.send('system-notification:open',value.page);}});
+    notice.on('click',()=>{if(openMain)void openMain(value.page);});
     notice.show();return true;
   });
   const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction()});
