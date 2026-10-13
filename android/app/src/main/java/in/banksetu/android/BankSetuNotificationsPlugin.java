@@ -53,6 +53,10 @@ public class BankSetuNotificationsPlugin extends Plugin {
         manager.notify(id,new NotificationCompat.Builder(getContext(),channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build());
         call.resolve();
     }
+    @PluginMethod public void bindPushAccount(PluginCall call) {
+        try { BankSetuPushRegistration.bind(getContext(),new org.json.JSONObject(call.getData().toString()));call.resolve(); }
+        catch(Exception error){call.reject("Secure push binding is unavailable.");}
+    }
     @PluginMethod public void getPushToken(PluginCall call) {
         FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
             if (!task.isSuccessful() || task.getResult() == null) { call.reject("FCM registration is unavailable."); return; }
@@ -60,6 +64,7 @@ public class BankSetuNotificationsPlugin extends Plugin {
         });
     }
     @PluginMethod public void clearPushToken(PluginCall call) {
+        BankSetuPushRegistration.clear(getContext());
         FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener(task -> {
             getContext().getSharedPreferences("banksetu_push", android.content.Context.MODE_PRIVATE).edit().remove("token").apply();
             if (task.isSuccessful()) call.resolve(); else call.reject("FCM token could not be invalidated.");
@@ -70,8 +75,10 @@ public class BankSetuNotificationsPlugin extends Plugin {
         String category = message.getData().get("category");
         if (page == null || !page.matches("dashboard|sync-backup|license-management") || category == null || !category.matches("update|sync|network|license")) return;
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return;
-        RemoteMessage.Notification notice = message.getNotification();
-        if (notice == null || notice.getTitle() == null || notice.getBody() == null) return;
+        android.content.SharedPreferences prefs=context.getSharedPreferences("banksetu_push",android.content.Context.MODE_PRIVATE);
+        if(prefs.getString("uid","").isEmpty()||!prefs.getString("uid","").equals(message.getData().get("uid"))||!prefs.getString("tenantId","").equals(message.getData().get("tenantId")))return;
+        String title=message.getData().get("title"),body=message.getData().get("body");
+        if(title==null||body==null||title.length()>100||body.length()>250)return;
         NotificationManager manager = (NotificationManager) context.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
         String channel = "banksetu_" + category;
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(channel, category + " alerts", NotificationManager.IMPORTANCE_DEFAULT));
@@ -79,7 +86,7 @@ public class BankSetuNotificationsPlugin extends Plugin {
         int id = event == null ? (int) System.currentTimeMillis() : event.hashCode();
         Intent intent = new Intent(context, MainActivity.class); intent.setAction("banksetu.push." + id); intent.putExtra("banksetuPage", page);
         PendingIntent pending = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        manager.notify(id, new NotificationCompat.Builder(context, channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(notice.getTitle()).setContentText(notice.getBody()).setAutoCancel(true).setContentIntent(pending).build());
+        manager.notify(id, new NotificationCompat.Builder(context, channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build());
     }
     @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); String page=intent.getStringExtra("banksetuPage");if(page==null)page=intent.getStringExtra("page");if(page!=null){JSObject value=new JSObject();value.put("page",page);notifyListeners("notificationOpened",value);intent.removeExtra("banksetuPage");intent.removeExtra("page");} }
     @PluginMethod public void getPendingTap(PluginCall call) {JSObject result=new JSObject();Intent intent=getActivity().getIntent();String page=intent==null?null:intent.getStringExtra("banksetuPage");if(page==null&&intent!=null)page=intent.getStringExtra("page");if(page!=null){result.put("page",page);intent.removeExtra("banksetuPage");intent.removeExtra("page");}call.resolve(result);}

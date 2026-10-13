@@ -56,7 +56,7 @@ function previewHtml(pdf,printers) {
     'async function run(action){$("print").disabled=true;try{const result=await window.bankSetuPrintPreview.action(action,settings());if(result.pdf)$("preview").src="data:application/pdf;base64,"+result.pdf+"#toolbar=0";$("status").textContent=result.accepted?"Print request accepted by the system.":result.message||"";if(result.accepted)setTimeout(()=>window.close(),350)}catch(error){$("status").textContent=action==="print"?"Print Failed/Error: "+error.message:error.message}finally{$("print").disabled=false}}'+
     'for(const id of ["layout","paper","pages","scale"])$(id).onchange=()=>run("preview");$("print").onclick=()=>run($("destination").value==="pdf"?"save":"print");$("cancel").onclick=()=>window.close();document.addEventListener("keydown",e=>{if(e.key==="Escape")window.close()});</script></body></html>';
 }
-function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,authorize=()=>{}}) {
+function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getParentWindow=()=>parentWindow,authorize=()=>{}}) {
   const sources=new Set(),previews=new Map(),active=new Map();
   function attach(source){
     // Cache Electron objects while alive: BrowserWindow.webContents throws after close.
@@ -107,6 +107,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,auth
       const initial={paper:'document',landscape:false,scale:100,pageRanges:'',duplex:requested?.duplex===true};
       const pdf=await snapshotContents.printToPDF(pdfOptions(initial));
       const printers=await snapshotContents.getPrintersAsync().catch(()=>[]);
+      const parentWindow=getParentWindow();
       preview=new BrowserWindow({width:1150,height:800,minWidth:850,minHeight:550,...(parentWindow&&!parentWindow.isDestroyed()?{parent:parentWindow,modal:true,frame:false,skipTaskbar:true,...parentWindow.getContentBounds()}:{}),title:'Bank Setu Print Preview',webPreferences:{preload:path.join(__dirname,'print-preview-preload.cjs'),plugins:true,nodeIntegration:false,contextIsolation:true,sandbox:true}});
       const box=/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/.exec(pdf.toString('latin1'));
       const documentSize=box?{width:Math.round(Number(box[1])*25400/72),height:Math.round(Number(box[2])*25400/72)}:undefined;

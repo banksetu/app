@@ -21,6 +21,7 @@ import { requiresTenantLicense } from "./core/licensePolicy";
 import PublicPages from "./PublicPages";
 import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { notifySystem, startNotificationNavigation } from "./platform/systemNotifications";
+import { clearBackgroundNotifications } from "./platform/backgroundNotifications";
 import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPush";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
@@ -454,6 +455,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
+      await clearBackgroundNotifications();
       await unregisterAndroidPush();
       clearProfileListener();
       workspaceRequestRef.current++;activeProfile.current=null;setTenantWorkspaceReady(false);resetSyncSession();

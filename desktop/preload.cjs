@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('bankSetuDesktop', {
+  backgroundStatus: () => ipcRenderer.invoke('background:status'),
+  bindBackground: value => ipcRenderer.invoke('background:bind',value),
+  clearBackground: () => ipcRenderer.invoke('background:clear'),
   licenseSession: uid => ipcRenderer.invoke('license:session',uid),
   licenseStatus: signed => ipcRenderer.invoke('license:status',signed),
   licenseReceipt: signed => ipcRenderer.invoke('license:receipt',signed),

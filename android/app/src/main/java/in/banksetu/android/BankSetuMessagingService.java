@@ -7,15 +7,14 @@ import com.google.firebase.messaging.RemoteMessage;
 public class BankSetuMessagingService extends FirebaseMessagingService {
     @Override public void onNewToken(String token) {
         super.onNewToken(token);
-        // Never log the token. The signed-in UI registers it with the authenticated Worker.
+        // Refresh authenticated registration without requiring a WebView.
         getSharedPreferences("banksetu_push", MODE_PRIVATE).edit().putString("token", token).apply();
+        BankSetuPushRegistration.refresh(this,token);
     }
 
     @Override public void onMessageReceived(RemoteMessage message) {
         super.onMessageReceived(message);
-        // The FCM notification payload is rendered by Android while backgrounded.
-        // Foreground presentation is handled by the existing local notification bridge.
-        if (message.getNotification() == null) return;
+        // Scoped data messages are validated before native presentation, including background delivery.
         BankSetuNotificationsPlugin.showPush(this, message);
     }
 }
