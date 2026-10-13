@@ -28,3 +28,16 @@ test('bank setup and empty selection fail clearly; menu and legacy batch confirm
  const menu=fs.readFileSync('src/Dashboard.tsx','utf8');assert(menu.indexOf('label="Account Opening PDF Sample"')<menu.indexOf('label="Forms Send to Branch"'));assert(menu.indexOf('label="Forms Send to Branch"')<menu.indexOf('label="Settings"'));
  const customers=fs.readFileSync('src/Customers.tsx','utf8');assert(customers.includes('records.map(record=>String(record.recordId'));assert(customers.includes('<AfsmConfirmation'));assert(customers.includes('customerPdfBuilder()'));
 });
+test('AFSM header uses selected tenant bank, right-aligned CSP on date row and first-page-only header',async()=>{
+ const dashboard=fs.readFileSync('src/Dashboard.tsx','utf8');assert(dashboard.includes('<FormsSendToBranch bankName={bankInfo.passbookBank} cspCode={bankInfo.cspCode} />'));assert(!dashboard.includes('<FormsSendToBranch bankName={bankInfo.bankName}'));
+ for(const [bank,code] of [['Union Bank of India','CSP-1042'],['Assam Gramin Bank','CSP-2026'],['State Bank of India','']]){
+  const records=Array.from({length:21},(_,i)=>({name:`Synthetic ${i}`,accountNo:`000${i}`}));
+  const task=getDocument({data:new Uint8Array(await makeAfsmPdf(bank,records,new Date('2026-10-13T12:00:00Z'),code).arrayBuffer()),disableFontFace:true});const pdf=await task.promise;
+  const items=(await (await pdf.getPage(1)).getTextContent()).items;
+  assert(items.some(item=>item.str===bank.toUpperCase()));assert(!items.some(item=>item.str.includes('DILWAR')));
+  const date=items.find(item=>item.str==='AFSM Form Date: 13/10/2026'),csp=items.find(item=>item.str===`CSP Code: ${code||'Not Configured'}`);assert(date&&csp);
+  assert(Math.abs(date.transform[5]-csp.transform[5])<.1);assert(date.transform[4]+date.width<csp.transform[4]);assert(csp.transform[4]+csp.width<554);
+  const next=(await (await pdf.getPage(2)).getTextContent()).items.map(item=>item.str).join(' ');assert(!next.includes('CSP Code'));assert(!next.includes('AFSM Form Date'));assert(!next.includes(bank.toUpperCase()));assert(next.includes('Signature of Receiver'));
+  await task.destroy();
+ }
+});
