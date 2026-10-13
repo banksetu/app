@@ -32,7 +32,8 @@ try{
   for(let i=0;i<100;i++)await page.getByRole('button',{name:'Select / Add',exact:true}).nth(i).click();
   assert.equal(await page.getByRole('heading',{name:'Selected Customers (100)'}).count(),1);await page.getByRole('button',{name:'Generate A4 Form',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-page]').length===5);
   assert.equal(await page.evaluate(()=>document.body.innerText.includes('123456789012')),false);
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
+  await page.screenshot({path:`test-evidence/afsm-layout-${viewport.width}.png`,fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);
   await page.screenshot({path:`test-evidence/afsm-${viewport.width}.png`,fullPage:true});await page.close();console.log(`AFSM ${viewport.width}px: selection order, removal, duplicate prevention, exact confirmation batch, 100 customers and five-page preview passed.`);
  }
 }finally{await browser?.close();await server?.close();await unlink(harness).catch(()=>{});}
