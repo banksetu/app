@@ -29,10 +29,11 @@ type BankRegistration = {
   cspCode: string;
   operatorName: string;
   address: string;
+  mobile: string;
 };
 
 const EMPTY_REGISTRATION: BankRegistration = {
-  bankName: "", passbookBank: "", branchName: "", cspCode: "", operatorName: "", address: "",
+  bankName: "", passbookBank: "", branchName: "", cspCode: "", operatorName: "", address: "", mobile: "",
 };
 
 async function googleApi<T>(url: string, accessToken: string, init: RequestInit = {}): Promise<T> {
@@ -61,6 +62,9 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
   const [savingRegistration, setSavingRegistration] = useState(false);
   const [workspaceStatus, setWorkspaceStatus] = useState("active");
   const [shareConsent, setShareConsent] = useState(false);
+  const [wizardStep,setWizardStep]=useState(0);
+  const [detailsPreview,setDetailsPreview]=useState(false);
+  const [completedThisSession,setCompletedThisSession]=useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -75,8 +79,11 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
       setConfig(loaded);
       setWorkspaceStatus(loaded.workspaceStatus || "active");
       const details = { ...EMPTY_REGISTRATION, ...(loaded.bankInfo || {}), bankName: loaded.bankName || "" };
+      if(!details.operatorName)details.operatorName=auth.currentUser?.displayName||'';
       setRegistration(details);
-      setRegistrationSaved(Boolean(details.bankName && details.passbookBank && details.branchName && details.operatorName));
+      const saved=Boolean(details.bankName&&details.passbookBank&&details.branchName&&loaded.bankInfo?.operatorName);
+      setWizardStep(saved?2:0);
+      setRegistrationSaved(saved);
     }).catch((reason: unknown) => {
       if (active) setError(reason instanceof Error ? reason.message : "Unable to load Google setup.");
     }).finally(() => {
@@ -86,7 +93,7 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
   }, [enabled]);
 
   if (!enabled || loading) return null;
-  if (placement === "onboarding" && config?.hasWorkspace) return null;
+  if (placement === "onboarding" && config?.hasWorkspace && registrationSaved && config.dataApiReady && !completedThisSession) return null;
   if (placement === "manage" && !connectionUnlocked) return <div style={{border:"1px solid #37646c",borderRadius:10,padding:16,marginTop:16,background:"rgba(4,24,32,.72)"}}>
     <h3 style={{color:"#eef7f7",marginTop:0}}>Google Sheet / Drive connection 🔒</h3>
     <p style={{lineHeight:1.6,marginBottom:0}}>यह connection सुरक्षित रूप से locked है। मौजूदा Sheet, Drive folder और bridge settings बदलने या restore करने के लिए ऊपर <strong>Verify Administrator</strong> करके unlock करें।</p>
@@ -104,9 +111,9 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
         branchName: registration.branchName,
         cspCode: registration.cspCode,
         operatorName: registration.operatorName,
-        address: registration.address,
+        address: registration.address, mobile: registration.mobile,
       });
-      setRegistrationSaved(true);
+      setRegistrationSaved(true);setWizardStep(2);
       setConfig((current) => current ? { ...current, bankName: registration.bankName, bankInfo: registration } : current);
       setSuccess("Bank details saved. Next, share your Sheet and folder and use Test & Connect.");
     } catch (reason: unknown) {
@@ -198,20 +205,28 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
     }
   };
 
+  const finishSetup=async()=>{
+    const verified=await callBankSetuWorker<SetupConfig>('/get-google-setup',{});
+    if(!verified.hasWorkspace||!verified.dataApiReady||verified.workspaceStatus!=='active')throw new Error('Workspace verification is incomplete. Retry Test & Connect.');
+    setConfig(verified);setCompletedThisSession(true);setWizardStep(3);
+  };
   return (
     <section style={cardStyle}>
       <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
       <h2 style={{ margin: "8px 0", fontSize: 20, color: "#eef7f7" }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
       <p style={copyStyle}>Save your bank and branch details, then connect your own Sheet and Drive folder below. Existing Google connections remain available.</p>
-      <OptionBConnection tenantId={config?.tenantId || ""} disabled={!registrationSaved || workspaceStatus !== "active"} />
-      {(placement === "manage" || !registrationSaved) && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
+      {placement==='onboarding'&&<>{wizardStep>0&&wizardStep<3&&<button type="button" style={buttonStyle} disabled={savingRegistration||connecting} onClick={()=>setWizardStep(wizardStep-1)}>Back</button>}<h3 style={{color:'#eef7f7'}}>Welcome to Bank Setu · Step {wizardStep+1} of 4</h3><nav aria-label="Registration progress" style={{display:'flex',gap:10,flexWrap:'wrap'}}>{['Your Details','Bank Info','Google Setup','Complete'].map((label,index)=><span key={label} aria-current={wizardStep===index?'step':undefined} style={{padding:'9px 14px',borderRadius:9,background:wizardStep===index?'#6862e4':'#173b47',color:'#fff'}}>{index+1}. {label}</span>)}</nav></>}
+      {placement==='onboarding'&&wizardStep===0&&<form style={registrationForm} onSubmit={event=>{event.preventDefault();setDetailsPreview(true);}}><label style={registrationLabel}>Full Name<input required maxLength={120} style={registrationInput} value={registration.operatorName} onChange={event=>setRegistration({...registration,operatorName:event.target.value})}/></label><label style={registrationLabel}>Email Address<input readOnly style={registrationInput} value={auth.currentUser?.email||''}/></label><label style={registrationLabel}>Mobile Number (optional)<input type="tel" maxLength={20} pattern="[+0-9 ()-]{7,20}" style={registrationInput} value={registration.mobile} onChange={event=>setRegistration({...registration,mobile:event.target.value})}/></label><button type="submit" style={buttonStyle}>Next — Preview</button>{detailsPreview&&<div style={{gridColumn:'1 / -1'}}><h4>Review Your Details</h4><p>{registration.operatorName} · {auth.currentUser?.email} · {registration.mobile||'Mobile not supplied'}</p><button type="button" style={buttonStyle} onClick={()=>{setDetailsPreview(false);setWizardStep(1);}}>Confirm &amp; Continue to Bank Info</button></div>}</form>}
+      {(placement==='manage'||wizardStep===2)&&<OptionBConnection tenantId={config?.tenantId || ""} disabled={!registrationSaved || workspaceStatus !== "active"} onConnected={placement==='onboarding'?finishSetup:undefined}/>}
+      {placement==='onboarding'&&wizardStep===3&&<div role="status"><h3>Registration Complete</h3><p>Your own Sheet, Drive folder and Apps Script bridge are verified for this tenant.</p><button type="button" style={buttonStyle} onClick={()=>window.location.reload()}>Open My Workspace</button></div>}
+      {(placement === "manage" || wizardStep===1) && <form onSubmit={(event) => void saveRegistration(event)} style={registrationForm}>
         <label style={registrationLabel}>Bank / CSP name<input required maxLength={120} style={registrationInput} value={registration.bankName} onChange={(event) => setRegistration((current) => ({ ...current, bankName: event.target.value }))} /></label>
         <label style={registrationLabel}>Bank for Passbook format<input required maxLength={120} style={registrationInput} value={registration.passbookBank} onChange={(event) => setRegistration((current) => ({ ...current, passbookBank: event.target.value }))} /></label>
         <label style={registrationLabel}>Branch name<input required maxLength={120} style={registrationInput} value={registration.branchName} onChange={(event) => setRegistration((current) => ({ ...current, branchName: event.target.value }))} /></label>
         <label style={registrationLabel}>CSP code (optional)<input maxLength={80} style={registrationInput} value={registration.cspCode} onChange={(event) => setRegistration((current) => ({ ...current, cspCode: event.target.value }))} /></label>
         <label style={registrationLabel}>Operator name<input required maxLength={120} style={registrationInput} value={registration.operatorName} onChange={(event) => setRegistration((current) => ({ ...current, operatorName: event.target.value }))} /></label>
         <label style={{ ...registrationLabel, gridColumn: "1 / -1" }}>Branch / CSP address<textarea maxLength={500} style={{ ...registrationInput, minHeight: 70 }} value={registration.address} onChange={(event) => setRegistration((current) => ({ ...current, address: event.target.value }))} /></label>
-        <button type="submit" style={buttonStyle} disabled={savingRegistration || workspaceStatus !== "active"}>{savingRegistration ? "Saving bank details…" : "Save bank details"}</button>
+        <button type="submit" style={buttonStyle} disabled={savingRegistration || workspaceStatus !== "active"}>{savingRegistration ? "Saving bank details…" : placement==="onboarding"?"Save Bank Info & Continue":"Save bank details"}</button>
       </form>}
       {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your own Sheet and Drive folder.</p>}
       {config?.hasWorkspace && <p style={{ ...copyStyle, color: "#8de3c8" }}>Connected Google account: {config.googleEmail || "Workspace connected"}. Reconnect uses this same Drive folder and Sheet.</p>}

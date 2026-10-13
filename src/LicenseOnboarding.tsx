@@ -2,17 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import './LicenseOnboarding.css';
 
-type PublicSettings={pricing:{annualPaise:number;lifetimePaise:number;annualAvailable:boolean;lifetimeAvailable:boolean};uiEnabled:boolean;turnstileSiteKey:string};
+import type {PublicSettings} from './publicLicenseSettings';
 const workerUrl=String(import.meta.env.VITE_BANKSETU_WORKER_URL||'').trim().replace(/\/+$/,'');
 const price=(paise:number)=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(paise/100);
-export async function getPublicLicenseSettings():Promise<PublicSettings|null>{
-  if(!workerUrl)return null;
-  const response=await fetch(`${workerUrl}/license-public`,{method:'POST',headers:{'content-type':'application/json'},body:'{}',signal:AbortSignal.timeout(8000)});
-  if(!response.ok)return null;
-  return response.json() as Promise<PublicSettings>;
-}
 export default function LicenseOnboarding({settings,onSignIn}:{settings:PublicSettings;onSignIn:()=>void}){
-  const [plan,setPlan]=useState<'annual'|'lifetime'|'undecided'|null>(null);
+  const [plan,setPlan]=useState<'demo'|'annual'|'lifetime'|'undecided'|null>(null);
   const [form,setForm]=useState({name:'',mobile:'',email:'',bankName:'',location:'',message:''});
   const [requestId]=useState(()=>crypto.randomUUID());
   const [token,setToken]=useState('');
@@ -22,7 +16,7 @@ export default function LicenseOnboarding({settings,onSignIn}:{settings:PublicSe
   const widgetRef=useRef<HTMLDivElement|null>(null);
   const widgetIdRef=useRef<string|null>(null);
   const nativeRequestPage=Capacitor.isNativePlatform();
-  const contact=(selected:'annual'|'lifetime'|'undecided')=>{
+  const contact=(selected:'demo'|'annual'|'lifetime'|'undecided')=>{
     if(window.bankSetuDesktop||nativeRequestPage){
       const url=`https://banksetu-app.web.app/license-request/?plan=${selected}`;
       window.open(url,'_blank','noopener,noreferrer');
@@ -51,9 +45,9 @@ export default function LicenseOnboarding({settings,onSignIn}:{settings:PublicSe
   };
   return <main className="license-welcome"><div className="license-welcome-shell"><header><strong>BANK <span>SETU</span></strong><button onClick={onSignIn}>Already Have an Account? Sign In</button></header>
     {!plan?<><div className="license-intro"><span>Welcome to Bank Setu</span><h1>Choose Your License</h1><p>One license for your client workspace, on Windows and Android.</p></div>
-      <div className="license-choices"><article><span>01 · ANNUAL</span><h2>Annual License</h2><strong>{settings.pricing.annualAvailable?price(settings.pricing.annualPaise):'Contact us'}</strong><p>One calendar year · Windows + Android included.</p><button disabled={!settings.pricing.annualAvailable} onClick={()=>contact('annual')}>Choose Annual</button></article><article><span>02 · LIFETIME</span><h2>Lifetime License</h2><strong>{settings.pricing.lifetimeAvailable?price(settings.pricing.lifetimePaise):'Contact us'}</strong><p>No scheduled expiry · Windows + Android included.</p><button disabled={!settings.pricing.lifetimeAvailable} onClick={()=>contact('lifetime')}>Choose Lifetime</button></article></div><button className="license-skip" onClick={()=>contact('undecided')}>Skip for Now · Contact Master Admin</button>{nativeRequestPage&&<a href="https://banksetu-app.web.app/license-request/" target="_blank" rel="noopener noreferrer">Open the secure request page in your browser</a>}{error&&<p role="alert">{error}</p>}</>
+      <div className="license-choices"><article><span>00 · DEMO</span><h2>Demo · 5 Days</h2><strong>Free trial</strong><p>Full client access for five days after Master Admin activation.</p><button disabled={!settings.turnstileSiteKey} onClick={()=>contact('demo')}>Request Demo</button></article><article><span>01 · ANNUAL</span><h2>Annual License</h2><strong>{settings.pricing.annualAvailable?price(settings.pricing.annualPaise):'Contact us'}</strong><p>One calendar year · Windows + Android included.</p><button disabled={!settings.pricing.annualAvailable||!settings.turnstileSiteKey} onClick={()=>contact('annual')}>Choose Annual</button></article><article><span>02 · LIFETIME</span><h2>Lifetime License</h2><strong>{settings.pricing.lifetimeAvailable?price(settings.pricing.lifetimePaise):'Contact us'}</strong><p>No scheduled expiry · Windows + Android included.</p><button disabled={!settings.pricing.lifetimeAvailable||!settings.turnstileSiteKey} onClick={()=>contact('lifetime')}>Choose Lifetime</button></article></div>{!settings.turnstileSiteKey&&<p role="status">Plan requests are temporarily unavailable. Contact the Master Admin for help.</p>}<button className="license-skip" onClick={onSignIn}>Skip to Sign In</button>{nativeRequestPage&&<a href="https://banksetu-app.web.app/license-request/" target="_blank" rel="noopener noreferrer">Open the secure request page in your browser</a>}{error&&<p role="alert">{error}</p>}</>
     :<div className="license-contact"><button className="license-back" onClick={()=>setPlan(null)}>← Back to licenses</button><h1>Contact Master Admin</h1><p>Send your request. Activation and payment are reviewed by the Master Admin.</p>{done?<div role="status"><h2>Request received</h2><p>Reference ID: {done}</p><button onClick={onSignIn}>Sign In</button></div>:<form onSubmit={submit}>
-      <label>Full Name<input required maxLength={100} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Mobile / WhatsApp Number<input required maxLength={20} inputMode="tel" value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})}/></label><label>Email Address (optional)<input type="email" maxLength={254} value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Bank / CSP Center Name<input required maxLength={120} value={form.bankName} onChange={e=>setForm({...form,bankName:e.target.value})}/></label><label>Location (optional)<input maxLength={120} value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/></label><label>Preferred License<select value={plan} onChange={e=>setPlan(e.target.value as 'annual'|'lifetime'|'undecided')}><option value="annual">Annual</option><option value="lifetime">Lifetime</option><option value="undecided">Not Decided</option></select></label><label className="wide">Message (optional)<textarea maxLength={500} value={form.message} onChange={e=>setForm({...form,message:e.target.value})}/></label><div className="wide" ref={widgetRef}/>{error&&<p className="license-form-error" role="alert">{error}</p>}<button disabled={busy||!token} className="license-submit">{busy?'Submitting…':'Submit Request'}</button>
+      <label>Full Name<input required maxLength={100} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label>Mobile / WhatsApp Number<input required maxLength={20} inputMode="tel" value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})}/></label><label>Email Address (optional)<input type="email" maxLength={254} value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Bank / CSP Center Name<input required maxLength={120} value={form.bankName} onChange={e=>setForm({...form,bankName:e.target.value})}/></label><label>Location (optional)<input maxLength={120} value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/></label><label>Preferred License<select value={plan} onChange={e=>setPlan(e.target.value as 'demo'|'annual'|'lifetime'|'undecided')}><option value="demo">Demo · 5 Days</option><option value="annual">Annual</option><option value="lifetime">Lifetime</option><option value="undecided">Not Decided</option></select></label><label className="wide">Message (optional)<textarea maxLength={500} value={form.message} onChange={e=>setForm({...form,message:e.target.value})}/></label><div className="wide" ref={widgetRef}/>{error&&<p className="license-form-error" role="alert">{error}</p>}<button disabled={busy||!token} className="license-submit">{busy?'Submitting…':'Submit Request'}</button>
     </form>}</div>}
   </div></main>;
 }

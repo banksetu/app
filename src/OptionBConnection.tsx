@@ -6,7 +6,7 @@ import { useState } from "react";
 import { callBankSetuWorker } from "./workerApi";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 const SERVICE_EMAIL = "bank-setu-drive-sync@banksetu-69e2f.iam.gserviceaccount.com";
-export default function OptionBConnection({tenantId, disabled}: {tenantId: string; disabled: boolean}) {
+export default function OptionBConnection({tenantId, disabled, onConnected}: {tenantId: string; disabled: boolean; onConnected?:()=>Promise<void>}) {
   const [downloading,setDownloading]=useState(false);
   const [setupDownloaded,setSetupDownloaded]=useState(false);
   const [sheetLink,setSheetLink]=useState("");const [folderLink,setFolderLink]=useState("");const [bridgeUrl,setBridgeUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");
@@ -38,7 +38,7 @@ export default function OptionBConnection({tenantId, disabled}: {tenantId: strin
       if (!config.dataApiReady) throw new Error("Connection saved, but the upload bridge is not ready. Ask your administrator to verify it.");
       sessionStorage.setItem("bankSetuOfflineUntil", String(Date.now()+8*60*60*1000));
         sessionStorage.setItem("bankSetuConnectionMode","option-b");sessionStorage.setItem("bankSetuConnectionId",config.connectionId);sessionStorage.setItem("bankSetuBridgeUrl",config.apiUrl);
-      setTenantApiUrl(config.apiUrl);setTenantWorkspaceReady(true);await enrollOfflineSession();window.dispatchEvent(new Event("banksetu-sync-change"));setMessage("कनेक्शन तैयार है। Resource permissions और bridge binding सत्यापित हैं। पहली photo/PDF upload को Sync Now के बाद जाँचें।");
+      setTenantApiUrl(config.apiUrl);setTenantWorkspaceReady(true);await enrollOfflineSession();await onConnected?.();window.dispatchEvent(new Event("banksetu-sync-change"));setMessage("कनेक्शन तैयार है। Resource permissions और bridge binding सत्यापित हैं। पहली photo/PDF upload को Sync Now के बाद जाँचें।");
     } catch(error) {setMessage(error instanceof Error?error.message:"Connection failed.");}finally{setBusy(false);}
   };
   return <div style={{border:"1px solid #37646c",borderRadius:10,padding:16,marginTop:16}}>

@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validateInquiry, addCalendarYear, licenseView, upgradeAmount, transitionLicense } from './licensing.js';
+import { DEFAULT_FLAGS, DEFAULT_PRICING, validatePricing, validatePaymentDetails, validateInquiry, addCalendarYear, licenseView, upgradeAmount, transitionLicense } from './licensing.js';
+test('receiving account validation never accepts partial or malformed details',()=>{
+  const valid={accountHolder:'Example Client',bankName:'Example Bank',accountNumber:'00123456789',ifsc:'ABCD0123456',upiId:'client@example'};
+  assert.deepEqual(validatePaymentDetails(valid),valid);
+  assert.throws(()=>validatePaymentDetails({...valid,ifsc:'BAD'}));
+  assert.throws(()=>validatePaymentDetails({...valid,accountNumber:''}));
+});
+test('scheduled five-day demo cannot write before activation or after expiry',()=>{
+  const start=Date.parse('2026-10-13T00:00:00+05:30');
+  const record={tenantId:'trial',plan:'demo',status:'scheduled',activatedAt:new Date(start).toISOString(),expiresAt:new Date(start+5*86400000).toISOString()};
+  assert.equal(licenseView(record,start-1).canWrite,false);
+  assert.equal(licenseView(record,start).state,'demo_active');
+  assert.equal(licenseView(record,start+5*86400000).state,'demo_expired');
+});
 
 test('missing tenant entitlement never grants client write access', () => {
   assert.equal(DEFAULT_FLAGS.existingClientEnforcement, false);
@@ -61,4 +74,10 @@ test('suspended and revoked states never turn into active status when expiry cha
     assert.equal(licenseView(record,Date.parse('2035-01-01T00:00:00Z')).canWrite,false);
   }
   assert.throws(()=>transitionLicense({plan:'annual',status:'revoked',expiresAt:'2026-01-01T00:00:00Z',revision:1},{kind:'renewal',id:'x',quotedPaise:100},'2026-02-01T00:00:00Z',DEFAULT_PRICING));
+});
+
+test('suspended annual payment changes cannot restore access without explicit reactivation',()=>{
+  const now=new Date().toISOString();
+  const current={plan:'annual',status:'suspended',activatedAt:now,expiresAt:new Date(Date.now()+86400000).toISOString(),revision:1};
+  for(const kind of ['renewal','upgrade'])assert.throws(()=>transitionLicense(current,{kind,id:'test',quotedPaise:100},now,DEFAULT_PRICING),/Reactivate/);
 });

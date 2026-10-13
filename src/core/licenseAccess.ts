@@ -99,7 +99,6 @@ export async function requireLicensedWrite():Promise<void> {
   const epoch=generation;
   await refreshLicensePermission(navigator.onLine);
   if(!permission.canWrite||permission.validUntil<=Date.now())throw Error(blockedMessage);
-  const demo=sessionStorage.getItem("bankSetuConnectionMode")==="demo";
-  if(permission.plan==="demo"?!demo:demo)throw Error("Reconnect to the separate licensed workspace before changing data.");
+  if(sessionStorage.getItem("bankSetuConnectionMode")==="demo")throw Error("Reconnect to your verified tenant workspace before changing data.");
   if(generation!==epoch||auth.currentUser?.uid!==uid||permission.tenantId!==tenantId)throw Error("The signed-in workspace changed.");
 }

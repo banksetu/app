@@ -45,6 +45,12 @@ test('sample demo grant and receipt stay within their dedicated workspace',()=>{
   assert.throws(()=>authorize(fake(demoGrant),scope,receipt({state:'demo_active',plan:'demo'}),now),/does not match/);
   assert.throws(()=>authorize(fake(demoGrant),demoScope,receipt({state:'active'}),now),/pending, expired/);
 });
+test('full-access Demo uses the verified client workspace and still expires exactly at five days',()=>{
+  const active=receipt({state:'demo_active',plan:'demo'});
+  assert.equal(authorize(fake(grant()),scope,active,now),true);
+  const expired=receipt({state:'demo_active',plan:'demo',expiresAt:now});
+  assert.throws(()=>authorize(fake(grant()),scope,expired,now),/pending, expired/);
+});
 
 test('licensed SQLite customer and pending operation survive restart and grant removal without a write bypass',()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-license-test-'));

@@ -14,7 +14,8 @@ import { doc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import Dashboard from "./Dashboard";
-import LicenseOnboarding, { getPublicLicenseSettings } from "./LicenseOnboarding";
+import LicenseOnboarding from "./LicenseOnboarding";
+import { getPublicLicenseSettings } from "./publicLicenseSettings";
 import { bindLicenseAccount, resetLicensePermission, refreshLicensePermission, denyLicense, getLicensePermission, subscribeLicensePermission } from "./core/licenseAccess";
 import { requiresTenantLicense } from "./core/licensePolicy";
 import PublicPages from "./PublicPages";
@@ -91,6 +92,7 @@ function App() {
   const [accountRole, setAccountRole] = useState("user");
   const [licenseWelcome, setLicenseWelcome] = useState<Awaited<ReturnType<typeof getPublicLicenseSettings>>>(null);
   const [showLicenseWelcome, setShowLicenseWelcome] = useState(true);
+  const [pricingRequested,setPricingRequested]=useState(false);
   const licensePermission = useSyncExternalStore(subscribeLicensePermission, getLicensePermission);
   const licenseReadOnly = !licensePermission.canWrite;
   const licenseWarning = licensePermission.warning;
@@ -132,7 +134,7 @@ function App() {
 
   useEffect(() => {
     void getPublicLicenseSettings().then(settings => {
-      if (settings?.uiEnabled && settings.turnstileSiteKey) setLicenseWelcome(settings);
+      if (settings) setLicenseWelcome(settings);
     }).catch(() => { /* Existing login stays available during a backend outage. */ });
   }, []);
 
@@ -147,9 +149,12 @@ function App() {
   const applyProfile = useCallback((profile: UserProfile) => {
     const normalizedRole = normalize(profile.role);
     const previous=activeProfile.current;
-    if((!previous && sessionStorage.getItem("bankSetuWorkspaceReady")!=="true") || (previous && (previous.role!==profile.role || previous.tenantId!==profile.tenantId))){
+    const workspaceOwner=sessionStorage.getItem("bankSetuWorkspaceOwner");
+    const nextOwner=`${auth.currentUser?.uid||""}:${profile.tenantId||"master"}`;
+    if(workspaceOwner!==nextOwner || (!previous && sessionStorage.getItem("bankSetuWorkspaceReady")!=="true") || (previous && (previous.role!==profile.role || previous.tenantId!==profile.tenantId))){
       setTenantWorkspaceReady(false);sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
     }
+    sessionStorage.setItem("bankSetuWorkspaceOwner",nextOwner);
     activeProfile.current=profile;
     bindLicenseAccount(auth.currentUser?.uid || "", profile);
     setAccountRole(normalizedRole || "user");
@@ -174,14 +179,6 @@ function App() {
     const role=normalize(profile.role);
     if(!["master_owner","admin","client_admin","client_user"].includes(role))return;
     const stillCurrent=()=>requestId===workspaceRequestRef.current && auth.currentUser?.uid===user.uid && activeProfile.current?.role===profile.role && activeProfile.current?.tenantId===profile.tenantId;
-    if(sessionStorage.getItem("bankSetuDemoWorkspace")==="active"){
-      const url="https://script.google.com/macros/s/banksetu-demo-local/exec";
-      sessionStorage.setItem("bankSetuConnectionMode","demo");sessionStorage.setItem("bankSetuConnectionId","demo-sample");sessionStorage.setItem("bankSetuBridgeUrl",url);
-      setTenantApiUrl(url);setTenantWorkspaceReady(true);
-      if(navigator.onLine)await enrollOfflineSession().catch(()=>undefined);
-      return;
-    }
-    if(sessionStorage.getItem("bankSetuDemoWorkspace")==="expired")return;
     if(sessionStorage.getItem("bankSetuWorkspaceReady")!=="true"){
       try{await resumeOfflineSession(user.uid,{role,tenantId:String(profile.tenantId||""),demoOnly:false});}catch{/* First use needs a verified connection. */}
     }
@@ -230,12 +227,8 @@ function App() {
   const checkLicense = useCallback(async (user: User, profile: UserProfile, online: boolean) => {
     if(auth.currentUser?.uid!==user.uid)return;
     bindLicenseAccount(user.uid,profile);
-    const wasDemo=sessionStorage.getItem("bankSetuDemoWorkspace")==="active";
     await refreshLicensePermission(online);
     if(auth.currentUser?.uid!==user.uid)return;
-    if(wasDemo && getLicensePermission().plan!=="demo"){
-      setTenantWorkspaceReady(false);sessionStorage.removeItem("bankSetuConnectionMode");sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");
-    }
   }, []);
 
   const watchUserProfile = useCallback((user: User) => {
@@ -316,7 +309,7 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       clearTimeout(recoveryTimer.current);verifiedNavigation.current=false;activeProfile.current=null;
-      resetLicensePermission();sessionStorage.removeItem("bankSetuLicenseRequired");sessionStorage.removeItem("bankSetuDemoWorkspace");sessionStorage.setItem("bankSetuLicenseReadOnly","true");
+      resetLicensePermission();sessionStorage.removeItem("bankSetuLicenseRequired");sessionStorage.removeItem("bankSetuDemoWorkspace");sessionStorage.removeItem("bankSetuWorkspaceOwner");sessionStorage.setItem("bankSetuLicenseReadOnly","true");
       workspaceRequestRef.current++;setTenantWorkspaceReady(false);resetSyncSession();
       if (!user) {
         activeProfile.current=null;
@@ -498,8 +491,8 @@ function App() {
     );
   }
 
-  if (!isLoggedIn && showLicenseWelcome && licenseWelcome && !knownAccount) {
-    return <LicenseOnboarding settings={licenseWelcome} onSignIn={() => setShowLicenseWelcome(false)} />;
+  if (!isLoggedIn && showLicenseWelcome && licenseWelcome && (pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey))) {
+    return <LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} />;
   }
 
   if (loginSuccess) {
@@ -517,7 +510,7 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={sessionStorage.getItem("bankSetuDemoWorkspace")==="expired"} />
+        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
         <SoftwareUpdateNotice />
       </div>
     );
@@ -549,6 +542,7 @@ function App() {
           <div className="welcome">
             <h2>Welcome back</h2>
           </div>
+          {licenseWelcome && <button type="button" className="login-pricing-link" onClick={()=>{setPricingRequested(true);setShowLicenseWelcome(true);}}>View Pricing Plans</button>}
 
           <form onSubmit={handleLogin}>
             <div className="field">

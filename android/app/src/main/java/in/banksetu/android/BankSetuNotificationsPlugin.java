@@ -21,6 +21,9 @@ import com.google.firebase.messaging.RemoteMessage;
 @CapacitorPlugin(name="BankSetuNotifications", permissions={@Permission(alias="system", strings={Manifest.permission.POST_NOTIFICATIONS})})
 public class BankSetuNotificationsPlugin extends Plugin {
     @PluginMethod public void requestPermissions(PluginCall call) {
+        // FCM can arrive before the first in-app alert. Its declared channel
+        // must already exist when Android displays a background message.
+        createChannels(getContext());
         if (Build.VERSION.SDK_INT >= 33 && !hasRequiredPermissions()) { requestPermissionForAlias("system", call, "permissionResult"); return; }
         permissionResult(call);
     }

@@ -398,7 +398,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
-  const canManageBankSettings = !licenseReadOnly && sessionStorage.getItem("bankSetuDemoWorkspace")!=="active" && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
+  const canManageBankSettings = (!licenseReadOnly || accountRole === "client_admin" && licensePermission.state === "pending") && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
 
   const [bankInfoDraft, setBankInfoDraft] =
 
@@ -411,7 +411,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   useEffect(() => {
     const user = getAuth().currentUser;
     if (!user) return;
-    if(sessionStorage.getItem("bankSetuDemoWorkspace")==="active"){
+    if(sessionStorage.getItem("bankSetuConnectionMode")==="demo"){
       // Use an existing built-in document renderer with sample branding only;
       // the demo never reads tenant bank settings or production PDF templates.
       let active=true;
@@ -817,7 +817,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const openPage = (page: PageName) => {
     if(demoExpired && !canOpenLicensePage(page,licenseReadOnly,true)){
-      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day sample demo has ended. Contact the Master Admin to activate a paid production workspace."}}));
+      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day Demo has ended. Request a paid license to continue using protected features."}}));
       return;
     }
     if (!canOpenLicensePage(page,licenseReadOnly,demoExpired)) {
@@ -1354,7 +1354,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
-        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly && sessionStorage.getItem("bankSetuDemoWorkspace")!=="active"} />
+        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly} />
 
         {["client_admin","client_user"].includes(accountRole) && <LicenseNotice permission={licensePermission} open={() => openPage("license-management")} />}
 
@@ -1362,8 +1362,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
-          {sessionStorage.getItem("bankSetuDemoWorkspace")==="active" && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Sample-only data on this device. Production Google Sheets and Drive are disconnected. Sample records will not move into a paid workspace.</p>}
-          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Demo data remains isolated. Activation and support remain available.":"Customer viewing, backup and license requests remain available."}</p>}
+          {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
+          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
           {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
