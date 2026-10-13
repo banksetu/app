@@ -14,6 +14,7 @@ self.addEventListener('fetch',event=>{
  const url=new URL(event.request.url);
  if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
  if(event.request.mode==='navigate')event.respondWith(fetch(event.request).catch(()=>caches.match(${JSON.stringify(base+'index.html')})));
+ else if(url.pathname.endsWith('/client-bridge/Code.gs'))event.respondWith(fetch(event.request).then(response=>{if(!response.ok)throw Error('Setup download unavailable');return response;}).catch(()=>caches.match(url.pathname)));
  else if(FILES.includes(url.pathname))event.respondWith(caches.match(url.pathname).then(hit=>hit||fetch(event.request)));
 });
 `);
