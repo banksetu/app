@@ -6,7 +6,7 @@ const harness='scripts/afsm-ui-harness.generated.tsx';let server,browser;
 try{
  await writeFile(harness,`import React from 'react';import {createRoot} from 'react-dom/client';import FormsSendToBranch from '../src/FormsSendToBranch';createRoot(document.getElementById('root')!).render(<FormsSendToBranch bankName="State Bank of India"/>);`);
  server=await createServer({configFile:false,logLevel:'error',server:{host:'127.0.0.1',port:0},plugins:[{
- name:'synthetic-afsm-ui',resolveId(id,importer){
+ name:'synthetic-afsm-ui',enforce:'pre',resolveId(id,importer){
   if(importer?.includes('/src/')&& /\/(?:afsm|localData|licenseAccess|pdfActions)$/.test(id))return '\0afsm-mock:'+id.split('/').at(-1);
  },load(id){
   if(id==='\0afsm-mock:localData')return `export const identity=()=>"synthetic:tenant:connection";export const recordSafeRecovery=()=>{};`;
@@ -18,6 +18,7 @@ try{
  for(const viewport of [{width:390,height:844},{width:1280,height:900}]){
   const page=await browser.newPage({viewport});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('AFSM browser error:',e.message);});page.on('console',m=>{if(m.type()==='error')console.error(m.text());});page.on('dialog',dialog=>dialog.accept());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__afsm_test`);
+  await page.locator('input').waitFor({timeout:10000}).catch(async error=>{console.error('AFSM initial page:',await page.locator('body').innerText());throw error;});
   const search=async term=>{await page.getByRole('textbox').fill(term);await page.getByRole('button',{name:'Search',exact:true}).click();};
   for(const term of ['AC1','AC50','AC40','AC100']){await search(term);await page.getByRole('button',{name:'Select / Add',exact:true}).click();}
   assert.equal(await page.getByRole('heading',{name:'Selected Customers (4)'}).count(),1);
