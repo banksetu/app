@@ -59,3 +59,10 @@ test('reference lower panels and table selection render without duplicate tenant
  for(const label of ['License Issue / Assign','Recent Activity','Client Details','Manage Client License','Select Synthetic Client','SL','Payment Status','Valid Till'])assert(html.includes(label),label);
  assert(!html.includes('Tenant Licenses</h3>'));
 });
+
+test('future upgrade cannot pause an active Annual tenant',()=>{
+ const future=new Date(now+86400000).toISOString().slice(0,10);
+ const html=render(true,{14:[license],15:[{tenantId:'test-tenant',name:'Synthetic Client'}],18:'test-tenant',19:'lifetime',20:future,29:'tenants',38:true});
+ assert(html.includes('Choose today for an active Annual'));
+ assert(/<button[^>]*disabled=""[^>]*>Confirm Payment &amp; Upgrade to Lifetime<\/button>/.test(html));
+});
