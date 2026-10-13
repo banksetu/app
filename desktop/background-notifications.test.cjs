@@ -7,7 +7,7 @@ test('background receiver refreshes auth without a renderer, deduplicates change
  const fetch=async url=>{
   if(url.includes('securetoken'))return Response.json({user_id:session.uid,id_token:'synthetic-id',refresh_token:'rotated-refresh'});
   if(revoked)return new Response('{}',{status:403});
-  if(url.endsWith('/license-me'))return Response.json({license:{tenantId:'tenant-a',revision},view:{state:revision===1?'demo_active':'expired'}});
+  if(url.endsWith('/license-me'))return Response.json({uid:'user-a',tenantId:'tenant-a',license:{tenantId:'tenant-a',revision},view:{state:revision===1?'demo_active':'expired'}});
   if(url.endsWith('/license-my-requests'))return Response.json({requests:[]});
   return Response.json({windowsVersion:'1.0.72'});
  };
@@ -16,7 +16,7 @@ test('background receiver refreshes auth without a renderer, deduplicates change
 });
 test('foreign identity and cross-tenant response never produce a notification',async()=>{
  for(const identity of ['other-user','user-a']){
-  const notices=[];const receiver=createBackgroundNotifications({fetch:async url=>url.includes('securetoken')?Response.json({user_id:identity,id_token:'id'}):url.endsWith('/license-me')?Response.json({license:{tenantId:'other-tenant',revision:2},view:{state:'active'}}):Response.json({requests:[]}),read:()=>null,write:()=>{},notify:value=>notices.push(value),currentVersion:'1.0.72'});
+  const notices=[];const receiver=createBackgroundNotifications({fetch:async url=>url.includes('securetoken')?Response.json({user_id:identity,id_token:'id'}):url.endsWith('/license-me')?Response.json({uid:'user-a',tenantId:'other-tenant',license:{tenantId:'other-tenant',revision:2},view:{state:'active'}}):Response.json({requests:[]}),read:()=>null,write:()=>{},notify:value=>notices.push(value),currentVersion:'1.0.72'});
   try{receiver.bind(session);await tick();assert.equal(receiver.status().enabled,false);assert.equal(notices.length,0);}finally{receiver.stop();}
  }
 });

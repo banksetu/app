@@ -21,7 +21,7 @@ function createBackgroundNotifications({fetch,read,write,notify,currentVersion,o
       active.refreshToken=token.refresh_token||active.refreshToken;
       const call=async route=>{const response=await fetch(active.worker+route,{method:'POST',headers:{authorization:`Bearer ${token.id_token}`,'content-type':'application/json'},body:'{}',signal:AbortSignal.timeout(10000)});if([401,403].includes(response.status))throw Object.assign(Error('Access revoked'),{revoked:true});if(!response.ok)throw Error('Notification feed unavailable');return response.json();};
       const [license,requests]=await Promise.all([call('/license-me'),call('/license-my-requests')]);if(!live())return;
-      if(license.license?.tenantId&&active.tenantId!==license.license.tenantId){clear();onRevoked();return;}
+      if(license.uid!==active.uid||license.tenantId!==active.tenantId||license.license?.tenantId&&active.tenantId!==license.license.tenantId){clear();onRevoked();return;}
       const events=[];
       if(license.license)events.push({id:`license:${license.license.revision}:${license.view.state}`,title:'Bank Setu license updated',body:`License status: ${String(license.view.state).replaceAll('_',' ')}. Open Bank Setu for details.`,page:'license-management'});
       for(const item of requests.requests||[])if(['approved','rejected'].includes(item.status))events.push({id:`request:${item.id}:${item.status}`,title:`Bank Setu request ${item.status}`,body:'Open your license panel for the payment review result.',page:'license-management'});

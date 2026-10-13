@@ -50,7 +50,7 @@ public class BankSetuNotificationsPlugin extends Plugin {
         int id=call.getInt("id", 1);
         Intent intent=new Intent(getContext(),MainActivity.class);intent.setAction("banksetu.notification."+id);intent.putExtra("banksetuPage",page);
         PendingIntent pending=PendingIntent.getActivity(getContext(),id,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-        manager.notify(id,new NotificationCompat.Builder(getContext(),channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build());
+        manager.notify(id,new NotificationCompat.Builder(getContext(),channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setOnlyAlertOnce(true).setAutoCancel(true).setContentIntent(pending).build());
         call.resolve();
     }
     @PluginMethod public void bindPushAccount(PluginCall call) {
@@ -83,10 +83,12 @@ public class BankSetuNotificationsPlugin extends Plugin {
         String channel = "banksetu_" + category;
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(channel, category + " alerts", NotificationManager.IMPORTANCE_DEFAULT));
         String event = message.getData().get("eventId");
+        if(event==null||event.length()>128)return;
+        try{org.json.JSONArray seen=new org.json.JSONArray(prefs.getString("events","[]"));String key=message.getData().get("tenantId")+":"+event;for(int index=0;index<seen.length();index++)if(key.equals(seen.optString(index)))return;seen.put(key);while(seen.length()>100)seen.remove(0);prefs.edit().putString("events",seen.toString()).apply();}catch(org.json.JSONException ignored){return;}
         int id = event == null ? (int) System.currentTimeMillis() : event.hashCode();
         Intent intent = new Intent(context, MainActivity.class); intent.setAction("banksetu.push." + id); intent.putExtra("banksetuPage", page);
         PendingIntent pending = PendingIntent.getActivity(context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        manager.notify(id, new NotificationCompat.Builder(context, channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build());
+        manager.notify(id, new NotificationCompat.Builder(context, channel).setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title).setContentText(body).setOnlyAlertOnce(true).setAutoCancel(true).setContentIntent(pending).build());
     }
     @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); String page=intent.getStringExtra("banksetuPage");if(page==null)page=intent.getStringExtra("page");if(page!=null){JSObject value=new JSObject();value.put("page",page);notifyListeners("notificationOpened",value);intent.removeExtra("banksetuPage");intent.removeExtra("page");} }
     @PluginMethod public void getPendingTap(PluginCall call) {JSObject result=new JSObject();Intent intent=getActivity().getIntent();String page=intent==null?null:intent.getStringExtra("banksetuPage");if(page==null&&intent!=null)page=intent.getStringExtra("page");if(page!=null){result.put("page",page);intent.removeExtra("banksetuPage");intent.removeExtra("page");}call.resolve(result);}

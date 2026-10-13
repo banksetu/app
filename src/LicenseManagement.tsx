@@ -69,7 +69,7 @@ export default function LicenseManagement({master,canRequest=true}:{master:boole
         callBankSetuWorker<{requests:Inquiry[];licenses:License[];tenants:Tenant[];serverTime?:string;summary:{total:number;active:number;soon:number;expired:number;pending:number;scheduled:number;suspended:number;demo:number;pendingClients:number};truncated:boolean}>('/license-admin-list',{}),
         callBankSetuWorker<{activities:Activity[];nextCursor:ActivityCursor|null}>('/license-admin-history',{}),
       ]);
-      setPricing(settings.pricing);serverOffset.current=listing.serverTime?Date.parse(listing.serverTime)-Date.now():0;setClock(Date.now()+serverOffset.current);setPaymentDetails(settings.paymentDetails);setUiEnabled(settings.flags.uiEnabled);setNewClientRequired(settings.flags.newClientRequired);setRequests(listing.requests);setActivities(history.activities);setHistoryCursor(history.nextCursor);setLicenses(listing.licenses);setTenants(listing.tenants);setSummary(listing.summary);setTruncated(listing.truncated);
+      setPricing(settings.pricing);serverOffset.current=listing.serverTime?Date.parse(listing.serverTime)-Date.now():0;setClock(Date.now()+serverOffset.current);setPaymentDetails(settings.paymentDetails);setUiEnabled(settings.flags.uiEnabled);setNewClientRequired(settings.flags.newClientRequired);setRequests(listing.requests);setActivities(history.activities);setHistoryCursor(history.nextCursor);setLicenses(listing.licenses);setTenants(listing.tenants);setSummary(listing.summary);setTruncated(listing.truncated);return listing;
     }else{
       const [result,history]=await Promise.all([callBankSetuWorker<LicenseState>('/license-me',{}),canRequest?callBankSetuWorker<{requests:typeof myRequests}>('/license-my-requests',{}):Promise.resolve({requests:[]})]);
       setState(result);serverOffset.current=Date.parse(result.serverTime)-Date.now();setClock(Date.now()+serverOffset.current);setMyRequests(history.requests);setPricing(result.pricing);setPaymentDetails(result.paymentDetails);window.dispatchEvent(new Event("banksetu-license-updated"));
@@ -98,7 +98,7 @@ export default function LicenseManagement({master,canRequest=true}:{master:boole
     return()=>window.removeEventListener('banksetu-client-created',reload);
   },[master,refresh]);
   const openTenant=(id:string)=>{setTenantId(id);setPlan(licenses.find(item=>item.tenantId===id)?.plan==='lifetime'?'lifetime':licenses.some(item=>item.tenantId===id)?'annual':'demo');setStartDate(indiaDate());setAssignmentConfirmed(false);setDurationMonths(12);setPaidAmount('');setError('');setNotice('');};
-  const manageTenant=async(id:string)=>{openTenant(id);setAdvancedPanel('tenants');try{await refresh();}catch(reason){setError(String(reason));}};
+  const manageTenant=async(id:string)=>{if(busy)return;setBusy(true);openTenant(id);setAdvancedPanel('tenants');try{const listing=await refresh();if(listing){const current=listing.licenses.find(item=>item.tenantId===id);setPlan(current?.plan==='lifetime'?'lifetime':current?'annual':'demo');}}catch(reason){setError(String(reason));}finally{setBusy(false);}};
   useEffect(()=>{const timer=window.setInterval(()=>setClock(Date.now()+serverOffset.current),60_000);return()=>window.clearInterval(timer);},[]);
   const selectedTenant=tenants.find(item=>item.tenantId===tenantId);
   const selectedLicense=licenses.find(item=>item.tenantId===tenantId);

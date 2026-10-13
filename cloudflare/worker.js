@@ -644,7 +644,7 @@ async function handleLicensing(request, env, actor, route, context) {
       receipt = { payload: signed.payload, signature: signed.signature };
     }
     const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:serverTime+5*86400000});
-    return json({ license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, paymentDetails:settings.paymentDetails, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
+    return json({ uid:actor.uid,tenantId,license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, paymentDetails:settings.paymentDetails, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
   }
   if (route === "/license-request-change") {
     if (master || String(actor.profile.role).toLowerCase() !== "client_admin") return json({ error: "Only the Client Admin can request a license change." }, 403);
