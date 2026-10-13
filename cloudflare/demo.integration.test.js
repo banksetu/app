@@ -42,6 +42,7 @@ test('demo is server-owned, single-use, permits setup and converts without movin
   try{
     const id='11111111-1111-4111-8111-111111111111';
     assert.equal((await call('demo','/license-admin-demo',{tenantId:'trial-a',requestId:id})).status,403);
+    assert.equal((await call('master','/license-admin-demo',{tenantId:'trial-a',requestId:id,startDate:'2020-01-01'})).status,400,'Demo cannot be backdated');
     const activated=await call('master','/license-admin-demo',{tenantId:'trial-a',requestId:id});
     assert.equal(activated.status,200);assert.equal(activated.body.license.plan,'demo');
     assert.equal(Date.parse(activated.body.license.expiresAt)-Date.parse(activated.body.license.activatedAt),5*86400000);

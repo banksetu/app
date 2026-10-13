@@ -65,6 +65,11 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const futureDate=new Date(Date.now()+3*86400000+330*60_000).toISOString().slice(0,10);
     const future=(await call('master','/license-admin-assign',{tenantId:'tenant-future',plan:'annual',requestId:'67890123-89ab-4cde-8fab-0123456789ab',paymentConfirmed:true,startDate:futureDate,durationMonths:12,paidPaise:149900}));
     assert.equal(future.status,200,JSON.stringify(future.body));assert.equal(future.body.license.status,'scheduled');assert.equal(future.body.license.activatedAt,new Date(`${futureDate}T00:00:00+05:30`).toISOString());
+    const scheduledState={tenantId:'tenant-future',action:'suspend',requestId:'67890124-89ab-4cde-8fab-0123456789ab'};
+    assert.equal((await call('master','/license-admin-state',scheduledState)).body.status,'suspended');
+    assert.equal((await call('master','/license-admin-state',{...scheduledState,action:'reactivate',requestId:'67890125-89ab-4cde-8fab-0123456789ab'})).body.status,'active');
+    const scheduledFields=store.get('tenantLicenses/tenant-future').fields;
+    assert.equal(scheduledFields.activatedAt.stringValue,future.body.license.activatedAt,'reactivation preserves the scheduled start');
     const verified=await call('client','/license-me',{});
     const first=verified.body.license;
     assert.equal(first.tenantId,'tenant-a');assert.equal(first.plan,'annual');assert.equal(first.revision,1);

@@ -7,10 +7,10 @@ pdfjs.GlobalWorkerOptions.workerSrc=workerUrl;
 
 export default function PdfDocumentPreview({file}:{file:Blob}){
   const root=useRef<HTMLDivElement>(null);
-  const [document,setDocument]=useState<pdfjs.PDFDocumentProxy|null>(null);
+  const [loaded,setLoaded]=useState<{file:Blob;document:pdfjs.PDFDocumentProxy}|null>(null);
+  const document=loaded?.file===file?loaded.document:null;
   const [error,setError]=useState('');
   useEffect(()=>{
-    setDocument(null);setError('');
     let disposed=false;
     let task:ReturnType<typeof pdfjs.getDocument>|undefined;
     void (async()=>{
@@ -20,13 +20,14 @@ export default function PdfDocumentPreview({file}:{file:Blob}){
         task=pdfjs.getDocument({data});
         const opened=await task.promise;
         if(disposed)return;
-        setDocument(opened);setError('');
+        setLoaded({file,document:opened});setError('');
       }catch{if(!disposed){setError('PDF preview failed. Retry generating the PDF.');recordSafeRecovery('pdf','preview','attention');}}
     })();
     return()=>{disposed=true;void task?.destroy();};
   },[file]);
   useEffect(()=>{
     if(!document||!root.current)return;
+    const container=root.current;
     let disposed=false;
     const renders=new Map<number,{cancel:()=>void}>();
     const pending=new Map<number,object>();
@@ -47,9 +48,9 @@ export default function PdfDocumentPreview({file}:{file:Blob}){
               const render=page.render({canvas,canvasContext:context,viewport});renders.set(number,render);
               void render.promise.catch(reason=>{if(reason?.name!=='RenderingCancelledException'){setError('PDF preview failed. Retry generating the PDF.');recordSafeRecovery('pdf','preview','attention');}}).finally(()=>{if(pending.get(number)===attempt){pending.delete(number);renders.delete(number);}});
             }).catch(()=>{if(disposed||pending.get(number)!==attempt)return;pending.delete(number);setError('PDF page could not be opened.');recordSafeRecovery('pdf','preview','attention');});
-          }},{root:root.current,rootMargin:'500px'});
-    root.current.querySelectorAll('[data-page]').forEach(node=>observer.observe(node));
-    return()=>{disposed=true;observer.disconnect();pending.clear();renders.forEach(value=>value.cancel());root.current?.querySelectorAll('canvas').forEach(canvas=>{canvas.width=0;canvas.height=0;});};
+          }},{root:container,rootMargin:'500px'});
+    container.querySelectorAll('[data-page]').forEach(node=>observer.observe(node));
+    return()=>{disposed=true;observer.disconnect();pending.clear();renders.forEach(value=>value.cancel());container.querySelectorAll('canvas').forEach(canvas=>{canvas.width=0;canvas.height=0;});};
   },[document]);
   return <div className="customer-pdf-preview" ref={root} role="region" aria-label="PDF pages">
     {error&&<p role="alert">{error}</p>}{!document&&!error&&<p>Opening PDF preview…</p>}

@@ -734,7 +734,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const tenantId=String(body.tenantId||""),id=String(body.requestId||"");
     if(!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)||!/^[a-f0-9-]{36}$/.test(id))return json({error:"Select a valid invited tenant."},400);
     const selectedStart=licenseStartDate(body.startDate);
-    if(selectedStart===null||selectedStart&&Date.parse(selectedStart)>Date.now()+2*365*86400000)return json({error:"Select a valid Demo activation date."},400);
+    if(selectedStart===null||selectedStart&&(Date.parse(selectedStart)<Date.now()-60_000||Date.parse(selectedStart)>Date.now()+2*365*86400000))return json({error:"Select a valid Demo activation date."},400);
     const tenantDoc=await licenseDoc(env,`/tenants/${tenantId}`),tenant=licenseFields(tenantDoc);
     if(tenant.status!=="active")return json({error:"Active invited tenant not found."},409);
     const existing=await licenseDoc(env,`/tenantLicenses/${tenantId}`);
@@ -767,7 +767,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const durationMonths=body.durationMonths===undefined?12:Number(body.durationMonths);
     if(plan==="annual"&&(!Number.isInteger(durationMonths)||durationMonths<1||durationMonths>120))return json({error:"Select a valid paid duration."},400);
     const next=transitionLicense(null,{kind:plan,id,quotedPaise:paidPaise,startAt,durationMonths},now,settings.pricing);
-    Object.assign(next,{tenantId,firstActivatedAt:next.activatedAt,demoOnly:false,revision:Number(current.revision||0)+1});
+    Object.assign(next,{tenantId,firstActivatedAt:current.firstActivatedAt||current.activatedAt||next.activatedAt,demoOnly:false,revision:Number(current.revision||0)+1});
     try{await licenseCommit(env,[licenseWrite(env,"tenantLicenses",tenantId,next,{updateTime:doc.updateTime}),licenseWrite(env,"licenseAudit",id,{action:"demo_converted",actorUid:actor.uid,tenantId,at:now,before:{plan:"demo",expiresAt:current.expiresAt},after:{plan,status:next.status,activatedAt:next.activatedAt,expiresAt:next.expiresAt},paidPaise})]);}
     catch(error){if(error.status===409)return json({error:"License changed. Refresh before retrying."},409);throw error;}
     context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license updated", body: "Your paid license was approved. Open Bank Setu for details." }));
@@ -830,7 +830,7 @@ async function handleLicensing(request, env, actor, route, context) {
     if (!document) return json({ error: "License not found." }, 404);
     const current = licenseFields(document);
     if (current.lastRequestId === id) return json({ success: true, repeated: true });
-    if (current.status === "revoked" || (action === "reactivate" && current.status !== "suspended") || (action !== "reactivate" && current.status !== "active" && current.status !== "suspended")) return json({ error: "License state changed. Refresh before retrying." }, 409);
+    if (current.status === "revoked" || (action === "reactivate" && current.status !== "suspended") || (action !== "reactivate" && !["active", "scheduled", "suspended"].includes(current.status))) return json({ error: "License state changed. Refresh before retrying." }, 409);
     const status = action === "reactivate" ? "active" : action === "suspend" ? "suspended" : "revoked";
     if (status === current.status) return json({ error: "License is already in that state." }, 409);
     const now = new Date().toISOString();
