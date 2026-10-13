@@ -297,7 +297,7 @@ async function handlePushRegistration(request, env, actor, route) {
     if (old.uid === actor.uid) await firestoreRequest(env, path, { method: "DELETE" });
     return json({ success: true });
   }
-  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token &&
+  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token && old.scopedData === (body.scopedData===true) &&
       Date.parse(old.expiresAt || "") > now && Date.parse(old.updatedAt || "") > now - 60_000)
     return json({ success: true, throttled: true });
   if (!existing) {
@@ -307,7 +307,7 @@ async function handlePushRegistration(request, env, actor, route) {
     } }) });
     if (rows.filter(row => Date.parse(decodeFields(row.document?.fields || {}).expiresAt || "") > now).length >= 5) return json({ error: "Too many registered devices." }, 429);
   }
-  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
+  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, scopedData:body.scopedData===true,platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
   return json({ success: true });
 }
 
@@ -330,9 +330,9 @@ export async function sendTenantPush(env, tenantId, event) {
         if (!pushTokenPattern.test(String(record.token || "")) || Date.parse(record.expiresAt || "") < now) continue;
         const result = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`, {
           method: "POST", headers: { authorization: `Bearer ${await serviceAccessToken(env)}`, "content-type": "application/json" },
-          body: JSON.stringify({ message: { token: record.token, notification: { title: event.title, body: event.body },
-            data: { page: "license-management", category: "license", eventId: event.id },
-            android: { priority: "HIGH", notification: { channel_id: "banksetu_license", tag: event.id, click_action: "BANKSETU_PUSH" } } } }),
+          body: JSON.stringify({ message: { token: record.token,...(record.scopedData===true?{}:{notification:{title:event.title,body:event.body}}),
+            data: { page: event.page||"license-management", category: event.category||"license", eventId: event.id,uid:record.uid,tenantId,title:event.title,body:event.body },
+            android: { priority: "HIGH", ttl:"86400s",...(record.scopedData===true?{}:{notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}}) } } }),
         });
         if (!result.ok) {
           const error = await result.json().catch(() => ({}));
@@ -343,6 +343,30 @@ export async function sendTenantPush(env, tenantId, event) {
       }
     }
   } catch (error) { console.warn("Bank Setu push delivery unavailable", error instanceof Error ? error.message : "unknown"); }
+}
+
+export async function deliverScheduledNotices(env) {
+  // One daily bounded scan; claims are server-only and contain no customer data.
+  let pageToken="";
+  let latest="";
+  try{const result=await fetch("https://banksetu-app.web.app/version.json");if(result.ok){const value=await result.json();latest=String(value.androidVersion||value.version||"");}}catch{/* License checks remain independent of update metadata. */}
+  for(let page=0;page<20;page++){
+    const listing=await firestoreRequest(env,`/tenantLicenses?pageSize=100${pageToken?`&pageToken=${encodeURIComponent(pageToken)}`:""}`);
+    for(const doc of listing.documents||[]){
+      const license=licenseFields(doc),tenantId=license.tenantId;
+      if(!tenantId)continue;
+      let view;try{view=licenseView(license,Date.now(),0);}catch{continue;}const events=[];
+      if(["expired","demo_expired","expiring_soon"].includes(view.state))events.push({id:`${license.revision}:${view.state}`,title:view.state.includes("expired")?"Bank Setu license expired":"Bank Setu license expiring",body:"Open Bank Setu to review your license and renewal options."});
+      if(["active","demo_active","expiring_soon"].includes(view.state)&&Date.parse(license.activatedAt||"")<=Date.now()&&Date.parse(license.activatedAt||"")>Date.parse(license.createdAt||""))events.push({id:`${license.revision}:started`,title:"Bank Setu license active",body:"Your scheduled license is now active. Open Bank Setu for details."});
+      if(/^\d+\.\d+\.\d+$/.test(latest))events.push({id:`update:${latest}`,title:"Bank Setu software update",body:`Version ${latest} is available. Open Bank Setu to check for updates.`,category:"update",page:"dashboard"});
+      for(const event of events){
+        const id=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${tenantId}:${event.id}`)))].map(value=>value.toString(16).padStart(2,"0")).join("");
+        try{const at=new Date().toISOString();const writes=[licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at},{exists:false})];if(event.category!=="update")writes.push(licenseWrite(env,"licenseAudit",id,{tenantId,action:view.state.includes("expired")?"expired":view.state==="expiring_soon"?"expiry_warning":"activated",actorUid:"system",at,plan:license.plan},{exists:false}));await licenseCommit(env,writes);}catch(error){if([409,412].includes(error.status))continue;throw error;}
+        await sendTenantPush(env,tenantId,event);
+      }
+    }
+    pageToken=listing.nextPageToken||"";if(!pageToken)break;
+  }
 }
 
 async function purgeExpiredPushDevices(env) {
@@ -585,8 +609,8 @@ async function handleLicensing(request, env, actor, route, context) {
       try { return licenseView(item, Date.now(), settings.pricing.graceDays).state === state; }
       catch { return false; }
     }).length;
-    return json({ requests, licenses,
-      tenants: currentTenants.map(item => {const owner=owners.get(item.tenantId||item.id);return { tenantId: item.tenantId || item.id, name:item.name||owner?.name||"", email:item.email||owner?.email||"", bankName: item.bankName || "", createdAt:item.createdAt||owner?.createdAt||"" };}),
+    return json({ requests, licenses, serverTime:new Date().toISOString(),
+      tenants: currentTenants.map(item => {const owner=owners.get(item.tenantId||item.id);return { ownerUid:item.ownerUid||owner?.id||"",phone:item.phone||owner?.phone||owner?.mobile||"",remarks:item.remarks||"",tenantId: item.tenantId || item.id, name:item.name||owner?.name||"", email:item.email||owner?.email||"", bankName: item.bankName || "", createdAt:item.createdAt||owner?.createdAt||"" };}),
       summary: { total: currentTenants.length, active: stateCount("active") + stateCount("expiring_soon") + stateCount("demo_active"), soon: stateCount("expiring_soon") + stateCount("demo_active"), expired: stateCount("expired")+stateCount("demo_expired"), scheduled:stateCount("scheduled"), suspended:stateCount("suspended")+stateCount("revoked"), demo:licenses.filter(item=>item.plan==="demo").length, pending: requests.filter(item => item.status === "pending").length, pendingClients:currentTenants.filter(tenant=>!licenses.some(item=>item.tenantId===(tenant.tenantId||tenant.id))).length+stateCount("pending") },
       truncated: requestPage.truncated || licensePage.truncated || tenantPage.truncated || ownerPage.truncated });
   }
@@ -620,7 +644,7 @@ async function handleLicensing(request, env, actor, route, context) {
       receipt = { payload: signed.payload, signature: signed.signature };
     }
     const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:serverTime+5*86400000});
-    return json({ license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, paymentDetails:settings.paymentDetails, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
+    return json({ uid:actor.uid,tenantId,license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, paymentDetails:settings.paymentDetails, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
   }
   if (route === "/license-request-change") {
     if (master || String(actor.profile.role).toLowerCase() !== "client_admin") return json({ error: "Only the Client Admin can request a license change." }, 403);
@@ -816,7 +840,7 @@ async function handleLicensing(request, env, actor, route, context) {
     writes.push(licenseWrite(env,"licenseAudit",crypto.randomUUID(),audit));
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "License changed during approval. Refresh and retry." }, 409); throw error; }
-    if (approved) context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license approved", body: "Your license request has been approved. Open Bank Setu for details." }));
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: approved?"Bank Setu license approved":"Bank Setu request rejected", body: approved?"Your license request has been approved. Open Bank Setu for details.":"Your request was rejected. Open Bank Setu for the current status." }));
     return json({ success: true, status: decided.status });
   }
   if (route === "/license-admin-state") {
@@ -947,6 +971,7 @@ async function handleMasterOperation(request, env, actor, route) {
     try {
       const now = new Date().toISOString();
       const docs = [
+        [firestoreDocumentName(env, `/licenseAudit/${crypto.randomUUID()}`), {action:"client_created",tenantId,actorUid:actor.uid,at:now}],
         [firestoreDocumentName(env, `/tenants/${tenantId}`), { tenantId, clientId: tenantId, ownerUid: newUid, name, email, bankName, maxUsers: 2, clientUserCount: 0, status: "active", createdAt: now, createdBy: actor.uid }],
         [firestoreDocumentName(env, `/tenantSettings/${tenantId}`), { tenantId, bankName, apiUrl: String(setupData.apiUrl), spreadsheetId: "", photoFolderId: "", bankInfo: {}, bankLogo: "", updatedAt: now, updatedBy: actor.uid }],
         [firestoreDocumentName(env, `/users/${newUid}`), { name, email, role: "client_admin", tenantId, clientId: tenantId, parentClientUid: actor.uid, bankName, maxUsers: 2, status: "approved", subscriptionStatus: "active", licenseRequired: true, createdAt: now, createdBy: actor.uid }],
@@ -1540,6 +1565,7 @@ async function licensePublicKey(env) {
 export default {
   async scheduled(_event, env) {
     await purgeExpiredPushDevices(env);
+    await deliverScheduledNotices(env);
   },
   async fetch(request, env, context) {
     if (new URL(request.url).pathname === "/license-public-key" && request.method === "GET") {

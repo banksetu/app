@@ -44,12 +44,25 @@ test('suspended license change is visibly disabled until Master reactivation',()
 
 test('reference dashboard count cards expose accessible category actions',()=>{
  const html=render(true);
- for(const label of ['Total Clients','Active Licenses','Pending Clients','Expiring Soon','Suspended','Demo Accounts'])assert(html.includes(`aria-label="View ${label}"`));
+ for(const label of ['Total Client','Total Demo','Active Client','Total Expiring','Total Pending','Support End'])assert(html.includes(`aria-label="View ${label}"`));
 });
 
 test('new tenant Manage popup includes three plans, a five-day Demo expiry and a real enabled assignment action',()=>{
  const start='2026-10-20';
  const html=render(true,{14:[],15:[{tenantId:'test-tenant',name:'Synthetic Client'}],18:'test-tenant',19:'demo',20:start,29:'tenants'});
- for(const label of ['Choose License Plan','Annual — 1 Year / Custom Duration','Lifetime — No Expiry','Demo — 5 Days Full Access','End Date (Auto Calculated)','2026-10-25','Confirm &amp; Activate Five-Day Demo'])assert(html.includes(label),label);
+ for(const label of ['Choose License Plan','1 Year License','Lifetime License','Demo License','5 Days Full Access','End Date (Auto Calculated)','2026-10-25','Confirm &amp; Activate Five-Day Demo'])assert(html.includes(label),label);
  assert(/<button type="button">Confirm &amp; Activate Five-Day Demo<\/button>/.test(html));
+});
+
+test('reference lower panels and table selection render without duplicate tenant list',()=>{
+ const html=render(true,{14:[license],15:[{tenantId:'test-tenant',name:'Synthetic Client',email:'test@example.invalid'}],18:'test-tenant'});
+ for(const label of ['License Issue / Assign','Recent Activity','Client Details','Manage Client License','Select Synthetic Client','SL','Payment Status','Valid Till'])assert(html.includes(label),label);
+ assert(!html.includes('Tenant Licenses</h3>'));
+});
+
+test('future upgrade cannot pause an active Annual tenant',()=>{
+ const future=new Date(now+86400000).toISOString().slice(0,10);
+ const html=render(true,{14:[license],15:[{tenantId:'test-tenant',name:'Synthetic Client'}],18:'test-tenant',19:'lifetime',20:future,29:'tenants',38:true});
+ assert(html.includes('Choose today for an active Annual'));
+ assert(/<button[^>]*disabled=""[^>]*>Confirm Payment &amp; Upgrade to Lifetime<\/button>/.test(html));
 });

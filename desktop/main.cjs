@@ -1,4 +1,4 @@
-const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage,clipboard,dialog,Notification} = require('electron');
+const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage,clipboard,dialog,Notification,Tray,Menu} = require('electron');
 const {execFileSync} = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -9,7 +9,7 @@ const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 const primaryInstance=app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
-let window,store,downloaded=false;
+let window,store,background,tray,openMain,quitting=false,downloaded=false;
 const resolveDataDirectory = () => require('./data-directory.cjs').resolveDataDirectory({
   userData:app.getPath('userData'),platform:process.platform,executable:process.execPath,env:process.env
 });
@@ -24,7 +24,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
   store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
   const publicKey=require('../src/generated/licensePublicKey.json');
   const licenseAuthority=createLicenseAuthority(publicKey,store);
-  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);});
+  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);if(background?.status().uid&&background.status().uid!==uid)background.clear();});
   ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);});
   ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);});
   const validPdf = encoded => {
@@ -49,44 +49,15 @@ if(primaryInstance)app.whenReady().then(async()=>{
   });
   const root=path.resolve(__dirname,'../dist');
   protocol.handle('banksetu',require('./app-protocol.cjs').createAppProtocol(root));
-  window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
   ipcMain.handle('system-notification:show',(event,value)=>{
     trusted(event);
     if(!value||!['update','sync','network','license'].includes(value.category)||!['dashboard','sync-backup','license-management'].includes(value.page)||typeof value.title!=='string'||typeof value.body!=='string'||value.title.length>100||value.body.length>250)throw Error('Invalid system notification.');
     if(process.platform!=='win32'||!Notification.isSupported())return false;
     const notice=new Notification({title:value.title,body:value.body,silent:false});
-    notice.on('click',()=>{if(window&&!window.isDestroyed()){window.show();window.focus();window.webContents.send('system-notification:open',value.page);}});
+    notice.on('click',()=>{if(openMain)void openMain(value.page);});
     notice.show();return true;
   });
-  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,parentWindow:window,authorize:()=>licenseAuthority.protectedAction()});
-  printPreview.attach(window);
-  // Customer print previews use document.write() into an about:blank window.
-  // Allow only that local preview; it has no preload or database IPC privileges.
-  window.webContents.setWindowOpenHandler(({url})=>{
-    if (url === 'about:blank' || url === '') return {
-      action:'allow',
-      overrideBrowserWindowOptions:{
-        show:false,width:1000,height:800,title:'Bank Setu Print Preview',
-        webPreferences:{preload:path.join(__dirname,'print-source.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}
-      }
-    };
-    if (/^https:\/\/(?:docs\.google\.com|drive\.google\.com|script\.google\.com|github\.com)\//.test(url)) void shell.openExternal(url);
-    if (/^https:\/\/banksetu-app\.web\.app\/license-request\/?(?:\?plan=(?:annual|lifetime|undecided))?$/.test(url)) void shell.openExternal(url);
-    return {action:'deny'};
-  });
-  window.webContents.on('did-create-window',child=>{
-    printPreview.attach(child);
-    child.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-    child.webContents.on('will-navigate',(event,url)=>{if(url!=='about:blank')event.preventDefault();});
-  });
-  window.webContents.on('will-navigate',(event,url)=>{if (!url.startsWith(ORIGIN+'/')) event.preventDefault();});
-  const cameraAllowed=(contents,permission,requestingUrl)=>
-    permission==='media' && contents===window.webContents &&
-    (requestingUrl===ORIGIN || requestingUrl.startsWith(ORIGIN+'/'));
-  window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>
-    callback(cameraAllowed(contents,permission,details.requestingUrl||contents.getURL())));
-  window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>
-    cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
+  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction()});
   const directoryBytes = directory => {
     let total = 0;
     try {
@@ -129,7 +100,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     store.commit(scope,before,after,licensed);
   });
   ipcMain.handle('clipboard:write-text',(event,value)=>{trusted(event);if(typeof value!=='string'||value.length>10000)throw new Error('Invalid clipboard text.');clipboard.writeText(value);});
-  require('./share-preview.cjs').installPreviewShare({ipcMain,trusted,dialog,window,fs,shell});
+  require('./share-preview.cjs').installPreviewShare({ipcMain,trusted,dialog,getWindow:()=>window,fs,shell});
   const {autoUpdater}=require('electron-updater');
   autoUpdater.autoDownload=false;autoUpdater.autoInstallOnAppQuit=false;autoUpdater.allowDowngrade=false;
   autoUpdater.on('error',()=>{});autoUpdater.on('download-progress',progress=>{!window?.isDestroyed()&&window?.webContents.send('update:progress',{percent:Number(progress?.percent||0),transferred:Number(progress?.transferred||0),total:Number(progress?.total||0),bytesPerSecond:Number(progress?.bytesPerSecond||0)});});autoUpdater.on('update-downloaded',()=>{downloaded=true;!window?.isDestroyed()&&window?.webContents.send('update:ready',{ready:true});});
@@ -151,8 +122,56 @@ if(primaryInstance)app.whenReady().then(async()=>{
     return {latestVersion,notes,changelog,releaseDate};
   });
   ipcMain.handle('update:install',async event=>{trusted(event);if(!app.isPackaged)return testUpdater.install();assertUpdateFeed();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
-  await window.loadURL(ORIGIN+'/index.html');
+  openMain=async(page)=>{
+    if(window&&!window.isDestroyed()){window.show();window.focus();if(page)window.webContents.send('system-notification:open',page);return;}
+  window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  printPreview.attach(window);
+  // Customer print previews use document.write() into an about:blank window.
+  // Allow only that local preview; it has no preload or database IPC privileges.
+  window.webContents.setWindowOpenHandler(({url})=>{
+    if (url === 'about:blank' || url === '') return {
+      action:'allow',
+      overrideBrowserWindowOptions:{
+        show:false,width:1000,height:800,title:'Bank Setu Print Preview',
+        webPreferences:{preload:path.join(__dirname,'print-source.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}
+      }
+    };
+    if (/^https:\/\/(?:docs\.google\.com|drive\.google\.com|script\.google\.com|github\.com)\//.test(url)) void shell.openExternal(url);
+    if (/^https:\/\/banksetu-app\.web\.app\/license-request\/?(?:\?plan=(?:annual|lifetime|undecided))?$/.test(url)) void shell.openExternal(url);
+    return {action:'deny'};
+  });
+  window.webContents.on('did-create-window',child=>{
+    printPreview.attach(child);
+    child.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    child.webContents.on('will-navigate',(event,url)=>{if(url!=='about:blank')event.preventDefault();});
+  });
+  window.webContents.on('will-navigate',(event,url)=>{if (!url.startsWith(ORIGIN+'/')) event.preventDefault();});
+  const cameraAllowed=(contents,permission,requestingUrl)=>
+    permission==='media' && contents===window.webContents &&
+    (requestingUrl===ORIGIN || requestingUrl.startsWith(ORIGIN+'/'));
+  window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>
+    callback(cameraAllowed(contents,permission,details.requestingUrl||contents.getURL())));
+  window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>
+    cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
+    window.on('closed',()=>{window=null;});
+    await window.loadURL(ORIGIN+'/index.html');
+    if(page)window.webContents.send('system-notification:open',page);
+  };
+  const notificationFile=path.join(app.getPath('userData'),'background-notifications.enc');
+  const saveSession=value=>{if(value){if(!safeStorage.isEncryptionAvailable())throw Error('Windows credential encryption is unavailable.');fs.writeFileSync(notificationFile,safeStorage.encryptString(JSON.stringify(value)),{mode:0o600});}else{try{fs.unlinkSync(notificationFile);}catch{}}};
+  background=require('./background-notifications.cjs').createBackgroundNotifications({fetch:net.fetch,currentVersion:app.getVersion(),read:()=>JSON.parse(safeStorage.decryptString(fs.readFileSync(notificationFile))),write:saveSession,notify:value=>{
+    if(window&&!window.isDestroyed()&&window.isVisible())return;
+    if(!Notification.isSupported())return;
+    const notice=new Notification({title:value.title,body:value.body,icon:path.join(root,'icon-512.png')});notice.on('click',()=>void openMain(value.page));notice.show();
+  },onRevoked:()=>{if(!window&&!quitting)app.quit();}});
+  const ensureTray=()=>{if(process.platform!=='win32'||tray)return;tray=new Tray(path.join(root,'icon-512.png'));tray.setToolTip('Bank Setu · Background notifications');tray.on('double-click',()=>void openMain());tray.setContextMenu(Menu.buildFromTemplate([{label:'Open Bank Setu',click:()=>void openMain()},{label:'Disable background notifications',click:()=>{background.clear();tray.destroy();tray=null;if(!window)app.quit();}},{type:'separator'},{label:'Quit Bank Setu (stop notifications)',click:()=>{quitting=true;app.quit();}}]));};
+  ipcMain.handle('background:status',event=>{trusted(event);return background.status();});
+  ipcMain.handle('background:bind',(event,value)=>{trusted(event);if(process.platform!=='win32')throw Error('Background notifications are supported on Windows.');background.bind(value);ensureTray();return background.status();});
+  ipcMain.handle('background:clear',event=>{trusted(event);background.clear();if(tray){tray.destroy();tray=null;}return background.status();});
+  if(background.status().enabled)ensureTray();
+  await openMain();
+
 }).catch(error=>{require('electron').dialog.showErrorBox('Bank Setu startup failed',error.message);app.quit();});
-app.on('second-instance',()=>{if(window&&!window.isDestroyed()){if(window.isMinimized())window.restore();window.focus();}});
-app.on('window-all-closed',()=>app.quit());
-app.on('before-quit',()=>store?.close());
+app.on('second-instance',()=>{if(openMain)void openMain();});
+app.on('window-all-closed',()=>{if(quitting||!background?.status().enabled)app.quit();});
+app.on('before-quit',()=>{quitting=true;background?.stop();tray?.destroy();store?.close();});

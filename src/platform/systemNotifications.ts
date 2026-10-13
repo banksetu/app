@@ -24,7 +24,7 @@ export function notifySystem(event:SystemNotice){
   }
 }
 export function startNotificationNavigation(){
-  const open=(page:string)=>{if(destinations.has(page))window.dispatchEvent(new CustomEvent('banksetu-open-page',{detail:{page}}));};
+  const open=(page:string)=>{if(destinations.has(page)){sessionStorage.setItem('bankSetuPendingNotificationPage',page);window.dispatchEvent(new CustomEvent('banksetu-open-page',{detail:{page}}));}};
   const desktop=(window as Window & {bankSetuDesktop?:{onNotificationOpen?:(callback:(page:string)=>void)=>()=>void}}).bankSetuDesktop;
   const stop=desktop?.onNotificationOpen?.(open);
   let listener:{remove():Promise<void>}|undefined;

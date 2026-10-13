@@ -2,6 +2,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { auth } from '../firebase';
 
 const native = registerPlugin<{
+  bindPushAccount(value:{uid:string;tenantId:string;deviceId:string;refreshToken:string;worker:string}):Promise<void>;
   requestPermissions(): Promise<{ granted: boolean }>;
   getPushToken(): Promise<{ token: string }>;
   clearPushToken(): Promise<void>;
@@ -30,11 +31,14 @@ export async function registerAndroidPush() {
     if (localStorage.getItem('bankSetuSystemNotifications') === 'off') { await unregisterAndroidPush(); return; }
     const permission = await native.requestPermissions();
     if (!permission.granted || auth.currentUser?.uid !== uid) { if (!permission.granted) await unregisterAndroidPush(); return; }
+    const tenantId=sessionStorage.getItem('bankSetuTenantId');
+    if(!tenantId)return;
+    await native.bindPushAccount({uid,tenantId,deviceId:await deviceId(),refreshToken:user.refreshToken,worker});
     const { token } = await native.getPushToken();
     if (auth.currentUser?.uid !== uid) return;
     const response = await fetch(`${worker}/push-register`, {
       method: 'POST', headers: { authorization: `Bearer ${await user.getIdToken()}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ platform: 'android', deviceId: await deviceId(), token }),
+      body: JSON.stringify({ platform: 'android', deviceId: await deviceId(), token, scopedData:true }),
       signal: AbortSignal.timeout(10000),
     });
     if (response.ok && auth.currentUser?.uid === uid) { lastAccount = uid; localStorage.setItem(accountKey,uid); }

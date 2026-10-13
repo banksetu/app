@@ -33,3 +33,6 @@ public/client-bridge/Code.gs
 
 *.jks
 *.keystore
+
+web-app-dist/
+test-evidence/
