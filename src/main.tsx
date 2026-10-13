@@ -21,7 +21,8 @@ if (!isAndroid() && "serviceWorker" in navigator && location.protocol === "https
   const registerLatestWorker = async () => {
     try {
       // Never let an old browser cache keep serving the previous production bundle.
-      const registration = await navigator.serviceWorker.register("/sw.js", {
+      const registration = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
+        scope: import.meta.env.BASE_URL,
         updateViaCache: "none",
       });
       await registration.update();

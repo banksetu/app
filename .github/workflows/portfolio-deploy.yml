@@ -24,7 +24,9 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - run: npm run build:portfolio
+      - run: npm run build:hosting
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
       - run: npm run test:portfolio
       - name: Verify published assets before deploying
         env:

@@ -22,7 +22,9 @@
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
     "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
-    "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs scripts/verify-backend-release-gate.test.mjs desktop/testUpdater.test.cjs scripts/enforce-client-licenses.test.mjs"
+    "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs scripts/verify-backend-release-gate.test.mjs desktop/testUpdater.test.cjs scripts/enforce-client-licenses.test.mjs",
+    "build:web": "node scripts/prepare-client-assets.mjs && tsc -b && vite build --base=/app/ --outDir=web-app-dist && node scripts/generate-sw.mjs web-app-dist /app/",
+    "build:hosting": "npm run build:portfolio && npm run build:web && node scripts/assemble-hosting-app.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",

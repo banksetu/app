@@ -141,7 +141,9 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - run: npm ci && npm run build:portfolio && npm run test:portfolio
+      - run: npm ci && npm run build:hosting && npm run test:portfolio
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
       - name: Verify release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -155,3 +157,4 @@ jobs:
       - name: Update portfolio release metadata
         run: npx --yes firebase-tools@15.31.0 deploy --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive
       - run: node scripts/verify-live-portfolio.mjs
+      - run: node scripts/verify-live-application.mjs
