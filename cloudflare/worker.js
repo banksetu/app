@@ -311,68 +311,124 @@ async function handlePushRegistration(request, env, actor, route) {
   return json({ success: true });
 }
 
-export async function sendTenantPush(env, tenantId, event) {
-  // Called only after a committed server-side license transition. Delivery is best effort.
-  try {
-    const tenant = await firestoreRequest(env, `/tenants/${encodeURIComponent(tenantId)}`).catch(error => error.status === 404 ? null : Promise.reject(error));
-    if (decodeFields(tenant?.fields || {}).status !== "active") return;
-    const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
-      from: [{ collectionId: "pushDevices" }],
-      where: { fieldFilter: { field: { fieldPath: "tenantId" }, op: "EQUAL", value: { stringValue: tenantId } } }, limit: 100,
-    } }) });
-    const now = Date.now();
-    for (const row of rows) {
-      const record = decodeFields(row.document?.fields || {});
-      if (record.tenantId !== tenantId || !record.uid) continue;
-      const profile = await getProfile(env, record.uid);
-      if (profile?.tenantId !== tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active") continue;
-      {
-        if (!pushTokenPattern.test(String(record.token || "")) || Date.parse(record.expiresAt || "") < now) continue;
-        const result = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`, {
-          method: "POST", headers: { authorization: `Bearer ${await serviceAccessToken(env)}`, "content-type": "application/json" },
-          body: JSON.stringify({ message: { token: record.token,...(record.scopedData===true?{}:{notification:{title:event.title,body:event.body}}),
-            data: { page: event.page||"license-management", category: event.category||"license", eventId: event.id,uid:record.uid,tenantId,title:event.title,body:event.body },
-            android: { priority: "HIGH", ttl:"86400s",...(record.scopedData===true?{}:{notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}}) } } }),
-        });
-        if (!result.ok) {
-          const error = await result.json().catch(() => ({}));
-          const code = error.error?.details?.[0]?.errorCode;
-          if (code === "UNREGISTERED") await firestoreRequest(env, `/pushDevices/${encodeURIComponent(row.document.name.split('/').pop())}`, {method:"DELETE"});
-          else console.warn("Bank Setu push delivery failed", result.status);
-        }
-      }
+async function pushEventId(tenantId, eventId) {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(tenantId + ":" + eventId)))].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function preparePushJob(env, tenantId, event) {
+  const tenant = await licenseDoc(env, "/tenants/" + encodeURIComponent(tenantId));
+  if (licenseFields(tenant).status !== "active") return null;
+  const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+    from: [{ collectionId: "pushDevices" }],
+    where: { fieldFilter: { field: { fieldPath: "tenantId" }, op: "EQUAL", value: { stringValue: tenantId } } }, limit: 100,
+  } }) });
+  const seen = new Set();
+  const deviceIds = rows.filter(row => {const record=licenseFields(row.document), key=record.uid+":"+record.token;if(seen.has(key))return false;seen.add(key);return true;}).map(row=>row.document?.name?.split("/").pop()).filter(id=>pushDevicePattern.test(id||""));
+  return deviceIds.length ? { tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date().toISOString() } : null;
+}
+
+export async function drainQueuedPush(env, tenantId, eventDocId) {
+  // Eight recipients and a persisted lease/cursor keep every invocation below
+  // Workers Free's 50 external subrequests; larger tenants continue next time.
+  let doc;
+  if(eventDocId)doc=await licenseDoc(env,"/pendingPushEvents/"+eventDocId);
+  else{
+    const read=async priority=>firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{
+      from:[{collectionId:"pendingPushEvents"}],
+      where:{fieldFilter:{field:{fieldPath:tenantId?"tenantId":"priority"},op:"EQUAL",value:tenantId?{stringValue:tenantId}:{integerValue:String(priority)}}},limit:1
+    }})});
+    let rows=await read(0);if(!tenantId&&!rows[0]?.document)rows=await read(1);doc=rows[0]?.document;
+  }
+  if (!doc) return;
+  const id = doc.name.split("/").pop(), job = licenseFields(doc), now = Date.now();
+  if (Number(job.leaseUntil || 0) > now) return;
+  if (!Array.isArray(job.deviceIds) || !job.event || !job.tenantId) return;
+  try { await licenseCommit(env, [licenseWrite(env, "pendingPushEvents", id, {...job, leaseUntil:now + 60_000}, {updateTime:doc.updateTime})]); }
+  catch(error){if([409,412].includes(error.status))return;throw error;}
+  const claimed = await licenseDoc(env, "/pendingPushEvents/" + id);
+  if (!claimed) return;
+  const tenant = await licenseDoc(env, "/tenants/" + encodeURIComponent(job.tenantId));
+  if (licenseFields(tenant).status !== "active") {
+    await licenseCommit(env, [{delete:claimed.name,currentDocument:{updateTime:claimed.updateTime}}]);return;
+  }
+  const profiles = new Map(), tokens = new Set(), stale = [], started = Date.now();
+  let cursor = Math.max(0, Number(job.cursor || 0));
+  for (let count = 0; cursor < job.deviceIds.length && count < 8 && Date.now() - started < 15_000; count++, cursor++) {
+    const deviceId = job.deviceIds[cursor];
+    if (!pushDevicePattern.test(String(deviceId))) continue;
+    const device = await licenseDoc(env, "/pushDevices/" + encodeURIComponent(deviceId)), record = licenseFields(device);
+    if (!device || record.tenantId !== job.tenantId || !record.uid || !pushTokenPattern.test(String(record.token || "")) || !Number.isFinite(Date.parse(record.expiresAt || "")) || Date.parse(record.expiresAt) <= now) continue;
+    if (!profiles.has(record.uid)) profiles.set(record.uid, await getProfile(env, record.uid));
+    const profile = profiles.get(record.uid);
+    if (profile?.tenantId !== job.tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active" || tokens.has(record.token)) continue;
+    tokens.add(record.token);
+    const event = job.event;
+    let result;
+    try { result = await fetch("https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(env.FIREBASE_PROJECT_ID) + "/messages:send", {
+      method:"POST", headers:{authorization:"Bearer " + await serviceAccessToken(env),"content-type":"application/json"}, signal:AbortSignal.timeout(5000),
+      body:JSON.stringify({message:{token:record.token,...(record.scopedData===true?{}:{notification:{title:event.title,body:event.body}}),
+        data:{page:event.page||"license-management",category:event.category||"license",eventId:event.id,uid:record.uid,tenantId:job.tenantId,title:event.title,body:event.body},
+        android:{priority:"HIGH",ttl:"86400s",...(record.scopedData===true?{}:{notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}})}
+      }})
+    }); } catch { break; } // Keep this recipient queued for the next invocation.
+    if (!result.ok) {
+      const failure = await result.json().catch(() => ({})), code = failure.error?.details?.[0]?.errorCode;
+      if (!["UNREGISTERED","SENDER_ID_MISMATCH","INVALID_ARGUMENT"].includes(code)) break;
+      if (code === "UNREGISTERED") stale.push({delete:device.name,currentDocument:{updateTime:device.updateTime}});
     }
-  } catch (error) { console.warn("Bank Setu push delivery unavailable", error instanceof Error ? error.message : "unknown"); }
+  }
+  await licenseCommit(env, [...stale, cursor >= job.deviceIds.length
+    ? {delete:claimed.name,currentDocument:{updateTime:claimed.updateTime}}
+    : licenseWrite(env,"pendingPushEvents",id,{...job,cursor,leaseUntil:0},{updateTime:claimed.updateTime})]);
+}
+
+export async function sendTenantPush(env, tenantId, event) {
+  // Queue only committed server events. No UI or service-account key is needed.
+  try {
+    const id = await pushEventId(tenantId, event.id), job = await preparePushJob(env, tenantId, event);
+    if (!job) return;
+    try { await licenseCommit(env,[licenseWrite(env,"pendingPushEvents",id,job,{exists:false})]); }
+    catch(error){if(![409,412].includes(error.status))throw error;}
+    await drainQueuedPush(env, tenantId, id);
+  } catch(error){console.warn("Bank Setu push delivery queued/unavailable",error instanceof Error?error.message:"unknown");}
 }
 
 export async function deliverScheduledNotices(env) {
-  // One daily bounded scan; claims are server-only and contain no customer data.
-  let pageToken="";
-  let latest="";
-  try{const result=await fetch("https://banksetu-app.web.app/version.json");if(result.ok){const value=await result.json();latest=String(value.androidVersion||value.version||"");}}catch{/* License checks remain independent of update metadata. */}
-  for(let page=0;page<20;page++){
-    const listing=await firestoreRequest(env,`/tenantLicenses?pageSize=100${pageToken?`&pageToken=${encodeURIComponent(pageToken)}`:""}`);
-    for(const doc of listing.documents||[]){
-      const license=licenseFields(doc),tenantId=license.tenantId;
-      if(!tenantId)continue;
-      let view;try{view=licenseView(license,Date.now(),0);}catch{continue;}const events=[];
-      if(["expired","demo_expired","expiring_soon"].includes(view.state))events.push({id:`${license.revision}:${view.state}`,title:view.state.includes("expired")?"Bank Setu license expired":"Bank Setu license expiring",body:"Open Bank Setu to review your license and renewal options."});
-      if(["active","demo_active","expiring_soon"].includes(view.state)&&Date.parse(license.activatedAt||"")<=Date.now()&&Date.parse(license.activatedAt||"")>Date.parse(license.createdAt||""))events.push({id:`${license.revision}:started`,title:"Bank Setu license active",body:"Your scheduled license is now active. Open Bank Setu for details."});
-      if(/^\d+\.\d+\.\d+$/.test(latest))events.push({id:`update:${latest}`,title:"Bank Setu software update",body:`Version ${latest} is available. Open Bank Setu to check for updates.`,category:"update",page:"dashboard"});
-      for(const event of events){
-        const id=[...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${tenantId}:${event.id}`)))].map(value=>value.toString(16).padStart(2,"0")).join("");
-        try{const at=new Date().toISOString();const writes=[licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at},{exists:false})];if(event.category!=="update")writes.push(licenseWrite(env,"licenseAudit",id,{tenantId,action:view.state.includes("expired")?"expired":view.state==="expiring_soon"?"expiry_warning":"activated",actorUid:"system",at,plan:license.plan},{exists:false}));await licenseCommit(env,writes);}catch(error){if([409,412].includes(error.status))continue;throw error;}
-        await sendTenantPush(env,tenantId,event);
-      }
+  // Resume one license per tick. Never scan every tenant in one Free invocation.
+  const state = await licenseDoc(env, "/appSettings/pushSweep"), sweep = licenseFields(state);
+  const pageToken = String(sweep.pageToken || "");
+  let listing;
+  try{listing=await firestoreRequest(env,"/tenantLicenses?pageSize=1"+(pageToken?"&pageToken="+encodeURIComponent(pageToken):""));}
+  catch(error){if(!pageToken||error.status!==400)throw error;listing=await firestoreRequest(env,"/tenantLicenses?pageSize=1");}
+  let latest = "";
+  try { const response = await fetch("https://banksetu-app.web.app/version.json",{signal:AbortSignal.timeout(5000)});if(response.ok){const value=await response.json();latest=String(value.androidVersion||value.version||"");} }catch{/* License events do not depend on update metadata. */}
+  for (const doc of listing.documents || []) {
+    const license = licenseFields(doc), tenantId = license.tenantId;
+    if (!tenantId) continue;
+    let view;try{view=licenseView(license,Date.now(),0);}catch{continue;}
+    if (["revoked","pending"].includes(view.state)) continue;
+    const events = [];
+    if(["expired","demo_expired","expiring_soon"].includes(view.state))events.push({id:license.revision+":"+view.state,title:view.state.includes("expired")?"Bank Setu license expired":"Bank Setu license expiring",body:"Open Bank Setu to review your license and renewal options."});
+    if(["active","demo_active","expiring_soon"].includes(view.state)&&Date.parse(license.activatedAt||"")<=Date.now()&&(license.status==="scheduled"||Date.parse(license.activatedAt||"")>Date.parse(license.createdAt||license.updatedAt||"")))events.push({id:license.revision+":started",title:"Bank Setu license active",body:"Your scheduled license is now active. Open Bank Setu for details."});
+    if(/^\d+\.\d+\.\d+$/.test(latest))events.push({id:"update:"+latest,title:"Bank Setu software update",body:"Version "+latest+" is available. Open Bank Setu to check for updates.",category:"update",page:"dashboard"});
+    for (const event of events) {
+      const id = await pushEventId(tenantId,event.id);
+      if (await licenseDoc(env,"/pushEventClaims/"+id)) continue;
+      const at = new Date().toISOString(), job = await preparePushJob(env,tenantId,event);
+      const writes = [licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at},{exists:false})];
+      if(event.category!=="update")writes.push(licenseWrite(env,"licenseAudit",id,{tenantId,action:view.state.includes("expired")?"expired":view.state==="expiring_soon"?"expiry_warning":"activated",actorUid:"system",at,plan:license.plan},{exists:false}));
+      if(job)writes.push(licenseWrite(env,"pendingPushEvents",id,job,{exists:false}));
+      try{await licenseCommit(env,writes);}catch(error){if(![409,412].includes(error.status))throw error;}
+      break; // At most one new event per tick; unclaimed events remain discoverable.
     }
-    pageToken=listing.nextPageToken||"";if(!pageToken)break;
   }
+  await licenseCommit(env,[licenseWrite(env,"appSettings","pushSweep",{pageToken:listing.nextPageToken||"",updatedAt:new Date().toISOString()},state?{updateTime:state.updateTime}:{exists:false})]);
 }
 
 async function purgeExpiredPushDevices(env) {
   const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
     from: [{ collectionId: "pushDevices" }],
-    where: { fieldFilter: { field: { fieldPath: "expiresAt" }, op: "LESS_THAN_OR_EQUAL", value: { timestampValue: new Date().toISOString() } } }, limit: 100,
+    where: { fieldFilter: { field: { fieldPath: "expiresAt" }, op: "LESS_THAN_OR_EQUAL", value: { timestampValue: new Date().toISOString() } } }, limit: 2,
   } }) });
   for (const row of rows) {
     const id = row.document?.name?.split('/').pop();
@@ -770,7 +826,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const writes=[licenseWrite(env,"tenantLicenses",tenantId,license),licenseWrite(env,"licenseAudit",id,{action:"demo_activated",actorUid:actor.uid,tenantId,at:now,expiresAt:license.expiresAt})];
     if(owner.status==="pending")writes.push(licenseWrite(env,"users",ownerUid,{...owner,status:"approved",subscriptionStatus:"active",updatedAt:now,updatedBy:actor.uid},{updateTime:ownerDoc.updateTime}));
     try{await licenseCommit(env,writes);}catch(error){if(error.status===409)return json({error:"Demo state changed. Refresh before retrying."},409);throw error;}
-    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu demo activated", body: "Your five-day license is ready. Complete your workspace setup in Bank Setu." }));
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: license.status==="scheduled"?"Bank Setu demo scheduled":"Bank Setu demo activated", body: license.status==="scheduled"?"Your five-day license is scheduled. Open Bank Setu for its start date.":"Your five-day license is ready. Complete your workspace setup in Bank Setu." }));
     return json({success:true,license});
   }
   if(route==="/license-admin-demo-convert"){
@@ -1566,6 +1622,7 @@ export default {
   async scheduled(_event, env) {
     await purgeExpiredPushDevices(env);
     await deliverScheduledNotices(env);
+    await drainQueuedPush(env);
   },
   async fetch(request, env, context) {
     if (new URL(request.url).pathname === "/license-public-key" && request.method === "GET") {

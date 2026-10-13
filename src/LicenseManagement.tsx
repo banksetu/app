@@ -115,7 +115,7 @@ export default function LicenseManagement({master,canRequest=true}:{master:boole
   const selectedStartInstant=Date.parse(`${previewStart}T00:00:00+05:30`);
   const writableAnnual=selectedLicense?.plan==='annual'&&Date.parse(selectedLicense.expiresAt||'')>clock&&Date.parse(selectedLicense.activatedAt||'')<=clock&&!['suspended','revoked'].includes(selectedLicense.status);
   const wouldPauseAccess=writableAnnual&&(plan==='lifetime'?selectedStartInstant>clock:plan==='annual'&&selectedStartInstant>Date.parse(selectedLicense?.expiresAt||''));
-  const canAssign=!wouldPauseAccess&&!!tenantId&&validTerm&&validPayment&&(!paidAmount||Number(paidAmount)>0||changePrice===0)&&!['suspended','revoked'].includes(selectedLicense?.status||'')&&(plan==='demo'?!selectedLicense:assignmentConfirmed&&pricing[plan==='annual'?'annualAvailable':'lifetimeAvailable']&&selectedLicense?.plan!=='lifetime');
+  const canAssign=!wouldPauseAccess&&!!selectedTenant&&!!tenantId&&validTerm&&validPayment&&(!paidAmount||Number(paidAmount)>0||changePrice===0)&&!['suspended','revoked'].includes(selectedLicense?.status||'')&&(plan==='demo'?!selectedLicense:assignmentConfirmed&&pricing[plan==='annual'?'annualAvailable':'lifetimeAvailable']&&selectedLicense?.plan!=='lifetime');
   const confirmAssignment=()=>{
     if(!canAssign||busy)return;
     const route=plan==='demo'?'/license-admin-demo':!selectedLicense?'/license-admin-assign':selectedLicense.plan==='demo'?'/license-admin-demo-convert':'/license-admin-change';

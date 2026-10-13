@@ -66,3 +66,8 @@ test('future upgrade cannot pause an active Annual tenant',()=>{
  assert(html.includes('Choose today for an active Annual'));
  assert(/<button[^>]*disabled=""[^>]*>Confirm Payment &amp; Upgrade to Lifetime<\/button>/.test(html));
 });
+
+test('a deleted or missing selected tenant cannot receive a stale assignment',()=>{
+ const html=render(true,{14:[],15:[],18:'deleted-tenant',19:'demo',29:'tenants'});
+ assert(/<button[^>]*disabled=""[^>]*>Confirm &amp; Activate Five-Day Demo<\/button>/.test(html));
+});
