@@ -4,7 +4,7 @@ import {createServer} from 'vite';
 import {chromium} from 'playwright';
 
 // Synthetic PDFs only. Exercises the real React component, PDF.js worker and canvas.
-const harness='scripts/.pdf-preview-harness.tsx';
+const harness='scripts/pdf-preview-harness.generated.tsx';
 let server, browser;
 try {
   await writeFile(harness, `
@@ -26,17 +26,20 @@ function App(){const [file,setFile]=React.useState(()=>pdf([220,10,10]));return 
 <PdfDocumentPreview file={file}/></>;}
 createRoot(document.getElementById('root')!).render(<App/>);
 `);
-  server=await createServer({configFile:false,server:{host:'127.0.0.1',port:0},logLevel:'error'});
-  server.middlewares.use('/__pdf_preview_test',(_req,res)=>{
+  server=await createServer({configFile:false,server:{host:'127.0.0.1',port:0},logLevel:'error',plugins:[{name:'synthetic-pdf-preview',configureServer(vite){
+  vite.middlewares.use('/__pdf_preview_test',(_req,res)=>{
     res.setHeader('Content-Type','text/html');
     res.end(`<html><head><style>.customer-pdf-preview{height:500px;overflow:auto}.customer-pdf-page{min-height:700px}.customer-pdf-page canvas{width:100%}</style></head><body><div id="root"></div><script type="module" src="/${harness}"></script></body></html>`);
   });
+  }}]});
   await server.listen();
   const url=`http://127.0.0.1:${server.httpServer.address().port}/__pdf_preview_test`;
   browser=await chromium.launch();
   for(const viewport of [{width:390,height:844},{width:1280,height:900}]){
     const page=await browser.newPage({viewport});
-    const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    const errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error('Browser error:',error.message);});
+    page.on('console',message=>{if(message.type()==='error')console.error('Browser console:',message.text());});
+    page.on('response',response=>{if(response.status()>=400)console.error('HTTP',response.status(),response.url());});
     await page.goto(url);
     const color=async(number,channel)=>{
       await page.waitForFunction(({number,channel})=>{
@@ -46,7 +49,7 @@ createRoot(document.getElementById('root')!).render(<App/>);
         return pixel[channel]>180&&pixel[(channel+1)%3]<60;
       },{number,channel},{timeout:30000});
     };
-    await color(1,0);
+    try{await color(1,0);}catch(error){console.error('Preview state:',await page.locator('body').innerText(),await page.locator('canvas').evaluateAll(nodes=>nodes.map(canvas=>({width:canvas.width,height:canvas.height,pixel:Array.from(canvas.getContext('2d').getImageData(20,20,1,1).data)}))));throw error;}
     assert.equal(await page.locator('[data-page]').count(),3);
     // Rapid scroll changes must not leave a cancelled or duplicate render blank.
     await page.locator('[data-page="3"]').scrollIntoViewIfNeeded();
