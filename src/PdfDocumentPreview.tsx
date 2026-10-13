@@ -54,6 +54,6 @@ export default function PdfDocumentPreview({file}:{file:Blob}){
   },[document]);
   return <div className="customer-pdf-preview" ref={root} role="region" aria-label="PDF pages">
     {error&&<p role="alert">{error}</p>}{!document&&!error&&<p>Opening PDF preview…</p>}
-    {Array.from({length:document?.numPages||0},(_,index)=><div key={index} className="customer-pdf-page" data-page={index+1}><canvas aria-label={`A4 page ${index+1} of ${document?.numPages}`}/><span>Page {index+1} of {document?.numPages}</span></div>)}
+    {Array.from({length:document?.numPages||0},(_,index)=><div key={index} className="customer-pdf-page" data-page={index+1}><canvas width={0} height={0} aria-label={`A4 page ${index+1} of ${document?.numPages}`}/><span>Page {index+1} of {document?.numPages}</span></div>)}
   </div>;
 }
