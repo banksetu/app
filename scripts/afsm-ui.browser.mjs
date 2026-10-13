@@ -9,14 +9,14 @@ try{
  name:'synthetic-afsm-ui',resolveId(id,importer){
   if(importer?.includes('/src/')&& /\/(?:afsm|localData|licenseAccess|pdfActions)$/.test(id))return '\0afsm-mock:'+id.split('/').at(-1);
  },load(id){
-  if(id==='\0afsm-mock:localData')return `export const identity=()=>"synthetic:tenant:connection";`;
+  if(id==='\0afsm-mock:localData')return `export const identity=()=>"synthetic:tenant:connection";export const recordSafeRecovery=()=>{};`;
   if(id==='\0afsm-mock:licenseAccess')return `export const requireLicensedWrite=async()=>{};`;
   if(id==='\0afsm-mock:pdfActions')return `export const saveAfsmPdf=async()=>window.saved=(window.saved||0)+1;export const printAfsmPdf=async()=>window.printed=(window.printed||0)+1;`;
   if(id==='\0afsm-mock:afsm')return `export const afsmDisplay=()=>"Not Sent";const records=Array.from({length:100},(_,i)=>({recordId:'record-'+(i+1),name:'Synthetic Customer '+(i+1),accountNo:'AC'+(i+1),uidaiNo:'123456789012'}));export const searchAfsmCustomers=async query=>records.filter(c=>query==='all'||c.accountNo===query);export const markCustomersAfsmSent=async(scope,ids,operationId,resend)=>{window.marked={scope,ids,operationId,resend};return ids.length;};`;
  },configureServer(vite){vite.middlewares.use('/__afsm_test',(_req,res)=>{res.setHeader('Content-Type','text/html');res.end(`<html><body style="margin:12px;background:#124a83;color:white;font-family:Arial"><div id="root"></div><script type="module" src="/${harness}"></script></body></html>`);});}
  }]});await server.listen();browser=await chromium.launch();await mkdir('test-evidence',{recursive:true});
  for(const viewport of [{width:390,height:844},{width:1280,height:900}]){
-  const page=await browser.newPage({viewport});const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>dialog.accept());
+  const page=await browser.newPage({viewport});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('AFSM browser error:',e.message);});page.on('console',m=>{if(m.type()==='error')console.error(m.text());});page.on('dialog',dialog=>dialog.accept());
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__afsm_test`);
   const search=async term=>{await page.getByRole('textbox').fill(term);await page.getByRole('button',{name:'Search',exact:true}).click();};
   for(const term of ['AC1','AC50','AC40','AC100']){await search(term);await page.getByRole('button',{name:'Select / Add',exact:true}).click();}
