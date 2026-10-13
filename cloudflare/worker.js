@@ -696,6 +696,38 @@ async function handleLicensing(request, env, actor, route, context) {
     context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license updated", body: "Your license has been assigned. Open Bank Setu for details." }));
     return json({ success: true, tenantId, license });
   }
+  if (route === "/license-admin-change") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body = await request.json().catch(() => ({}));
+    const tenantId = String(body.tenantId || ""), id = String(body.requestId || ""), kind = String(body.kind || "");
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId) || !/^[a-f0-9-]{36}$/.test(id) || !["renewal", "upgrade"].includes(kind) || body.paymentConfirmed !== true) return json({ error: "Select a valid license change and confirm payment." }, 400);
+    const tenant = licenseFields(await licenseDoc(env, `/tenants/${tenantId}`));
+    if (tenant.status !== "active") return json({ error: "Active tenant not found." }, 409);
+    const doc = await licenseDoc(env, `/tenantLicenses/${tenantId}`), current = licenseFields(doc);
+    if (!doc || ["suspended", "revoked"].includes(current.status)) return json({ error: "An unsuspended Annual license is required. Reactivate suspended licenses first." }, 409);
+    if (current.lastRequestId === id) return json({ success: true, repeated: true });
+    if (current.plan !== "annual") return json({ error: "An Annual license is required." }, 409);
+    // Check the audit too: a successful upgrade has changed the current plan to Lifetime.
+    const previous = await licenseDoc(env, `/licenseAudit/${id}`);
+    if (previous) return json({ error: "This operation reference has already been used." }, 409);
+    const price = kind === "renewal" ? settings.pricing.annualPaise : upgradeAmount(settings.pricing, current).duePaise;
+    if (!settings.pricing[kind === "renewal" ? "annualAvailable" : "lifetimeAvailable"]) return json({ error: "Requested plan is unavailable." }, 409);
+    const paidPaise = body.paidPaise === undefined ? price : Number(body.paidPaise);
+    if (!Number.isSafeInteger(paidPaise) || paidPaise < 0 || paidPaise > 100_000_000 || (paidPaise === 0 && price !== 0)) return json({ error: "Confirm a valid paid amount." }, 400);
+    const startAt = licenseStartDate(body.startDate), durationMonths = body.durationMonths === undefined ? 12 : Number(body.durationMonths);
+    if (startAt === null || kind === "renewal" && (!Number.isInteger(durationMonths) || durationMonths < 1 || durationMonths > 120)) return json({ error: "Select a valid start date and duration." }, 400);
+    const now = new Date().toISOString();
+    const next = transitionLicense(current, { kind, id, quotedPaise: paidPaise, startAt, durationMonths }, now, settings.pricing);
+    next.tenantId = tenantId; next.graceDays = settings.pricing.graceDays;
+    try {
+      await licenseCommit(env, [
+        licenseWrite(env, "tenantLicenses", tenantId, next, { updateTime: doc.updateTime }),
+        licenseWrite(env, "licenseAudit", id, { action: kind === "renewal" ? "renewed" : "upgraded", actorUid: actor.uid, tenantId, at: now, before: { plan: current.plan, status: current.status, expiresAt: current.expiresAt }, after: { plan: next.plan, status: next.status, expiresAt: next.expiresAt }, quotedPaise: price, paidPaise, paymentStatus: "payment_confirmed" }, { exists: false }),
+      ]);
+    } catch (error) { if (error.status === 409) return json({ error: "License changed. Refresh before retrying." }, 409); throw error; }
+    context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license updated", body: "Your license was updated. Open Bank Setu for details." }));
+    return json({ success: true, license: next });
+  }
   if (route === "/license-admin-demo") {
     if(!master)return json({error:"Master Admin access is required."},403);
     const body=await request.json().catch(()=>({}));
@@ -892,8 +924,8 @@ async function handleMasterOperation(request, env, actor, route) {
 
   if (route === "/create-client") {
     if (!isMasterActor(actor)) return json({ error: "Only the Master Admin can create Client Admin accounts." }, 403);
-    // Profile is the single Master Admin provisioning entry point. Licensing
-    // still starts unassigned and is granted separately by the Master Admin.
+    // Client creation is centralized in Master Admin Profile. License assignment remains
+    // a separate, server-authorized step; the existing account is not granted a license here.
     const body = await request.json().catch(() => ({}));
     const name = String(body.name || "").trim();
     const email = String(body.email || "").trim().toLowerCase();
@@ -1536,7 +1568,7 @@ export default {
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
-        "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
+        "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
         "/push-register", "/push-unregister",
       ];
       if (!supportedRoutes.includes(route)) {

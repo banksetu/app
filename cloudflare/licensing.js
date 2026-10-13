@@ -82,6 +82,7 @@ export function upgradeAmount(pricing, license) {
 export function transitionLicense(current, request, now, pricing) {
   if (!request || !["annual", "lifetime", "renewal", "upgrade"].includes(request.kind)) throw new Error("Invalid license request.");
   const previous = current || { revision: 0, status: "pending" };
+  if (["renewal", "upgrade"].includes(request.kind) && ["suspended", "revoked"].includes(current?.status)) throw new Error("Reactivate the license before changing its paid plan.");
   if (request.kind === "renewal" && (current?.plan !== "annual" || current.status === "revoked")) throw new Error("Only an existing annual license can be renewed.");
   if (request.kind === "upgrade" && (current?.plan !== "annual" || current.status === "revoked")) throw new Error("Only an annual license can be upgraded.");
   if (["annual", "lifetime"].includes(request.kind) && current?.status === "active") throw new Error("This tenant already has an active license.");

@@ -75,3 +75,9 @@ test('suspended and revoked states never turn into active status when expiry cha
   }
   assert.throws(()=>transitionLicense({plan:'annual',status:'revoked',expiresAt:'2026-01-01T00:00:00Z',revision:1},{kind:'renewal',id:'x',quotedPaise:100},'2026-02-01T00:00:00Z',DEFAULT_PRICING));
 });
+
+test('suspended annual payment changes cannot restore access without explicit reactivation',()=>{
+  const now=new Date().toISOString();
+  const current={plan:'annual',status:'suspended',activatedAt:now,expiresAt:new Date(Date.now()+86400000).toISOString(),revision:1};
+  for(const kind of ['renewal','upgrade'])assert.throws(()=>transitionLicense(current,{kind,id:'test',quotedPaise:100},now,DEFAULT_PRICING),/Reactivate/);
+});

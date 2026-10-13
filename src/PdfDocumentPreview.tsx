@@ -10,6 +10,7 @@ export default function PdfDocumentPreview({file}:{file:Blob}){
   const [document,setDocument]=useState<pdfjs.PDFDocumentProxy|null>(null);
   const [error,setError]=useState('');
   useEffect(()=>{
+    setDocument(null);setError('');
     let disposed=false;
     let task:ReturnType<typeof pdfjs.getDocument>|undefined;
     void (async()=>{
@@ -28,25 +29,27 @@ export default function PdfDocumentPreview({file}:{file:Blob}){
     if(!document||!root.current)return;
     let disposed=false;
     const renders=new Map<number,{cancel:()=>void}>();
+    const pending=new Map<number,object>();
     // React has committed the page nodes before this effect runs. Observing in
     // the document loading callback could miss every page and leave a blank view.
     const observer=new IntersectionObserver(entries=>{for(const entry of entries){
             const canvas=entry.target.querySelector('canvas');
             if(!(canvas instanceof HTMLCanvasElement))continue;
             const number=Number((entry.target as HTMLElement).dataset.page);
-            if(!entry.isIntersecting){renders.get(number)?.cancel();renders.delete(number);canvas.width=0;canvas.height=0;continue;}
-            if(renders.has(number)||canvas.width)return;
+            if(!entry.isIntersecting){pending.delete(number);renders.get(number)?.cancel();renders.delete(number);canvas.width=0;canvas.height=0;continue;}
+            if(pending.has(number)||renders.has(number)||canvas.width)continue;
+            const attempt={};pending.set(number,attempt);
             void document.getPage(number).then(page=>{
-              if(disposed||!entry.target.isConnected)return;
+              if(disposed||pending.get(number)!==attempt||!entry.target.isConnected)return;
               const viewport=page.getViewport({scale:1.45});
               const context=canvas.getContext('2d');if(!context)return;
               canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
               const render=page.render({canvas,canvasContext:context,viewport});renders.set(number,render);
-              void render.promise.catch(reason=>{if(reason?.name!=='RenderingCancelledException'){setError('PDF preview failed. Retry generating the PDF.');recordSafeRecovery('pdf','preview','attention');}}).finally(()=>renders.delete(number));
-            }).catch(()=>{setError('PDF page could not be opened.');recordSafeRecovery('pdf','preview','attention');});
+              void render.promise.catch(reason=>{if(reason?.name!=='RenderingCancelledException'){setError('PDF preview failed. Retry generating the PDF.');recordSafeRecovery('pdf','preview','attention');}}).finally(()=>{if(pending.get(number)===attempt){pending.delete(number);renders.delete(number);}});
+            }).catch(()=>{if(disposed||pending.get(number)!==attempt)return;pending.delete(number);setError('PDF page could not be opened.');recordSafeRecovery('pdf','preview','attention');});
           }},{root:root.current,rootMargin:'500px'});
     root.current.querySelectorAll('[data-page]').forEach(node=>observer.observe(node));
-    return()=>{disposed=true;observer.disconnect();renders.forEach(value=>value.cancel());};
+    return()=>{disposed=true;observer.disconnect();pending.clear();renders.forEach(value=>value.cancel());root.current?.querySelectorAll('canvas').forEach(canvas=>{canvas.width=0;canvas.height=0;});};
   },[document]);
   return <div className="customer-pdf-preview" ref={root} role="region" aria-label="PDF pages">
     {error&&<p role="alert">{error}</p>}{!document&&!error&&<p>Opening PDF preview…</p>}

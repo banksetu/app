@@ -24,7 +24,7 @@ export default function MasterClients({ enabled }: Props) {
         name: name.trim(), email: email.trim(), password, bankName: bankName.trim(),
       });
       window.dispatchEvent(new Event("banksetu-client-created"));
-      setMessage("Client Admin created successfully. They can sign in and connect their Google Account.");
+      setMessage("Client Admin created. Open License Management to assign a Demo, Annual or Lifetime license before the client starts setup.");
       setName("");
       setEmail("");
       setPassword("");
