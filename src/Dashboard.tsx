@@ -1354,7 +1354,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
-        <ClientGoogleSetup enabled={accountRole === "client_admin" && (!licenseReadOnly || licensePermission.state === "pending")} />
+        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly} />
 
         {["client_admin","client_user"].includes(accountRole) && <LicenseNotice permission={licensePermission} open={() => openPage("license-management")} />}
 

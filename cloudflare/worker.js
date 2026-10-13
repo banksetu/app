@@ -236,8 +236,7 @@ async function verifyActor(request, env) {
     if (license.tenantId && license.tenantId !== profile.tenantId) return {error:json({error:"License tenant mismatch."},403)};
     const view = licenseView(license.tenantId ? license : {status:"pending"}, Date.now(), Number.isInteger(pricing.graceDays) ? pricing.graceDays : 7);
     const route=new URL(request.url).pathname;
-    const firstSetup=(!license.tenantId||license.status==="pending")&&role==="client_admin"&&["/save-workspace-bank-settings","/connect-option-b"].includes(route);
-    if (!view.canWrite && route !== "/get-google-setup" && !firstSetup) return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
+    if (!view.canWrite && route !== "/get-google-setup") return { error: json({ error: "License renewal is required. Existing data is retained." }, 403) };
   }
   return {
     uid: account.localId,
@@ -441,6 +440,7 @@ async function getGoogleSetupConfig(env, actor) {
       cspCode: String(settings.cspCode || info.cspCode || ""),
       operatorName: String(settings.operatorName || info.operatorName || ""),
       address: String(settings.address || info.address || ""),
+      mobile: String(settings.mobile || info.mobile || ""),
     },
     spreadsheetId: workspaceVerified ? String(settings.spreadsheetId || "") : "",
     photoFolderId: workspaceVerified ? String(settings.photoFolderId || "") : "",
@@ -579,7 +579,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const currentTenants=currentTenantRecords(tenantPage.records);
     const owners=new Map(ownerPage.records.filter(item=>item.role==="client_admin" && item.tenantId).map(item=>[item.tenantId,item]));
     const tenantNames=new Map(currentTenants.map(item=>[item.tenantId||item.id,item.bankName||""]));
-    const licenses = licensePage.records.filter(item=>tenantNames.has(item.tenantId)).map(item=>({...item,bankName:tenantNames.get(item.tenantId)||""}));
+    const licenses = licensePage.records.filter(item=>tenantNames.has(item.tenantId)).map(item=>({...item,bankName:tenantNames.get(item.tenantId)||"",viewState:(()=>{try{return licenseView(item,Date.now(),settings.pricing.graceDays).state;}catch{return "pending";}})()}));
     const requests=requestPage.records.filter(item=>!item.tenantId||tenantNames.has(item.tenantId)).map(item=>({...item,bankName:item.bankName||tenantNames.get(item.tenantId)||"",clientName:item.clientName||item.name||""}));
     const stateCount = state => licenses.filter(item => {
       try { return licenseView(item, Date.now(), settings.pricing.graceDays).state === state; }
@@ -587,7 +587,7 @@ async function handleLicensing(request, env, actor, route, context) {
     }).length;
     return json({ requests, licenses,
       tenants: currentTenants.map(item => {const owner=owners.get(item.tenantId||item.id);return { tenantId: item.tenantId || item.id, name:item.name||owner?.name||"", email:item.email||owner?.email||"", bankName: item.bankName || "", createdAt:item.createdAt||owner?.createdAt||"" };}),
-      summary: { total: currentTenants.length, active: stateCount("active") + stateCount("expiring_soon"), soon: stateCount("expiring_soon"), expired: stateCount("expired")+stateCount("demo_expired"), scheduled:stateCount("scheduled"), suspended:stateCount("suspended")+stateCount("revoked"), demo:licenses.filter(item=>item.plan==="demo").length, pending: requests.filter(item => item.status === "pending").length },
+      summary: { total: currentTenants.length, active: stateCount("active") + stateCount("expiring_soon") + stateCount("demo_active"), soon: stateCount("expiring_soon") + stateCount("demo_active"), expired: stateCount("expired")+stateCount("demo_expired"), scheduled:stateCount("scheduled"), suspended:stateCount("suspended")+stateCount("revoked"), demo:licenses.filter(item=>item.plan==="demo").length, pending: requests.filter(item => item.status === "pending").length, pendingClients:currentTenants.filter(tenant=>!licenses.some(item=>item.tenantId===(tenant.tenantId||tenant.id))).length+stateCount("pending") },
       truncated: requestPage.truncated || licensePage.truncated || tenantPage.truncated || ownerPage.truncated });
   }
   if (route === "/license-admin-history") {
@@ -978,9 +978,9 @@ async function handleMasterOperation(request, env, actor, route) {
     const registration = {
       bankName: String(body.bankName || "").trim(), passbookBank: String(body.passbookBank || "").trim(),
       branchName: String(body.branchName || "").trim(), cspCode: String(body.cspCode || "").trim(),
-      operatorName: String(body.operatorName || "").trim(), address: String(body.address || "").trim(),
+      operatorName: String(body.operatorName || "").trim(), address: String(body.address || "").trim(), mobile: String(body.mobile || "").trim(),
     };
-    if (!registration.bankName || !registration.passbookBank || !registration.branchName || !registration.operatorName || registration.bankName.length > 120 || registration.cspCode.length > 80 || registration.address.length > 500) return json({ error: "Complete the required bank, branch and operator details." }, 400);
+    if (!registration.bankName || !registration.passbookBank || !registration.branchName || !registration.operatorName || registration.bankName.length > 120 || registration.cspCode.length > 80 || registration.address.length > 500 || registration.operatorName.length > 120 || registration.branchName.length > 120 || registration.passbookBank.length > 120 || registration.mobile && !/^[+0-9 ()-]{7,20}$/.test(registration.mobile)) return json({ error: "Complete the required bank, branch and operator details." }, 400);
     await putDocument(env, `/tenantSettings/${encodeURIComponent(actor.profile.tenantId)}`, { tenantId: actor.profile.tenantId, ...registration, bankInfo: registration, updatedAt: new Date().toISOString(), updatedBy: actor.uid });
     return json({ success: true });
   }

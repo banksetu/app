@@ -38,6 +38,9 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
         return new Response('{}');
       }
       const key=path.replace(/^\//,'').split('?')[0];const existing=store.get(key);
+      if(options.method==='PATCH'){
+        const update=JSON.parse(options.body);const merged={...existing,name:`${base}/${key}`,fields:{...existing?.fields,...update.fields},updateTime:'2026-10-13T00:00:00.000Z'};store.set(key,merged);return Response.json(merged);
+      }
       return existing?new Response(JSON.stringify(existing)):new Response(JSON.stringify({error:{message:'Not found'}}),{status:404});
     }
     throw new Error(`Unexpected request: ${text}`);
@@ -52,7 +55,7 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const pending=await call('client','/license-me',{});
     assert.equal(pending.body.view.canWrite,false);
     assert.equal(pending.body.receipt,null);
-    assert.equal((await call('client','/save-workspace-bank-settings',{bankInfo:{}})).status,400,'pending clients can enter setup but cannot skip validation');
+    assert.equal((await call('client','/save-workspace-bank-settings',{bankInfo:{}})).status,403,'pending clients cannot write setup before license activation');
     assert.equal((await call('client','/presence-heartbeat',{})).status,403,'pending clients remain blocked from operations');
     assert.equal((await call('master','/create-client',{})).status,400);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
@@ -81,6 +84,14 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const signature=Uint8Array.from(atob(receipt.signature.replace(/-/g,'+').replace(/_/g,'/')),char=>char.charCodeAt(0));
     assert(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,signature,new TextEncoder().encode(receipt.payload)));
     const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=5*86400000);assert(claims.validUntil<=Date.parse(first.expiresAt));
+    store.set('tenantSettings/tenant-a',doc('tenantSettings/tenant-a',{spreadsheetId:'existing-sheet',photoFolderId:'existing-folder',bridgeUrl:'existing-bridge'}));
+    const registration={bankName:'Synthetic CSP',passbookBank:'Test Bank',branchName:'Test Branch',operatorName:'Synthetic Operator',mobile:'0123456789',address:'Test Address'};
+    assert.equal((await call('master','/save-client-registration',registration)).status,403);
+    assert.equal((await call('client','/save-client-registration',{...registration,mobile:'invalid'})).status,400);
+    assert.equal((await call('client','/save-client-registration',registration)).status,200);
+    const savedSettings=store.get('tenantSettings/tenant-a').fields;
+    assert.equal(savedSettings.mobile.stringValue,'0123456789');assert.equal(savedSettings.bankInfo.mapValue.fields.operatorName.stringValue,'Synthetic Operator');
+    for(const [field,value] of Object.entries({spreadsheetId:'existing-sheet',photoFolderId:'existing-folder',bridgeUrl:'existing-bridge'}))assert.equal(savedSettings[field].stringValue,value,'registration preserves the verified Google resource connection');
     const renewal='12345678-89ab-4cde-8fab-0123456789ab';
     assert.equal((await call('client','/license-request-change',{kind:'renewal',requestId:renewal,transactionId:'UTR12345678',paymentDate:indiaToday,paidPaise:149900})).status,200);
     assert.equal(store.get(`licenseRequests/${renewal}`).fields.paymentStatus.stringValue,'client_reported');
@@ -172,7 +183,7 @@ test('authoritative license listing excludes fully offboarded and orphaned tenan
     let result=await list();assert.equal(result.summary.total,2);assert.equal(result.summary.demo,1);assert.equal(result.summary.expired,1);assert.equal(result.summary.suspended,1);assert.equal(result.summary.pending,0);assert.equal(result.licenses.length,2);
     store.set('users/new-user',doc('users/new-user',{role:'client_user',tenantId:'paid'}));assert.equal((await list()).summary.total,2);
     store.delete('users/new-user');assert.equal((await list()).summary.total,2);
-    store.set('tenants/new',doc('tenants/new',{tenantId:'new',status:'active'}));assert.equal((await list()).summary.total,3);
+    store.set('tenants/new',doc('tenants/new',{tenantId:'new',status:'active'}));const added=await list();assert.equal(added.summary.total,3);assert.equal(added.summary.pendingClients,1);assert.equal(added.licenses.find(item=>item.tenantId==='demo').viewState,'demo_expired');
     store.set('tenants/demo',doc('tenants/demo',{tenantId:'demo',status:'offboarding'}));assert.equal((await list()).summary.total,3,'partial offboarding remains counted');
     store.set('tenants/demo',doc('tenants/demo',{tenantId:'demo',status:'offboarded'}));result=await list();assert.equal(result.summary.total,2);assert.equal(result.summary.demo,0);assert.equal(result.summary.expired,0);
     store.delete('tenants/paid');result=await list();assert.equal(result.summary.total,1);assert.equal(result.summary.suspended,0);
