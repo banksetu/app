@@ -80,6 +80,7 @@ function doGet(e) {
         tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
         licenseEnforcementVersion: 2,
         syncProtectionVersion: 1,
+        afsmVersion: 1,
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
         photoFolderId: getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID"),
@@ -3132,11 +3133,34 @@ function ensureSyncMetadata(sheet) {
     if (changed) sheet.getRange(2, 25, count, 3).setValues(meta);
   }
 }
+function ensureAfsmColumns(sheet) {
+  const width=Math.max(27,typeof sheet.getLastColumn === "function" ? sheet.getLastColumn() : sheet.getMaxColumns());
+  const headers=sheet.getRange(1,1,1,width).getDisplayValues()[0];
+  const names=["BANKSETU AFSM JSON","Form Send to Branch"];
+  let end=width;const columns={};
+  names.forEach(name=>{
+    const matches=headers.map((value,index)=>value===name?index+1:0).filter(Boolean);
+    if(matches.length>1)throw new Error("Duplicate AFSM columns require administrator review. No data changed.");
+    let col=matches[0];
+    if(!col){col=++end;if(sheet.getMaxColumns()<col)sheet.insertColumnsAfter(sheet.getMaxColumns(),col-sheet.getMaxColumns());sheet.getRange(1,col,1,1).setValues([[name]]);}
+    columns[name]=col;
+  });return columns;
+}
+function afsmFromRow(row) {
+  const encoded=row.slice(27).find(value=>typeof value==="string"&&value.indexOf("AFSM:")===0);
+  if(!encoded)return {};
+  try {const value=JSON.parse(encoded.slice(5));return value.afsmStatus==="sent"?value:{};}catch(error){throw new Error("Invalid AFSM metadata. Review the customer row before updating.");}
+}
+function afsmCell(value) {
+  const date=new Date(value.afsmSentAt);
+  if(isNaN(date.getTime()))throw new Error("Invalid AFSM date.");
+  return "AFSM Send to Branch ("+Utilities.formatDate(date,"Asia/Kolkata","dd/MM/yyyy")+")";
+}
 function syncRevision(row) {
-  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(row.slice(0, 24))).map(byte => (byte + 256).toString(16).slice(-2)).join("");
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(row.slice(0, 24).concat(Object.keys(afsmFromRow(row)).length?[afsmFromRow(row)]:[]))).map(byte => (byte + 256).toString(16).slice(-2)).join("");
 }
 function syncCustomerObject(row, rowNumber) {
-  return Object.assign(rowToCustomer(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
+  return Object.assign(rowToCustomer(row), afsmFromRow(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
 }
 function localFirstRead(request, authUser) {
   const lock = LockService.getScriptLock(); if(!acquireSyncLock(lock))return syncBusyResponse();
@@ -3150,7 +3174,7 @@ function localFirstRead(request, authUser) {
       const cursor=request.action==="getCustomerPage"?Number(request.cursor||0):((Math.max(1,Number(request.page)||1)-1)*size);
       if(!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Invalid customer page cursor.");
       const count=Math.min(size,Math.max(0,total-cursor));
-      const batch=count?sheet.getRange(cursor+2,1,count,27).getDisplayValues():[];
+      const batch=count?sheet.getRange(cursor+2,1,count,sheet.getMaxColumns()).getDisplayValues():[];
       const customers=batch.map((row,i)=>row[26]==="true"?null:syncCustomerObject(row,cursor+i+2)).filter(Boolean);
       const deletedIds=deletions.slice(cursor,cursor+size).map(row=>String(row[0])).concat(batch.filter(row=>row[26]==="true").map(row=>String(row[24])));
       const nextCursor=cursor+size;
@@ -3160,9 +3184,9 @@ function localFirstRead(request, authUser) {
     // under the same lock; fall back to ID search only when rows have moved.
     const rowNumber=Number(request.rowNumber);
     const direct=request.action==="getCustomerByRowNumber"&&Number.isSafeInteger(rowNumber)&&rowNumber>=2&&rowNumber<=sheet.getLastRow()
-      ? sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0] : null;
+      ? sheet.getRange(rowNumber,1,1,sheet.getMaxColumns()).getDisplayValues()[0] : null;
     const matched=direct&&direct[26]!=="true"&&(!request.recordId||String(direct[24])===String(request.recordId));
-    const values = matched ? [direct] : sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, 27).getDisplayValues() : [];
+    const values = matched ? [direct] : sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, sheet.getMaxColumns()).getDisplayValues() : [];
     let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, matched?rowNumber:i+2)).filter(Boolean);
     if (request.action === "getAllCustomers") return jsonResponse({success:true,customers,fullSnapshot:true});
     if (request.action === "getCustomerByRowNumber") customers = customers.filter(customer => request.recordId ? customer.recordId === String(request.recordId) : customer.rowNumber === Number(request.rowNumber));
@@ -3215,7 +3239,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
   const op = request.operation || {};
   if (request.connectionId !== authUser.connectionId || !authUser.connectionId) return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed. Old queue remains on its original connection."});
   if (!/^[a-f0-9-]{36}$/i.test(op.recordId || "") || !/^[a-f0-9-]{36}$/i.test(op.operationId || "")) throw new Error("Invalid sync identity.");
-  if (!["saveCustomer","updateCustomer","markPassbookPrinted","markPassbookDelivered","deleteCustomer"].includes(op.action)) throw new Error("Unsupported queued operation.");
+  if (!["saveCustomer","updateCustomer","markPassbookPrinted","markPassbookDelivered","markAfsmSent","deleteCustomer"].includes(op.action)) throw new Error("Unsupported queued operation.");
   if (op.action === "deleteCustomer" && !["client_admin","master_owner","admin"].includes(authUser.role)) throw new Error("Administrator permission is required.");
   const lock = LockService.getScriptLock(); if(!acquireSyncLock(lock))return syncBusyResponse();
   let held=true;
@@ -3226,7 +3250,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
     const resetRow=resetRows.find(row=>row[0]===authUser.connectionId);
     if (resetRow && resetRow[1] !== String(request.protectionResetId||""))
       return jsonResponse({success:false,code:"RESET_REQUIRED",message:"Another device reset this workspace. Reconcile local data before uploading."});
-    const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,27).getDisplayValues() : [];
+    const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getMaxColumns()).getDisplayValues() : [];
     const index = rows.findIndex(row => String(row[24]) === op.recordId);
     const existing = index >= 0 ? rows[index] : null;
     const deleted = syncDeletionRows(sheet,authUser.connectionId).find(row => row[0] === op.recordId);
@@ -3253,6 +3277,20 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       SpreadsheetApp.flush();
       try { recordActivity(authUser,"DELETE",rowToCustomer(existing),"Customer deleted from Google Sheet and Drive."); } catch (error) { console.error(error); }
       return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
+    }
+    if(op.action === "markAfsmSent") {
+      if(!["client_admin","client_user","master_owner","master_admin","admin","user"].includes(authUser.role))throw new Error("Customer write permission is required.");
+      const patch=op.customer||{},old=afsmFromRow(existing);
+      if(patch.afsmStatus!=="sent"||!/^[a-f0-9-]{36}$/i.test(patch.afsmOperationId||"")||!Number.isFinite(Date.parse(patch.afsmSentAt))||Date.parse(patch.afsmSentAt)>Date.now()+300000)throw new Error("Invalid AFSM confirmation.");
+      if(old.afsmStatus==="sent"&&!patch.afsmResend)return jsonResponse({success:false,code:"CONFLICT",message:"This customer was already sent. Original AFSM date is preserved; review before re-sending.",customer:syncCustomerObject(existing,index+2)});
+      const columns=ensureAfsmColumns(sheet),value={afsmStatus:"sent",afsmSentAt:patch.afsmSentAt,afsmOperationId:patch.afsmOperationId,afsmUpdatedAt:new Date().toISOString()};
+      operations.push(op.operationId);
+      if(JSON.stringify(operations).length>45000)throw new Error("Operation history is full.");
+      sheet.getRange(index+2,columns["BANKSETU AFSM JSON"],1,1).setValues([["AFSM:"+JSON.stringify(value)]]);
+      sheet.getRange(index+2,columns["Form Send to Branch"],1,1).setValues([[afsmCell(value)]]);
+      sheet.getRange(index+2,26,1,1).setValues([[JSON.stringify(operations)]]);SpreadsheetApp.flush();
+      const saved=sheet.getRange(index+2,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
+      return jsonResponse({success:true,rowNumber:index+2,revision:syncRevision(saved),customer:syncCustomerObject(saved,index+2)});
     }
     const patchKeys=Object.keys(op.customer||{});
     const statusOnly=op.action==="updateCustomer"&&op.validationMode!=="full"&&patchKeys.length>0&&patchKeys.every(key=>["status","passbookStatus"].includes(key));
@@ -3298,7 +3336,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       sheet.getRange(rowNumber,26,1,1).setValues([[JSON.stringify(operations)]]);
     } else if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
     SpreadsheetApp.flush();
-    const saved = sheet.getRange(rowNumber,1,1,27).getDisplayValues()[0];
+    const saved = sheet.getRange(rowNumber,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
     const action = op.action === "markPassbookPrinted" ? "PASSBOOK_PRINTED" : op.action === "markPassbookDelivered" ? "PASSBOOK_DELIVERED" : existing ? "UPDATE" : "CREATE";
     const details = action === "UPDATE" ? activityChanges(rowToCustomer(existing),customer) : action === "PASSBOOK_PRINTED" ? "Passbook print was requested." : action === "PASSBOOK_DELIVERED" ? "Passbook marked delivered." : "Customer record created.";
     try { recordActivity(authUser,action,customer,details); } catch (error) { console.error(error); }

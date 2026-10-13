@@ -925,6 +925,12 @@ async function handleLicensing(request, env, actor, route, context) {
 }
 
 async function handleMasterOperation(request, env, actor, route) {
+  if(route === "/afsm-confirmation") {
+    if(!["master_owner","admin","client_admin","client_user","user"].includes(actor.profile.role))return json({error:"Customer write permission is required."},403);
+    const body=await request.json().catch(()=>({}));
+    if(!/^[a-f0-9-]{36}$/i.test(body.operationId||""))return json({error:"Invalid AFSM operation."},400);
+    return json({uid:actor.uid,tenantId:actor.profile.tenantId||"",confirmedAt:new Date().toISOString()});
+  }
   const role = String(actor.profile.role || "").toLowerCase();
   if (route === "/bootstrap-master-owner") {
     const account = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(env.FIREBASE_WEB_API_KEY)}`, {
@@ -1652,7 +1658,7 @@ export default {
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
-        "/push-register", "/push-unregister",
+        "/push-register", "/push-unregister", "/afsm-confirmation",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -1673,7 +1679,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
+      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
         : route.startsWith("/push-")
