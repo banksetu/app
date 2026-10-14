@@ -16,7 +16,7 @@ export default function OptionBConnection({tenantId, disabled, onConnected}: {te
       const sheet=sheetLink.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/);
       const folder=folderLink.match(/^https:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([A-Za-z0-9_-]{20,})/);
       if(!sheet||!folder||!tenantId)throw new Error("पहले अपनी Sheet और folder के valid links डालें।");
-      const response=await fetch("/client-bridge/Code.gs?revision=v8-20261014",{cache:"no-store"});if(!response.ok)throw new Error("Setup source is unavailable. Rebuild the app before client setup.");
+      const response=await fetch("/client-bridge/Code.gs?revision=v9-20261014",{cache:"no-store"});if(!response.ok)throw new Error("Setup source is unavailable. Rebuild the app before client setup.");
       const source=await response.text();
       if(!source.includes("function syncCustomerOperation")||!source.includes("SYNC_DELETIONS_SHEET")||!source.includes("rowDeleted:true"))throw new Error("Client setup source is outdated. Refresh the app and download again.");
       const properties={BANKSETU_FIREBASE_API_KEY:FIREBASE_WEB_API_KEY,BANKSETU_CLIENT_TENANT_ID:tenantId,BANKSETU_CLIENT_SPREADSHEET_ID:sheet[1],BANKSETU_CLIENT_FOLDER_ID:folder[1]};

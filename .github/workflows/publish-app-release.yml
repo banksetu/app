@@ -3,7 +3,11 @@ on:
   workflow_dispatch:
   push:
     branches: [codex/spark-client-workspace-20261001]
-    paths: [src/core/afsm.ts]
+    paths:
+      - src/core/afsm.ts
+      - src/core/localData.ts
+      - src/core/photoState.ts
+      - apps-script/Code.gs
 permissions:
   contents: read
 concurrency:

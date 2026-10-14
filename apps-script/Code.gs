@@ -3095,9 +3095,17 @@ function acquireSyncLock(lock) {
   lock.waitLock(5000);return true;
 }
 function syncBusyResponse(){return jsonResponse({success:false,code:"SYNC_BUSY",message:"Another sync request is active. Retry automatically; local changes remain pending."});}
+// getMaxColumns includes unused, formatted columns. Large client sheets may
+// reserve hundreds of them; only occupied columns participate in sync hashes.
+function syncDataWidth(sheet){return Math.max(27,sheet.getLastColumn());}
 function syncProtection(request, authUser) {
   if (request.connectionId !== authUser.connectionId || !authUser.connectionId)
     return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed."});
+  // An authenticated, tenant-bound capability check must not scan thousands
+  // of Sheet cells or acquire the sync lock. GET /status cannot establish
+  // which POST deployment and workspace the application is actually using.
+  if (request.action === "getSyncProtection" && request.capabilitiesOnly === true)
+    return jsonResponse({success:true,protectionVersion:1,photoIndexVersion:1,afsmVersion:1,connectionId:authUser.connectionId});
   if (request.action === "publishLocalReset" && !["client_admin","master_owner","admin"].includes(authUser.role))
     throw new Error("Administrator permission is required.");
   const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))return syncBusyResponse();
@@ -3116,7 +3124,7 @@ function syncProtection(request, authUser) {
         SpreadsheetApp.flush();
       } else if (index>=0) resetId=rows[index][1];
     }
-    const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getMaxColumns()).getDisplayValues():[];
+    const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,syncDataWidth(sheet)).getDisplayValues():[];
     const remoteRevision=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(rows)).map(byte=>(byte+256).toString(16).slice(-2)).join("");
     return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,photoIndexVersion:1,
       activeIds:rows.filter(row=>row[26]!=="true").map(row=>String(row[24])).filter(Boolean),
@@ -3177,7 +3185,7 @@ function localFirstRead(request, authUser) {
       const cursor=request.action==="getCustomerPage"?Number(request.cursor||0):((Math.max(1,Number(request.page)||1)-1)*size);
       if(!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Invalid customer page cursor.");
       const count=Math.min(size,Math.max(0,total-cursor));
-      const batch=count?sheet.getRange(cursor+2,1,count,sheet.getMaxColumns()).getDisplayValues():[];
+      const batch=count?sheet.getRange(cursor+2,1,count,syncDataWidth(sheet)).getDisplayValues():[];
       const customers=batch.map((row,i)=>row[26]==="true"?null:syncCustomerObject(row,cursor+i+2)).filter(Boolean);
       const deletedIds=deletions.slice(cursor,cursor+size).map(row=>String(row[0])).concat(batch.filter(row=>row[26]==="true").map(row=>String(row[24])));
       const nextCursor=cursor+size;
@@ -3187,9 +3195,9 @@ function localFirstRead(request, authUser) {
     // under the same lock; fall back to ID search only when rows have moved.
     const rowNumber=Number(request.rowNumber);
     const direct=request.action==="getCustomerByRowNumber"&&Number.isSafeInteger(rowNumber)&&rowNumber>=2&&rowNumber<=sheet.getLastRow()
-      ? sheet.getRange(rowNumber,1,1,sheet.getMaxColumns()).getDisplayValues()[0] : null;
+      ? sheet.getRange(rowNumber,1,1,syncDataWidth(sheet)).getDisplayValues()[0] : null;
     const matched=direct&&direct[26]!=="true"&&(!request.recordId||String(direct[24])===String(request.recordId));
-    const values = matched ? [direct] : sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, sheet.getMaxColumns()).getDisplayValues() : [];
+    const values = matched ? [direct] : sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow()-1, syncDataWidth(sheet)).getDisplayValues() : [];
     let customers = values.map((row, i) => row[26] === "true" ? null : syncCustomerObject(row, matched?rowNumber:i+2)).filter(Boolean);
     if (request.action === "getAllCustomers") return jsonResponse({success:true,customers,fullSnapshot:true});
     if (request.action === "getCustomerByRowNumber") customers = customers.filter(customer => request.recordId ? customer.recordId === String(request.recordId) : customer.rowNumber === Number(request.rowNumber));
@@ -3253,7 +3261,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
     const resetRow=resetRows.find(row=>row[0]===authUser.connectionId);
     if (resetRow && resetRow[1] !== String(request.protectionResetId||""))
       return jsonResponse({success:false,code:"RESET_REQUIRED",message:"Another device reset this workspace. Reconcile local data before uploading."});
-    const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getMaxColumns()).getDisplayValues() : [];
+    const rows = sheet.getLastRow()>1 ? sheet.getRange(2,1,sheet.getLastRow()-1,syncDataWidth(sheet)).getDisplayValues() : [];
     const index = rows.findIndex(row => String(row[24]) === op.recordId);
     const existing = index >= 0 ? rows[index] : null;
     const deleted = syncDeletionRows(sheet,authUser.connectionId).find(row => row[0] === op.recordId);
@@ -3292,7 +3300,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       sheet.getRange(index+2,columns["BANKSETU AFSM JSON"],1,1).setValues([["AFSM:"+JSON.stringify(value)]]);
       sheet.getRange(index+2,columns["Form Send to Branch"],1,1).setValues([[afsmCell(value)]]);
       sheet.getRange(index+2,26,1,1).setValues([[JSON.stringify(operations)]]);SpreadsheetApp.flush();
-      const saved=sheet.getRange(index+2,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
+      const saved=sheet.getRange(index+2,1,1,syncDataWidth(sheet)).getDisplayValues()[0];
       return jsonResponse({success:true,rowNumber:index+2,revision:syncRevision(saved),customer:syncCustomerObject(saved,index+2)});
     }
     const patchKeys=Object.keys(op.customer||{});
@@ -3340,13 +3348,13 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       sheet.getRange(rowNumber,26,1,1).setValues([[JSON.stringify(operations)]]);
     } else if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
     if((preparedMedia && preparedMedia.photo) || customer.photoRemoved===true){
-      const headers=sheet.getRange(1,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
+      const headers=sheet.getRange(1,1,1,syncDataWidth(sheet)).getDisplayValues()[0];
       let column=headers.indexOf("BANKSETU PHOTO JSON")+1;
       if(!column){column=Math.max(27,sheet.getLastColumn?sheet.getLastColumn():sheet.getMaxColumns())+1;if(sheet.getMaxColumns()<column)sheet.insertColumnsAfter(sheet.getMaxColumns(),column-sheet.getMaxColumns());sheet.getRange(1,column,1,1).setValues([["BANKSETU PHOTO JSON"]]);}
       sheet.getRange(rowNumber,column,1,1).setValues([["PHOTO:"+JSON.stringify({photoRemoved:customer.photoRemoved===true,photoContentHash:customer.photoContentHash||""})]]);
     }
     SpreadsheetApp.flush();
-    const saved = sheet.getRange(rowNumber,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
+    const saved = sheet.getRange(rowNumber,1,1,syncDataWidth(sheet)).getDisplayValues()[0];
     const action = op.action === "markPassbookPrinted" ? "PASSBOOK_PRINTED" : op.action === "markPassbookDelivered" ? "PASSBOOK_DELIVERED" : existing ? "UPDATE" : "CREATE";
     const details = action === "UPDATE" ? activityChanges(rowToCustomer(existing),customer) : action === "PASSBOOK_PRINTED" ? "Passbook print was requested." : action === "PASSBOOK_DELIVERED" ? "Passbook marked delivered." : "Customer record created.";
     try { recordActivity(authUser,action,customer,details); } catch (error) { console.error(error); }
@@ -3395,8 +3403,16 @@ function masterLocalConnectionId() {
 function photoDriveJson(path, query) {
   const url="https://www.googleapis.com/drive/v3/"+path+"?"+Object.keys(query).map(key=>encodeURIComponent(key)+"="+encodeURIComponent(query[key])).join("&");
   const response=UrlFetchApp.fetch(url,{headers:{Authorization:"Bearer "+ScriptApp.getOAuthToken()},muteHttpExceptions:true});
-  if(response.getResponseCode()===410 || (response.getResponseCode()===400&&query.pageToken))throw Object.assign(new Error("Photo change token expired."),{photoTokenExpired:true});
-  if(response.getResponseCode()!==200)throw new Error("Drive photo metadata is temporarily unavailable ("+response.getResponseCode()+").");
+  const status=response.getResponseCode();
+  if(status===410)throw Object.assign(new Error("Photo change token expired."),{photoTokenExpired:true});
+  // A 400 can mean a bad query, a permission change, or an expired page
+  // token. Rebuilding the entire index is safe only for the last case.
+  if(status===400&&query.pageToken){
+    let reason="";try{const body=JSON.parse(response.getContentText());reason=String(body.error?.message||"");}catch(_){}
+    if(/(?:page\s*token|pageToken).*(?:invalid|expired)|(?:invalid|expired).*(?:page\s*token|pageToken)/i.test(reason))
+      throw Object.assign(new Error("Photo change token expired."),{photoTokenExpired:true});
+  }
+  if(status!==200)throw new Error("Drive photo metadata request failed (HTTP "+status+"). Photo checkpoint and customer queue remain saved.");
   return JSON.parse(response.getContentText());
 }
 function indexedPhotoCustomer(name) {
