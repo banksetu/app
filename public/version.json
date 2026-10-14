@@ -1,31 +1,33 @@
 {
-  "latestVersion": "1.0.81",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.81/BankSetu-Setup-1.0.81-x64.exe",
+  "latestVersion": "1.0.82",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.82/BankSetu-Setup-1.0.82-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.81",
-  "releaseTag": "v1.0.81",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.81",
+  "version": "1.0.82",
+  "releaseTag": "v1.0.82",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.82",
   "releaseDate": "2026-10-14",
-  "windowsVersion": "1.0.81",
-  "androidBuild": 1000081,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.81/BankSetu-Setup-1.0.81-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.81/BankSetu-Android-1000081.apk",
+  "windowsVersion": "1.0.82",
+  "androidBuild": 1000082,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.82/BankSetu-Setup-1.0.82-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.82/BankSetu-Android-1000082.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.81",
+      "version": "1.0.82",
       "releaseDate": "2026-10-14",
       "categories": {
         "Improvements": [
-          "Maintenance and reliability updates."
+          "Merge pull request 35 from banksetu/codex/afsm-capability-release-20261014.",
+          "Merge pull request 33 from banksetu/codex/sync-bridge-diagnostic-20261014."
         ]
       }
     },
     "android": {
-      "version": "1.0.81",
+      "version": "1.0.82",
       "releaseDate": "2026-10-14",
       "categories": {
         "Improvements": [
-          "Maintenance and reliability updates."
+          "Merge pull request 35 from banksetu/codex/afsm-capability-release-20261014.",
+          "Merge pull request 33 from banksetu/codex/sync-bridge-diagnostic-20261014."
         ]
       }
     }
