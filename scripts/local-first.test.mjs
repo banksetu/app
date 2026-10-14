@@ -36,6 +36,18 @@ const engine=await import(compile(source));
 function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
 const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
 const photoIndex=(connectionId,entries=[])=>({success:true,photoIndexVersion:1,connectionId,revision:entries.length,complete:true,entries});
+test('bridge diagnostic compares public GET with authenticated tenant POST without touching local customer state',async()=>{
+ storage.clear();connect('diagnostic-tenant');navigator.onLine=true;
+ handler=async()=>Response.json({success:true,photoIndexVersion:1,afsmVersion:1});
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,afsmVersion:1,connectionId:'diagnostic-tenant'};
+ try {const before=await repository.read('user-a:tenant-a:diagnostic-tenant');const result=await engine.diagnoseSyncBridge();assert.match(result.publicStatus,/GET healthy/);assert.equal(result.authenticatedStatus,'POST authenticated');assert.equal(result.connection,'matched');assert.equal(result.photoIndex,'supported');assert.equal(result.afsm,'supported');assert.deepEqual(await repository.read('user-a:tenant-a:diagnostic-tenant'),before);}
+ finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('public GET cannot falsely validate an unauthenticated or differently bound POST',async()=>{
+ storage.clear();connect('diagnostic-mismatch');handler=async()=>Response.json({success:true,photoIndexVersion:1,afsmVersion:1});protectionOverride={success:false,code:'CONNECTION_CHANGED'};
+ try{const result=await engine.diagnoseSyncBridge();assert.match(result.publicStatus,/GET healthy/);assert.equal(result.connection,'mismatch');assert.equal(result.photoIndex,'unverified');}
+ finally{protectionOverride=undefined;}
+});
 const request=body=>engine.localDataFetch('https://script.google.com/macros/s/bridge/exec',{method:'POST',body:JSON.stringify({...body,idToken:'never-store-this'})}).then(response=>response.json());
 const tenantApiSource=fs.readFileSync('src/tenantApi.ts','utf8').replace('import { getAuth } from "firebase/auth";','const getAuth=()=>globalThis.__auth;');
 const {getCustomerSearchApiUrl,getTenantApiUrl}=await import(compile(tenantApiSource));

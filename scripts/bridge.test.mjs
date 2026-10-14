@@ -11,6 +11,20 @@ test('current client bridge advertises tenant isolation and license enforcement'
  assert.equal(status.tenantIsolationVersion,'v3');
  assert.equal(status.licenseEnforcementVersion,2);
 });
+test('authenticated POST capability probe is tenant-bound and never reads or modifies customer rows',()=>{
+ const {context,rows}=bridge();const before=JSON.stringify(rows);
+ const response=context.syncProtection({action:'getSyncProtection',capabilitiesOnly:true,connectionId:'bound'},user);
+ assert.equal(response.photoIndexVersion,1);assert.equal(response.afsmVersion,1);assert.equal(response.connectionId,'bound');
+ assert.equal(JSON.stringify(rows),before);
+ assert.equal(context.syncProtection({action:'getSyncProtection',capabilitiesOnly:true,connectionId:'other'},user).code,'CONNECTION_CHANGED');
+});
+test('Drive HTTP 400 query failure keeps photo checkpoint instead of forcing a full rescan',()=>{
+ const {context}=bridge();context.ScriptApp={getOAuthToken:()=> 'synthetic-token'};
+ context.UrlFetchApp={fetch:()=>({getResponseCode:()=>400,getContentText:()=>JSON.stringify({error:{message:'Invalid field selection'}})})};
+ assert.throws(()=>context.photoDriveJson('changes',{pageToken:'synthetic-checkpoint'}),/HTTP 400/);
+ context.UrlFetchApp={fetch:()=>({getResponseCode:()=>400,getContentText:()=>JSON.stringify({error:{message:'Invalid page token'}})})};
+ assert.throws(()=>context.photoDriveJson('changes',{pageToken:'synthetic-checkpoint'}),error=>error.photoTokenExpired===true);
+});
 test('licensed tenant bridge blocks direct customer writes after expiry while keeping reads available',()=>{
   const {context}=bridge();
   context.verifyFirebaseIdToken=()=>({localId:'synthetic-user',email:'owner@example.invalid'});

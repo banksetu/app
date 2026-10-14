@@ -223,6 +223,36 @@ export function resetSyncSession() {
   announce();
 }
 type SyncProtection = {photoIndexVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+export type BridgeDiagnostic = {publicStatus:string; authenticatedStatus:string; photoIndex:string; afsm:string; connection:string};
+/** Read-only probe of the actual saved /exec URL. Never returns a URL, token, or customer data. */
+export async function diagnoseSyncBridge():Promise<BridgeDiagnostic> {
+  const scope=identity(),url=sessionStorage.getItem("bankSetuBridgeUrl"),connectionId=sessionStorage.getItem("bankSetuConnectionId");
+  const user=auth.currentUser;
+  if(!url||!connectionId||!user)throw new Error("Sign in and connect this workspace before checking its Apps Script bridge.");
+  const result:BridgeDiagnostic={publicStatus:"unavailable",authenticatedStatus:"not checked",photoIndex:"unverified",afsm:"unverified",connection:"unverified"};
+  try {
+    const separator=url.includes("?")?"&":"?";
+    const response=await networkFetch(url+separator+"action=status",{signal:AbortSignal.timeout(12000),cache:"no-store"});
+    const value=await response.json();
+    result.publicStatus=response.ok&&value.success?`GET healthy (photo ${value.photoIndexVersion??"unknown"}, AFSM ${value.afsmVersion??"unknown"})`:`GET failed (${response.status})`;
+  }catch {result.publicStatus="GET unreachable";}
+  try {
+    const idToken=await user.getIdToken();
+    if(identity()!==scope)throw new Error("Workspace changed during verification.");
+    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getSyncProtection",capabilitiesOnly:true,connectionId,masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",idToken}),signal:AbortSignal.timeout(25000)});
+    if(!response.ok){result.authenticatedStatus=`POST HTTP ${response.status}`;return result;}
+    let value:SyncProtection & {afsmVersion?:number};
+    try{value=await response.json();}catch{result.authenticatedStatus="POST invalid JSON";return result;}
+    if(value.code==="AUTH_REQUIRED"){result.authenticatedStatus="POST authentication rejected";return result;}
+    if(value.code==="CONNECTION_CHANGED"){result.authenticatedStatus="POST connection changed";result.connection="mismatch";return result;}
+    if(!value.success){result.authenticatedStatus=`POST ${["SYNC_BUSY","FORBIDDEN"].includes(value.code||"")?value.code:"rejected"}`;return result;}
+    result.authenticatedStatus="POST authenticated";
+    result.connection=value.connectionId===connectionId?"matched":"mismatch";
+    result.photoIndex=value.photoIndexVersion===1?"supported":value.photoIndexVersion==null?"old bridge":"invalid response";
+    result.afsm=value.afsmVersion===1?"supported":"unverified (legacy response)";
+    return result;
+  }catch(error){result.authenticatedStatus=error instanceof DOMException&&error.name==="TimeoutError"?"POST timed out":error instanceof Error&&error.message==="Workspace changed during verification."?"workspace changed":"POST network/authentication unavailable";return result;}
+}
 const PHOTO_BRIDGE_UPGRADE_MESSAGE = "Photo sync needs the current Code.gs. In Apps Script, update this workspace's existing deployment to a new version; customer changes and pending photos remain saved.";
 const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
