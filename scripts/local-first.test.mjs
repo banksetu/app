@@ -743,35 +743,61 @@ test('old AFSM bridge retains pending events but still downloads desktop custome
  const scope='user-a:tenant-a:afsm-old-bridge',id=crypto.randomUUID(),operationId=crypto.randomUUID();
  const event={operationId,recordId:id,action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}};
  await repository.transact(scope,state=>{state.records=[{scope,key:id,recordId:id,revision:'r1',customer:{name:'Synthetic',photoUrl:'',...event.customer},pending:true}];state.operations=[event];});
- let upgraded=false,pulls=0;const remoteId=crypto.randomUUID();
+ let upgraded=false,pulls=0,afsmAttempts=0;const remoteId=crypto.randomUUID();
  handler=async(_url,init)=>{const body=JSON.parse(init.body);
-  if(body.action==='syncCustomerOperation')return Response.json(upgraded?{success:true,revision:'r2',rowNumber:2,customer:{recordId:id,name:'Synthetic',photoUrl:'',...event.customer}}:{success:false,message:'Unsupported queued operation.'});
+  if(body.action==='syncCustomerOperation'){afsmAttempts++;return Response.json(upgraded?{success:true,revision:'r2',rowNumber:2,customer:{recordId:id,name:'Synthetic',photoUrl:'',...event.customer}}:{success:false,message:'Unsupported queued operation.'});}
   if(body.action==='getCustomerPage'){pulls++;return Response.json({success:true,customers:[{recordId:id,revision:upgraded?'r2':'r1',rowNumber:2,name:'Synthetic',photoUrl:'',...(upgraded?event.customer:{})},{recordId:remoteId,revision:'desktop-r1',rowNumber:3,name:'Desktop addition',photoUrl:''}],hasNextPage:false});}
   throw Error('Unexpected request');
  };
  try{
-  await assert.rejects(engine.syncNow(true),/AFSM uploads remain pending/);
+  await engine.syncNow(true);
   let state=await repository.read(scope);assert.equal(pulls,1);assert.deepEqual(state.operations,[event]);assert(state.records.some(r=>r.recordId===remoteId));assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+  assert.match((await engine.getLocalStatus()).error,/AFSM uploads remain pending/);
+  await engine.syncNow(false);assert.equal(afsmAttempts,1,'background retry waits while the bridge is incompatible');
   upgraded=true;await engine.syncNow(true);state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+  assert.equal(afsmAttempts,2);assert.equal((await engine.getLocalStatus()).error,'');
  }finally{navigator.onLine=false;}
 });
 
-test('1000 unchanged versioned photos plus one new remote photo transfer exactly one; repeat sync transfers zero',async()=>{
- storage.clear();connect('incremental-1000');navigator.onLine=true;const scope='user-a:tenant-a:incremental-1000';
- const entries=Array.from({length:1000},(_,i)=>({fileId:`file-${i}`,customerId:`ID-${i}`,url:`https://drive.google.com/file/d/file-${i}/view`,version:'1',revision:i+1,deleted:false}));
- await repository.transact(scope,state=>{state.records=entries.map((e,i)=>({key:`record-${i}`,scope,recordId:`record-${i}`,rowNumber:i+2,revision:'r1',customer:{name:'Synthetic',enrolId:e.customerId,photoUrl:e.url,photoVersion:'1',photoPreview:'data:image/jpeg;base64,c2FmZQ=='},pending:false}));state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),remoteRevision:'same'};state.photoIndex={revision:1000,complete:true,checkedAt:Date.now()-301000,entries};});
- let photos=0,pages=0;let change=true;
- protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'incremental-1000',activeIds:[...Array.from({length:1000},(_,i)=>`record-${i}`),'new-record'],deletedIds:[],remoteRevision:'new'};
- photoIndexOverride={success:true,photoIndexVersion:1,connectionId:'incremental-1000',revision:1001,complete:true,entries:[{fileId:'new-file',customerId:'NEW',url:'https://drive.google.com/file/d/new-file/view',version:'1',revision:1001,deleted:false}]};
+test('an old bridge is probed once for a large AFSM queue while ordinary customer uploads continue',async()=>{
+ storage.clear();connect('afsm-queue-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:afsm-queue-bridge';const oldOps=Array.from({length:35},(_,i)=>({operationId:crypto.randomUUID(),recordId:crypto.randomUUID(),action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}}));
+ const normal={operationId:crypto.randomUUID(),recordId:crypto.randomUUID(),action:'updateCustomer',state:'pending',baseRevision:'r1',customer:{status:'active'}};
+ await repository.transact(scope,state=>{state.operations=[...oldOps,normal];state.records=state.operations.map(op=>({key:op.recordId,scope,recordId:op.recordId,rowNumber:2,revision:'r1',customer:{name:'Synthetic',photoUrl:'',...op.customer},pending:true}));state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let afsmAttempts=0,ordinaryAttempts=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action!=='syncCustomerOperation')throw Error('Unexpected request');const op=body.operation;if(op.action==='markAfsmSent'){afsmAttempts++;return Response.json({success:false,message:'Unsupported queued operation.'});}ordinaryAttempts++;return Response.json({success:true,revision:'r2',rowNumber:2,customer:{recordId:op.recordId,name:'Synthetic',photoUrl:'',status:'active'}});};
+ try{
+  await engine.syncNow(false);let state=await repository.read(scope);assert.equal(afsmAttempts,1);assert.equal(ordinaryAttempts,1);assert.equal(state.operations.length,35);assert(state.operations.every(op=>op.action==='markAfsmSent'&&op.state==='pending'));
+  await engine.syncNow(false);assert.equal(afsmAttempts,1);assert.equal(ordinaryAttempts,1);assert.equal((await engine.getLocalStatus()).pending,35);
+ }finally{navigator.onLine=false;}
+});
+
+test('background sync waits on incompatible AFSM and photo bridges instead of spinning or reporting repeated failures',async()=>{
+ storage.clear();connect('afsm-background-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:afsm-background-bridge';const id=crypto.randomUUID();
+ await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,revision:'r1',rowNumber:2,customer:{name:'Synthetic',photoUrl:'old-photo'},pending:true}];state.operations=[{operationId:crypto.randomUUID(),recordId:id,action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let attempts=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'syncCustomerOperation');attempts++;return Response.json({success:false,message:'Unsupported queued operation.'});};
+ const stop=engine.startLocalSync();
+ try{await new Promise(resolve=>setTimeout(resolve,750));assert.equal(attempts,1);assert.equal((await engine.getLocalStatus()).pending,1);assert.equal((await engine.getConnectionHealth()).state,'healthy');}
+ finally{stop();navigator.onLine=false;}
+});
+
+test('2000 unchanged photos transfer zero; one new remote photo transfers once on the next sync',async()=>{
+ storage.clear();connect('incremental-2000');navigator.onLine=true;const scope='user-a:tenant-a:incremental-2000';
+ const entries=Array.from({length:2000},(_,i)=>({fileId:`file-${i}`,customerId:`ID-${i}`,url:`https://drive.google.com/file/d/file-${i}/view`,version:'1',revision:i+1,deleted:false}));
+ await repository.transact(scope,state=>{state.records=entries.map((e,i)=>({key:`record-${i}`,scope,recordId:`record-${i}`,rowNumber:i+2,revision:'r1',customer:{name:'Synthetic',enrolId:e.customerId,photoUrl:e.url,photoVersion:'1',photoPreview:'data:image/jpeg;base64,c2FmZQ=='},pending:false}));state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),remoteRevision:'same'};state.photoIndex={revision:2000,complete:true,checkedAt:Date.now()-301000,entries};});
+ let photos=0,pages=0;let change=false;
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'incremental-2000',activeIds:Array.from({length:2000},(_,i)=>`record-${i}`),deletedIds:[],remoteRevision:'same'};
+ photoIndexOverride={success:true,photoIndexVersion:1,connectionId:'incremental-2000',revision:2000,complete:true,entries:[]};
  handler=async(url,init)=>{const body=JSON.parse(init.body);
-  if(body.action==='getSyncProtection')return Response.json({success:true,protectionVersion:1,connectionId:'incremental-1000',activeIds:[...Array.from({length:1000},(_,i)=>`record-${i}`),'new-record'],deletedIds:[],remoteRevision:'new'});
-  if(body.action==='getPhotoPresence')return Response.json({success:true,photoIndexVersion:1,connectionId:'incremental-1000',revision:1001,complete:true,entries:change?[{fileId:'new-file',customerId:'NEW',url:'https://drive.google.com/file/d/new-file/view',version:'1',revision:1001,deleted:false}]:[]});
-  if(body.action==='getCustomerPage'){pages++;return Response.json({success:true,hasNextPage:false,customers:[...entries.map((e,i)=>({recordId:`record-${i}`,rowNumber:i+2,revision:'r1',enrolId:e.customerId,photoUrl:e.url})),{recordId:'new-record',rowNumber:1002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view'}]});}
-  if(body.action==='getCustomerByRowNumber'){photos++;assert.equal(body.recordId,'new-record');return Response.json({success:true,customer:{recordId:'new-record',rowNumber:1002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view',photoPreview:'data:image/jpeg;base64,bmV3'}});}
+  if(body.action==='getCustomerPage'){pages++;return Response.json({success:true,hasNextPage:false,customers:[...entries.map((e,i)=>({recordId:`record-${i}`,rowNumber:i+2,revision:'r1',enrolId:e.customerId,photoUrl:e.url})),{recordId:'new-record',rowNumber:2002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view'}]});}
+  if(body.action==='getCustomerByRowNumber'){photos++;assert.equal(body.recordId,'new-record');return Response.json({success:true,customer:{recordId:'new-record',rowNumber:2002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view',photoPreview:'data:image/jpeg;base64,bmV3'}});}
   throw Error(`Unexpected ${body.action}`);
  };
  try{
-  await engine.syncNow(true);assert.equal(photos,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);assert.equal((await repository.read(scope)).records.length,1001);
+  await engine.syncNow(true);assert.equal(photos,0);assert.equal(pages,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  change=true;protectionOverride.remoteRevision='new';protectionOverride.activeIds.push('new-record');photoIndexOverride={...photoIndexOverride,revision:2001,entries:[{fileId:'new-file',customerId:'NEW',url:'https://drive.google.com/file/d/new-file/view',version:'1',revision:2001,deleted:false}]};
+  await engine.syncNow(true);assert.equal(photos,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);assert.equal((await repository.read(scope)).records.length,2001);
   change=false;const count=photos;await engine.syncNow(true);assert.equal(photos,count);assert.equal(pages,1,'matching customer fingerprint skips all unchanged pages');
  }finally{protectionOverride=undefined;photoIndexOverride=undefined;navigator.onLine=false;}
 });
