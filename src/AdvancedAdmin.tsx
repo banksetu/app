@@ -986,7 +986,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
 
         {isMasterOwner && <p style={styles.securityText}>
           Master Apps Script के existing project में updated code लगाकर उसी Web App deployment का नया version प्रकाशित करें।{" "}
-          <a href="/client-bridge/Code.gs" download="BankSetu-Master-Code.gs" style={{ color: "#8de3c8", fontWeight: 700 }}>Download updated Master Code.gs</a>
+          <a href="/client-bridge/Code.gs?revision=v8-20261014" download="BankSetu-Master-Code.gs" style={{ color: "#8de3c8", fontWeight: 700 }}>Download updated Master Code.gs</a>
         </p>}
 
         {savedUrl && !unlocked && (
