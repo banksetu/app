@@ -766,9 +766,10 @@ test('old AFSM bridge retains pending events but still downloads desktop custome
   let state=await repository.read(scope);assert.equal(pulls,1);assert.deepEqual(state.operations,[event]);assert(state.records.some(r=>r.recordId===remoteId));assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
   assert.match((await engine.getLocalStatus()).error,/AFSM uploads remain pending/);
   await engine.syncNow(false);assert.equal(afsmAttempts,1,'background retry waits while the bridge is incompatible');
-  upgraded=true;await engine.syncNow(true);state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+  upgraded=true;protectionOverride={success:true,protectionVersion:1,afsmVersion:1,connectionId:'afsm-old-bridge',resetId:'',activeIds:[id,remoteId],deletedIds:[]};
+  await engine.syncNow(false);state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
   assert.equal(afsmAttempts,2);assert.equal((await engine.getLocalStatus()).error,'');
- }finally{navigator.onLine=false;}
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
 
 test('an old bridge is probed once for a large AFSM queue while ordinary customer uploads continue',async()=>{

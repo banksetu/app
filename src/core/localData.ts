@@ -222,7 +222,7 @@ export function resetSyncSession() {
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
-type SyncProtection = {photoIndexVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+type SyncProtection = {photoIndexVersion?:number;afsmVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
 export type BridgeDiagnostic = {publicStatus:string; authenticatedStatus:string; photoIndex:string; afsm:string; connection:string};
 /** Read-only probe of the actual saved /exec URL. Never returns a URL, token, or customer data. */
 export async function diagnoseSyncBridge():Promise<BridgeDiagnostic> {
@@ -342,6 +342,9 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
+  // Only the authenticated, connection-checked POST can retire an old AFSM
+  // bridge warning. GET /status alone does not prove the write route works.
+  if(protection.afsmVersion===1)afsmBridgeUpgrade.delete(scope);
   await repository.transact(scope,state=>{
     if(protection.photoIndexVersion!==1)state.photoDiscoveryError=PHOTO_BRIDGE_UPGRADE_MESSAGE;
     else if(state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE)state.photoDiscoveryError="";

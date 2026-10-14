@@ -3126,7 +3126,7 @@ function syncProtection(request, authUser) {
     }
     const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,syncDataWidth(sheet)).getDisplayValues():[];
     const remoteRevision=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(rows)).map(byte=>(byte+256).toString(16).slice(-2)).join("");
-    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,photoIndexVersion:1,
+    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,photoIndexVersion:1,afsmVersion:1,
       activeIds:rows.filter(row=>row[26]!=="true").map(row=>String(row[24])).filter(Boolean),
       deletedIds:syncDeletionRows(sheet,authUser.connectionId).map(row=>String(row[0]))});
   } finally {lock.releaseLock();}
