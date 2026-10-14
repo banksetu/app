@@ -1,30 +1,30 @@
 {
-  "latestVersion": "1.0.78",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.78/BankSetu-Setup-1.0.78-x64.exe",
+  "latestVersion": "1.0.79",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.79/BankSetu-Setup-1.0.79-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.78",
-  "releaseTag": "v1.0.78",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.78",
+  "version": "1.0.79",
+  "releaseTag": "v1.0.79",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.79",
   "releaseDate": "2026-10-14",
-  "windowsVersion": "1.0.78",
-  "androidBuild": 1000078,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.78/BankSetu-Setup-1.0.78-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.78/BankSetu-Android-1000078.apk",
+  "windowsVersion": "1.0.79",
+  "androidBuild": 1000079,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.79/BankSetu-Setup-1.0.79-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.79/BankSetu-Android-1000079.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.78",
+      "version": "1.0.79",
       "releaseDate": "2026-10-14",
       "categories": {
-        "Bug Fixes": [
+        "Improvements": [
           "Maintenance and reliability updates."
         ]
       }
     },
     "android": {
-      "version": "1.0.78",
+      "version": "1.0.79",
       "releaseDate": "2026-10-14",
       "categories": {
-        "Bug Fixes": [
+        "Improvements": [
           "Maintenance and reliability updates."
         ]
       }
