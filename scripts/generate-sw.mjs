@@ -1,7 +1,7 @@
 import fs from 'node:fs';import crypto from 'node:crypto';
 const directory=process.argv[2]||'dist';const base=process.argv[3]||'/';
 const assets=fs.readdirSync(directory+'/assets').map(name=>base+'assets/'+name);
-const files=[base+'index.html',base+'client-bridge/Code.gs',...assets];
+const files=[base+'index.html',...assets];
 const hash=crypto.createHash('sha256').update(fs.readFileSync(directory+'/index.html')).digest('hex').slice(0,16);
 fs.writeFileSync(directory+'/sw.js',`
 const PREFIX=${JSON.stringify(base==='/'?'banksetu-shell-':'banksetu-shell-app-')};
@@ -14,7 +14,7 @@ self.addEventListener('fetch',event=>{
  const url=new URL(event.request.url);
  if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
  if(event.request.mode==='navigate')event.respondWith(fetch(event.request).catch(()=>caches.match(${JSON.stringify(base+'index.html')})));
- else if(url.pathname.endsWith('/client-bridge/Code.gs'))event.respondWith(fetch(event.request).then(response=>{if(!response.ok)throw Error('Setup download unavailable');return response;}).catch(()=>caches.match(url.pathname)));
+ else if(url.pathname.endsWith('/client-bridge/Code.gs'))event.respondWith(fetch(event.request));
  else if(FILES.includes(url.pathname))event.respondWith(caches.match(url.pathname).then(hit=>hit||fetch(event.request)));
 });
 `);
