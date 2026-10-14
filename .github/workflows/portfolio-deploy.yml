@@ -4,6 +4,7 @@ on:
   push:
     branches: [codex/spark-client-workspace-20261001]
     paths:
+      - 'apps-script/Code.gs'
       - 'portfolio/**'
       - 'public/version.json'
       - 'firebase.portfolio.json'
