@@ -3327,9 +3327,9 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       if(customer.pdfDataUrl)media.pdf=saveBoundDocument(customer.pdfDataUrl,customer.pdfFileName||customer.enrolId+".pdf",authUser.photoFolderId,op.operationId);
       return syncCustomerOperation(request,authUser,media);
     }
-    if(preparedMedia?.photo){customer.photoUrl=preparedMedia.photo.driveUrl;customer.photoRemoved=false;}
+    if(preparedMedia && preparedMedia.photo){customer.photoUrl=preparedMedia.photo.driveUrl;customer.photoRemoved=false;}
     if(customer.photoRemoved===true)customer.photoUrl="";
-    if(preparedMedia?.pdf)customer.pdfUrl=preparedMedia.pdf.driveUrl;
+    if(preparedMedia && preparedMedia.pdf)customer.pdfUrl=preparedMedia.pdf.driveUrl;
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
     if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");
@@ -3339,7 +3339,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       for(const field of passbookAction?["passbookStatus"]:patchKeys)sheet.getRange(rowNumber,field==="status"?5:12,1,1).setValues([[customer[field]]]);
       sheet.getRange(rowNumber,26,1,1).setValues([[JSON.stringify(operations)]]);
     } else if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
-    if(preparedMedia?.photo || customer.photoRemoved===true){
+    if((preparedMedia && preparedMedia.photo) || customer.photoRemoved===true){
       const headers=sheet.getRange(1,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
       let column=headers.indexOf("BANKSETU PHOTO JSON")+1;
       if(!column){column=Math.max(27,sheet.getLastColumn?sheet.getLastColumn():sheet.getMaxColumns())+1;if(sheet.getMaxColumns()<column)sheet.insertColumnsAfter(sheet.getMaxColumns(),column-sheet.getMaxColumns());sheet.getRange(1,column,1,1).setValues([["BANKSETU PHOTO JSON"]]);}
@@ -3419,7 +3419,7 @@ function getIncrementalPhotoIndex(request,authUser) {
     const raw=tab.getLastRow()>1?tab.getRange(2,1,1,2).getDisplayValues()[0][1]:"";
     const state=raw?JSON.parse(raw):{connectionId:authUser.connectionId,folderId:authUser.photoFolderId,revision:0,complete:false};
     if(state.connectionId!==authUser.connectionId||state.folderId!==authUser.photoFolderId)throw new Error("Photo index belongs to another workspace. No data changed.");
-    state.indexId ||= Utilities.getUuid();
+    if(!state.indexId)state.indexId=Utilities.getUuid();
     const entries=new Map();
     if(tab.getLastRow()>2)tab.getRange(3,1,tab.getLastRow()-2,2).getDisplayValues().forEach(row=>{if(row[0]&&row[1]){const entry=JSON.parse(row[1]);entries.set(row[0],entry);state.revision=Math.max(state.revision,entry.revision||0);}});
     let dirty=false;
