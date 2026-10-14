@@ -219,6 +219,7 @@ export function resetSyncSession() {
   announce();
 }
 type SyncProtection = {photoIndexVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+const PHOTO_BRIDGE_UPGRADE_MESSAGE = "Photo sync needs the current Code.gs. In Apps Script, update this workspace's existing deployment to a new version; customer changes and pending photos remain saved.";
 const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
   if(!protection.success){
@@ -306,6 +307,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
+  if(protection.photoIndexVersion!==1)await repository.transact(scope,state=>{state.photoDiscoveryError=PHOTO_BRIDGE_UPGRADE_MESSAGE;});
   if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision && !pending){
     shouldPull=false;
     await repository.transact(scope,state=>{if(state.pull)state.pull.lastCompletedAt=Date.now();});
@@ -378,7 +380,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(afterPull.operations.some(op=>op.state==="pending" && !initial.operations.some(previous=>previous.operationId===op.operationId)))
     queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
   let downloaded=await repository.read(scope);
-  if(downloaded.records.length && !downloaded.pull?.cursor && Date.now()-(photoInventoryRetry.get(scope)||0)>(downloaded.photoIndex?.complete===false?1000:60000) &&
+  if(protection.photoIndexVersion===1 && downloaded.records.length && !downloaded.pull?.cursor && Date.now()-(photoInventoryRetry.get(scope)||0)>(downloaded.photoIndex?.complete===false?1000:60000) &&
      (!downloaded.photoPresence || !!downloaded.photoIndex || protection.photoIndexVersion===1) && (refresh || !downloaded.photoIndex?.complete || Date.now()-(downloaded.photoIndex?.checkedAt||0)>300000)){
     photoInventoryRetry.set(scope,Date.now());
     try {
@@ -413,6 +415,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(!downloaded.pull?.cursor){
     const seen=new Set<string>();
     const photos=downloaded.records.filter(record=>{
+      if(protection.photoIndexVersion!==1)return false;
       if(((downloaded.photoIndex || protection.photoIndexVersion===1) && !record.customer.photoUrl) || !needsPhoto(record)||seen.has(record.recordId))return false;
       seen.add(record.recordId);return true;
     }).sort((a,b)=>Number(!!b.customer.photoUrl)-Number(!!a.customer.photoUrl)||(b.cachedAt||0)-(a.cachedAt||0)).slice(0,12);
