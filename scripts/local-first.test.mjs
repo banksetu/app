@@ -689,6 +689,27 @@ test('outdated bridge keeps customer reconciliation but makes zero legacy photo 
  }finally{navigator.onLine=false;}
 });
 
+test('upgraded bridge clears a saved outdated-Code.gs warning without touching customers or queued edits',async()=>{
+ storage.clear();connect('upgraded-photo-bridge');navigator.onLine=false;
+ const scope='user-a:tenant-a:upgraded-photo-bridge';
+ await repository.transact(scope,state=>{state.photoDiscoveryError='Photo sync needs the current Code.gs. In Apps Script, update this workspace\'s existing deployment to a new version; customer changes and pending photos remain saved.';state.records=[{key:'kept',scope,recordId:'kept',revision:'r1',rowNumber:2,customer:{name:'Kept',enrolId:'KEPT',photoUrl:''},pending:false}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ const before=(await repository.read(scope)).records.length;
+ photoIndexOverride=photoIndex('upgraded-photo-bridge');navigator.onLine=true;
+ handler=async()=>{throw Error('No customer page needed');};
+ try {await engine.syncNow(false);assert.equal((await engine.getLocalStatus()).photoError,'');assert.equal((await repository.read(scope)).records.length,before);}
+ finally {photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('an incomplete photo index reply reports the actual bridge problem and keeps the local queue',async()=>{
+ storage.clear();connect('incomplete-photo-bridge');navigator.onLine=false;
+ const scope='user-a:tenant-a:incomplete-photo-bridge';
+ await repository.transact(scope,state=>{state.records=[{key:'kept',scope,recordId:'kept',revision:'r1',rowNumber:2,customer:{name:'Kept',enrolId:'KEPT',photoUrl:''},pending:false}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ photoIndexOverride={success:true,connectionId:'incomplete-photo-bridge'};navigator.onLine=true;
+ handler=async()=>{throw Error('No customer page needed');};
+ try {await engine.syncNow(false);assert.match((await engine.getLocalStatus()).photoError,/incomplete photo index response/);assert.equal((await repository.read(scope)).records.length,1);}
+ finally {photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
 test('lock contention leaves operations pending and concurrent sync requests share one job',async()=>{
  storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('lock-busy');navigator.onLine=false;
  await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:lock-busy';const before=await repository.read(scope);navigator.onLine=true;
