@@ -307,7 +307,10 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
-  if(protection.photoIndexVersion!==1)await repository.transact(scope,state=>{state.photoDiscoveryError=PHOTO_BRIDGE_UPGRADE_MESSAGE;});
+  await repository.transact(scope,state=>{
+    if(protection.photoIndexVersion!==1)state.photoDiscoveryError=PHOTO_BRIDGE_UPGRADE_MESSAGE;
+    else if(state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE)state.photoDiscoveryError="";
+  });
   if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision && !pending){
     shouldPull=false;
     await repository.transact(scope,state=>{if(state.pull)state.pull.lastCompletedAt=Date.now();});
@@ -401,7 +404,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
         // Old deployments support a one-time existence baseline only. Never
         // repeat the full folder scan after that evidence has been persisted.
         if(!downloaded.photoPresence)await repository.transact(scope,state=>{state.photoPresence={checkedAt:Date.now(),customerIds:value.customerIds as string[]};});
-      }
+      }else throw Error("The connected Apps Script returned an incomplete photo index response. Check that its existing /exec deployment uses the current Code.gs; customer data is safe.");
     } catch(error) {await repository.transact(scope,state=>{state.photoDiscoveryError=error instanceof Error?error.message.slice(0,250):"Photo index retry required.";}); /* Customer data sync remains independent. */ }
   }
   downloaded=await repository.read(scope);
