@@ -195,6 +195,9 @@ const running = new Map<string, Promise<void>>();
 const syncControllers = new Map<string, AbortController>();
 const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
+const afsmBridgeUpgrade = new Map<string, {url:string;retryAt:number}>();
+const AFSM_BRIDGE_RETRY_MS = 5*60*1000;
+const AFSM_BRIDGE_UPGRADE_MESSAGE = "Customer downloads can continue, but AFSM uploads remain pending. Update the deployment used by this workspace: Apps Script → Deploy → Manage deployments → Edit → New version → Deploy. Creating a separate deployment does not update the saved bridge URL.";
 let syncPaused = false;
 export const isSyncPaused = () => syncPaused;
 export function pauseSync() {
@@ -215,6 +218,7 @@ export function resumeSync() {
 export function resetSyncSession() {
   for (const controller of syncControllers.values()) controller.abort(new DOMException("Account changed.","AbortError"));
   syncPaused = false;recoveryLog.clear();recoveringCategory=undefined;healthError="";
+  afsmBridgeUpgrade.clear();
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
@@ -299,6 +303,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     return value;
   };
   const initial = await repository.read(scope);
+  if(afsmBridgeUpgrade.get(scope)?.url!==url)afsmBridgeUpgrade.delete(scope);
   if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
   let shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
   const pending=initial.operations.some(operation=>operation.state==="pending");
@@ -311,14 +316,22 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if(protection.photoIndexVersion!==1)state.photoDiscoveryError=PHOTO_BRIDGE_UPGRADE_MESSAGE;
     else if(state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE)state.photoDiscoveryError="";
   });
-  if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision && !pending){
+  if(protection.photoIndexVersion!==1)photoInventoryRetry.set(scope,Date.now());
+  if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision &&
+     (!pending || initial.operations.every(op=>op.state!=="pending" || (op.action==="markAfsmSent" && (afsmBridgeUpgrade.get(scope)?.retryAt||0)>Date.now())))){
     shouldPull=false;
     await repository.transact(scope,state=>{if(state.pull)state.pull.lastCompletedAt=Date.now();});
   }
-  if (initial.operations.some(operation => operation.state === "pending")) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
-  let bridgeUpgradeError = "";
+  const afsmDeferred=()=>!!afsmBridgeUpgrade.get(scope) && afsmBridgeUpgrade.get(scope)!.retryAt>Date.now() && !refresh;
+  const pendingQueue=initial.operations.filter(op=>op.state==="pending");
+  const afsmAhead=new Set<string>();
+  const ordinary=pendingQueue.filter(op=>{if(op.action==="markAfsmSent"){afsmAhead.add(op.recordId);return false;}return !afsmAhead.has(op.recordId);});
+  const uploadQueue=[...ordinary,...pendingQueue.filter(op=>op.action==="markAfsmSent"&&!afsmDeferred())].slice(0,25);
+  if (uploadQueue.length) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
   const deferredRecords = new Set<string>();
-  for (const op of initial.operations.filter(operation => operation.state === "pending").slice(0,25)) {
+  let unsupportedAfsm=false;
+  for (const op of uploadQueue) {
+    if(op.action==="markAfsmSent" && (afsmDeferred()||unsupportedAfsm))continue;
     if (deferredRecords.has(op.recordId)) continue;
     if (identity() !== scope || auth.currentUser?.uid !== user.uid) return;
     const current = await repository.read(scope);
@@ -326,10 +339,12 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     const record = current.records.find(item => item.recordId === op.recordId);
     let value=await send({action:"syncCustomerOperation",protectionResetId:protection.resetId||"",operation:{...op,baseRevision:record?.revision || op.baseRevision}});
     if(op.action === "markAfsmSent" && !value.success && /Unsupported queued operation/.test(String(value.message||""))) {
-      bridgeUpgradeError = "Customer downloads can continue, but AFSM uploads remain pending. Update the deployment used by this workspace: Apps Script → Deploy → Manage deployments → Edit → New version → Deploy. Creating a separate deployment does not update the saved bridge URL.";
+      afsmBridgeUpgrade.set(scope,{url,retryAt:Date.now()+AFSM_BRIDGE_RETRY_MS});
+      unsupportedAfsm=true;
       deferredRecords.add(op.recordId);
       continue;
     }
+    if(op.action==="markAfsmSent")afsmBridgeUpgrade.delete(scope);
     if(!value.success && String(value.message||"").includes("Valid name, account number, customer ID and Aadhaar are required"))
       value={...value,code:"INVALID_INPUT",message:`Pending ${op.action} needs valid customer identity fields. Complete Name, Account Number, Customer ID and Aadhaar before retrying. The local change is retained for review.`};
     if (op.action === "deleteCustomer" && !value.success && !["CONFLICT","DUPLICATE","CONNECTION_CHANGED","FORBIDDEN","INVALID_INPUT"].includes(String(value.code||"")))
@@ -451,7 +466,6 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     }finally{window.removeEventListener("banksetu-sync-request",prioritizeUpload);}
   }
 
-  if (bridgeUpgradeError) throw new Error(bridgeUpgradeError);
 }
 async function hashPhotoBaseline(scope:string,signal?:AbortSignal){
   const records=(await repository.read(scope)).records.filter(record=>!record.pending&&record.customer.photoNeedsBaselineHash).slice(0,12);
@@ -570,7 +584,7 @@ export async function resetLocalDatabase() {
   if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
   return activeRecords(state.records,state.operations).length;
 }
-export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",photoIndexing:state.records.some(record=>record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});const afsmWarning=afsmBridgeUpgrade.get(scope)?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&state.operations.some(op=>op.state==="pending"&&op.action==="markAfsmSent")?AFSM_BRIDGE_UPGRADE_MESSAGE:"";return {records:activeRecords(state.records,state.operations).length,syncing:running.has(scope),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(scope)||afsmWarning,photoIndexing:state.records.some(record=>record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {
@@ -609,11 +623,13 @@ export function startLocalSync() {
           }
           if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"){
             const scope=identity();const refresh=refreshRequested;refreshRequested=false;await syncNow(refresh,signal);if(stopped||signal.aborted)return;
-            if(identity()===scope){const state=await repository.read(scope);if(state.pull?.cursor||state.operations.some(op=>op.state==="pending")||state.records.some(needsPhoto))delay=250;
-              else {const waiting=state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||Date.now()))-Date.now()));
+            if(identity()===scope){const state=await repository.read(scope);const afsmWaiting=afsmBridgeUpgrade.get(scope);const afsmBlocked=afsmWaiting?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&afsmWaiting.retryAt>Date.now();const oldPhotoBridge=state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE;
+              if(state.pull?.cursor||state.operations.some(op=>op.state==="pending" && (op.action!=="markAfsmSent"||!afsmBlocked))||(!oldPhotoBridge&&state.records.some(needsPhoto)))delay=250;
+              else {const waiting=oldPhotoBridge?[]:state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||Date.now()))-Date.now()));
+                if(afsmBlocked)delay=Math.min(delay,Math.max(1000,afsmWaiting.retryAt-Date.now()));
                 if(state.records.some(record=>record.customer.photoNeedsBaselineHash))delay=250;
                 if(state.photoDiscoveryError)delay=Math.min(delay,Math.max(1000,(photoInventoryRetry.get(scope)||0)+60000-Date.now()));
-                if(state.photoIndex){const due=state.photoIndex.complete?state.photoIndex.checkedAt+300000:(photoInventoryRetry.get(scope)||0)+1100;delay=Math.min(delay,Math.max(250,due-Date.now()));}
+                if(state.photoIndex&&!oldPhotoBridge){const due=state.photoIndex.complete?state.photoIndex.checkedAt+300000:(photoInventoryRetry.get(scope)||0)+1100;delay=Math.min(delay,Math.max(250,due-Date.now()));}
                 if(state.pull?.lastCompletedAt)delay=Math.min(delay,Math.max(250,state.pull.lastCompletedAt+IDLE_RECONCILE_MS-Date.now()));}}
           }
           if(!lastHostingCheck||Date.now()-lastHostingCheck>=IDLE_RECONCILE_MS){
