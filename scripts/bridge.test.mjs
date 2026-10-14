@@ -65,6 +65,7 @@ test('shared protection publishes tenant reset without deleting customer data an
  const published=context.syncProtection({action:'publishLocalReset',connectionId:'bound',resetId},user);
  assert.equal(published.resetId,resetId);assert(published.activeIds.includes(op.recordId));assert.equal(JSON.stringify(rows),before);
  assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound'},user).resetId,resetId);
+ assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound'},user).afsmVersion,1);
  assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'other'}, {...user,connectionId:'other'}).resetId,'');
  assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:{...op,operationId:crypto.randomUUID(),action:'updateCustomer'}},user).code,'RESET_REQUIRED');
  const edit={...op,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:context.localFirstRead({action:'getAllCustomers'},user).customers[0].revision};
