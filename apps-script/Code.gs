@@ -81,6 +81,7 @@ function doGet(e) {
         licenseEnforcementVersion: 2,
         syncProtectionVersion: 1,
         afsmVersion: 1,
+        photoIndexVersion: 1,
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
         photoFolderId: getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID"),
@@ -3074,6 +3075,7 @@ function syncResetSheet(sheet, create) {
 // One tenant-folder name inventory replaces thousands of missing-photo searches.
 // No Sheet lock, customer writes, blobs or photo downloads are needed.
 function getPhotoPresence(request,authUser) {
+  if(request.photoIndexVersion===1)return getIncrementalPhotoIndex(request,authUser);
   if(request.connectionId!==authUser.connectionId||!authUser.connectionId)return jsonResponse({success:false,code:"CONNECTION_CHANGED"});
   if(!authUser.photoFolderId)throw new Error("A verified tenant Drive folder is required.");
   const files=DriveApp.getFolderById(authUser.photoFolderId).getFiles();
@@ -3114,9 +3116,10 @@ function syncProtection(request, authUser) {
         SpreadsheetApp.flush();
       } else if (index>=0) resetId=rows[index][1];
     }
-    const rows=sheet.getLastRow()>1?sheet.getRange(2,25,sheet.getLastRow()-1,3).getDisplayValues():[];
-    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,
-      activeIds:rows.filter(row=>row[2]!=="true").map(row=>String(row[0])).filter(Boolean),
+    const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getMaxColumns()).getDisplayValues():[];
+    const remoteRevision=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(rows)).map(byte=>(byte+256).toString(16).slice(-2)).join("");
+    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,photoIndexVersion:1,
+      activeIds:rows.filter(row=>row[26]!=="true").map(row=>String(row[24])).filter(Boolean),
       deletedIds:syncDeletionRows(sheet,authUser.connectionId).map(row=>String(row[0]))});
   } finally {lock.releaseLock();}
 }
@@ -3157,10 +3160,10 @@ function afsmCell(value) {
   return "AFSM Send to Branch ("+Utilities.formatDate(date,"Asia/Kolkata","dd/MM/yyyy")+")";
 }
 function syncRevision(row) {
-  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(row.slice(0, 24).concat(Object.keys(afsmFromRow(row)).length?[afsmFromRow(row)]:[]))).map(byte => (byte + 256).toString(16).slice(-2)).join("");
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(row.slice(0, 24).concat(Object.keys(photoMetadataFromRow(row)).length?[photoMetadataFromRow(row)]:[]).concat(Object.keys(afsmFromRow(row)).length?[afsmFromRow(row)]:[]))).map(byte => (byte + 256).toString(16).slice(-2)).join("");
 }
 function syncCustomerObject(row, rowNumber) {
-  return Object.assign(rowToCustomer(row), afsmFromRow(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
+  return Object.assign(rowToCustomer(row), afsmFromRow(row), photoMetadataFromRow(row), {recordId: String(row[24]), revision: syncRevision(row), rowNumber});
 }
 function localFirstRead(request, authUser) {
   const lock = LockService.getScriptLock(); if(!acquireSyncLock(lock))return syncBusyResponse();
@@ -3302,7 +3305,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       }))throw new Error("Invalid status-only change.");
     }
     const passbookAction = op.action === "markPassbookPrinted" || op.action === "markPassbookDelivered";
-    const customer = Object.assign(existing ? rowToCustomer(existing) : {}, passbookAction ? {} : op.customer || {});
+    const customer = Object.assign(existing ? Object.assign(rowToCustomer(existing),photoMetadataFromRow(existing)) : {}, passbookAction ? {} : op.customer || {});
     if (op.action === "markPassbookPrinted") customer.passbookStatus = "PRINTED";
     if (op.action === "markPassbookDelivered") customer.passbookStatus = "DELIVERED";
     if (op.action === "saveCustomer" || (op.action === "updateCustomer"&&!statusOnly)) {
@@ -3324,7 +3327,8 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       if(customer.pdfDataUrl)media.pdf=saveBoundDocument(customer.pdfDataUrl,customer.pdfFileName||customer.enrolId+".pdf",authUser.photoFolderId,op.operationId);
       return syncCustomerOperation(request,authUser,media);
     }
-    if(preparedMedia?.photo)customer.photoUrl=preparedMedia.photo.driveUrl;
+    if(preparedMedia?.photo){customer.photoUrl=preparedMedia.photo.driveUrl;customer.photoRemoved=false;}
+    if(customer.photoRemoved===true)customer.photoUrl="";
     if(preparedMedia?.pdf)customer.pdfUrl=preparedMedia.pdf.driveUrl;
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
@@ -3335,6 +3339,12 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       for(const field of passbookAction?["passbookStatus"]:patchKeys)sheet.getRange(rowNumber,field==="status"?5:12,1,1).setValues([[customer[field]]]);
       sheet.getRange(rowNumber,26,1,1).setValues([[JSON.stringify(operations)]]);
     } else if (existing) sheet.getRange(rowNumber,1,1,27).setValues([row]); else sheet.appendRow(row);
+    if(preparedMedia?.photo || customer.photoRemoved===true){
+      const headers=sheet.getRange(1,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
+      let column=headers.indexOf("BANKSETU PHOTO JSON")+1;
+      if(!column){column=Math.max(27,sheet.getLastColumn?sheet.getLastColumn():sheet.getMaxColumns())+1;if(sheet.getMaxColumns()<column)sheet.insertColumnsAfter(sheet.getMaxColumns(),column-sheet.getMaxColumns());sheet.getRange(1,column,1,1).setValues([["BANKSETU PHOTO JSON"]]);}
+      sheet.getRange(rowNumber,column,1,1).setValues([["PHOTO:"+JSON.stringify({photoRemoved:customer.photoRemoved===true,photoContentHash:customer.photoContentHash||""})]]);
+    }
     SpreadsheetApp.flush();
     const saved = sheet.getRange(rowNumber,1,1,sheet.getMaxColumns()).getDisplayValues()[0];
     const action = op.action === "markPassbookPrinted" ? "PASSBOOK_PRINTED" : op.action === "markPassbookDelivered" ? "PASSBOOK_DELIVERED" : existing ? "UPDATE" : "CREATE";
@@ -3378,4 +3388,91 @@ function saveBoundDocument(dataUrl, fileName, folderId, operationId) {
 function masterLocalConnectionId() {
  if(getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || !LEGACY_SPREADSHEET_ID || !CUSTOMER_PHOTO_FOLDER_ID)return "";
  return "master-"+Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,LEGACY_SPREADSHEET_ID+":"+CUSTOMER_PHOTO_FOLDER_ID).map(byte=>(byte+256).toString(16).slice(-2)).join("");
+}
+
+/* Durable tenant-folder photo index. Photo bytes stay in Drive; this hidden
+   metadata tab is additive and never deletes customer rows or Drive files. */
+function photoDriveJson(path, query) {
+  const url="https://www.googleapis.com/drive/v3/"+path+"?"+Object.keys(query).map(key=>encodeURIComponent(key)+"="+encodeURIComponent(query[key])).join("&");
+  const response=UrlFetchApp.fetch(url,{headers:{Authorization:"Bearer "+ScriptApp.getOAuthToken()},muteHttpExceptions:true});
+  if(response.getResponseCode()===410 || (response.getResponseCode()===400&&query.pageToken))throw Object.assign(new Error("Photo change token expired."),{photoTokenExpired:true});
+  if(response.getResponseCode()!==200)throw new Error("Drive photo metadata is temporarily unavailable ("+response.getResponseCode()+").");
+  return JSON.parse(response.getContentText());
+}
+function indexedPhotoCustomer(name) {
+  const uploaded=/^[a-f0-9-]{36}-(.+)-photo$/i.exec(name||"");
+  const legacy=/^(.+)\.(?:jpg|jpeg|png|webp)$/i.exec(name||"");
+  return uploaded?uploaded[1]:legacy?legacy[1]:"";
+}
+function photoIndexEntry(file, revision, deleted, baseline) {
+  return {fileId:file.id,customerId:indexedPhotoCustomer(file.name),url:"https://drive.google.com/file/d/"+file.id+"/view",version:String(file.version||file.md5Checksum||file.modifiedTime||""),hash:String(file.sha256Checksum||""),modifiedAt:String(file.modifiedTime||""),revision,deleted:!!deleted,baseline:baseline||""};
+}
+function getIncrementalPhotoIndex(request,authUser) {
+  if(request.connectionId!==authUser.connectionId||!authUser.connectionId)return jsonResponse({success:false,code:"CONNECTION_CHANGED"});
+  if(!authUser.photoFolderId)throw new Error("A verified tenant Drive folder is required.");
+  const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))return syncBusyResponse();
+  try {
+    const book=getSheet(authUser).getParent(),name="BANKSETU_PHOTO_INDEX";
+    let tab=book.getSheetByName(name);
+    if(!tab){tab=book.insertSheet(name);tab.getRange(1,1,1,2).setValues([["FILE ID","BANKSETU PHOTO METADATA V1"]]);if(tab.hideSheet)tab.hideSheet();}
+    if(tab.getRange(1,1,1,2).getDisplayValues()[0].join("|")!=="FILE ID|BANKSETU PHOTO METADATA V1")throw new Error("Photo index tab name is in use. No existing data changed.");
+    const raw=tab.getLastRow()>1?tab.getRange(2,1,1,2).getDisplayValues()[0][1]:"";
+    const state=raw?JSON.parse(raw):{connectionId:authUser.connectionId,folderId:authUser.photoFolderId,revision:0,complete:false};
+    if(state.connectionId!==authUser.connectionId||state.folderId!==authUser.photoFolderId)throw new Error("Photo index belongs to another workspace. No data changed.");
+    state.indexId ||= Utilities.getUuid();
+    const entries=new Map();
+    if(tab.getLastRow()>2)tab.getRange(3,1,tab.getLastRow()-2,2).getDisplayValues().forEach(row=>{if(row[0]&&row[1]){const entry=JSON.parse(row[1]);entries.set(row[0],entry);state.revision=Math.max(state.revision,entry.revision||0);}});
+    let dirty=false;
+    const update=(file,deleted)=>{
+      const old=entries.get(file.id);
+      const next=photoIndexEntry(file,state.revision+1,deleted,state.baseline);
+      if(old&&old.version===next.version&&old.deleted===next.deleted&&old.customerId===next.customerId){if(state.baseline&&old.baseline!==state.baseline){old.baseline=state.baseline;dirty=true;}return;}
+      state.revision++;entries.set(file.id,next);dirty=true;
+    };
+    if(!state.driveToken){state.driveToken=photoDriveJson("changes/startPageToken",{supportsAllDrives:true}).startPageToken;state.baseline=Utilities.getUuid();state.complete=false;state.pageToken="";}
+    if(!state.complete){
+      const query={q:"'"+authUser.photoFolderId.replace(/'/g,"\\'")+"' in parents and trashed = false and mimeType contains 'image/'",pageSize:1000,fields:"nextPageToken,files(id,name,mimeType,version,md5Checksum,sha256Checksum,modifiedTime,parents,trashed)",supportsAllDrives:true,includeItemsFromAllDrives:true};
+      if(state.pageToken)query.pageToken=state.pageToken;
+      let page;
+      try{page=photoDriveJson("files",query);}catch(error){
+        if(!error.photoTokenExpired)throw error;
+        state.driveToken="";state.pageToken="";page={files:[],nextPageToken:"restart"};
+      }
+      (page.files||[]).forEach(file=>{if(/^image\//.test(file.mimeType||""))update(file,false);});
+      state.pageToken=page.nextPageToken||"";
+      if(!state.pageToken){
+        state.complete=true;
+        for(const entry of entries.values())if(entry.baseline!==state.baseline&&!entry.deleted){entry.deleted=true;entry.revision=++state.revision;dirty=true;}
+      }
+    }else{
+      try{
+        const page=photoDriveJson("changes",{pageToken:state.driveToken,pageSize:1000,fields:"nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,version,md5Checksum,sha256Checksum,modifiedTime,parents,trashed))",supportsAllDrives:true,includeItemsFromAllDrives:true});
+        (page.changes||[]).forEach(change=>{
+          const old=entries.get(change.fileId),file=change.file;
+          if(!file){if(old&&change.removed&&!old.deleted){old.deleted=true;old.revision=++state.revision;dirty=true;}return;}
+          const inFolder=(file.parents||[]).includes(authUser.photoFolderId)&&!file.trashed;
+          if(inFolder&&/^image\//.test(file.mimeType||""))update(file,false);
+          else if(old&&!old.deleted){old.deleted=true;old.revision=++state.revision;dirty=true;}
+        });
+        state.driveToken=page.nextPageToken||page.newStartPageToken||state.driveToken;
+        state.changePaging=!!page.nextPageToken;
+      }catch(error){
+        if(!error.photoTokenExpired)throw error;
+        state.driveToken="";state.complete=false;state.changePaging=false;
+      }
+    }
+    const rows=[...entries.values()];
+    if(dirty&&rows.length)tab.getRange(3,1,rows.length,2).setValues(rows.map(entry=>[entry.fileId,JSON.stringify(entry)]));
+    tab.getRange(2,1,1,2).setValues([["STATE",JSON.stringify(state)]]);SpreadsheetApp.flush();
+    const since=request.photoIndexId && request.photoIndexId!==state.indexId ? 0 : Number(request.photoRevision||0);
+    if(!Number.isSafeInteger(since)||since<0)throw new Error("Invalid photo revision.");
+    const changed=rows.filter(entry=>entry.revision>since).sort((a,b)=>a.revision-b.revision).slice(0,1000);
+    const revision=changed.length?changed[changed.length-1].revision:state.revision;
+    return jsonResponse({success:true,photoIndexVersion:1,indexId:state.indexId,connectionId:authUser.connectionId,revision,complete:state.complete&&!state.changePaging&&revision===state.revision,entries:changed});
+  }finally{lock.releaseLock();}
+}
+
+function photoMetadataFromRow(row) {
+ const encoded=row.slice(27).find(value=>typeof value==="string"&&value.indexOf("PHOTO:")===0);
+ return encoded?JSON.parse(encoded.slice(6)):{};
 }

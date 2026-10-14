@@ -18,7 +18,7 @@ export function parseBackup(text: string, scope: string): Backup {
   }
   const operations=new Set<string>();
   for(const op of value.operations){
-    if(!plain(op)||op.scope!==scope||typeof op.operationId!=="string"||!uuid.test(op.operationId)||op.key!==op.operationId||operations.has(op.operationId)||!ids.has(String(op.recordId))||!["saveCustomer","updateCustomer","deleteCustomer","markPassbookDelivered","markPassbookPrinted"].includes(String(op.action))||!["pending","conflict","failed"].includes(String(op.state))||typeof op.baseRevision!=="string"||!Number.isFinite(op.createdAt)||!plain(op.customer))throw new Error("Backup contains an invalid queued operation.");
+    if(!plain(op)||op.scope!==scope||typeof op.operationId!=="string"||!uuid.test(op.operationId)||op.key!==op.operationId||operations.has(op.operationId)||!ids.has(String(op.recordId))||!["saveCustomer","updateCustomer","deleteCustomer","markPassbookDelivered","markPassbookPrinted","markAfsmSent"].includes(String(op.action))||!["pending","conflict","failed"].includes(String(op.state))||typeof op.baseRevision!=="string"||!Number.isFinite(op.createdAt)||!plain(op.customer))throw new Error("Backup contains an invalid queued operation.");
     operations.add(op.operationId);
   }
   return {version:2,scope,exportedAt:String(value.exportedAt||""),records:value.records as CachedRecord[],operations:value.operations as QueueOperation[]};

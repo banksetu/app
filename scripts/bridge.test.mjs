@@ -211,3 +211,28 @@ test('AFSM rejects missing customers, invalid dates and unauthorized roles witho
  assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:event},{...user,role:'unknown'}),/permission/);
  const missing={...event,recordId:crypto.randomUUID()};assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:missing},user).code,'CONFLICT');assert.equal(rows.length,2);
 });
+
+test('persistent Drive photo baseline resumes and unchanged checks use changes only; replacements/removals are deltas',()=>{
+ const {context,tabs}=bridge();const calls=[];let baselinePages=0,changes=0;
+ context.photoDriveJson=(path,query)=>{calls.push({path,query});
+  if(path==='changes/startPageToken')return {startPageToken:'start'};
+  if(path==='files'){baselinePages++;assert.equal(baselinePages<=2,true);return baselinePages===1?{files:[{id:'p1',name:'001.jpg',mimeType:'image/jpeg',version:'1',parents:['folder']}],nextPageToken:'resume'}:{files:[{id:'p2',name:'002.jpg',mimeType:'image/jpeg',version:'1',parents:['folder']}]};}
+  changes++;
+  return changes===1?{changes:[],newStartPageToken:'unchanged'}:{changes:[{fileId:'p1',file:{id:'p1',name:'001.jpg',mimeType:'image/jpeg',version:'2',parents:['folder']}},{fileId:'p2',removed:true}],newStartPageToken:'updated'};
+ };
+ const who={...user,photoFolderId:'folder'};
+ const request=revision=>({connectionId:'bound',photoIndexVersion:1,photoRevision:revision});
+ const first=context.getPhotoPresence(request(0),who);assert.equal(first.complete,false);assert.equal(first.entries.length,1);
+ const second=context.getPhotoPresence(request(first.revision),who);assert.equal(second.complete,true);assert.equal(second.entries.length,1);assert.equal(calls.filter(c=>c.path==='files')[1].query.pageToken,'resume');
+ const steady=context.getPhotoPresence(request(second.revision),who);assert.equal(steady.entries.length,0);assert.equal(baselinePages,2);
+ const changed=context.getPhotoPresence(request(steady.revision),who);assert.equal(changed.entries.length,2);assert.equal(changed.entries.find(e=>e.fileId==='p1').version,'2');assert.equal(changed.entries.find(e=>e.fileId==='p2').deleted,true);assert(tabs.has('BANKSETU_PHOTO_INDEX'));
+ assert.equal(context.getPhotoPresence({...request(0),connectionId:'other'},who).code,'CONNECTION_CHANGED');
+});
+test('photo token expiration starts a resumable baseline without deleting Drive files or prematurely proving absence',()=>{
+ const {context}=bridge();let expires=false,lists=0;
+ context.photoDriveJson=path=>{if(path==='changes/startPageToken')return {startPageToken:'fresh'};if(path==='files'){lists++;return {files:[{id:'kept',name:'CUSTOM.jpg',mimeType:'image/jpeg',version:'1'}]};}if(expires)throw Object.assign(Error('expired'),{photoTokenExpired:true});return {changes:[],newStartPageToken:'next'};};
+ const who={...user,photoFolderId:'folder'},request={connectionId:'bound',photoIndexVersion:1,photoRevision:0};
+ const baseline=context.getPhotoPresence(request,who);expires=true;
+ const expired=context.getPhotoPresence({...request,photoRevision:baseline.revision},who);assert.equal(expired.complete,false);assert.equal(expired.entries.length,0);
+ const recovered=context.getPhotoPresence({...request,photoRevision:baseline.revision},who);assert.equal(recovered.complete,true);assert.equal(lists,2);assert.equal(recovered.entries.some(e=>e.deleted),false);
+});
