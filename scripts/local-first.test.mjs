@@ -13,9 +13,10 @@ let handler=async()=>{throw new Error('offline');};
 let protectionOverride;
 let protectionCalls=0;
 let inventoryOverride,inventoryCalls=0;
+let photoIndexOverride;
 globalThis.fetch=async(...args)=>{
  const body=args[1]?.body?JSON.parse(args[1].body):{};
- if(body.action==='getPhotoPresence'){inventoryCalls++;return new Response(JSON.stringify({success:true,complete:true,connectionId:storage.get('bankSetuConnectionId'),customerIds:inventoryOverride||[]}));}
+ if(body.action==='getPhotoPresence'){inventoryCalls++;if(photoIndexOverride)return Response.json(photoIndexOverride);return new Response(JSON.stringify({success:true,complete:true,connectionId:storage.get('bankSetuConnectionId'),customerIds:inventoryOverride||[]}));}
  if(body.action==='getSyncProtection'){
    protectionCalls++;
    const connectionId=storage.get('bankSetuConnectionId');
@@ -30,7 +31,7 @@ let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isA
 globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
 source=source.replace('import { makeBackup, parseBackup, mergeBackup } from "./backup";','const {makeBackup,parseBackup,mergeBackup}=globalThis.__backup;');
 globalThis.__photoState=await import(compile(fs.readFileSync("src/core/photoState.ts","utf8")));
-source=source.replace('import { mergeRemotePhoto, mergeUploadedPhoto } from "./photoState";','const {mergeRemotePhoto,mergeUploadedPhoto}=globalThis.__photoState;');
+source=source.replace('import { mergeRemotePhoto, mergeUploadedPhoto, applyPhotoIndex, photoBytesHash } from "./photoState";','const {mergeRemotePhoto,mergeUploadedPhoto,applyPhotoIndex,photoBytesHash}=globalThis.__photoState;');
 const engine=await import(compile(source));
 function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
 const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
@@ -707,4 +708,40 @@ test('old AFSM bridge retains pending events but still downloads desktop custome
   let state=await repository.read(scope);assert.equal(pulls,1);assert.deepEqual(state.operations,[event]);assert(state.records.some(r=>r.recordId===remoteId));assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
   upgraded=true;await engine.syncNow(true);state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
  }finally{navigator.onLine=false;}
+});
+
+test('1000 unchanged versioned photos plus one new remote photo transfer exactly one; repeat sync transfers zero',async()=>{
+ storage.clear();connect('incremental-1000');navigator.onLine=true;const scope='user-a:tenant-a:incremental-1000';
+ const entries=Array.from({length:1000},(_,i)=>({fileId:`file-${i}`,customerId:`ID-${i}`,url:`https://drive.google.com/file/d/file-${i}/view`,version:'1',revision:i+1,deleted:false}));
+ await repository.transact(scope,state=>{state.records=entries.map((e,i)=>({key:`record-${i}`,scope,recordId:`record-${i}`,rowNumber:i+2,revision:'r1',customer:{name:'Synthetic',enrolId:e.customerId,photoUrl:e.url,photoVersion:'1',photoPreview:'data:image/jpeg;base64,c2FmZQ=='},pending:false}));state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),remoteRevision:'same'};state.photoIndex={revision:1000,complete:true,checkedAt:Date.now()-301000,entries};});
+ let photos=0,pages=0;let change=true;
+ protectionOverride={success:true,protectionVersion:1,connectionId:'incremental-1000',activeIds:[...Array.from({length:1000},(_,i)=>`record-${i}`),'new-record'],deletedIds:[],remoteRevision:'new'};
+ photoIndexOverride={success:true,photoIndexVersion:1,connectionId:'incremental-1000',revision:1001,complete:true,entries:[{fileId:'new-file',customerId:'NEW',url:'https://drive.google.com/file/d/new-file/view',version:'1',revision:1001,deleted:false}]};
+ handler=async(url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='getSyncProtection')return Response.json({success:true,protectionVersion:1,connectionId:'incremental-1000',activeIds:[...Array.from({length:1000},(_,i)=>`record-${i}`),'new-record'],deletedIds:[],remoteRevision:'new'});
+  if(body.action==='getPhotoPresence')return Response.json({success:true,photoIndexVersion:1,connectionId:'incremental-1000',revision:1001,complete:true,entries:change?[{fileId:'new-file',customerId:'NEW',url:'https://drive.google.com/file/d/new-file/view',version:'1',revision:1001,deleted:false}]:[]});
+  if(body.action==='getCustomerPage'){pages++;return Response.json({success:true,hasNextPage:false,customers:[...entries.map((e,i)=>({recordId:`record-${i}`,rowNumber:i+2,revision:'r1',enrolId:e.customerId,photoUrl:e.url})),{recordId:'new-record',rowNumber:1002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view'}]});}
+  if(body.action==='getCustomerByRowNumber'){photos++;assert.equal(body.recordId,'new-record');return Response.json({success:true,customer:{recordId:'new-record',rowNumber:1002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view',photoPreview:'data:image/jpeg;base64,bmV3'}});}
+  throw Error(`Unexpected ${body.action}`);
+ };
+ try{
+  await engine.syncNow(true);assert.equal(photos,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);assert.equal((await repository.read(scope)).records.length,1001);
+  change=false;const count=photos;await engine.syncNow(true);assert.equal(photos,count);assert.equal(pages,1,'matching customer fingerprint skips all unchanged pages');
+ }finally{protectionOverride=undefined;photoIndexOverride=undefined;navigator.onLine=false;}
+});
+test('text-only edit with existing photo bytes does not enqueue another upload; genuine replacement hashes once',async()=>{
+ storage.clear();connect('photo-text');navigator.onLine=false;const scope='user-a:tenant-a:photo-text',id=crypto.randomUUID(),preview='data:image/png;base64,c2FtZQ==';
+ await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,photoUrl:'photo-file',photoPreview:preview}}];});
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Text edit',photoDataUrl:preview}});
+ let state=await repository.read(scope);assert.equal(state.operations[0].customer.photoDataUrl,undefined);
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Text edit',photoDataUrl:'data:image/png;base64,bmV3'}});
+ state=await repository.read(scope);assert.equal(state.operations[1].customer.photoState,'PENDING_UPLOAD');assert.match(state.operations[1].customer.photoContentHash,/^[a-f0-9]{64}$/);
+});
+
+test('offline replacement followed by text edit keeps one upload and cannot restore the stale active photo URL',async()=>{
+ storage.clear();connect('replacement-text');navigator.onLine=false;const scope='user-a:tenant-a:replacement-text',id=crypto.randomUUID();
+ await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,photoUrl:'old-file',photoPreview:'data:image/png;base64,b2xk'}}];});
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,photoDataUrl:'data:image/png;base64,bmV3',photoUrl:'old-file'}});
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Changed text',photoUrl:'old-file'}});
+ const state=await repository.read(scope);assert.equal(state.operations.filter(op=>op.customer.photoDataUrl).length,1);assert.equal(state.operations[1].customer.photoUrl,undefined);assert.equal(state.operations[1].customer.photoDataUrl,undefined);
 });

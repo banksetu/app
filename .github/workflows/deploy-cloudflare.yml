@@ -7,6 +7,8 @@ on:
     paths:
       - src/core/afsmPdf.ts
       - src/core/localData.ts
+      - apps-script/Code.gs
+      - src/core/photoState.ts
       - scripts/generate-sw.mjs
       - cloudflare/**
       - firestore.rules

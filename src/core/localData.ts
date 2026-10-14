@@ -5,7 +5,7 @@ import { auth } from "../firebase";
 import { requireLicensedWrite } from "./licenseAccess";
 import { classifyRecovery, recoveryJournal, type RecoveryCategory } from "./recovery";
 import { customerRepository as repository } from "./customerRepository";
-import { mergeRemotePhoto, mergeUploadedPhoto } from "./photoState";
+import { mergeRemotePhoto, mergeUploadedPhoto, applyPhotoIndex, photoBytesHash } from "./photoState";
 import type { Customer, CachedRecord, QueueOperation } from "./schema";
 export const networkFetch = globalThis.fetch.bind(globalThis);
 const IDLE_RECONCILE_MS=60*60*1000;
@@ -90,7 +90,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   }
   if (!supportedWrites.has(action)) return cloudRead(input, init);
   if(resetting.has(scope))return resultResponse({success:false,message:"Local reset is in progress. Retry after the Google download completes."});
-  const customer = (payload.customer || {}) as Customer;
+  const customer = {...(payload.customer || {}) as Customer};
   const existing = state.records.find(record => payload.recordId ? record.recordId === String(payload.recordId) : record.rowNumber === Number(payload.rowNumber));
   if (action !== "saveCustomer" && !existing) return resultResponse({success:false,message:"Load this customer before editing so its stable identity can be verified."});
   const statusOnly = action === "updateCustomer" && payload.statusOnly === true;
@@ -102,6 +102,12 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if ((action === "saveCustomer" || (action === "updateCustomer" && !statusOnly)) && (!fold(customer.name) || !fold(customer.accountNo) || !fold(customer.enrolId) || String(customer.uidaiNo || "").replace(/\D/g, "").length !== 12)) return resultResponse({success:false,message:"Name, account number, customer ID and 12-digit Aadhaar are required."});
   if (action === "deleteCustomer" && (existing?.deleted || state.operations.some(op => op.recordId === existing?.recordId && op.state !== "pending")))
     return resultResponse({success:false,message:"Resolve this customer's pending review before deleting. Local data was unchanged."});
+  if(customer.photoDataUrl && (customer.photoDataUrl===existing?.customer.photoPreview || customer.photoDataUrl===existing?.customer.photoDataUrl))delete customer.photoDataUrl;
+  if(customer.photoDataUrl){
+    customer.photoContentHash=await photoBytesHash(String(customer.photoDataUrl));
+    customer.photoState="PENDING_UPLOAD";customer.photoRemoved=false;
+  }
+  if(customer.photoRemoved===true){customer.photoUrl="";customer.photoPreview="";customer.photoDataUrl=undefined;customer.photoState="PENDING_DELETE";}
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
   let localRow = existing?.rowNumber || 0;
@@ -118,7 +124,10 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if (!localRow) localRow = Math.max(0,...current.records.map(record => record.rowNumber)) + 1000000000;
     const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:localRow,revision:previous?.revision || "",customer:combined,pending:true,deleted:action === "deleteCustomer"};
     current.records = current.records.filter(item => item.recordId !== recordId);current.records.push(record);
-    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : statusOnly ? {[statusField]:statusValue} : combined,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending",...(statusOnly?{statusOnly:true}:action==="updateCustomer"?{validationMode:"full" as const}:{})};
+    const uploadCustomer={...combined};
+    if(!customer.photoDataUrl){delete uploadCustomer.photoDataUrl;delete uploadCustomer.photoUrl;}
+    if(!Object.prototype.hasOwnProperty.call(customer,'photoRemoved'))delete uploadCustomer.photoRemoved;
+    const operation: QueueOperation = {key:operationId,scope,operationId,recordId,action,customer:action === "deleteCustomer" ? {} : statusOnly ? {[statusField]:statusValue} : uploadCustomer,baseRevision:previous?.revision || "",rowNumber:localRow,createdAt:Date.now(),state:"pending",...(statusOnly?{statusOnly:true}:action==="updateCustomer"?{validationMode:"full" as const}:{})};
     current.operations.push(operation);
     if(JSON.stringify(current).length>90*1024*1024)throw new Error("Local storage limit reached. Sync or export existing pending records before adding more files; no new record was saved.");
   });
@@ -150,7 +159,7 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 const remoteDiscoveries=new Map<string,number>();
-async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
+async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {remoteRevision?:string;cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   let discovered=0,notifyRemote=false;
   await repository.transact(scope, state => {
@@ -162,7 +171,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       const previous = state.records.find(record => record.recordId === recordId);
       if (previous?.pending || previous?.deleted) continue;
       if(checkpoint&&hadPreviousSync&&!previous)discovered++;
-      const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId;
+      const samePhoto=previous?.customer.photoUrl===customer.photoUrl&&previous?.customer.enrolId===customer.enrolId&&(!customer.photoVersion||previous?.customer.photoVersion===customer.photoVersion);
       const record: CachedRecord = {key:recordId,scope,recordId,rowNumber:Number(customer.rowNumber),revision:String(customer.revision || ""),cachedAt:Date.now(),customer:{...mergeRemotePhoto(customer,previous?.customer),pdfDataUrl:previous?.customer.pdfDataUrl || customer.pdfDataUrl},photoCheckedAt:samePhoto?previous?.photoCheckedAt:undefined,photoMissingRef:samePhoto?previous?.photoMissingRef:undefined,photoRetryAt:samePhoto?previous?.photoRetryAt:undefined,photoFailures:samePhoto?previous?.photoFailures:undefined,pending:false};
       if((value.photoNotFound===true||record.customer.photoAvailable===false)&&!record.customer.photoPreview){record.photoMissingRef=photoRef(record);record.photoRetryAt=undefined;record.photoFailures=undefined;}
       state.records = state.records.filter(item => item.recordId !== recordId);state.records.push(record);
@@ -174,8 +183,9 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if(value.hasNextPage){
         if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
         state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
-      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize};notifyRemote=true;}
+      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize,remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
     }
+    applyPhotoIndex(state);
     trimCache(state);
   });
   if(checkpoint){const count=(remoteDiscoveries.get(scope)||0)+discovered;if(notifyRemote){remoteDiscoveries.delete(scope);if(count>0)notifySystem({key:`remote-records:${Date.now()}`,title:'New customer records synced',body:`${count} new customer record${count===1?'':'s'} synced from another device.`,page:'sync-backup',category:'sync',cooldownMs:30*60_000});}else remoteDiscoveries.set(scope,count);if(remoteDiscoveries.size>5)remoteDiscoveries.delete(remoteDiscoveries.keys().next().value!);}
@@ -208,7 +218,7 @@ export function resetSyncSession() {
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
-type SyncProtection = {success?:boolean;code?:string;message?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+type SyncProtection = {photoIndexVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
 const hasUnsyncedContent=(record:CachedRecord)=>!record.deleted&&(!record.revision||!!(record.customer.photoDataUrl&&!record.customer.photoUrl)||!!(record.customer.pdfDataUrl&&!record.customer.pdfUrl));
 async function applySyncProtection(scope:string, protection:SyncProtection) {
   if(!protection.success){
@@ -221,6 +231,7 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
     throw new Error("Sync protection belongs to another workspace connection. Reconnect this tenant's Google Sheet/Drive; local changes remain pending.");
   const active=new Set(protection.activeIds),deleted=new Set(protection.deletedIds);
   await repository.transact(scope,state=>{
+    if(protection.photoIndexVersion===1)for(const record of state.records){if(!record.customer.photoUrl&&!record.customer.photoAvailable&&!record.customer.photoDataUrl)record.customer.photoIndexWaiting=true;}
     if(protection.resetId && state.resetId!==protection.resetId){
       if(state.operations.length||state.records.some(hasUnsyncedContent))
         throw new Error("A shared reset is pending. Back up and resolve this device's unsynced changes before clearing its local database; uploads are paused.");
@@ -288,11 +299,17 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   };
   const initial = await repository.read(scope);
   if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
-  const shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
+  let shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
   const pending=initial.operations.some(operation=>operation.state==="pending");
-  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto))return;
+  const photoCheckDue=!!initial.photoDiscoveryError&&Date.now()-(photoInventoryRetry.get(scope)||0)>=60000 || initial.records.some(record=>record.customer.photoNeedsBaselineHash) || initial.photoIndex && (!initial.photoIndex.complete || Date.now()-initial.photoIndex.checkedAt>=300000);
+  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<300000){await hashPhotoBaseline(scope,signal);return;}
+  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
+  if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision && !pending){
+    shouldPull=false;
+    await repository.transact(scope,state=>{if(state.pull)state.pull.lastCompletedAt=Date.now();});
+  }
   if (initial.operations.some(operation => operation.state === "pending")) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
   let bridgeUpgradeError = "";
   const deferredRecords = new Set<string>();
@@ -331,7 +348,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   for(let page=0;shouldPull && page<4 && Date.now()-started<20000;page++) {
     if(identity()!==scope)return;
     const state=await repository.read(scope);
-    const pull=state.pull || {cursor:0,seen:[],startedAt:Date.now()};
+    const pull=state.pull?.cursor ? state.pull : {...state.pull,cursor:0,seen:[],startedAt:Date.now(),remoteRevision:protection.remoteRevision};
     const pageSize=Math.min(250,Math.max(25,pull.pageSize||250));
     let value: Record<string,unknown>;
     try {value=await send({action:"getCustomerPage",cursor:pull.cursor,pageSize});}
@@ -360,28 +377,43 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   const afterPull=await repository.read(scope);
   if(afterPull.operations.some(op=>op.state==="pending" && !initial.operations.some(previous=>previous.operationId===op.operationId)))
     queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
-  const downloaded=await repository.read(scope);
-  if(downloaded.photoPresence)photoPresence.set(scope,{checkedAt:downloaded.photoPresence.checkedAt,ids:new Set(downloaded.photoPresence.customerIds)});
-  if(!downloaded.pull?.cursor && downloaded.records.some(record=>blankPhotoMetadata(record.customer)) &&
-     (!downloaded.photoPresence||Date.now()-downloaded.photoPresence.checkedAt>IDLE_RECONCILE_MS) &&
-     Date.now()-(photoInventoryRetry.get(scope)||0)>60000){
+  let downloaded=await repository.read(scope);
+  if(downloaded.records.length && !downloaded.pull?.cursor && Date.now()-(photoInventoryRetry.get(scope)||0)>(downloaded.photoIndex?.complete===false?1000:60000) &&
+     (!downloaded.photoPresence || !!downloaded.photoIndex || protection.photoIndexVersion===1) && (refresh || !downloaded.photoIndex?.complete || Date.now()-(downloaded.photoIndex?.checkedAt||0)>300000)){
     photoInventoryRetry.set(scope,Date.now());
     try {
-      const value=await send({action:"getPhotoPresence"});
-      if(value.success&&value.complete===true&&value.connectionId===connectionId&&Array.isArray(value.customerIds)&&value.customerIds.every((id:unknown)=>typeof id==="string")){
-        const presence={checkedAt:Date.now(),customerIds:value.customerIds as string[]};
-        await repository.transact(scope,state=>{state.photoPresence=presence;});
-        photoPresence.set(scope,{checkedAt:presence.checkedAt,ids:new Set(presence.customerIds)});
+      const value=await send({action:"getPhotoPresence",photoIndexVersion:1,photoRevision:downloaded.photoIndex?.revision||0,photoIndexId:downloaded.photoIndex?.indexId||""});
+      if(!value.success)throw Error(String(value.message||"Photo index is temporarily unavailable. Customer data is safe."));
+      if(value.success&&value.connectionId===connectionId&&value.photoIndexVersion===1&&Array.isArray(value.entries)&&Number.isSafeInteger(value.revision)){
+        await repository.transact(scope,state=>{
+          const entries=new Map((value.indexId && value.indexId!==state.photoIndex?.indexId ? [] : state.photoIndex?.entries||[]).map(entry=>[entry.fileId,entry]));
+          for(const entry of value.entries as import("./photoState").PhotoIndexEntry[]) {
+            if(!entry.fileId||typeof entry.version!=="string"||!Number.isSafeInteger(entry.revision))throw Error("Invalid photo index response; previous checkpoint retained.");
+            entries.set(entry.fileId,entry);
+          }
+          state.photoDiscoveryError="";
+          state.photoIndex={indexId:typeof value.indexId==="string"?value.indexId:state.photoIndex?.indexId,revision:Number(value.revision),complete:value.complete===true,checkedAt:Date.now(),entries:[...entries.values()]};
+          applyPhotoIndex(state);
+        });
+      }else if(value.success&&value.complete===true&&Array.isArray(value.customerIds)){
+        // Old deployments support a one-time existence baseline only. Never
+        // repeat the full folder scan after that evidence has been persisted.
+        if(!downloaded.photoPresence)await repository.transact(scope,state=>{state.photoPresence={checkedAt:Date.now(),customerIds:value.customerIds as string[]};});
       }
-    } catch { /* Optional photo inventory never prevents customer data sync. */ }
+    } catch(error) {await repository.transact(scope,state=>{state.photoDiscoveryError=error instanceof Error?error.message.slice(0,250):"Photo index retry required.";}); /* Customer data sync remains independent. */ }
   }
+  downloaded=await repository.read(scope);
+  if(downloaded.photoPresence)photoPresence.set(scope,{checkedAt:downloaded.photoPresence.checkedAt,ids:new Set(downloaded.photoPresence.customerIds)});
+
+  await hashPhotoBaseline(scope,signal);
+  downloaded=await repository.read(scope);
 
   // Existing pending uploads always finish first. Legacy photo hydration uses
   // three concurrent Drive reads; a new save interrupts it at the next wave.
   if(!downloaded.pull?.cursor){
     const seen=new Set<string>();
     const photos=downloaded.records.filter(record=>{
-      if(!needsPhoto(record)||seen.has(record.recordId))return false;
+      if(((downloaded.photoIndex || protection.photoIndexVersion===1) && !record.customer.photoUrl) || !needsPhoto(record)||seen.has(record.recordId))return false;
       seen.add(record.recordId);return true;
     }).sort((a,b)=>Number(!!b.customer.photoUrl)-Number(!!a.customer.photoUrl)||(b.cachedAt||0)-(a.cachedAt||0)).slice(0,12);
     const photoController=new AbortController();
@@ -415,6 +447,26 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
 
   if (bridgeUpgradeError) throw new Error(bridgeUpgradeError);
 }
+async function hashPhotoBaseline(scope:string,signal?:AbortSignal){
+  const records=(await repository.read(scope)).records.filter(record=>!record.pending&&record.customer.photoNeedsBaselineHash).slice(0,12);
+  const updates:Array<{recordId:string;preview:string;hash:string}>=[];
+  for(const record of records){
+    const preview=String(record.customer.photoPreview||'');if(!preview)continue;
+    let hash='';try{hash=await photoBytesHash(preview);}catch{ /* Malformed cached image is recovered from its valid cloud reference. */ }
+    updates.push({recordId:record.recordId,preview,hash});
+  }
+  if(!updates.length||identity()!==scope||signal?.aborted)return;
+  await repository.transact(scope,state=>{
+    for(const update of updates){const current=state.records.find(item=>item.recordId===update.recordId);
+      if(!current||current.pending||current.customer.photoPreview!==update.preview)continue;
+      if(update.hash)current.customer.photoContentHash=update.hash;
+      else{current.customer.photoPreviousPreview=update.preview;current.customer.photoPreview='';current.customer.photoNeedsBaselineHash=false;}
+    }
+    applyPhotoIndex(state);
+  });
+  announce();
+}
+
 function allowedStatus(field:string,value:string){return (field==="status"?["pending","active","inactive"]:field==="passbookStatus"?["pending","printed","delivered"]:[]).includes(value.toLowerCase());}
 const photoPresence=new Map<string,{checkedAt:number;ids:Set<string>}>();
 const photoInventoryRetry=new Map<string,number>();
@@ -426,11 +478,11 @@ function confirmedNoPhoto(record:CachedRecord) {
   if(record.customer.photoAvailable===false)return true;
   const presence=photoPresence.get(record.scope);
   const id=String(record.customer.enrolId||"").trim().replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,100);
-  return !!presence&&Date.now()-presence.checkedAt<=IDLE_RECONCILE_MS&&!presence.ids.has(id);
+  return !!presence&&!presence.ids.has(id);
 }
-function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}`;}
-function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&!confirmedNoPhoto(record);}
-function needsPhoto(record: CachedRecord) {return photoCandidate(record)&&(!record.photoRetryAt||Date.now()>=record.photoRetryAt)&&(!record.photoCheckedAt||Date.now()-record.photoCheckedAt>24*60*60*1000);}
+function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}|${record.customer.photoVersion||""}`;}
+function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!record.customer.photoIndexWaiting&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&!confirmedNoPhoto(record);}
+function needsPhoto(record: CachedRecord) {return photoCandidate(record)&&(!record.photoRetryAt||Date.now()>=record.photoRetryAt);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.
   // Only transient previews are eligible for cache cleanup.
@@ -512,7 +564,7 @@ export async function resetLocalDatabase() {
   if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
   return activeRecords(state.records,state.operations).length;
 }
-export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",mediaPending:state.records.filter(photoCandidate).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});return {records:activeRecords(state.records,state.operations).length,syncing:running.has(identity()),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(identity())||"",photoIndexing:state.records.some(record=>record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 export async function getLocalSnapshot() {
   const state = await repository.read(identity());
   return {
@@ -552,7 +604,10 @@ export function startLocalSync() {
           if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"){
             const scope=identity();const refresh=refreshRequested;refreshRequested=false;await syncNow(refresh,signal);if(stopped||signal.aborted)return;
             if(identity()===scope){const state=await repository.read(scope);if(state.pull?.cursor||state.operations.some(op=>op.state==="pending")||state.records.some(needsPhoto))delay=250;
-              else {const waiting=state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||((record.photoCheckedAt||0)+24*60*60*1000)))-Date.now()));
+              else {const waiting=state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||Date.now()))-Date.now()));
+                if(state.records.some(record=>record.customer.photoNeedsBaselineHash))delay=250;
+                if(state.photoDiscoveryError)delay=Math.min(delay,Math.max(1000,(photoInventoryRetry.get(scope)||0)+60000-Date.now()));
+                if(state.photoIndex){const due=state.photoIndex.complete?state.photoIndex.checkedAt+300000:(photoInventoryRetry.get(scope)||0)+1100;delay=Math.min(delay,Math.max(250,due-Date.now()));}
                 if(state.pull?.lastCompletedAt)delay=Math.min(delay,Math.max(250,state.pull.lastCompletedAt+IDLE_RECONCILE_MS-Date.now()));}}
           }
           if(!lastHostingCheck||Date.now()-lastHostingCheck>=IDLE_RECONCILE_MS){

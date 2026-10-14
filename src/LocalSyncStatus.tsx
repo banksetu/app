@@ -6,7 +6,7 @@ import type { QueueOperation } from "./core/schema";
 import { callBankSetuWorker } from "./workerApi";
 import { androidStorageInfo, isAndroid } from "./platform/android/runtime";
 
-type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean; syncing: boolean; paused:boolean; lastCompletedAt: number; error: string; mediaPending: number };
+type Status = { records: number; pending: number; conflicts: number; downloading: boolean; cacheLimited: boolean; syncing: boolean; paused:boolean; lastCompletedAt: number; error: string; mediaPending: number; photoIndexing?:boolean; photoUploads?:number; photoRetry?:boolean; photoError?:string };
 const emptyStatus: Status = { records: 0, pending: 0, conflicts: 0, downloading: false, cacheLimited: false, syncing:false,paused:false,lastCompletedAt:0,error:"",mediaPending:0 };
 
 export default function LocalSyncStatus({ visible = true, readOnly = false }: { visible?: boolean; readOnly?: boolean }) {
@@ -83,7 +83,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
   const cards = [
     { key: "local" as const, label: "Local data", value: String(status.records), hint: "इस device के local database में records", action: "Click here to see" },
     { key: "pending" as const, label: "Upload pending", value: String(status.pending), hint: "Google Sheet पर भेजने के लिए बाकी", action: "Click here to see" },
-    { key: "sheet" as const, label: "Google Sheet data", value: status.syncing || status.downloading ? "Syncing…" : status.lastCompletedAt ? "Downloaded" : "Waiting for sync", hint: status.mediaPending ? `${status.mediaPending} customer photos बाकी हैं` : status.lastCompletedAt ? `Last download: ${new Date(status.lastCompletedAt).toLocaleString()}` : "पुराना डेटा इस device पर अपने-आप डाउनलोड होगा", action: "Click here to see" },
+    { key: "sheet" as const, label: "Google Sheet data", value: status.syncing || status.downloading ? "Syncing…" : status.lastCompletedAt ? "Downloaded" : "Waiting for sync", hint: status.mediaPending ? `Photo Pending: ${status.mediaPending} · ${!navigator.onLine?"Waiting for Network":status.photoRetry?"Retry Required":status.syncing?(status.photoUploads?"Uploading Changed Photos":"Downloading Changed Photos"):"Pending Photo Sync"}` : status.photoError ? `Photo Index Retry Required: ${status.photoError}` : status.photoIndexing ? "Initial Photo Indexing" : status.lastCompletedAt ? `Photo Sync Complete · Last download: ${new Date(status.lastCompletedAt).toLocaleString()}` : "पुराना डेटा इस device पर अपने-आप डाउनलोड होगा", action: "Click here to see" },
     { key: "storage" as const, label: "Local storage", value: androidStorage ? formatBytes(androidStorage.availableBytes)+" device free" : nativeStorage?.freeBytes ? formatBytes(nativeStorage.freeBytes) + " free" : storage.quota ? formatBytes(Math.max(0,storage.quota-storage.used))+" WebView quota left" : "Storage unavailable", hint: androidStorage?"Device space and WebView quota are separate":nativeStorage?"SQLite local database · "+formatBytes(nativeStorage.usedBytes)+" used": "Tap for accurate storage details", action: "Click here to see" },
   ];
   const viewerTitle = viewer === "local" ? "Local database records" : viewer === "pending" ? "Upload pending queue" : viewer === "storage" ? "Local storage status" : "Google Sheet data";
