@@ -337,7 +337,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
   let shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
   const pending=initial.operations.some(operation=>operation.state==="pending");
-  const photoCheckDue=!!initial.photoDiscoveryError&&Date.now()-(photoInventoryRetry.get(scope)||0)>=60000 || initial.records.some(record=>record.customer.photoNeedsBaselineHash) || initial.photoIndex && (!initial.photoIndex.complete || Date.now()-initial.photoIndex.checkedAt>=300000);
+  const photoCheckDue=!!initial.photoDiscoveryError&&Date.now()-(photoInventoryRetry.get(scope)||0)>=60000 || initial.records.some(record=>record.customer.photoNeedsBaselineHash) || !!initial.records.length&&!initial.photoIndex&&!initial.photoPresence || initial.photoIndex && (!initial.photoIndex.complete || Date.now()-initial.photoIndex.checkedAt>=300000);
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<300000){await hashPhotoBaseline(scope,signal);return;}
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
@@ -431,7 +431,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(afterPull.operations.some(op=>op.state==="pending" && !initial.operations.some(previous=>previous.operationId===op.operationId)))
     queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
   let downloaded=await repository.read(scope);
-  if(protection.photoIndexVersion===1 && downloaded.records.length && !downloaded.pull?.cursor && Date.now()-(photoInventoryRetry.get(scope)||0)>(downloaded.photoIndex?.complete===false?1000:60000) &&
+  if(protection.photoIndexVersion===1 && downloaded.records.length && !downloaded.pull?.cursor && (refresh || Date.now()-(photoInventoryRetry.get(scope)||0)>(downloaded.photoIndex?.complete===false?1000:60000)) &&
      (!downloaded.photoPresence || !!downloaded.photoIndex || protection.photoIndexVersion===1) && (refresh || !downloaded.photoIndex?.complete || Date.now()-(downloaded.photoIndex?.checkedAt||0)>300000)){
     photoInventoryRetry.set(scope,Date.now());
     try {
@@ -536,7 +536,7 @@ function confirmedNoPhoto(record:CachedRecord) {
   return !!presence&&!presence.ids.has(id);
 }
 function photoRef(record:CachedRecord){return `${record.customer.enrolId||""}|${record.customer.photoUrl||""}|${record.customer.photoVersion||""}`;}
-function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!record.customer.photoIndexWaiting&&!!record.revision&&!!(record.customer.photoUrl||record.customer.enrolId)&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&!confirmedNoPhoto(record);}
+function photoCandidate(record: CachedRecord) {return !record.deleted&&!record.pending&&!record.customer.photoIndexWaiting&&!!record.revision&&!!record.customer.photoUrl&&!record.customer.photoPreview&&record.photoMissingRef!==photoRef(record)&&!confirmedNoPhoto(record);}
 function needsPhoto(record: CachedRecord) {return photoCandidate(record)&&(!record.photoRetryAt||Date.now()>=record.photoRetryAt);}
 function trimCache(state: import("./schema").LocalState) {
   // Permanent customer data and uploaded photo/PDF data are never removed.

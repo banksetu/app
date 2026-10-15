@@ -13,9 +13,16 @@ test('same-file remote version invalidates only its prior preview; repeated delt
  state.records[0].customer.photoPreview='new-photo';applyPhotoIndex(state);assert.equal(state.records[0].customer.photoPreview,'new-photo');assert.equal(state.records[0].customer.photoState,'SYNCED');
  const merged=mergeRemotePhoto({enrolId:'customer',photoUrl:e.url},state.records[0].customer);assert.equal(merged.photoVersion,'2');assert.equal(merged.photoPreview,'new-photo');
 });
-test('valid cloud reference absent from index is recoverable; intentional removal never resurrects older files',()=>{
+test('completed index retires a stale Sheet URL without deleting it and reactivates a later photo',()=>{
  const state={records:[record('missing','https://drive.google.com/file/d/valid/view'),record('removed')],operations:[],photoIndex:{revision:1,complete:true,entries:[entry('removed')]}};
- state.records[1].customer.photoRemoved=true;applyPhotoIndex(state);assert.notEqual(state.records[0].customer.photoAvailable,false);assert.equal(state.records[1].customer.photoState,'NO_PHOTO');assert.equal(state.records[1].customer.photoUrl,'');
+ state.records[0].photoFailures=2;state.records[0].photoLastError='Drive failure';state.records[1].customer.photoRemoved=true;
+ applyPhotoIndex(state);assert.equal(state.records[0].customer.photoAvailable,false);assert.equal(state.records[0].customer.photoState,'NO_PHOTO');assert.match(state.records[0].customer.photoUrl,/valid/);assert.equal(state.records[0].photoFailures,undefined);assert.equal(state.records[0].photoLastError,undefined);
+ assert.equal(state.records[1].customer.photoState,'NO_PHOTO');assert.equal(state.records[1].customer.photoUrl,'');
+ state.photoIndex.entries.push(entry('valid','2',2));applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,'PENDING_DOWNLOAD');assert.equal(state.records[0].customer.photoAvailable,true);assert.equal(state.records[0].photoMissingRef,undefined);
+});
+test('incomplete index keeps an unknown cloud reference retryable',()=>{
+ const state={records:[record('missing','https://drive.google.com/file/d/valid/view')],operations:[],photoIndex:{revision:0,complete:false,entries:[]}};
+ applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,undefined);assert.equal(state.records[0].photoMissingRef,undefined);
 });
 test('pending local replacement is never overwritten by a cloud index or another tenant index',()=>{
  const state={records:[record('photo')],operations:[],photoIndex:{revision:1,complete:true,entries:[entry('photo')]}};state.records[0].pending=true;state.records[0].customer.photoPreview='offline-new';applyPhotoIndex(state);assert.equal(state.records[0].customer.photoPreview,'offline-new');assert.equal(state.records[0].customer.photoUrl,'');
