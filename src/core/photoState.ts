@@ -48,13 +48,17 @@ export function applyPhotoIndex(state:import('./schema').LocalState):void {
         if(!baseline){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;}
         customer.photoNeedsBaselineHash=false;
         customer.photoUrl=entry.url;customer.photoVersion=entry.version;
-        record.photoMissingRef=undefined;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoCheckedAt=undefined;
+        record.photoMissingRef=undefined;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoLastError=undefined;record.photoCheckedAt=undefined;
       }
       customer.photoIndexWaiting=false;customer.photoAvailable=true;customer.photoState=customer.photoPreview?'SYNCED':'PENDING_DOWNLOAD';
     }else if(index.complete){
       // Absence is proven only by a completed baseline/change checkpoint.
-      if(!id||entry?.deleted){if(entry?.deleted){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;}customer.photoAvailable=false;customer.photoState='NO_PHOTO';record.photoMissingRef=`${customer.enrolId||''}|${customer.photoUrl||''}|${customer.photoVersion||''}`;}
-      // A valid URL absent from the index remains recoverable, never NO_PHOTO.
+      if(!id||entry?.deleted||(!!id&&!entry&&!customer.photoPreview&&!customer.photoDataUrl)){
+        if(entry?.deleted){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;}
+        // Keep the Sheet URL and its version intact. A later Drive index entry
+        // reactivates this photo without losing any customer or local image.
+        customer.photoAvailable=false;customer.photoState='NO_PHOTO';record.photoMissingRef=`${customer.enrolId||''}|${customer.photoUrl||''}|${customer.photoVersion||''}`;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoLastError=undefined;
+      }
     }
   }
 }

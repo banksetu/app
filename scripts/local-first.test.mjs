@@ -576,6 +576,30 @@ test('verified missing photo stays out of repeated sync; changed reference resum
   assert.match((await repository.read(scope)).records[0].customer.photoPreview,/data:image/);
  }finally{photoIndexOverride=undefined;navigator.onLine=false;}
 });
+test('a stale Sheet photo URL with a verified Drive 404 stops retrying without erasing the reference',async()=>{
+ storage.clear();connect('stale-photo-link');navigator.onLine=true;
+ const scope='user-a:tenant-a:stale-photo-link',recordId='stale-record',url='https://drive.google.com/file/d/missing-file/view';
+ photoIndexOverride=photoIndex('stale-photo-link');
+ await repository.transact(scope,state=>{state.records=[{key:recordId,scope,recordId,rowNumber:2,revision:'r1',pending:false,customer:{enrolId:'STALE',photoUrl:url},photoFailures:2,photoLastError:'Previous Drive failure'}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let reads=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');reads++;return Response.json({success:true,photoNotFound:true,customer:{recordId,rowNumber:2,revision:'r1',enrolId:'STALE',photoUrl:url}});};
+ try{await engine.syncNow(false);assert.equal(reads,0,'a completed Drive inventory already proves this URL is missing');assert.equal((await engine.getLocalStatus()).mediaPending,0);const saved=(await repository.read(scope)).records[0];assert.equal(saved.customer.photoUrl,url);assert.equal(saved.customer.photoState,'NO_PHOTO');assert.equal(saved.photoFailures,undefined);assert.equal(saved.photoLastError,undefined);await engine.syncNow(false);assert.equal(reads,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);}finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('2,767 enrollment-only customers with two stale photo URLs reach idle and retain recoverable references',async()=>{
+ storage.clear();connect('stuck-two-photos');navigator.onLine=true;
+ const scope='user-a:tenant-a:stuck-two-photos';
+ photoIndexOverride=photoIndex('stuck-two-photos',Array.from({length:6},(_,i)=>({fileId:`valid-${i}`,customerId:`WITH-${i}`,url:`https://drive.google.com/file/d/valid-${i}/view`,version:'1',revision:i+1,deleted:false})));
+ await repository.transact(scope,state=>{
+   state.records=Array.from({length:2767},(_,i)=>({key:`row-${i}`,scope,recordId:`row-${i}`,rowNumber:i+2,revision:'r1',customer:{enrolId:`ENROL-${i}`,...(i<2?{photoUrl:`https://drive.google.com/file/d/missing-${i}/view`}:{}),...(i>=2&&i<8?{photoUrl:`https://drive.google.com/file/d/valid-${i-2}/view`,photoPreview:'data:image/png;base64,cGhvdG8=',photoVersion:'1'}:{})},pending:false,...(i<2?{photoFailures:2,photoLastError:'Previous retry failed'}:{})}));
+   state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};
+ });
+ let requests=0;handler=async()=>{requests++;throw Error('An unchanged photo must not be requested');};
+ try{
+   await engine.syncNow(false);let status=await engine.getLocalStatus();assert.equal(status.mediaPending,0);assert.equal(status.photoRetry,false);assert.equal(status.syncing,false);assert.equal(requests,0);
+   const saved=await repository.read(scope);assert.equal(saved.records.length,2767);assert.equal(saved.operations.length,0);assert(saved.records.slice(0,2).every(row=>row.customer.photoState==='NO_PHOTO'&&row.customer.photoUrl.includes('missing-')&&!row.photoLastError));
+   const before=protectionCalls;await engine.syncNow(false);await engine.syncNow(false);status=await engine.getLocalStatus();assert.equal(status.syncing,false);assert.equal(status.mediaPending,0);assert.equal(protectionCalls,before,'idle sync does not repeatedly query the bridge');
+ }finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
 
 test('indexed photo hydration uses bounded parallel reads, skips cached photos and duplicate jobs',async()=>{
  storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('parallel-photos');navigator.onLine=true;
@@ -813,6 +837,11 @@ test('2000 unchanged photos transfer zero; one new remote photo transfers once o
   await engine.syncNow(true);assert.equal(photos,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);assert.equal((await repository.read(scope)).records.length,2001);
   change=false;const count=photos;await engine.syncNow(true);assert.equal(photos,count);assert.equal(pages,1,'matching customer fingerprint skips all unchanged pages');
  }finally{protectionOverride=undefined;photoIndexOverride=undefined;navigator.onLine=false;}
+});
+test('photo retry diagnostics retain only identity and failure evidence across local reads',async()=>{
+ storage.clear();connect('photo-diagnostics');navigator.onLine=false;const scope='user-a:tenant-a:photo-diagnostics';
+ await repository.transact(scope,state=>{state.records=[{key:'retry',scope,recordId:'retry',rowNumber:2,revision:'r1',pending:false,customer:{name:'Private Name',uidaiNo:'123456789012',enrolId:'PHOTO-1',photoUrl:'https://drive.google.com/file/d/file-one/view',photoPreview:''},photoFailures:2,photoRetryAt:Date.now()+10000,photoLastError:'Drive metadata HTTP 503'}];});
+ const items=await engine.getPhotoSyncDiagnostics();assert.equal(items.length,1);assert.equal(items[0].recordId,'retry');assert.equal(items[0].fileId,'file-one');assert.equal(items[0].attempts,2);assert.equal(items[0].lastError,'Drive metadata HTTP 503');assert(!JSON.stringify(items).includes('Private Name'));assert(!JSON.stringify(items).includes('123456789012'));
 });
 test('text-only edit with existing photo bytes does not enqueue another upload; genuine replacement hashes once',async()=>{
  storage.clear();connect('photo-text');navigator.onLine=false;const scope='user-a:tenant-a:photo-text',id=crypto.randomUUID(),preview='data:image/png;base64,c2FtZQ==';
