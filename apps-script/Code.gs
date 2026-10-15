@@ -3211,14 +3211,34 @@ function localFirstRead(request, authUser) {
   // Sheet identity and revision are captured under the lock. Drive reads can
   // run concurrently without blocking the next tenant-scoped photo request.
   const {customer,matches}=detail;
-  if (customer.photoUrl) customer.photoPreview = getPhotoPreviewDataUrl(customer.photoUrl, authUser.photoFolderId);
+  if (customer.photoUrl) {
+    const photo = getBoundPhotoForSync(customer.photoUrl, authUser.photoFolderId);
+    if (photo.notFound) customer.photoNotFound = true;
+    else customer.photoPreview = photo.preview;
+  }
   else {
     const photo = findPhotoByCustomerId(customer.enrolId, authUser.photoFolderId);
-    if (photo) { customer.photoUrl = photo.driveUrl; customer.photoPreview = getPhotoPreviewFromFileId(photo.fileId, authUser.photoFolderId); }
+    if (photo) { customer.photoUrl = photo.driveUrl; const resolved=getBoundPhotoForSync(photo.driveUrl, authUser.photoFolderId);if(resolved.notFound)customer.photoNotFound=true;else customer.photoPreview=resolved.preview; }
     else customer.photoNotFound = true; // Verified folder lookup; temporary Drive errors throw and remain retryable.
   }
   customer.passbookDisplay = getPassbookDisplay(customer.passbookStatus);
   return jsonResponse({success:true,customer,rowNumber:customer.rowNumber,matches,multipleMatches:matches.length>1,photoNotFound:customer.photoNotFound===true});
+}
+// A Drive read failure is not evidence that a photo does not exist. Only an
+// authoritative 404 or a verified folder mismatch can settle a stale URL.
+function getBoundPhotoForSync(photoUrl, folderId) {
+  const fileId=extractDriveFileId(photoUrl);
+  if(!fileId||!folderId)throw new Error("A valid tenant photo reference is required.");
+  let metadata;
+  try {metadata=photoDriveJson("files/"+encodeURIComponent(fileId),{fields:"id,mimeType,size,parents,trashed",supportsAllDrives:true});}
+  catch(error){if(/\bHTTP 404\b/.test(String(error.message||"")))return {notFound:true};throw error;}
+  if(metadata.trashed||!(metadata.parents||[]).includes(folderId))return {notFound:true};
+  if(!/^image\//.test(metadata.mimeType||""))throw new Error("The linked Drive file is not an image.");
+  if(Number(metadata.size)>MAX_PHOTO_SIZE)throw new Error("The linked photo exceeds the supported size.");
+  const blob=DriveApp.getFileById(fileId).getBlob();
+  const bytes=blob.getBytes();
+  if(bytes.length>MAX_PHOTO_SIZE||!/^image\//.test(blob.getContentType()||""))throw new Error("The linked photo cannot be read as a supported image.");
+  return {preview:"data:"+blob.getContentType()+";base64,"+Utilities.base64Encode(bytes)};
 }
 function deleteSyncedCustomerDriveFiles(row, authUser) {
   const folderId = cleanValue(authUser.photoFolderId);
@@ -3325,6 +3345,20 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       const duplicate = duplicateErrorResponse(findDuplicates(customer, existing ? index+2 : null, authUser));
       if (duplicate) return duplicate;
     }
+    if(customer.photoDataUrl && existing && cleanValue(existing[19]) && !preparedMedia) {
+      // The row revision was validated under this lock. Replacing its tenant-
+      // owned Drive file keeps the stable File ID and cannot create a duplicate.
+      const fileId=extractDriveFileId(existing[19]);
+      if(!fileId)throw new Error("The existing photo reference is invalid. No replacement was uploaded.");
+      const metadata=photoDriveJson("files/"+encodeURIComponent(fileId),{fields:"id,mimeType,version,md5Checksum,parents,trashed",supportsAllDrives:true});
+      if(metadata.trashed||!(metadata.parents||[]).includes(authUser.photoFolderId))throw new Error("The original photo is outside this tenant's Drive folder. No replacement was uploaded.");
+      const alreadyUploaded=sameDrivePhotoBytes(customer.photoDataUrl,metadata.md5Checksum);
+      if(op.customer.photoVersion && String(metadata.version)!==String(op.customer.photoVersion) && !alreadyUploaded)
+        return jsonResponse({success:false,code:"CONFLICT",message:"The photo changed on another device. Review before replacing it.",customer:syncCustomerObject(existing,index+2)});
+      const media={photo:alreadyUploaded?{fileId,driveUrl:"https://drive.google.com/file/d/"+fileId+"/view"}:replaceBoundPhoto(customer.photoDataUrl,fileId,authUser.photoFolderId)};
+      if(customer.pdfDataUrl)media.pdf=saveBoundDocument(customer.pdfDataUrl,customer.pdfFileName||customer.enrolId+".pdf",authUser.photoFolderId,op.operationId);
+      preparedMedia=media;
+    }
     if ((customer.photoDataUrl || customer.pdfDataUrl) && !preparedMedia) {
       // Slow Drive writes must not hold the Sheet lock. Re-enter the operation
       // with the same UUID and re-check reset, tombstones, revision and duplicates
@@ -3391,6 +3425,26 @@ function saveBoundDocument(dataUrl, fileName, folderId, operationId) {
   const previous = folder.getFilesByName(name);
   const file = previous.hasNext() ? previous.next() : folder.createFile(Utilities.newBlob(bytes,match[1],name));
   return {fileId:file.getId(),fileName:file.getName(),mimeType:match[1],driveUrl:"https://drive.google.com/file/d/"+file.getId()+"/view"};
+}
+function replaceBoundPhoto(dataUrl, fileId, folderId) {
+  const match=String(dataUrl||"").match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if(!match)throw new Error("Upload a valid replacement image.");
+  const bytes=Utilities.base64Decode(match[2]);
+  if(bytes.length>MAX_PHOTO_SIZE)throw new Error("Replacement photo exceeds 5 MB.");
+  // The caller verifies this file's tenant folder and revision while holding
+  // the customer Sheet lock; a retry updates the same file, never creates one.
+  const response=UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(fileId)+"?uploadType=media&supportsAllDrives=true",{
+    method:"patch",contentType:match[1],payload:bytes,headers:{Authorization:"Bearer "+ScriptApp.getOAuthToken()},muteHttpExceptions:true});
+  if(response.getResponseCode()!==200)throw new Error("Drive photo replacement failed (HTTP "+response.getResponseCode()+"). The customer operation remains pending.");
+  const result=JSON.parse(response.getContentText());
+  if(result.id!==fileId)throw new Error("Drive did not confirm the expected tenant photo file.");
+  return {fileId,driveUrl:"https://drive.google.com/file/d/"+fileId+"/view"};
+}
+function sameDrivePhotoBytes(dataUrl, md5) {
+  if(!md5)return false;
+  const encoded=String(dataUrl||"").split(",")[1];if(!encoded)return false;
+  const digest=Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,Utilities.base64Decode(encoded));
+  return digest.map(byte=>(byte+256).toString(16).slice(-2)).join("").toLowerCase()===String(md5).toLowerCase();
 }
 
 function masterLocalConnectionId() {

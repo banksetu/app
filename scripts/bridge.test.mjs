@@ -25,6 +25,20 @@ test('Drive HTTP 400 query failure keeps photo checkpoint instead of forcing a f
  context.UrlFetchApp={fetch:()=>({getResponseCode:()=>400,getContentText:()=>JSON.stringify({error:{message:'Invalid page token'}})})};
  assert.throws(()=>context.photoDriveJson('changes',{pageToken:'synthetic-checkpoint'}),error=>error.photoTokenExpired===true);
 });
+test('photo hydration distinguishes a verified missing file from temporary Drive failure and tenant mismatch',()=>{
+ const {context}=bridge();context.ScriptApp={getOAuthToken:()=> 'synthetic-token'};
+ const url='https://drive.google.com/file/d/photo-id/view';
+ context.UrlFetchApp={fetch:()=>({getResponseCode:()=>404,getContentText:()=>''})};
+ assert.equal(context.getBoundPhotoForSync(url,'bound-folder').notFound,true);
+ context.UrlFetchApp={fetch:()=>({getResponseCode:()=>503,getContentText:()=>''})};
+ assert.throws(()=>context.getBoundPhotoForSync(url,'bound-folder'),/HTTP 503/);
+ context.UrlFetchApp={fetch:()=>({getResponseCode:()=>200,getContentText:()=>JSON.stringify({id:'photo-id',mimeType:'image/png',size:4,parents:['other-folder']})})};
+ assert.equal(context.getBoundPhotoForSync(url,'bound-folder').notFound,true);
+ context.UrlFetchApp={fetch:()=>({getResponseCode:()=>200,getContentText:()=>JSON.stringify({id:'photo-id',mimeType:'image/png',size:4,parents:['bound-folder']})})};
+ context.DriveApp={getFileById:()=>({getBlob:()=>({getBytes:()=>[1,2,3,4],getContentType:()=> 'image/png'})})};
+ context.Utilities.base64Encode=()=> 'AQIDBA==';
+ assert.equal(context.getBoundPhotoForSync(url,'bound-folder').preview,'data:image/png;base64,AQIDBA==');
+});
 test('licensed tenant bridge blocks direct customer writes after expiry while keeping reads available',()=>{
   const {context}=bridge();
   context.verifyFirebaseIdToken=()=>({localId:'synthetic-user',email:'owner@example.invalid'});
@@ -150,9 +164,33 @@ test('tenant photo Drive read releases the Sheet lock before media access',()=>{
  const {context,rows}=bridge();const op=makeOp(crypto.randomUUID());assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
  rows[1][19]='https://drive.google.com/file/d/photo-id/view';let locked=false,reads=0;
  context.LockService={getScriptLock:()=>({waitLock(){assert(!locked);locked=true;},releaseLock(){assert(locked);locked=false;}})};
- context.getPhotoPreviewDataUrl=(_url,_folder)=>{assert.equal(locked,false);reads++;return 'data:image/jpeg;base64,eA==';};
+ context.getBoundPhotoForSync=(_url,_folder)=>{assert.equal(locked,false);reads++;return {preview:'data:image/jpeg;base64,eA=='};};
  const result=context.localFirstRead({action:'getCustomerByRowNumber',recordId:op.recordId},{...user,photoFolderId:'bound-folder'});
  assert(result.success);assert.equal(reads,1);assert.equal(locked,false);
+});
+test('photo replacement keeps the original tenant Drive ID, rejects newer versions and replays without another upload',()=>{
+ const {context,rows}=bridge(),actor={...user,photoFolderId:'bound-folder'};
+ const original=makeOp(crypto.randomUUID()),created=context.syncCustomerOperation({connectionId:'bound',operation:original},actor);assert(created.success);
+ rows[1][19]='https://drive.google.com/file/d/original-file/view';
+ let updates=0;context.photoDriveJson=()=>({id:'original-file',parents:['bound-folder'],version:'2',md5Checksum:''});
+ context.replaceBoundPhoto=(_data,id)=>{assert.equal(id,'original-file');updates++;return {fileId:id,driveUrl:'https://drive.google.com/file/d/'+id+'/view'};};
+ context.saveBoundDocument=()=>{throw Error('Replacement must not create a second photo file');};
+ const op={...original,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:context.localFirstRead({action:'getCustomerPage',cursor:0},actor).customers[0].revision,customer:{...original.customer,photoDataUrl:'data:image/png;base64,AQIDBA==',photoVersion:'1'}};
+ assert.equal(context.syncCustomerOperation({connectionId:'bound',operation:op},actor).code,'CONFLICT');assert.equal(updates,0);
+ op.customer.photoVersion='2';const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},actor);assert(saved.success,JSON.stringify(saved));assert.equal(updates,1);assert.equal(rows[1][19],'https://drive.google.com/file/d/original-file/view');
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},actor).replayed);assert.equal(updates,1);
+});
+test('replacement retry recognizes the already uploaded bytes after a lost Sheet acknowledgement',()=>{
+ const {context,rows}=bridge(),actor={...user,photoFolderId:'bound-folder'},original=makeOp(crypto.randomUUID());
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:original},actor).success);
+ rows[1][19]='https://drive.google.com/file/d/original-file/view';
+ const bytes=Buffer.from([1,2,3,4]);const md5=crypto.createHash('md5').update(bytes).digest('hex');
+ context.Utilities.base64Decode=()=>bytes;context.Utilities.DigestAlgorithm.MD5='md5';
+ const digest=context.Utilities.computeDigest;context.Utilities.computeDigest=(algorithm,value)=>algorithm==='md5'?Array.from(crypto.createHash('md5').update(value).digest()):digest(algorithm,value);
+ context.photoDriveJson=()=>({id:'original-file',parents:['bound-folder'],version:'3',md5Checksum:md5});
+ context.replaceBoundPhoto=()=>{throw Error('Already uploaded bytes must not be sent again');};
+ const op={...original,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:context.localFirstRead({action:'getCustomerPage',cursor:0},actor).customers[0].revision,customer:{...original.customer,photoDataUrl:'data:image/png;base64,AQIDBA==',photoVersion:'2'}};
+ const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},actor);assert(saved.success,JSON.stringify(saved));assert.equal(rows[1][19],'https://drive.google.com/file/d/original-file/view');
 });
 test('Drive uploads release the Sheet lock, then revalidate before committing; busy locks make no changes',()=>{
  const {context,rows}=bridge();let locked=false,uploads=0;
