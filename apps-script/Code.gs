@@ -3350,14 +3350,20 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       // owned Drive file keeps the stable File ID and cannot create a duplicate.
       const fileId=extractDriveFileId(existing[19]);
       if(!fileId)throw new Error("The existing photo reference is invalid. No replacement was uploaded.");
-      const metadata=photoDriveJson("files/"+encodeURIComponent(fileId),{fields:"id,mimeType,version,md5Checksum,parents,trashed",supportsAllDrives:true});
-      if(metadata.trashed||!(metadata.parents||[]).includes(authUser.photoFolderId))throw new Error("The original photo is outside this tenant's Drive folder. No replacement was uploaded.");
-      const alreadyUploaded=sameDrivePhotoBytes(customer.photoDataUrl,metadata.md5Checksum);
-      if(op.customer.photoVersion && String(metadata.version)!==String(op.customer.photoVersion) && !alreadyUploaded)
-        return jsonResponse({success:false,code:"CONFLICT",message:"The photo changed on another device. Review before replacing it.",customer:syncCustomerObject(existing,index+2)});
-      const media={photo:alreadyUploaded?{fileId,driveUrl:"https://drive.google.com/file/d/"+fileId+"/view"}:replaceBoundPhoto(customer.photoDataUrl,fileId,authUser.photoFolderId)};
-      if(customer.pdfDataUrl)media.pdf=saveBoundDocument(customer.pdfDataUrl,customer.pdfFileName||customer.enrolId+".pdf",authUser.photoFolderId,op.operationId);
-      preparedMedia=media;
+      let metadata;
+      try {metadata=photoDriveJson("files/"+encodeURIComponent(fileId),{fields:"id,mimeType,version,md5Checksum,parents,trashed",supportsAllDrives:true});}
+      catch(error){if(!/\bHTTP 404\b/.test(String(error.message||"")))throw error;}
+      // A verified stale URL has no file to replace. The normal operation-ID
+      // upload below creates one photo; all other Drive failures remain pending.
+      if(metadata){
+        if(metadata.trashed||!(metadata.parents||[]).includes(authUser.photoFolderId))throw new Error("The original photo is outside this tenant's Drive folder. No replacement was uploaded.");
+        const alreadyUploaded=sameDrivePhotoBytes(customer.photoDataUrl,metadata.md5Checksum);
+        if(op.customer.photoVersion && String(metadata.version)!==String(op.customer.photoVersion) && !alreadyUploaded)
+          return jsonResponse({success:false,code:"CONFLICT",message:"The photo changed on another device. Review before replacing it.",customer:syncCustomerObject(existing,index+2)});
+        const media={photo:alreadyUploaded?{fileId,driveUrl:"https://drive.google.com/file/d/"+fileId+"/view"}:replaceBoundPhoto(customer.photoDataUrl,fileId,authUser.photoFolderId)};
+        if(customer.pdfDataUrl)media.pdf=saveBoundDocument(customer.pdfDataUrl,customer.pdfFileName||customer.enrolId+".pdf",authUser.photoFolderId,op.operationId);
+        preparedMedia=media;
+      }
     }
     if ((customer.photoDataUrl || customer.pdfDataUrl) && !preparedMedia) {
       // Slow Drive writes must not hold the Sheet lock. Re-enter the operation

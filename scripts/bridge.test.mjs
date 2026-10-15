@@ -180,6 +180,23 @@ test('photo replacement keeps the original tenant Drive ID, rejects newer versio
  op.customer.photoVersion='2';const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},actor);assert(saved.success,JSON.stringify(saved));assert.equal(updates,1);assert.equal(rows[1][19],'https://drive.google.com/file/d/original-file/view');
  assert(context.syncCustomerOperation({connectionId:'bound',operation:op},actor).replayed);assert.equal(updates,1);
 });
+test('a verified stale Sheet photo URL allows one idempotent new photo upload, while Drive outages do not',()=>{
+ const {context,rows}=bridge(),actor={...user,photoFolderId:'bound-folder'},original=makeOp(crypto.randomUUID());
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:original},actor).success);
+ rows[1][19]='https://drive.google.com/file/d/missing-file/view';
+ const revision=context.localFirstRead({action:'getCustomerPage',cursor:0},actor).customers[0].revision;
+ const op={...original,operationId:crypto.randomUUID(),action:'updateCustomer',baseRevision:revision,customer:{...original.customer,photoDataUrl:'data:image/png;base64,AQIDBA=='}};
+ let uploads=0;
+ context.saveBoundDocument=(_data,_name,_folder,id)=>{assert.equal(id,op.operationId);uploads++;return {fileId:'new-file',driveUrl:'https://drive.google.com/file/d/new-file/view'};};
+ context.photoDriveJson=()=>{throw Error('Drive API failed (HTTP 503).');};
+ assert.throws(()=>context.syncCustomerOperation({connectionId:'bound',operation:op},actor),/HTTP 503/);
+ assert.equal(uploads,0);assert.equal(rows[1][19],'https://drive.google.com/file/d/missing-file/view');
+ context.photoDriveJson=()=>{throw Error('Drive API failed (HTTP 404).');};
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},actor).success);
+ assert.equal(uploads,1);assert.equal(rows[1][19],'https://drive.google.com/file/d/new-file/view');
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},actor).replayed);
+ assert.equal(uploads,1);
+});
 test('replacement retry recognizes the already uploaded bytes after a lost Sheet acknowledgement',()=>{
  const {context,rows}=bridge(),actor={...user,photoFolderId:'bound-folder'},original=makeOp(crypto.randomUUID());
  assert(context.syncCustomerOperation({connectionId:'bound',operation:original},actor).success);
