@@ -283,6 +283,56 @@ test('idle workspace makes one hourly reconciliation, no focus pull, and manual 
  }finally{stop();photoIndexOverride=undefined;engine.configureConnectionRecovery(undefined);Date.now=originalNow;globalThis.setTimeout=originalTimeout;globalThis.clearTimeout=originalClear;globalThis.__auth.currentUser=previousUser;}
 });
 
+test('completed customer and photo sync becomes idle for an hour after the launch check',async()=>{
+ storage.clear();connect('idle-photos');navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const scope='user-a:tenant-a:idle-photos',previousNow=Date.now,previousTimeout=globalThis.setTimeout,previousClear=globalThis.clearTimeout;
+ let now=1800000000000,nextId=0,photoReads=0,pageReads=0;const timers=new Map();
+ Date.now=()=>now;globalThis.setTimeout=(fn,delay)=>{const id=++nextId;timers.set(id,{fn,delay});return id;};globalThis.clearTimeout=id=>timers.delete(id);
+ const entries=Array.from({length:6},(_,i)=>({fileId:`photo-${i}`,customerId:`PHOTO-${i}`,url:`https://drive.google.com/file/d/photo-${i}/view`,version:'1',revision:i+1,deleted:false}));
+ await repository.transact(scope,state=>{
+  state.records=Array.from({length:2767},(_,i)=>({key:`record-${i}`,scope,recordId:`record-${i}`,rowNumber:i+2,revision:'r1',pending:false,customer:{name:'Synthetic',enrolId:i<6?`PHOTO-${i}`:`EMPTY-${i}`,photoUrl:i<6?entries[i].url:'',photoVersion:i<6?'1':undefined,photoPreview:i<6?'data:image/jpeg;base64,c2FmZQ==':''}}));
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now,remoteRevision:'unchanged'};
+  state.photoIndex={revision:6,complete:true,checkedAt:now-6*60000,entries};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'idle-photos',activeIds:Array.from({length:2767},(_,i)=>`record-${i}`),deletedIds:[],remoteRevision:'unchanged'};
+ photoIndexOverride={...photoIndex('idle-photos'),revision:6,entries:[]};
+ handler=async(_url,init)=>{const action=JSON.parse(init.body).action;if(action==='getCustomerPage')pageReads++;else if(action==='getCustomerByRowNumber')photoReads++;throw Error(`Unexpected ${action}`);};
+ const before=inventoryCalls,settle=async()=>{for(let i=0;i<100;i++)await new Promise(resolve=>setImmediate(resolve));};
+ const stop=engine.startLocalSync();
+ try{
+  await settle();assert.equal(inventoryCalls-before,1,'launch checks the incremental photo index once');assert.equal(pageReads,0);assert.equal(photoReads,0);
+  assert.equal((await engine.getLocalStatus()).syncing,false);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  now+=30*60000;window.dispatchEvent(new Event('focus'));await settle();
+  assert.equal(inventoryCalls-before,1,'unchanged photos are not polled again after 30 minutes');assert.equal(pageReads,0);assert.equal(photoReads,0);
+  const timer=[...timers.values()].find(item=>item.delay>=29*60000&&item.delay<=30*60000);assert(timer,'next quiet check is scheduled for one hour');
+  now+=timer.delay;timer.fn();await settle();assert.equal(inventoryCalls-before,2);assert.equal(photoReads,0);
+  assert.equal((await engine.getLocalStatus()).syncing,false);
+ }finally{stop();protectionOverride=undefined;photoIndexOverride=undefined;Date.now=previousNow;globalThis.setTimeout=previousTimeout;globalThis.clearTimeout=previousClear;navigator.onLine=false;}
+});
+
+test('missing temporary preview ends legacy hash retries and recovers only a real indexed photo',async()=>{
+ storage.clear();connect('missing-baseline-preview');navigator.onLine=true;
+ const scope='user-a:tenant-a:missing-baseline-preview',url='https://drive.google.com/file/d/actual-file/view';
+ await repository.transact(scope,state=>{
+  state.records=[
+   {key:'real',scope,recordId:'real',rowNumber:2,revision:'r1',pending:false,customer:{name:'Synthetic',enrolId:'REAL',photoUrl:url,photoNeedsBaselineHash:true,photoPreview:''}},
+   {key:'absent',scope,recordId:'absent',rowNumber:3,revision:'r1',pending:false,customer:{name:'Synthetic',enrolId:'ABSENT',photoUrl:'',photoNeedsBaselineHash:true,photoPreview:''}},
+  ];
+  state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};
+  state.photoIndex={revision:1,complete:true,checkedAt:Date.now(),entries:[{fileId:'actual-file',customerId:'REAL',url,version:'1',revision:1,deleted:false}]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'missing-baseline-preview',activeIds:['real','absent'],deletedIds:[]};
+ let reads=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');assert.equal(body.recordId,'real');reads++;return Response.json({success:true,rowNumber:2,customer:{recordId:'real',rowNumber:2,revision:'r1',enrolId:'REAL',photoUrl:url,photoVersion:'1',photoPreview:'data:image/jpeg;base64,c2FmZQ=='}});};
+ try{
+  await engine.syncNow(false);let state=await repository.read(scope);
+  assert(state.records.every(record=>!record.customer.photoNeedsBaselineHash));assert.equal(reads,1);
+  assert.equal(state.records.find(record=>record.recordId==='absent').customer.photoState,'NO_PHOTO');
+  await engine.syncNow(false);state=await repository.read(scope);
+  assert.equal(reads,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  await engine.syncNow(false);assert.equal(reads,1,'completed photo is not downloaded again');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
 test('permanent rejected upload remains reviewable without a fast retry loop',async()=>{
  storage.clear();connect('permanent-upload');navigator.onLine=false;
  const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'INVALID-1',accountNo:'91001'}});assert(saved.queued);
@@ -813,7 +863,7 @@ test('background sync waits on incompatible AFSM and photo bridges instead of sp
  storage.clear();connect('afsm-background-bridge');navigator.onLine=true;
  const scope='user-a:tenant-a:afsm-background-bridge';const id=crypto.randomUUID();
  await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,revision:'r1',rowNumber:2,customer:{name:'Synthetic',photoUrl:'old-photo'},pending:true}];state.operations=[{operationId:crypto.randomUUID(),recordId:id,action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
- let attempts=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'syncCustomerOperation');attempts++;return Response.json({success:false,message:'Unsupported queued operation.'});};
+ let attempts=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage')return Response.json({success:true,customers:[],hasNextPage:false});assert.equal(body.action,'syncCustomerOperation');attempts++;return Response.json({success:false,message:'Unsupported queued operation.'});};
  const stop=engine.startLocalSync();
  try{await new Promise(resolve=>setTimeout(resolve,750));assert.equal(attempts,1);assert.equal((await engine.getLocalStatus()).pending,1);assert.equal((await engine.getConnectionHealth()).state,'healthy');}
  finally{stop();navigator.onLine=false;}

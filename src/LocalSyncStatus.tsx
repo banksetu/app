@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CustomerExcelExport from "./CustomerExcelExport";
 import "./LocalSyncStatus.css";
 import { localModeEnabled, exportLocalBackup, restoreLocalBackup, getConflicts, resolveConflict, getLocalStatus, getLocalSnapshot, getPhotoSyncDiagnostics, clearTemporaryLocalData, resetLocalDatabase, syncNow, pauseSync, resumeSync, getConnectionHealth, diagnoseSyncBridge } from "./core/localData";
@@ -27,12 +27,15 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
   const [nativeStorage, setNativeStorage] = useState<{ path: string; databasePath: string; usedBytes: number; freeBytes: number | null; totalBytes: number | null } | null>(null);
   const [androidStorage,setAndroidStorage]=useState<{totalBytes:number;availableBytes:number;appDataBytes:number;appDataComplete:boolean}|null>(null);
   const [persistent,setPersistent]=useState<boolean|null>(null);
+  const refreshVersion=useRef(0);
 
   const refresh = () => {
     if(!localModeEnabled()||sessionStorage.getItem("bankSetuWorkspaceReady")!=="true")return;
+    const version=++refreshVersion.current;
     void Promise.all([getLocalStatus(), getConflicts(), getLocalSnapshot()]).then(([nextStatus, nextConflicts, nextSnapshot]) => {
+      if(version!==refreshVersion.current)return;
       setStatus(nextStatus); setConflicts(nextConflicts); setSnapshot(nextSnapshot);
-    }).catch(reason => setError(reason instanceof Error ? reason.message : "Local database could not be read."));
+    }).catch(reason => {if(version===refreshVersion.current)setError(reason instanceof Error ? reason.message : "Local database could not be read.");});
     setHealth(getConnectionHealth());
     if (window.bankSetuDesktop?.storage) void window.bankSetuDesktop.storage().then(result => setNativeStorage(result)).catch(() => setNativeStorage(null));
     if (navigator.storage?.estimate) void navigator.storage.estimate().then(result => setStorage({ used: result.usage || 0, quota: result.quota || 0 })).catch(()=>setStorage({used:0,quota:0}));
@@ -47,7 +50,7 @@ export default function LocalSyncStatus({ visible = true, readOnly = false }: { 
       const id = String(config.spreadsheetId || ""); setSheetUrl(id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : "");
     }).catch(() => undefined);
     }
-    return()=>{window.removeEventListener("banksetu-sync-change",changed);window.removeEventListener("banksetu-workspace-change",changed);};
+    return()=>{refreshVersion.current++;window.removeEventListener("banksetu-sync-change",changed);window.removeEventListener("banksetu-workspace-change",changed);};
   },[visible]);
   useEffect(()=>{if(!isAndroid()||!navigator.storage?.persist)return;void navigator.storage.persist().then(setPersistent).catch(()=>setPersistent(false));},[]);
 
