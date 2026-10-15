@@ -337,8 +337,8 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
   let shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
   const pending=initial.operations.some(operation=>operation.state==="pending");
-  const photoCheckDue=!!initial.photoDiscoveryError&&Date.now()-(photoInventoryRetry.get(scope)||0)>=60000 || initial.records.some(record=>record.customer.photoNeedsBaselineHash) || !!initial.records.length&&!initial.photoIndex&&!initial.photoPresence || initial.photoIndex && (!initial.photoIndex.complete || Date.now()-initial.photoIndex.checkedAt>=300000);
-  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<300000){await hashPhotoBaseline(scope,signal);return;}
+  const photoCheckDue=!!initial.photoDiscoveryError&&Date.now()-(photoInventoryRetry.get(scope)||0)>=60000 || initial.records.some(record=>record.customer.photoNeedsBaselineHash) || !!initial.records.length&&!initial.photoIndex&&!initial.photoPresence || initial.photoIndex && (!initial.photoIndex.complete || Date.now()-initial.photoIndex.checkedAt>=IDLE_RECONCILE_MS);
+  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<IDLE_RECONCILE_MS){await hashPhotoBaseline(scope,signal);return;}
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   const protection=await send({action:"getSyncProtection"}) as SyncProtection;
   await applySyncProtection(scope,protection);
@@ -432,7 +432,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
   let downloaded=await repository.read(scope);
   if(protection.photoIndexVersion===1 && downloaded.records.length && !downloaded.pull?.cursor && (refresh || Date.now()-(photoInventoryRetry.get(scope)||0)>(downloaded.photoIndex?.complete===false?1000:60000)) &&
-     (!downloaded.photoPresence || !!downloaded.photoIndex || protection.photoIndexVersion===1) && (refresh || !downloaded.photoIndex?.complete || Date.now()-(downloaded.photoIndex?.checkedAt||0)>300000)){
+     (!downloaded.photoPresence || !!downloaded.photoIndex || protection.photoIndexVersion===1) && (refresh || !downloaded.photoIndex?.complete || Date.now()-(downloaded.photoIndex?.checkedAt||0)>=IDLE_RECONCILE_MS)){
     photoInventoryRetry.set(scope,Date.now());
     try {
       const value=await send({action:"getPhotoPresence",photoIndexVersion:1,photoRevision:downloaded.photoIndex?.revision||0,photoIndexId:downloaded.photoIndex?.indexId||""});
@@ -505,13 +505,17 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
 async function hashPhotoBaseline(scope:string,signal?:AbortSignal){
   const records=(await repository.read(scope)).records.filter(record=>!record.pending&&record.customer.photoNeedsBaselineHash).slice(0,12);
   const updates:Array<{recordId:string;preview:string;hash:string}>=[];
+  const missing:string[]=[];
   for(const record of records){
-    const preview=String(record.customer.photoPreview||'');if(!preview)continue;
+    const preview=String(record.customer.photoPreview||'');if(!preview){missing.push(record.recordId);continue;}
     let hash='';try{hash=await photoBytesHash(preview);}catch{ /* Malformed cached image is recovered from its valid cloud reference. */ }
     updates.push({recordId:record.recordId,preview,hash});
   }
-  if(!updates.length||identity()!==scope||signal?.aborted)return;
+  if((!updates.length&&!missing.length)||identity()!==scope||signal?.aborted)return;
   await repository.transact(scope,state=>{
+    for(const recordId of missing){const current=state.records.find(item=>item.recordId===recordId);
+      if(current&&!current.pending&&current.customer.photoNeedsBaselineHash&&!current.customer.photoPreview)current.customer.photoNeedsBaselineHash=false;
+    }
     for(const update of updates){const current=state.records.find(item=>item.recordId===update.recordId);
       if(!current||current.pending||current.customer.photoPreview!==update.preview)continue;
       if(update.hash)current.customer.photoContentHash=update.hash;
@@ -657,7 +661,7 @@ let stopScheduler: (()=>void) | undefined;
 export function startLocalSync() {
   syncUsers++;
   if(!stopScheduler){
-    let stopped=false,busy=false,failures=0,wakePending=false,refreshRequested=false;
+    let stopped=false,busy=false,failures=0,wakePending=false,refreshRequested=true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let activeController:AbortController|undefined;
     const tick=async()=>{
@@ -676,7 +680,7 @@ export function startLocalSync() {
                 if(afsmBlocked)delay=Math.min(delay,Math.max(1000,afsmWaiting.retryAt-Date.now()));
                 if(state.records.some(record=>record.customer.photoNeedsBaselineHash))delay=250;
                 if(state.photoDiscoveryError)delay=Math.min(delay,Math.max(1000,(photoInventoryRetry.get(scope)||0)+60000-Date.now()));
-                if(state.photoIndex&&!oldPhotoBridge){const due=state.photoIndex.complete?state.photoIndex.checkedAt+300000:(photoInventoryRetry.get(scope)||0)+1100;delay=Math.min(delay,Math.max(250,due-Date.now()));}
+                if(state.records.length&&state.photoIndex&&!oldPhotoBridge){const due=state.photoIndex.complete?state.photoIndex.checkedAt+IDLE_RECONCILE_MS:(photoInventoryRetry.get(scope)||0)+1100;delay=Math.min(delay,Math.max(250,due-Date.now()));}
                 if(state.pull?.lastCompletedAt)delay=Math.min(delay,Math.max(250,state.pull.lastCompletedAt+IDLE_RECONCILE_MS-Date.now()));}}
           }
           if(!lastHostingCheck||Date.now()-lastHostingCheck>=IDLE_RECONCILE_MS){
