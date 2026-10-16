@@ -36,7 +36,7 @@ export function applyPhotoIndex(state:import('./schema').LocalState):void {
   for(const record of state.records){
     if(record.deleted||record.pending)continue;
     const customer=record.customer;
-    if(customer.photoRemoved===true){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;customer.photoAvailable=false;customer.photoState='NO_PHOTO';continue;}
+    if(customer.photoRemoved===true){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;customer.photoAvailable=false;customer.photoState='NO_PHOTO';customer.photoIndexWaiting=false;continue;}
     const id=drivePhotoId(customer.photoUrl),entry=id?byId.get(id):customer.photoRemoved?undefined:byCustomer.get(String(customer.enrolId||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100));
     if(entry&&!entry.deleted){
       if(customer.photoVersion!==entry.version||drivePhotoId(customer.photoUrl)!==entry.fileId){
@@ -57,7 +57,7 @@ export function applyPhotoIndex(state:import('./schema').LocalState):void {
         if(entry?.deleted){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;}
         // Keep the Sheet URL and its version intact. A later Drive index entry
         // reactivates this photo without losing any customer or local image.
-        customer.photoAvailable=false;customer.photoState='NO_PHOTO';record.photoMissingRef=`${customer.enrolId||''}|${customer.photoUrl||''}|${customer.photoVersion||''}`;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoLastError=undefined;
+        customer.photoAvailable=false;customer.photoState='NO_PHOTO';customer.photoIndexWaiting=false;record.photoMissingRef=`${customer.enrolId||''}|${customer.photoUrl||''}|${customer.photoVersion||''}`;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoLastError=undefined;
       }
     }
   }
