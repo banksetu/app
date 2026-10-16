@@ -4,8 +4,21 @@ const {applyPhotoIndex,mergeRemotePhoto,photoBytesHash}=await import('data:text/
 const record=(id,url='',preview='')=>({key:id,scope:'tenant-a',recordId:id,pending:false,revision:'r1',customer:{enrolId:id,photoUrl:url,photoPreview:preview}});
 const entry=(id,version='1',revision=1)=>({fileId:id,customerId:id,url:`https://drive.google.com/file/d/${id}/view`,version,revision,deleted:false});
 test('completed no-photo evidence skips unknowns; incomplete baseline cannot assert NO_PHOTO',()=>{
- const state={records:[record('none')],operations:[],photoIndex:{revision:0,complete:false,entries:[]}};applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,undefined);
- state.photoIndex.complete=true;applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,'NO_PHOTO');assert.equal(state.records[0].customer.photoAvailable,false);
+ const state={records:[record('none')],operations:[],photoIndex:{revision:0,complete:false,entries:[]}};state.records[0].customer.photoIndexWaiting=true;applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,undefined);
+ state.photoIndex.complete=true;applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,'NO_PHOTO');assert.equal(state.records[0].customer.photoAvailable,false);assert.equal(state.records[0].customer.photoIndexWaiting,false);
+ applyPhotoIndex(state);assert.equal(state.records[0].customer.photoIndexWaiting,false);
+});
+test('large completed inventory retires waiting flags and skips customers with no photo',()=>{
+ const records=Array.from({length:2767},(_,i)=>record(`customer-${i}`));
+ for(const item of records)item.customer.photoIndexWaiting=true;
+ const entries=Array.from({length:6},(_,i)=>({...entry(`file-${i}`),customerId:`customer-${i}`}));
+ const state={records,operations:[],photoIndex:{revision:6,complete:true,entries}};
+ applyPhotoIndex(state);
+ assert.equal(records.filter(item=>item.customer.photoState==='NO_PHOTO').length,2761);
+ assert.equal(records.filter(item=>item.customer.photoState==='PENDING_DOWNLOAD').length,6);
+ assert.equal(records.filter(item=>item.customer.photoIndexWaiting).length,0);
+ applyPhotoIndex(state);
+ assert.equal(records.filter(item=>item.customer.photoState==='NO_PHOTO').length,2761);
 });
 test('same-file remote version invalidates only its prior preview; repeated delta is idempotent',()=>{
  const e=entry('file','2',2),state={records:[record('customer',e.url,'old-photo')],operations:[],photoIndex:{revision:2,complete:true,entries:[e]}};

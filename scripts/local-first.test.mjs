@@ -869,6 +869,19 @@ test('background sync waits on incompatible AFSM and photo bridges instead of sp
  finally{stop();navigator.onLine=false;}
 });
 
+test('completed customer and photo checkpoints leave the background scheduler idle',async()=>{
+ storage.clear();connect('idle-checkpoint');navigator.onLine=true;
+ const scope='user-a:tenant-a:idle-checkpoint';
+ const records=Array.from({length:2767},(_,i)=>({key:`row-${i}`,scope,recordId:`row-${i}`,rowNumber:i+2,revision:'r1',pending:false,customer:{enrolId:`ENROL-${i}`,photoState:'NO_PHOTO',photoIndexWaiting:i<100}}));
+ await repository.transact(scope,state=>{state.records=records;state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),remoteRevision:'same'};state.photoIndex={revision:6,complete:true,checkedAt:Date.now(),entries:[]};});
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'idle-checkpoint',activeIds:records.map(item=>item.recordId),deletedIds:[],remoteRevision:'same'};
+ photoIndexOverride=photoIndex('idle-checkpoint');let remotePages=0;
+ handler=async(_url,init)=>{if(JSON.parse(init.body).action==='getCustomerPage')remotePages++;throw Error('No unchanged customer or photo transfer is needed');};
+ const before=protectionCalls,stop=engine.startLocalSync();
+ try{await new Promise(resolve=>setTimeout(resolve,800));const status=await engine.getLocalStatus();assert.equal(status.syncing,false);assert.equal(status.downloading,false);assert.equal(status.mediaPending,0);assert.equal(status.pending,0);assert.equal(remotePages,0);assert.equal(protectionCalls,before+1,'startup performs one lightweight revision check');assert.equal((await repository.read(scope)).records.filter(item=>item.customer.photoIndexWaiting).length,0);}
+ finally{stop();protectionOverride=undefined;photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
 test('2000 unchanged photos transfer zero; one new remote photo transfers once on the next sync',async()=>{
  storage.clear();connect('incremental-2000');navigator.onLine=true;const scope='user-a:tenant-a:incremental-2000';
  const entries=Array.from({length:2000},(_,i)=>({fileId:`file-${i}`,customerId:`ID-${i}`,url:`https://drive.google.com/file/d/file-${i}/view`,version:'1',revision:i+1,deleted:false}));
