@@ -3084,15 +3084,26 @@ function recordSyncChange(sheet,recordId,action,operationId,connectionId){
   ledger.appendRow([recordId,action,operationId,connectionId,new Date().toISOString()]);SpreadsheetApp.flush();
 }
 function customerChangeTriggersReady(authUser){
-  if(typeof ScriptApp==="undefined"||typeof ScriptApp.getProjectTriggers!=="function"||typeof ScriptApp.newTrigger!=="function")return false;
-  try{
-    const id=authUser.spreadsheetId,installed=ScriptApp.getProjectTriggers();
-    for(const [handler,event] of [["bankSetuCustomerEdited","onEdit"],["bankSetuCustomerStructureChanged","onChange"]]){
-      if(installed.some(trigger=>trigger.getHandlerFunction()===handler&&trigger.getTriggerSourceId()===id))continue;
-      ScriptApp.newTrigger(handler).forSpreadsheet(id)[event]().create();
-    }
-    return true;
-  }catch(error){return false;} // Keep the full scan when triggers cannot be verified.
+  try{return installCustomerChangeTriggers(authUser.spreadsheetId);}
+  catch(error){return false;} // Keep the full scan when triggers cannot be verified.
+}
+function installCustomerChangeTriggers(id){
+  if(!id||typeof ScriptApp==="undefined"||typeof ScriptApp.getProjectTriggers!=="function"||typeof ScriptApp.newTrigger!=="function")
+    throw new Error("Sheet change triggers cannot be installed for this workspace.");
+  const installed=ScriptApp.getProjectTriggers();
+  for(const [handler,event] of [["bankSetuCustomerEdited","onEdit"],["bankSetuCustomerStructureChanged","onChange"]]){
+    if(installed.some(trigger=>trigger.getHandlerFunction()===handler&&trigger.getTriggerSourceId()===id))continue;
+    ScriptApp.newTrigger(handler).forSpreadsheet(id)[event]().create();
+  }
+  return true;
+}
+// Run once from the bound Apps Script editor if the authenticated diagnostic
+// reports that Sheet triggers are unavailable. Google presents required OAuth
+// permissions to the script owner; no customer row or local queue is changed.
+function authorizeBankSetuChangeJournal(){
+  const id=getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID")||LEGACY_SPREADSHEET_ID;
+  if(!id)throw new Error("Configure the workspace spreadsheet in Script Properties first.");
+  return installCustomerChangeTriggers(id);
 }
 function bankSetuManualSheet(event){
   const book=event&&event.source;
