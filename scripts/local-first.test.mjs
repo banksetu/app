@@ -922,3 +922,44 @@ test('offline replacement followed by text edit keeps one upload and cannot rest
  await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Changed text',photoUrl:'old-file'}});
  const state=await repository.read(scope);assert.equal(state.operations.filter(op=>op.customer.photoDataUrl).length,1);assert.equal(state.operations[1].customer.photoUrl,undefined);assert.equal(state.operations[1].customer.photoDataUrl,undefined);
 });
+test('durable change cursor downloads one changed record, applies deletion, and skips unchanged pages',async()=>{
+ storage.clear();connect('delta-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:delta-device',oldId=crypto.randomUUID(),newId=crypto.randomUUID(),now=Date.now();
+ await repository.transact(scope,state=>{
+  state.records=[{key:oldId,scope,recordId:oldId,rowNumber:2,revision:'old',pending:false,customer:{...customer,recordId:oldId}}];
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-1000,lastFullCheckAt:now-1000,changeCursor:4,changeEpoch:'synthetic-epoch',remoteRevision:'baseline'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'delta-device',incremental:true,changeCursor:6,changeEpoch:'synthetic-epoch',changedIds:[newId],deletedIds:[oldId],hasMoreChanges:false};
+ let pages=0,batches=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage'){pages++;throw Error('A valid delta must not download the full Sheet');}
+  assert.equal(body.action,'getCustomerChanges');assert.equal(body.changeEpoch,'synthetic-epoch');batches++;assert.deepEqual(body.recordIds,[newId]);return Response.json({success:true,customers:[{...customer,recordId:newId,rowNumber:3,revision:'new'}],deletedIds:[]});};
+ try{
+  await engine.syncNow(true);
+  let state=await repository.read(scope);assert.equal(pages,0);assert.equal(batches,1);assert.equal(state.pull.changeCursor,6);
+  assert.equal(state.records.find(item=>item.recordId===oldId).deleted,true);
+  assert.equal(state.records.find(item=>item.recordId===newId).customer.name,customer.name);
+  protectionOverride={...protectionOverride,changedIds:[],deletedIds:[],changeCursor:6};
+  await engine.syncNow(true);state=await repository.read(scope);assert.equal(batches,1);assert.equal(pages,0);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('same cloud revision repairs 100 missing local IDs without downloading 2,000 rows',async()=>{
+ storage.clear();connect('gap-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:gap-device',now=Date.now();
+ const ids=Array.from({length:2000},(_,i)=>`00000000-0000-4000-8000-${String(i).padStart(12,'0')}`);
+ await repository.transact(scope,state=>{
+  state.records=ids.slice(0,1900).map((id,i)=>({key:id,scope,recordId:id,rowNumber:i+2,revision:'r1',pending:false,customer:{...customer,recordId:id}}));
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-1000,remoteRevision:'same'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'gap-device',changeEpoch:'epoch',changeCursor:12,remoteRevision:'same',activeIds:ids,deletedIds:[]};
+ let batches=0,pages=0,transferred=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='getCustomerPage'){pages++;throw Error('Gap recovery must not transfer unchanged rows');}
+  assert.equal(body.action,'getCustomerChanges');batches++;transferred+=body.recordIds.length;
+  return Response.json({success:true,customers:body.recordIds.map(id=>({...customer,recordId:id,rowNumber:ids.indexOf(id)+2,revision:'r1'})),deletedIds:[]});};
+ try{await engine.syncNow(true);const state=await repository.read(scope);
+  assert.equal(state.records.length,2000);assert.equal(batches,2);assert.equal(transferred,100);assert.equal(pages,0);
+  assert.equal(state.pull.changeEpoch,'epoch');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});

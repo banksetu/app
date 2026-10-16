@@ -159,7 +159,7 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 const remoteDiscoveries=new Map<string,number>();
-async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {remoteRevision?:string;cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
+async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {remoteRevision?:string;changeCursor?:number;changeEpoch?:string;lastFullCheckAt?:number;cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   let discovered=0,notifyRemote=false;
   await repository.transact(scope, state => {
@@ -183,7 +183,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if(value.hasNextPage){
         if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
         state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
-      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize,remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
+      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),lastFullCheckAt:checkpoint.lastFullCheckAt,changeCursor:checkpoint.changeCursor,changeEpoch:checkpoint.changeEpoch,cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize,remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
     }
     applyPhotoIndex(state);
     trimCache(state);
@@ -222,7 +222,7 @@ export function resetSyncSession() {
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
-type SyncProtection = {photoIndexVersion?:number;afsmVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[]};
+type SyncProtection = {photoIndexVersion?:number;afsmVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[];incremental?:boolean;changeCursor?:number;changeEpoch?:string;changedIds?:string[];hasMoreChanges?:boolean};
 export type BridgeDiagnostic = {publicStatus:string; authenticatedStatus:string; photoIndex:string; afsm:string; connection:string};
 /** Read-only probe of the actual saved /exec URL. Never returns a URL, token, or customer data. */
 export async function diagnoseSyncBridge():Promise<BridgeDiagnostic> {
@@ -260,11 +260,12 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
     if(protection.code==="CONNECTION_CHANGED")throw new Error("Workspace connection changed. Reconnect this tenant's Google Sheet/Drive in Bank Setu; local changes remain pending.");
     if(protection.message)throw new Error(`Sync protection check failed: ${protection.message} Local changes remain pending.`);
   }
-  if(!protection.success||protection.protectionVersion!==1||!Array.isArray(protection.activeIds)||!Array.isArray(protection.deletedIds))
+  if(!protection.success||protection.protectionVersion!==1||!Array.isArray(protection.deletedIds)||(!protection.incremental&&!Array.isArray(protection.activeIds))||
+     (protection.incremental&&(!Array.isArray(protection.changedIds)||!Number.isSafeInteger(protection.changeCursor)||!protection.changeEpoch)))
     throw new Error("Sync protection could not be verified. Deploy the updated tenant Code.gs; local changes remain pending.");
   if(protection.connectionId!==sessionStorage.getItem("bankSetuConnectionId"))
     throw new Error("Sync protection belongs to another workspace connection. Reconnect this tenant's Google Sheet/Drive; local changes remain pending.");
-  const active=new Set(protection.activeIds),deleted=new Set(protection.deletedIds);
+  const active=new Set(protection.activeIds||[]),deleted=new Set(protection.deletedIds);
   await repository.transact(scope,state=>{
     if(protection.photoIndexVersion===1&&!state.photoIndex?.complete&&!state.photoPresence)for(const record of state.records){
       if(!record.customer.photoUrl&&!record.customer.photoAvailable&&!record.customer.photoDataUrl&&record.customer.photoState!=="NO_PHOTO")record.customer.photoIndexWaiting=true;
@@ -275,7 +276,7 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
       state.records=[];state.operations=[];state.pull=undefined;state.resetId=protection.resetId;
     }
     for(const record of state.records){
-      if(!deleted.has(record.recordId)&&!(record.revision&&!active.has(record.recordId)))continue;
+      if(!deleted.has(record.recordId)&&!( !protection.incremental && record.revision&&!active.has(record.recordId)))continue;
       record.deleted=true;
       for(const operation of state.operations.filter(op=>op.recordId===record.recordId)){
         if(operation.action==="deleteCustomer")state.operations=state.operations.filter(op=>op.operationId!==operation.operationId);
@@ -337,13 +338,13 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   const initial = await repository.read(scope);
   if(afsmBridgeUpgrade.get(scope)?.url!==url)afsmBridgeUpgrade.delete(scope);
   if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
-  let shouldPull=refresh || !!initial.pull?.cursor || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
+  let shouldPull=refresh || !!initial.pull?.cursor || !!initial.pull?.changePending || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
   const pending=initial.operations.some(operation=>operation.state==="pending");
   const photoRetryDue=Date.now()-(photoInventoryRetry.get(scope)||0)>=60000;
   const photoCheckDue=!!initial.photoDiscoveryError&&photoRetryDue || initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || !!initial.records.length&&!initial.photoIndex&&!initial.photoPresence&&photoRetryDue || !!initial.photoIndex && (initial.photoIndex.complete?Date.now()-initial.photoIndex.checkedAt>=IDLE_RECONCILE_MS:photoRetryDue);
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<IDLE_RECONCILE_MS){await hashPhotoBaseline(scope,signal);return;}
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
-  const protection=await send({action:"getSyncProtection"}) as SyncProtection;
+  const protection=await send({action:"getSyncProtection",...(initial.pull?.changeEpoch&&initial.pull?.changeCursor!==undefined&&!initial.pull.cursor&&initial.pull.lastCompletedAt&&initial.pull.lastFullCheckAt?{changeEpoch:initial.pull.changeEpoch,changeCursor:initial.pull.changeCursor,lastFullCheckAt:initial.pull.lastFullCheckAt}:{})}) as SyncProtection;
   await applySyncProtection(scope,protection);
   // Only the authenticated, connection-checked POST can retire an old AFSM
   // bridge warning. GET /status alone does not prove the write route works.
@@ -353,10 +354,41 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     else if(state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE)state.photoDiscoveryError="";
   });
   if(protection.photoIndexVersion!==1)photoInventoryRetry.set(scope,Date.now());
+  if(protection.incremental){
+    shouldPull=false;
+    const ids=[...new Set(protection.changedIds||[])];
+    for(let offset=0;offset<ids.length;offset+=50){
+      const batch=ids.slice(offset,offset+50);
+      const value=await send({action:"getCustomerChanges",changeEpoch:protection.changeEpoch,recordIds:batch});
+      const returned=new Set([...(Array.isArray(value.customers)?value.customers:[]).map((item:Customer)=>item.recordId),...(Array.isArray(value.deletedIds)?value.deletedIds:[])]);
+      if(!value.success||!Array.isArray(value.customers)||!Array.isArray(value.deletedIds)||
+         value.customers.some((item:Customer)=>!item.recordId)||returned.size!==batch.length||batch.some(id=>!returned.has(id)))
+        throw new Error("Customer change batch was incomplete; device checkpoint retained.");
+      await cacheResponse(scope,value);
+    }
+    if(protection.deletedIds?.length)await applySyncProtection(scope,{...protection,deletedIds:protection.deletedIds,changedIds:[]});
+    await repository.transact(scope,state=>{if(state.pull){state.pull.changeCursor=protection.changeCursor;state.pull.changeEpoch=protection.changeEpoch;state.pull.changePending=protection.hasMoreChanges===true;state.pull.lastCompletedAt=Date.now();}});
+  }
+  // A lost local row cannot be found from a remote cursor alone. The hourly
+  // authoritative ID inventory repairs small gaps without transferring every
+  // unchanged customer, including equal-count inventories with different IDs.
+  if(!protection.incremental&&protection.changeEpoch&&protection.remoteRevision===initial.pull?.remoteRevision&&initial.pull?.lastCompletedAt){
+    const known=new Set((await repository.read(scope)).records.map(record=>record.recordId));
+    const missing=(protection.activeIds||[]).filter(id=>!known.has(id));
+    if(missing.length>0&&missing.length<=500&&missing.every(id=>/^[a-f0-9-]{36}$/i.test(id))){
+      for(let offset=0;offset<missing.length;offset+=50){
+        const batch=missing.slice(offset,offset+50),value=await send({action:"getCustomerChanges",changeEpoch:protection.changeEpoch,recordIds:batch});
+        const returned=new Set([...(Array.isArray(value.customers)?value.customers:[]).map((item:Customer)=>item.recordId),...(Array.isArray(value.deletedIds)?value.deletedIds:[])]);
+        if(!value.success||!Array.isArray(value.customers)||!Array.isArray(value.deletedIds)||returned.size!==batch.length||batch.some(id=>!returned.has(id)))
+          throw new Error("Missing customer recovery was incomplete; checkpoint retained.");
+        await cacheResponse(scope,value);
+      }
+    }else if(missing.length)shouldPull=true;
+  }
   if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision &&
      (!pending || initial.operations.every(op=>op.state!=="pending" || (op.action==="markAfsmSent" && (afsmBridgeUpgrade.get(scope)?.retryAt||0)>Date.now())))){
     shouldPull=false;
-    await repository.transact(scope,state=>{if(state.pull)state.pull.lastCompletedAt=Date.now();});
+    await repository.transact(scope,state=>{if(state.pull){state.pull.lastCompletedAt=Date.now();state.pull.lastFullCheckAt=Date.now();state.pull.changeCursor=protection.changeCursor;state.pull.changeEpoch=protection.changeEpoch;}});
   }
   const afsmDeferred=()=>!!afsmBridgeUpgrade.get(scope) && afsmBridgeUpgrade.get(scope)!.retryAt>Date.now() && !refresh;
   const pendingQueue=initial.operations.filter(op=>op.state==="pending");
@@ -404,7 +436,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   for(let page=0;shouldPull && page<4 && Date.now()-started<20000;page++) {
     if(identity()!==scope)return;
     const state=await repository.read(scope);
-    const pull=state.pull?.cursor ? state.pull : {...state.pull,cursor:0,seen:[],startedAt:Date.now(),remoteRevision:protection.remoteRevision};
+    const pull=state.pull?.cursor ? state.pull : {...state.pull,cursor:0,seen:[],startedAt:Date.now(),remoteRevision:protection.remoteRevision,changeCursor:protection.changeCursor,changeEpoch:protection.changeEpoch,lastFullCheckAt:Date.now()};
     const pageSize=Math.min(250,Math.max(25,pull.pageSize||250));
     let value: Record<string,unknown>;
     try {value=await send({action:"getCustomerPage",cursor:pull.cursor,pageSize});}
@@ -678,7 +710,7 @@ export function startLocalSync() {
           if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"){
             const scope=identity();const refresh=refreshRequested;refreshRequested=false;await syncNow(refresh,signal);if(stopped||signal.aborted)return;
             if(identity()===scope){const state=await repository.read(scope);const afsmWaiting=afsmBridgeUpgrade.get(scope);const afsmBlocked=afsmWaiting?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&afsmWaiting.retryAt>Date.now();const oldPhotoBridge=state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE;
-              if(state.pull?.cursor||state.operations.some(op=>op.state==="pending" && (op.action!=="markAfsmSent"||!afsmBlocked))||(!oldPhotoBridge&&state.records.some(needsPhoto)))delay=250;
+              if(state.pull?.cursor||state.pull?.changePending||state.operations.some(op=>op.state==="pending" && (op.action!=="markAfsmSent"||!afsmBlocked))||(!oldPhotoBridge&&state.records.some(needsPhoto)))delay=250;
               else {const waiting=oldPhotoBridge?[]:state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||Date.now()))-Date.now()));
                 if(afsmBlocked)delay=Math.min(delay,Math.max(1000,afsmWaiting.retryAt-Date.now()));
                 if(state.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash))delay=250;
