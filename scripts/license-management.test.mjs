@@ -61,7 +61,8 @@ test('reference lower panels and table selection render without duplicate tenant
 });
 
 test('future upgrade cannot pause an active Annual tenant',()=>{
- const future=new Date(now+86400000).toISOString().slice(0,10);
+ // Keep the chosen date in the future in India even when CI runs after 18:30 UTC.
+ const future=new Date(now+3*86400000).toISOString().slice(0,10);
  const html=render(true,{14:[license],15:[{tenantId:'test-tenant',name:'Synthetic Client'}],18:'test-tenant',19:'lifetime',20:future,29:'tenants',38:true});
  assert(html.includes('Choose today for an active Annual'));
  assert(/<button[^>]*disabled=""[^>]*>Confirm Payment &amp; Upgrade to Lifetime<\/button>/.test(html));
