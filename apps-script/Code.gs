@@ -3195,7 +3195,8 @@ function syncProtection(request, authUser) {
   // of Sheet cells or acquire the sync lock. GET /status cannot establish
   // which POST deployment and workspace the application is actually using.
   if (request.action === "getSyncProtection" && request.capabilitiesOnly === true)
-    return jsonResponse({success:true,protectionVersion:1,photoIndexVersion:1,afsmVersion:1,connectionId:authUser.connectionId});
+    return jsonResponse({success:true,protectionVersion:1,photoIndexVersion:1,afsmVersion:1,connectionId:authUser.connectionId,
+      ...(request.diagnoseTriggers===true?{changeJournalReady:customerChangeTriggersReady(authUser)}:{})});
   if (request.action === "publishLocalReset" && !["client_admin","master_owner","admin"].includes(authUser.role))
     throw new Error("Administrator permission is required.");
   const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))return syncBusyResponse();
@@ -3232,7 +3233,7 @@ function syncProtection(request, authUser) {
       const relevant=events.filter(row=>row[3]===authUser.connectionId||row[3]==="MANUAL");
       const latestById=new Map();for(const row of relevant)if(row[0])latestById.set(row[0],row[1]);
       if(!relevant.some(row=>row[1]==="RECONCILE"))return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,photoIndexVersion:1,afsmVersion:1,
-        incremental:true,changeEpoch:epoch,changeCursor:cursor+size,hasMoreChanges:cursor+size<latestChange,
+        incremental:true,changeJournalReady:true,changeEpoch:epoch,changeCursor:cursor+size,hasMoreChanges:cursor+size<latestChange,
         changedIds:[...latestById].filter(([,action])=>action==="UPSERT").map(([id])=>id),deletedIds:[...latestById].filter(([,action])=>action==="DELETE").map(([id])=>id)});
     }
     ensureSyncMetadata(sheet);
@@ -3245,7 +3246,7 @@ function syncProtection(request, authUser) {
       if(remove){changes.deleteRows(2,remove);SpreadsheetApp.flush();latestChange-=remove;}
       if(!latestChange){changes.getRange(1,7,1,1).setValues([[""]]);SpreadsheetApp.flush();}
     }
-    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,changeEpoch:epoch,changeCursor:latestChange,photoIndexVersion:1,afsmVersion:1,
+    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,changeJournalReady:triggersReady,changeEpoch:epoch,changeCursor:latestChange,photoIndexVersion:1,afsmVersion:1,
       activeIds:rows.filter(row=>row[26]!=="true").map(row=>String(row[24])).filter(Boolean),
       deletedIds:syncDeletionRows(sheet,authUser.connectionId).map(row=>String(row[0]))});
   } finally {lock.releaseLock();}

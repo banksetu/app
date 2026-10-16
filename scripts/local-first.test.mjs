@@ -963,3 +963,34 @@ test('same cloud revision repairs 100 missing local IDs without downloading 2,00
   assert.equal(state.pull.changeEpoch,'epoch');
  }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
+
+test('a transient fetch failure retries a read once, completes the checkpoint and returns to idle',async()=>{
+ storage.clear();connect('read-network-retry');navigator.onLine=true;
+ const scope='user-a:tenant-a:read-network-retry',recordId=crypto.randomUUID();
+ protectionOverride={success:true,protectionVersion:1,connectionId:'read-network-retry',activeIds:[recordId],deletedIds:[],remoteRevision:'r1'};
+ let reads=0;
+ handler=async(_url,init)=>{
+  assert.equal(JSON.parse(init.body).action,'getCustomerPage');
+  if(++reads===1)throw new TypeError('Failed to fetch');
+  return Response.json({success:true,customers:[{...customer,recordId,rowNumber:2,revision:'r1'}],hasNextPage:false});
+ };
+ try{
+  await engine.syncNow(true);
+  assert.equal(reads,2);assert.equal((await repository.read(scope)).records.length,1);
+  assert.equal((await engine.getLocalStatus()).syncing,false);assert.equal((await engine.getLocalStatus()).syncStage,'');assert.equal((await engine.getLocalStatus()).error,'');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('a failed write is never repeated speculatively and its pending operation remains durable',async()=>{
+ storage.clear();connect('write-network-retry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer});
+ const scope='user-a:tenant-a:write-network-retry',operation=(await repository.read(scope)).operations[0].operationId;
+ navigator.onLine=true;let writes=0;
+ handler=async(_url,init)=>{assert.equal(JSON.parse(init.body).action,'syncCustomerOperation');writes++;throw new TypeError('Failed to fetch');};
+ try{
+  await assert.rejects(engine.syncNow(true),/syncCustomerOperation request could not reach/);
+  const state=await repository.read(scope);
+  assert.equal(writes,1);assert.equal(state.operations.length,1);assert.equal(state.operations[0].operationId,operation);
+  assert.equal(state.operations[0].state,'pending');assert.equal(state.records[0].recordId,saved.recordId);
+ }finally{navigator.onLine=false;}
+});
