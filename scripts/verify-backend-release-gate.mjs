@@ -1,6 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 
+// The release gate checks the exact source commit after backend deployment.
 export async function verifyBackendReleaseGate({repository,token,sourceCommit,fetchImpl=fetch}){
  if(!repository||!token)throw Error('GitHub Actions backend verification credentials are unavailable.');
  if(!/^[a-f0-9]{40}$/.test(sourceCommit))throw Error('Cannot identify the current backend source commit.');
