@@ -1,8 +1,76 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import fs from 'node:fs';import crypto from 'node:crypto';
-function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new Map();const book={getSheetByName:name=>tabs.get(name),insertSheet(name){const tab=makeSheet([[]]);tabs.set(name,tab);return tab;}};function makeSheet(data){let maxColumns=27;return {getParent:()=>book,hideSheet(){},getMaxColumns:()=>maxColumns,getLastColumn:()=>Math.max(27,...data.map(row=>row.length)),insertColumnsAfter:(_col,count)=>{maxColumns+=count;},getLastRow:()=>data.length,appendRow:row=>data.push(row),deleteRow:row=>data.splice(row-1,1),getRange(start,col,count,width){return {getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[start+i-1]?.[col+j-1]||'')),getDisplayValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>String(data[start+i-1]?.[col+j-1]||''))),setValues(values){values.forEach((row,i)=>{data[start+i-1] ||= [];row.forEach((cell,j)=>data[start+i-1][col+j-1]=cell);});}};}};}const sheet=makeSheet(rows);
+function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new Map();const book={getSheetByName:name=>tabs.get(name),insertSheet(name){const tab=makeSheet([[]]);tabs.set(name,tab);return tab;}};function makeSheet(data){let maxColumns=27;return {getParent:()=>book,hideSheet(){},getMaxColumns:()=>maxColumns,getLastColumn:()=>Math.max(27,...data.map(row=>row.length)),insertColumnsAfter:(_col,count)=>{maxColumns+=count;},getLastRow:()=>data.length,appendRow:row=>data.push(row),deleteRow:row=>data.splice(row-1,1),deleteRows:(start,count)=>data.splice(start-1,count),getRange(start,col,count,width){return {getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>data[start+i-1]?.[col+j-1]||'')),getDisplayValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>String(data[start+i-1]?.[col+j-1]||''))),setValues(values){values.forEach((row,i)=>{data[start+i-1] ||= [];row.forEach((cell,j)=>data[start+i-1][col+j-1]=cell);});}};}};}const sheet=makeSheet(rows);
  const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),formatDate:date=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata'}).format(date),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
+test('incremental journal is idempotent and returns only changed rows for this connection',()=>{
+ const {context,rows,tabs}=bridge();
+ const id=crypto.randomUUID(),op=makeOp(id),saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
+ assert(saved.success);
+ const journal=tabs.get('BANKSETU_CUSTOMER_CHANGES');assert.equal(journal.getLastRow(),2);
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).replayed);
+ assert.equal(journal.getLastRow(),2,'retry does not append the same event');
+ context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
+ {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('already installed')}};
+ const actor={...user,spreadsheetId:'synthetic-sheet'};
+ const epoch=journal.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6);
+ const delta=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:epoch,changeCursor:0,lastFullCheckAt:Date.now()},actor);
+ assert.equal(delta.incremental,true);assert.equal(delta.changeCursor,1);assert.deepEqual(Array.from(delta.changedIds),[id]);
+ assert.equal(rows.length,2);
+ const batch=context.getCustomerChanges({connectionId:'bound',changeEpoch:epoch,recordIds:[id]},actor);
+ assert.equal(batch.customers.length,1);assert.equal(batch.customers[0].recordId,id);
+ assert.equal(context.getCustomerChanges({connectionId:'other',changeEpoch:epoch,recordIds:[id]},actor).code,'CONNECTION_CHANGED');
+});
+test('incremental journal preserves a deletion tombstone and resolves latest action',()=>{
+ const {context,tabs}=bridge(),id=crypto.randomUUID(),op=makeOp(id);
+ const saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
+ const deletion={...op,operationId:crypto.randomUUID(),action:'deleteCustomer',baseRevision:saved.revision};
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:deletion},user).deleted);
+ const journal=tabs.get('BANKSETU_CUSTOMER_CHANGES');assert.equal(journal.getLastRow(),3);
+ context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
+ {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('already installed')}};
+ const actor={...user,spreadsheetId:'synthetic-sheet'};
+ const epoch=journal.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6);
+ const delta=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:epoch,changeCursor:0,lastFullCheckAt:Date.now()},actor);
+ assert.equal(delta.incremental,true);assert.deepEqual(Array.from(delta.deletedIds),[id]);assert.equal(delta.changedIds.length,0);
+ assert.deepEqual(Array.from(context.getCustomerChanges({connectionId:'bound',changeEpoch:epoch,recordIds:[id]},actor).deletedIds),[id]);
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:deletion},user).replayed);
+ assert.equal(journal.getLastRow(),3);
+});
+test('old cloud history compacts in bounded batches and stale devices rebootstrap',()=>{
+ const {context,tabs}=bridge(),actor={...user,spreadsheetId:'synthetic-sheet'};
+ context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
+ {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('already installed')}};
+ const first=context.syncProtection({action:'getSyncProtection',connectionId:'bound'},actor);
+ const journal=tabs.get('BANKSETU_CUSTOMER_CHANGES'),old=new Date(Date.now()-31*86400000).toISOString();
+ for(let i=0;i<10001;i++)journal.appendRow([crypto.randomUUID(),'UPSERT',crypto.randomUUID(),'bound',old]);
+ const result=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()},actor);
+ assert.equal(result.incremental,undefined);assert.notEqual(result.changeEpoch,first.changeEpoch);
+ assert.equal(journal.getLastRow(),9002);assert.equal(journal.getRange(1,7,1,1).getDisplayValues()[0][0],'COMPACTING');
+ assert.equal(context.getCustomerChanges({connectionId:'bound',changeEpoch:first.changeEpoch,recordIds:[]},actor).code,'REBASE_REQUIRED');
+ for(let i=0;i<9;i++)context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:result.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()},actor);
+ assert.equal(journal.getLastRow(),2);
+ const final=context.syncProtection({action:'getSyncProtection',connectionId:'bound'},actor);
+ assert.equal(final.changeEpoch,result.changeEpoch);assert.equal(final.changeCursor,0);
+ assert.equal(journal.getLastRow(),1);
+ assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()},actor).incremental,undefined);
+});
+test('manual Sheet edit is journaled and manual row removal forces a safe full reconciliation',()=>{
+ const {context,rows,tabs}=bridge(),actor={...user,spreadsheetId:'synthetic-sheet'},id=crypto.randomUUID();
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:makeOp(id)},user).success);
+ const journal=tabs.get('BANKSETU_CUSTOMER_CHANGES'),epoch=journal.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6);
+ context.bankSetuManualSheet=()=>context.getSheet(actor);
+ context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
+ {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('already installed')}};
+ rows[1][2]='Edited in Sheet';
+ context.bankSetuCustomerEdited({range:{getSheet:()=>({getName:()=> 'Sheet1'}),getRow:()=>2,getNumRows:()=>1}});
+ let delta=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:epoch,changeCursor:1,lastFullCheckAt:Date.now()},actor);
+ assert.equal(delta.incremental,true);assert.deepEqual(Array.from(delta.changedIds),[id]);
+ assert.equal(context.getCustomerChanges({connectionId:'bound',changeEpoch:epoch,recordIds:[id]},actor).customers[0].name,'Edited in Sheet');
+ rows.splice(1,1);context.bankSetuCustomerStructureChanged({changeType:'REMOVE_ROW',source:{}});
+ delta=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:epoch,changeCursor:2,lastFullCheckAt:Date.now()},actor);
+ assert.equal(delta.incremental,undefined);assert.equal(delta.activeIds.length,0);
+});
 test('current client bridge advertises tenant isolation and license enforcement',()=>{
  const {context}=bridge();
  context.getBankSetuScriptProperty=key=>({BANKSETU_CLIENT_TENANT_ID:'synthetic-tenant',BANKSETU_CLIENT_SPREADSHEET_ID:'synthetic-sheet',BANKSETU_CLIENT_FOLDER_ID:'synthetic-folder'})[key]||'';

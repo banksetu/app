@@ -148,11 +148,12 @@ function doPost(e) {
       });
     }
 
-    if (["getPhotoPresence", "syncCustomerOperation", "getSyncProtection", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
+    if (["getPhotoPresence", "syncCustomerOperation", "getSyncProtection", "getCustomerChanges", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
       const authUser = requireAuthorizedUser(idToken, false, action);
       if (action === "getPhotoPresence") return getPhotoPresence(request,authUser);
       if (action === "syncCustomerOperation") return syncCustomerOperation(request, authUser);
       if (action === "getSyncProtection" || action === "publishLocalReset") return syncProtection(request, authUser);
+      if (action === "getCustomerChanges") return getCustomerChanges(request, authUser);
       if (action === "markPassbookPrinted") {
         if (authUser.tenantId && authUser.connectionId) return jsonResponse({success:false,code:"SYNC_REQUIRED",message:"Use the stable-ID sync operation for this workspace."});
         return markPassbookDelivered(request.rowNumber, authUser);
@@ -3060,6 +3061,95 @@ function syncDeletionRows(sheet, connectionId) {
   return ledger && ledger.getLastRow() > 1 ? ledger.getRange(2, 1, ledger.getLastRow() - 1, 3).getDisplayValues().filter(row => row[2] === connectionId) : [];
 }
 const SYNC_RESET_SHEET = "BANKSETU_SYNC_RESETS";
+const SYNC_CHANGES_SHEET = "BANKSETU_CUSTOMER_CHANGES";
+function syncChangeSheet(sheet, create) {
+  const book=sheet.getParent();let ledger=book.getSheetByName(SYNC_CHANGES_SHEET);
+  if(!ledger&&create){ledger=book.insertSheet(SYNC_CHANGES_SHEET);ledger.getRange(1,1,1,7).setValues([["RECORD ID","ACTION","OPERATION ID","CONNECTION ID","AT","EPOCH:"+Utilities.getUuid(),""]]);ledger.hideSheet();}
+  if(ledger&&ledger.getRange(1,1,1,4).getDisplayValues()[0].join("|")!=="RECORD ID|ACTION|OPERATION ID|CONNECTION ID")
+    throw new Error("Customer change ledger name is in use. No sync cursor was advanced.");
+  if(ledger&&!String(ledger.getRange(1,6,1,1).getDisplayValues()[0][0]).startsWith("EPOCH:"))
+    throw new Error("Customer change ledger checkpoint is missing. No sync cursor was advanced.");
+  return ledger;
+}
+function recordSyncChange(sheet,recordId,action,operationId,connectionId){
+  const ledger=syncChangeSheet(sheet,true),count=ledger.getLastRow()-1;
+  // A timed-out operation can be replayed. Its customer row and its change
+  // event must both be repairable with the same stable operation identity.
+  if(count){
+    const column=ledger.getRange(2,3,count,1);
+    const found=typeof column.createTextFinder==="function"?column.createTextFinder(operationId).matchEntireCell(true).findNext()
+      :column.getDisplayValues().some(row=>row[0]===operationId);
+    if(found)return;
+  }
+  ledger.appendRow([recordId,action,operationId,connectionId,new Date().toISOString()]);SpreadsheetApp.flush();
+}
+function customerChangeTriggersReady(authUser){
+  if(typeof ScriptApp==="undefined"||typeof ScriptApp.getProjectTriggers!=="function"||typeof ScriptApp.newTrigger!=="function")return false;
+  try{
+    const id=authUser.spreadsheetId,installed=ScriptApp.getProjectTriggers();
+    for(const [handler,event] of [["bankSetuCustomerEdited","onEdit"],["bankSetuCustomerStructureChanged","onChange"]]){
+      if(installed.some(trigger=>trigger.getHandlerFunction()===handler&&trigger.getTriggerSourceId()===id))continue;
+      ScriptApp.newTrigger(handler).forSpreadsheet(id)[event]().create();
+    }
+    return true;
+  }catch(error){return false;} // Keep the full scan when triggers cannot be verified.
+}
+function bankSetuManualSheet(event){
+  const book=event&&event.source;
+  const allowed=getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID")||LEGACY_SPREADSHEET_ID;
+  if(!book||!allowed||book.getId()!==allowed)return null;
+  return book.getSheetByName(SHEET_NAME);
+}
+function bankSetuCustomerEdited(event){
+  const sheet=bankSetuManualSheet(event),range=event&&event.range;
+  if(!sheet||!range||range.getSheet().getName()!==SHEET_NAME||range.getRow()<2)return;
+  const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))throw new Error("Customer change event is busy; the next full audit will reconcile it.");
+  try{
+    if(range.getNumRows()>100){recordSyncChange(sheet,"","RECONCILE",Utilities.getUuid(),"MANUAL");return;}
+    for(let row=range.getRow();row<range.getRow()+range.getNumRows();row++){
+      let id=String(sheet.getRange(row,25,1,1).getDisplayValues()[0][0]||"");
+      if(!/^[a-f0-9-]{36}$/i.test(id)){
+        // Do not overwrite an existing custom value in the stable-ID column.
+        if(id){recordSyncChange(sheet,"","RECONCILE",Utilities.getUuid(),"MANUAL");continue;}
+        id=Utilities.getUuid();sheet.getRange(row,25,1,1).setValues([[id]]);
+      }
+      recordSyncChange(sheet,id,"UPSERT",Utilities.getUuid(),"MANUAL");
+    }
+  }finally{lock.releaseLock();}
+}
+function bankSetuCustomerStructureChanged(event){
+  if(!event||event.changeType==="EDIT"||event.changeType==="FORMAT")return;
+  const sheet=bankSetuManualSheet(event);if(!sheet)return;
+  const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))throw new Error("Structural change is busy; the next full audit will reconcile it.");
+  try{recordSyncChange(sheet,"","RECONCILE",Utilities.getUuid(),"MANUAL");}finally{lock.releaseLock();}
+}
+function getCustomerChanges(request,authUser){
+  if(request.connectionId!==authUser.connectionId||!authUser.connectionId)return jsonResponse({success:false,code:"CONNECTION_CHANGED"});
+  const ids=request.recordIds;
+  if(!Array.isArray(ids)||ids.length>50||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id)))throw new Error("Invalid changed customer IDs.");
+  const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))return syncBusyResponse();
+  try{
+    const ledger=syncChangeSheet(getSheet(authUser),true);
+    if(ledger.getRange(1,7,1,1).getDisplayValues()[0][0]||request.changeEpoch!==ledger.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6))
+      return jsonResponse({success:false,code:"REBASE_REQUIRED",message:"Customer change history was compacted; a full recovery scan is required."});
+    const sheet=getSheet(authUser),count=Math.max(0,sheet.getLastRow()-1),column=count?sheet.getRange(2,25,count,1):null;
+    const customers=[],deletedIds=[];
+    for(const id of [...new Set(ids)]){
+      let rowNumber=0;
+      if(column){
+        const found=typeof column.createTextFinder==="function"?column.createTextFinder(id).matchEntireCell(true).findNext():null;
+        if(found)rowNumber=found.getRow();
+        else if(typeof column.createTextFinder!=="function"){
+          const offset=column.getDisplayValues().findIndex(row=>row[0]===id);if(offset>=0)rowNumber=offset+2;
+        }
+      }
+      if(!rowNumber){deletedIds.push(id);continue;}
+      const row=sheet.getRange(rowNumber,1,1,syncDataWidth(sheet)).getDisplayValues()[0];
+      if(row[26]==="true")deletedIds.push(id);else customers.push(syncCustomerObject(row,rowNumber));
+    }
+    return jsonResponse({success:true,customers,deletedIds});
+  }finally{lock.releaseLock();}
+}
 function syncResetSheet(sheet, create) {
   const book = sheet.getParent();
   let ledger = book.getSheetByName(SYNC_RESET_SHEET);
@@ -3110,7 +3200,7 @@ function syncProtection(request, authUser) {
     throw new Error("Administrator permission is required.");
   const lock=LockService.getScriptLock();if(!acquireSyncLock(lock))return syncBusyResponse();
   try {
-    const sheet=getSheet(authUser);ensureSyncMetadata(sheet);
+    const sheet=getSheet(authUser);
     let ledger=syncResetSheet(sheet,request.action === "publishLocalReset");
     let resetId="";
     if (ledger) {
@@ -3124,9 +3214,38 @@ function syncProtection(request, authUser) {
         SpreadsheetApp.flush();
       } else if (index>=0) resetId=rows[index][1];
     }
+    const changes=syncChangeSheet(sheet,true);
+    let latestChange=changes.getLastRow()-1;
+    let epoch=changes.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6);
+    let compacting=changes.getRange(1,7,1,1).getDisplayValues()[0][0]==="COMPACTING";
+    if(!compacting&&latestChange>10000){
+      const oldest=Date.parse(changes.getRange(2,5,1,1).getDisplayValues()[0][0]);
+      if(latestChange>20000||(Number.isFinite(oldest)&&Date.now()-oldest>30*24*60*60*1000)){
+        epoch=Utilities.getUuid();changes.getRange(1,6,1,2).setValues([["EPOCH:"+epoch,"COMPACTING"]]);SpreadsheetApp.flush();compacting=true;
+      }
+    }
+    const triggersReady=customerChangeTriggersReady(authUser);
+    const cursor=Number(request.changeCursor);
+    if(!compacting&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange&&request.lastFullCheckAt&&Date.now()-Number(request.lastFullCheckAt)>=0&&Date.now()-Number(request.lastFullCheckAt)<60*60*1000){
+      const size=Math.min(500,latestChange-cursor);
+      const events=size?changes.getRange(cursor+2,1,size,4).getDisplayValues():[];
+      const relevant=events.filter(row=>row[3]===authUser.connectionId||row[3]==="MANUAL");
+      const latestById=new Map();for(const row of relevant)if(row[0])latestById.set(row[0],row[1]);
+      if(!relevant.some(row=>row[1]==="RECONCILE"))return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,photoIndexVersion:1,afsmVersion:1,
+        incremental:true,changeEpoch:epoch,changeCursor:cursor+size,hasMoreChanges:cursor+size<latestChange,
+        changedIds:[...latestById].filter(([,action])=>action==="UPSERT").map(([id])=>id),deletedIds:[...latestById].filter(([,action])=>action==="DELETE").map(([id])=>id)});
+    }
+    ensureSyncMetadata(sheet);
     const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,syncDataWidth(sheet)).getDisplayValues():[];
     const remoteRevision=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(rows)).map(byte=>(byte+256).toString(16).slice(-2)).join("");
-    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,photoIndexVersion:1,afsmVersion:1,
+    if(compacting){
+      // A new epoch was committed first. Any interrupted cleanup forces every
+      // device through this full, authoritative scan before it can use a cursor.
+      const remove=Math.min(1000,latestChange);
+      if(remove){changes.deleteRows(2,remove);SpreadsheetApp.flush();latestChange-=remove;}
+      if(!latestChange){changes.getRange(1,7,1,1).setValues([[""]]);SpreadsheetApp.flush();}
+    }
+    return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,changeEpoch:epoch,changeCursor:latestChange,photoIndexVersion:1,afsmVersion:1,
       activeIds:rows.filter(row=>row[26]!=="true").map(row=>String(row[24])).filter(Boolean),
       deletedIds:syncDeletionRows(sheet,authUser.connectionId).map(row=>String(row[0]))});
   } finally {lock.releaseLock();}
@@ -3288,12 +3407,14 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
     if (deleted) {
       if (op.action !== "deleteCustomer" || deleted[1] !== op.operationId) return jsonResponse({success:false,code:"CONFLICT",message:"This customer was already deleted."});
       if (existing) { deleteSyncedCustomerDriveFiles(existing, authUser); sheet.deleteRow(index+2); SpreadsheetApp.flush(); }
+      recordSyncChange(sheet,op.recordId,"DELETE",op.operationId,authUser.connectionId);
       return jsonResponse({success:true,replayed:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
     const operations = existing && existing[25] ? JSON.parse(existing[25]) : [];
     if (operations.includes(op.operationId)) {
       const wasDeleted = op.action === "deleteCustomer" && existing[26] === "true";
       if (wasDeleted) deleteSyncedCustomerDriveFiles(existing, authUser);
+      recordSyncChange(sheet,op.recordId,wasDeleted?"DELETE":"UPSERT",op.operationId,authUser.connectionId);
       return jsonResponse({success:true,replayed:true,rowNumber:index+2,revision:syncRevision(existing),deleted:wasDeleted,driveDeleted:wasDeleted,customer:syncCustomerObject(existing,index+2)});
     }
     if (existing && (existing[26] === "true" || op.baseRevision !== syncRevision(existing))) return jsonResponse({success:false,code:"CONFLICT",message:"This customer changed in Google Sheets. Both versions are retained for administrator review.",customer:syncCustomerObject(existing,index+2)});
@@ -3306,6 +3427,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       SpreadsheetApp.flush();
       sheet.deleteRow(index+2);
       SpreadsheetApp.flush();
+      recordSyncChange(sheet,op.recordId,"DELETE",op.operationId,authUser.connectionId);
       try { recordActivity(authUser,"DELETE",rowToCustomer(existing),"Customer deleted from Google Sheet and Drive."); } catch (error) { console.error(error); }
       return jsonResponse({success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:op.recordId});
     }
@@ -3320,6 +3442,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       sheet.getRange(index+2,columns["BANKSETU AFSM JSON"],1,1).setValues([["AFSM:"+JSON.stringify(value)]]);
       sheet.getRange(index+2,columns["Form Send to Branch"],1,1).setValues([[afsmCell(value)]]);
       sheet.getRange(index+2,26,1,1).setValues([[JSON.stringify(operations)]]);SpreadsheetApp.flush();
+      recordSyncChange(sheet,op.recordId,"UPSERT",op.operationId,authUser.connectionId);
       const saved=sheet.getRange(index+2,1,1,syncDataWidth(sheet)).getDisplayValues()[0];
       return jsonResponse({success:true,rowNumber:index+2,revision:syncRevision(saved),customer:syncCustomerObject(saved,index+2)});
     }
@@ -3394,6 +3517,7 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
       sheet.getRange(rowNumber,column,1,1).setValues([["PHOTO:"+JSON.stringify({photoRemoved:customer.photoRemoved===true,photoContentHash:customer.photoContentHash||""})]]);
     }
     SpreadsheetApp.flush();
+    recordSyncChange(sheet,op.recordId,"UPSERT",op.operationId,authUser.connectionId);
     const saved = sheet.getRange(rowNumber,1,1,syncDataWidth(sheet)).getDisplayValues()[0];
     const action = op.action === "markPassbookPrinted" ? "PASSBOOK_PRINTED" : op.action === "markPassbookDelivered" ? "PASSBOOK_DELIVERED" : existing ? "UPDATE" : "CREATE";
     const details = action === "UPDATE" ? activityChanges(rowToCustomer(existing),customer) : action === "PASSBOOK_PRINTED" ? "Passbook print was requested." : action === "PASSBOOK_DELIVERED" ? "Passbook marked delivered." : "Customer record created.";
