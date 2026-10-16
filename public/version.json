@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.84",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.84/BankSetu-Setup-1.0.84-x64.exe",
+  "latestVersion": "1.0.85",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.85/BankSetu-Setup-1.0.85-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.84",
-  "releaseTag": "v1.0.84",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.84",
-  "releaseDate": "2026-10-15",
-  "windowsVersion": "1.0.84",
-  "androidBuild": 1000084,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.84/BankSetu-Setup-1.0.84-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.84/BankSetu-Android-1000084.apk",
+  "version": "1.0.85",
+  "releaseTag": "v1.0.85",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.85",
+  "releaseDate": "2026-10-16",
+  "windowsVersion": "1.0.85",
+  "androidBuild": 1000085,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.85/BankSetu-Setup-1.0.85-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.85/BankSetu-Android-1000085.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.84",
-      "releaseDate": "2026-10-15",
+      "version": "1.0.85",
+      "releaseDate": "2026-10-16",
       "categories": {
         "Improvements": [
-          "Merge pull request 37 from banksetu/codex/sync-idle-state-20261015."
+          "Merge PR 38: stop completed sync from spinning."
         ]
       }
     },
     "android": {
-      "version": "1.0.84",
-      "releaseDate": "2026-10-15",
+      "version": "1.0.85",
+      "releaseDate": "2026-10-16",
       "categories": {
         "Improvements": [
-          "Merge pull request 37 from banksetu/codex/sync-idle-state-20261015."
+          "Merge PR 38: stop completed sync from spinning."
         ]
       }
     }
