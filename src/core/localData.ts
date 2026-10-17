@@ -192,6 +192,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
   announce();
 }
 const running = new Map<string, Promise<void>>();
+const syncStages = new Map<string,string>();
 const syncControllers = new Map<string, AbortController>();
 const resetting = new Set<string>();
 const syncErrors = new Map<string, string>();
@@ -222,14 +223,14 @@ export function resetSyncSession() {
   window.dispatchEvent(new Event("banksetu-sync-pause-change"));
   announce();
 }
-type SyncProtection = {photoIndexVersion?:number;afsmVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[];incremental?:boolean;changeCursor?:number;changeEpoch?:string;changedIds?:string[];hasMoreChanges?:boolean};
-export type BridgeDiagnostic = {publicStatus:string; authenticatedStatus:string; photoIndex:string; afsm:string; connection:string};
+type SyncProtection = {photoIndexVersion?:number;afsmVersion?:number;success?:boolean;code?:string;message?:string;remoteRevision?:string;protectionVersion?:number;connectionId?:string;resetId?:string;activeIds?:string[];deletedIds?:string[];incremental?:boolean;changeJournalReady?:boolean;changeCursor?:number;changeEpoch?:string;changedIds?:string[];hasMoreChanges?:boolean};
+export type BridgeDiagnostic = {publicStatus:string; authenticatedStatus:string; photoIndex:string; afsm:string; connection:string; changeJournal:string};
 /** Read-only probe of the actual saved /exec URL. Never returns a URL, token, or customer data. */
 export async function diagnoseSyncBridge():Promise<BridgeDiagnostic> {
   const scope=identity(),url=sessionStorage.getItem("bankSetuBridgeUrl"),connectionId=sessionStorage.getItem("bankSetuConnectionId");
   const user=auth.currentUser;
   if(!url||!connectionId||!user)throw new Error("Sign in and connect this workspace before checking its Apps Script bridge.");
-  const result:BridgeDiagnostic={publicStatus:"unavailable",authenticatedStatus:"not checked",photoIndex:"unverified",afsm:"unverified",connection:"unverified"};
+  const result:BridgeDiagnostic={publicStatus:"unavailable",authenticatedStatus:"not checked",photoIndex:"unverified",afsm:"unverified",connection:"unverified",changeJournal:"unverified"};
   try {
     const separator=url.includes("?")?"&":"?";
     const response=await networkFetch(url+separator+"action=status",{signal:AbortSignal.timeout(12000),cache:"no-store"});
@@ -239,7 +240,7 @@ export async function diagnoseSyncBridge():Promise<BridgeDiagnostic> {
   try {
     const idToken=await user.getIdToken();
     if(identity()!==scope)throw new Error("Workspace changed during verification.");
-    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getSyncProtection",capabilitiesOnly:true,connectionId,masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",idToken}),signal:AbortSignal.timeout(25000)});
+    const response=await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getSyncProtection",capabilitiesOnly:true,diagnoseTriggers:true,connectionId,masterLocalSync:sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true",idToken}),signal:AbortSignal.timeout(25000)});
     if(!response.ok){result.authenticatedStatus=`POST HTTP ${response.status}`;return result;}
     let value:SyncProtection & {afsmVersion?:number};
     try{value=await response.json();}catch{result.authenticatedStatus="POST invalid JSON";return result;}
@@ -250,6 +251,7 @@ export async function diagnoseSyncBridge():Promise<BridgeDiagnostic> {
     result.connection=value.connectionId===connectionId?"matched":"mismatch";
     result.photoIndex=value.photoIndexVersion===1?"supported":value.photoIndexVersion==null?"old bridge":"invalid response";
     result.afsm=value.afsmVersion===1?"supported":"unverified (legacy response)";
+    result.changeJournal=value.changeJournalReady===true?"ready":value.changeJournalReady===false?"Sheet triggers unavailable; full scans required":"not reported";
     return result;
   }catch(error){result.authenticatedStatus=error instanceof DOMException&&error.name==="TimeoutError"?"POST timed out":error instanceof Error&&error.message==="Workspace changed during verification."?"workspace changed":"POST network/authentication unavailable";return result;}
 }
@@ -296,7 +298,8 @@ export function syncNow(refresh = true, signal?:AbortSignal): Promise<void> {
   const existing=running.get(scope);if(existing)return existing;
   const controller=new AbortController();syncControllers.set(scope,controller);
   const combinedSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
-  const task=requireLicensedWrite().then(()=>runSync(refresh,combinedSignal)).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
+  const task=requireLicensedWrite().then(()=>runSync(refresh,combinedSignal)).then(()=>{syncErrors.delete(scope);}).catch(error=>{if(controller.signal.aborted && error instanceof DOMException && error.name==="AbortError"){syncErrors.delete(scope);return;}syncErrors.set(scope,error instanceof Error?error.message:String(error));throw error;}).finally(()=>{running.delete(scope);syncStages.delete(scope);syncControllers.delete(scope);announce();if(controller.signal.aborted && !syncPaused)window.dispatchEvent(new Event("banksetu-sync-request"));});
+  syncStages.set(scope,"Checking workspace");
   running.set(scope,task);announce();return task;
 }
 async function runSync(refresh: boolean, signal?:AbortSignal) {
@@ -312,7 +315,21 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if(signal?.aborted||photoSignal?.aborted)throw signal?.reason||photoSignal?.reason||new DOMException("Sync stopped.","AbortError");
     if(identity()!==scope)throw new Error("Workspace changed; previous sync stopped.");
     const requestSignal=AbortSignal.any([...(signal?[signal]:[]),...(photoSignal?[photoSignal]:[]),AbortSignal.timeout(25000)]);
-    const perform=()=>networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:requestSignal});
+    const action=String(payload.action||"");
+    if(syncStages.get(scope)!==action){syncStages.set(scope,action);announce();}
+    const readOnly=new Set(["getSyncProtection","getCustomerChanges","getCustomerPage","getPhotoPresence","getCustomerByRowNumber"]);
+    const perform=async()=>{
+      try{return await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:requestSignal});}
+      catch(error){
+        if(requestSignal.aborted||!(error instanceof TypeError))throw error;
+        if(readOnly.has(action)){
+          await new Promise<void>((resolve,reject)=>{const onAbort=()=>{clearTimeout(timer);reject(requestSignal.reason);};const timer=setTimeout(()=>{requestSignal.removeEventListener("abort",onAbort);resolve();},300);requestSignal.addEventListener("abort",onAbort,{once:true});});
+          try{return await networkFetch(url,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({...payload,connectionId,masterLocalSync,idToken}),signal:requestSignal});}
+          catch(retryError){if(requestSignal.aborted)throw retryError;}
+        }
+        throw new Error(`Google ${action} request could not reach the workspace bridge. Local records and pending changes are retained; sync will retry.`);
+      }
+    };
     let response=await perform();
     let refreshed=false;
     if(response.status===401){idToken=await user.getIdToken(true);refreshed=true;if(identity()!==scope)throw new Error("Workspace changed.");response=await perform();}
@@ -658,7 +675,7 @@ export async function resetLocalDatabase() {
   if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
   return activeRecords(state.records,state.operations).length;
 }
-export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});const afsmWarning=afsmBridgeUpgrade.get(scope)?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&state.operations.some(op=>op.state==="pending"&&op.action==="markAfsmSent")?AFSM_BRIDGE_UPGRADE_MESSAGE:"";return {records:activeRecords(state.records,state.operations).length,syncing:running.has(scope),paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(scope)||afsmWarning,photoIndexing:state.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoIndexComplete:state.photoIndex?.complete===true,pullCursor:state.pull?.cursor||0,photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});const afsmWarning=afsmBridgeUpgrade.get(scope)?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&state.operations.some(op=>op.state==="pending"&&op.action==="markAfsmSent")?AFSM_BRIDGE_UPGRADE_MESSAGE:"";return {records:activeRecords(state.records,state.operations).length,syncing:running.has(scope),syncStage:syncStages.get(scope)||"",paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(scope)||afsmWarning,photoIndexing:state.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoIndexComplete:state.photoIndex?.complete===true,pullCursor:state.pull?.cursor||0,photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 /** Read-only tenant-scoped evidence for photo retries. Never include photo bytes or customer personal fields. */
 export async function getPhotoSyncDiagnostics() {
   const scope=identity(),state=await repository.read(scope);

@@ -86,6 +86,27 @@ test('authenticated POST capability probe is tenant-bound and never reads or mod
  assert.equal(JSON.stringify(rows),before);
  assert.equal(context.syncProtection({action:'getSyncProtection',capabilitiesOnly:true,connectionId:'other'},user).code,'CONNECTION_CHANGED');
 });
+test('explicit capability probe reports missing Sheet triggers without reading customer rows',()=>{
+ const {context,rows}=bridge(),before=JSON.stringify(rows);
+ const result=context.syncProtection({action:'getSyncProtection',capabilitiesOnly:true,diagnoseTriggers:true,connectionId:'bound'},user);
+ assert.equal(result.changeJournalReady,false);
+ assert.equal(JSON.stringify(rows),before);
+ context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
+  {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('unexpected trigger creation');}};
+ const ready=context.syncProtection({action:'getSyncProtection',capabilitiesOnly:true,diagnoseTriggers:true,connectionId:'bound'}, {...user,spreadsheetId:'synthetic-sheet'});
+ assert.equal(ready.changeJournalReady,true);assert.equal(JSON.stringify(rows),before);
+});
+test('editor authorization installs only missing tenant Sheet triggers and never edits customers',()=>{
+ const {context,rows}=bridge(),before=JSON.stringify(rows),installed=[];
+ context.getBankSetuScriptProperty=key=>key==='BANKSETU_CLIENT_SPREADSHEET_ID'?'synthetic-sheet':'';
+ context.ScriptApp={getProjectTriggers:()=>installed,newTrigger:handler=>({forSpreadsheet:id=>({
+  onEdit:()=>({create:()=>installed.push({getHandlerFunction:()=>handler,getTriggerSourceId:()=>id})}),
+  onChange:()=>({create:()=>installed.push({getHandlerFunction:()=>handler,getTriggerSourceId:()=>id})})
+ })})};
+ assert.equal(context.authorizeBankSetuChangeJournal(),true);assert.equal(installed.length,2);
+ assert.equal(context.authorizeBankSetuChangeJournal(),true);assert.equal(installed.length,2,'existing triggers are never duplicated');
+ assert.equal(JSON.stringify(rows),before);
+});
 test('Drive HTTP 400 query failure keeps photo checkpoint instead of forcing a full rescan',()=>{
  const {context}=bridge();context.ScriptApp={getOAuthToken:()=> 'synthetic-token'};
  context.UrlFetchApp={fetch:()=>({getResponseCode:()=>400,getContentText:()=>JSON.stringify({error:{message:'Invalid field selection'}})})};
