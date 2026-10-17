@@ -55,7 +55,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .assam-quick-preview { overflow-x:auto; padding:16px 0; }
       .assam-quick-document { position:relative; width:210mm; height:170mm; background:white;
         color:#242424; margin:0 auto; box-sizing:border-box; box-shadow:0 4px 24px #0002;
-        font-family:"Assam Passbook Mono",monospace; font-size:2.5mm; line-height:2.55mm;
+        font-family:"Assam Passbook Mono",monospace; font-size:2.5mm; line-height:2.4mm;
         text-align:left!important; letter-spacing:0; }
       .passbook-page .assam-quick-document * { box-sizing:border-box; text-align:left!important; }
       .passbook-page .assam-quick-document .assam-quick-hints h2,
@@ -77,7 +77,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .assam-quick-photo { border:0.4mm solid #333; padding:0.5mm; height:55mm; }
       .assam-quick-photo img { width:100%; height:100%; object-fit:cover; display:block; }
       .assam-quick-lines { text-align:left; }
-      .assam-quick-field { display:grid; grid-template-columns:18mm 2mm minmax(0,1fr); align-items:start; min-height:2.55mm; }
+      .assam-quick-field { display:grid; grid-template-columns:18mm 2mm minmax(0,1fr); align-items:start; min-height:2.4mm; }
       .assam-quick-text { display:block; width:142.857143%; transform:scaleX(0.7); transform-origin:left top;
         white-space:pre-wrap; overflow-wrap:anywhere; }
       .assam-quick-label { white-space:nowrap; }
@@ -101,7 +101,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       <div className="assam-quick-aadhaar" style={{...at(130, 5, 60), fontSize:"4mm"}}>{upper(c.uidaiNo || c.aadhaar || c.aadhaarNo || c.aadharNo)}</div>
       <div style={{...at(126, 13, 30), fontSize:"2.6mm"}}>Page 1.0</div>
       <div className="assam-quick-fold" />
-      <svg style={{...at(54,92,12), height:"15mm"}} viewBox="0 0 64 88" role="img" aria-label="Assam Gramin Bank emblem">
+      <svg className="assam-quick-emblem" style={{...at(54,92,12), height:"15mm"}} viewBox="0 0 64 88" role="img" aria-label="Assam Gramin Bank emblem">
         <g fill="#0782b2">
           <path d="M32 0C15 15 15 26 32 36C49 26 49 15 32 0Z"/>
           <path d="M10 24C-5 43 5 59 29 69V46C22 41 15 34 10 24Z"/>
@@ -127,7 +127,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       <div className="assam-quick-lines assam-quick-right" style={at(81,147,60)}>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">MICR CODE</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{upper(bankInfo.micr || (referenceBranch ? "788116106" : ""))}</span></div>
       </div>
-      <div className="assam-quick-lines assam-quick-left" style={at(16,152,64)}>
+      <div className="assam-quick-lines assam-quick-left" style={at(16,151,64)}>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">BR. EMAIL</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{upper(bankInfo.branchEmail)}</span></div>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">CUSTOMER ID</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{upper(c.enrolId)}</span></div>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">ACCOUNT NO.</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{upper(c.accountNo)}</span></div>
@@ -136,7 +136,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">OPENED ON</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{date(c.accountOpeningDate)}</span></div>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">ISSUE DATE</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{date(c.issueDate)}</span></div>
       </div>
-      <div className="assam-quick-lines assam-quick-right" style={at(81,152,60)}>
+      <div className="assam-quick-lines assam-quick-right" style={at(81,151,60)}>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">ACC. HOLDER</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{upper(c.name)}</span></div>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">JOINT HOLDER</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{upper(c.jointHolder)}</span></div>
         <div className="assam-quick-field"><span className="assam-quick-text assam-quick-label">CUST ADD.</span><span className="assam-quick-text assam-quick-colon">:</span><span className="assam-quick-text">{address}</span></div>
