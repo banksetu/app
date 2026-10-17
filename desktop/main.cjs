@@ -13,7 +13,7 @@ let window,store,background,tray,openMain,quitting=false,downloaded=false;
 const directoryOptions = () => ({
   userData:app.getPath('userData'),platform:process.platform,executable:process.execPath,env:process.env
 });
-const {resolveDataDirectory,inspectDataDirectory,initializeRecovery,recoveryFile,pinFirstInstall}=require('./data-directory.cjs');
+const {resolveDataDirectory,rescanDataDirectory,inspectDataDirectory,initializeRecovery,recoveryFile,pinFirstInstall}=require('./data-directory.cjs');
 const trusted = event => {
   if(!window||window.isDestroyed())throw new Error("Application window is closed.");
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(ORIGIN+'/')) throw new Error('Untrusted application frame.');
@@ -26,13 +26,15 @@ if(primaryInstance)app.whenReady().then(async()=>{
   try{dataDirectory=resolveDataDirectory(options);}
   catch(error){
     if(error.code!=='MISSING_DATABASE')throw error;
-    const found=inspectDataDirectory(options);
-    if(found.candidates.length>1)throw Error('Multiple existing local databases were found. Select the original folder with support; no database was changed.');
-    const choices=['Search Again',...(found.backups.length?['Restore Verified Local Backup']:[]),'Create New Local Database & Restore from Google Cloud','Quit'];
-    const selection=dialog.showMessageBoxSync({type:'warning',title:'Bank Setu local database recovery',message:'The previous Windows local database was not found.',detail:`Original location: ${found.original}\nVerified local backups: ${found.backups.length}\nReconnect a missing drive or recover a verified backup before starting with a new database. Google Sheets/Drive can restore synchronized customers and photos. Offline-only changes and unuploaded pending operations in the missing database may be unrecoverable.`,buttons:choices,defaultId:0,cancelId:choices.length-1,noLink:true});
-    if(choices[selection]==='Search Again')dataDirectory=resolveDataDirectory(options);
-    else if(selection<0||choices[selection]==='Quit')return app.quit();
-    else {
+    while(!dataDirectory){
+      dataDirectory=rescanDataDirectory(options);
+      if(dataDirectory)break;
+      const found=inspectDataDirectory(options);
+      if(found.candidates.length>1)throw Error('Multiple existing local databases were found. Select the original folder with support; no database was changed.');
+      const choices=['Search Again',...(found.backups.length?['Restore Verified Local Backup']:[]),'Create New Local Database & Restore from Google Cloud','Quit'];
+      const selection=dialog.showMessageBoxSync({type:'warning',title:'Bank Setu local database recovery',message:'The previous Windows local database was not found.',detail:`Original location: ${found.original}\nVerified local backups: ${found.backups.length}\nReconnect a missing drive or recover a verified backup before starting with a new database. Google Sheets/Drive can restore synchronized customers and photos. Offline-only changes and unuploaded pending operations in the missing database may be unrecoverable.`,buttons:choices,defaultId:0,cancelId:choices.length-1,noLink:true});
+      if(choices[selection]==='Search Again')continue;
+      if(selection<0||choices[selection]==='Quit')return app.quit();
       const backup=choices[selection]==='Restore Verified Local Backup'?found.backups[0]:undefined;
       const confirmed=dialog.showMessageBoxSync({type:'warning',title:'Confirm Bank Setu recovery',message:backup?'Restore a copy of the verified local backup?':'Create New Local Database & Restore from Google Cloud?',detail:'The original database, configured path, encryption profile, pending queue and backups will remain untouched. Cloud recovery requires login and verification of the correct tenant. Changes that never reached Google or a backup may be unrecoverable.',buttons:['Cancel','Confirm Recovery'],defaultId:0,cancelId:0,noLink:true});
       if(confirmed!==1)return app.quit();

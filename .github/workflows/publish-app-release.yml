@@ -8,6 +8,8 @@ on:
       - src/core/localData.ts
       - src/core/photoState.ts
       - apps-script/Code.gs
+      - desktop/**
+      - .github/workflows/publish-app-release.yml
 permissions:
   contents: read
 concurrency:

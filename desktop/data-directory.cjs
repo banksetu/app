@@ -44,7 +44,9 @@ function inspectDataDirectory(options) {
   const active=readLocation(activeFile(userData));
   if(active){
     if(hasDatabase(active))return {directory:active,kind:'recovery'};
-    return {kind:'missing',original:active,candidates:[],backups:verifiedBackups([active]),previousRecovery:true};
+    const pinned=readLocation(locationFile(userData));
+    const places=[...new Set([active,...(pinned?[pinned]:[]),...directories(options)])];
+    return {kind:'missing',original:active,candidates:places.filter(hasDatabase),backups:verifiedBackups(places),previousRecovery:true};
   }
   const pinned=readLocation(locationFile(userData));
   if(pinned&&hasDatabase(pinned))return {directory:pinned,kind:'normal'};
@@ -77,6 +79,10 @@ function resolveDataDirectory(options) {
   }
   return result.directory;
 }
+function rescanDataDirectory(options){
+  if(inspectDataDirectory(options).kind==='missing')return null;
+  return resolveDataDirectory(options);
+}
 function pinFirstInstall(options,directory){
   if(options.platform!=='win32'||fs.existsSync(locationFile(options.userData)))return;
   if(directory!==path.join(options.userData,'database')||!hasDatabase(directory))throw Error('First installation database was not created; location was not pinned.');
@@ -91,6 +97,17 @@ function initializeRecovery(options,backup) {
   if(backup)fs.copyFileSync(backup,path.join(directory,'customers.sqlite'),fs.constants.COPYFILE_EXCL);
   else fs.writeFileSync(recoveryFile(directory),JSON.stringify({version:1,startedAt:Date.now(),original:inspection.original,scopes:{}}),{flag:'wx',mode:0o600});
   // The original pin and backup are never overwritten.
-  return {directory,activate:()=>fs.writeFileSync(activeFile(options.userData),JSON.stringify({directory,original:inspection.original,backup:backup||null}),{flag:'wx',mode:0o600})};
+  return {directory,activate:()=>{
+    const file=activeFile(options.userData);
+    const content=JSON.stringify({directory,original:inspection.original,backup:backup||null});
+    if(!fs.existsSync(file)){fs.writeFileSync(file,content,{flag:'wx',mode:0o600});return;}
+    // A second recovery keeps the previous pointer for investigation. Only
+    // replace the active pointer after both the new store and history exist.
+    const history=path.join(options.userData,`banksetu-active-database-${randomUUID()}.json`);
+    fs.copyFileSync(file,history,fs.constants.COPYFILE_EXCL);
+    const temporary=path.join(options.userData,`banksetu-active-database-${randomUUID()}.tmp`);
+    try{fs.writeFileSync(temporary,content,{flag:'wx',mode:0o600});fs.renameSync(temporary,file);}
+    finally{if(fs.existsSync(temporary))fs.unlinkSync(temporary);}
+  }};
 }
-module.exports={resolveDataDirectory,inspectDataDirectory,initializeRecovery,recoveryFile,pinFirstInstall};
+module.exports={resolveDataDirectory,rescanDataDirectory,inspectDataDirectory,initializeRecovery,recoveryFile,pinFirstInstall};
