@@ -1,29 +1,33 @@
 {
-  "latestVersion": "1.0.89",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.89/BankSetu-Setup-1.0.89-x64.exe",
+  "latestVersion": "1.0.90",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.90/BankSetu-Setup-1.0.90-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.89",
-  "releaseTag": "v1.0.89",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.89",
+  "version": "1.0.90",
+  "releaseTag": "v1.0.90",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.90",
   "releaseDate": "2026-10-17",
-  "windowsVersion": "1.0.89",
-  "androidBuild": 1000089,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.89/BankSetu-Setup-1.0.89-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.89/BankSetu-Android-1000089.apk",
+  "windowsVersion": "1.0.90",
+  "androidBuild": 1000090,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.90/BankSetu-Setup-1.0.90-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.90/BankSetu-Android-1000090.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.89",
+      "version": "1.0.90",
       "releaseDate": "2026-10-17",
       "categories": {
         "Improvements": [
-          "Merge pull request 43 from banksetu/codex/windows-recovery-retry-20261017."
+          "Fix Assam Gramin Bank quick passbook print alignment."
         ]
       }
     },
     "android": {
-      "version": "1.0.89",
+      "version": "1.0.90",
       "releaseDate": "2026-10-17",
-      "categories": {}
+      "categories": {
+        "Improvements": [
+          "Fix Assam Gramin Bank quick passbook print alignment."
+        ]
+      }
     }
   }
 }
