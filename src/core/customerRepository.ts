@@ -5,6 +5,8 @@ declare global {
   interface Window { bankSetuDesktop?: {
     read(scope: string): Promise<LocalState>;
     storage(): Promise<{ path: string; databasePath: string; usedBytes: number; freeBytes: number | null; totalBytes: number | null }>;
+    recoveryStatus(scope:string):Promise<{pending:boolean;downloaded:number;cursor:number;completed:boolean;originalFound:boolean}>;
+    completeRecovery(scope:string,count:number,revision:string):Promise<boolean>;
     commit(scope: string, before: LocalState, after: LocalState, receipt?: LicenseReceipt): Promise<void>;
     licenseSession(uid:string): Promise<void>;
     licenseStatus(authorization:LicenseReceipt): Promise<void>;

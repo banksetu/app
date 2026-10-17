@@ -10,9 +10,10 @@ protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:tr
 const primaryInstance=app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
 let window,store,background,tray,openMain,quitting=false,downloaded=false;
-const resolveDataDirectory = () => require('./data-directory.cjs').resolveDataDirectory({
+const directoryOptions = () => ({
   userData:app.getPath('userData'),platform:process.platform,executable:process.execPath,env:process.env
 });
+const {resolveDataDirectory,inspectDataDirectory,initializeRecovery,recoveryFile,pinFirstInstall}=require('./data-directory.cjs');
 const trusted = event => {
   if(!window||window.isDestroyed())throw new Error("Application window is closed.");
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !event.senderFrame.url.startsWith(ORIGIN+'/')) throw new Error('Untrusted application frame.');
@@ -20,8 +21,31 @@ const trusted = event => {
 const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{10,250}$/.test(scope)) throw new Error('Invalid workspace scope.');};
 if(primaryInstance)app.whenReady().then(async()=>{
   if(process.platform==='win32')app.setAppUserModelId('in.banksetu.desktop');
-  const dataDirectory = resolveDataDirectory();
-  store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
+  let dataDirectory;
+  const options=directoryOptions();
+  try{dataDirectory=resolveDataDirectory(options);}
+  catch(error){
+    if(error.code!=='MISSING_DATABASE')throw error;
+    const found=inspectDataDirectory(options);
+    if(found.candidates.length>1)throw Error('Multiple existing local databases were found. Select the original folder with support; no database was changed.');
+    const choices=['Search Again',...(found.backups.length?['Restore Verified Local Backup']:[]),'Create New Local Database & Restore from Google Cloud','Quit'];
+    const selection=dialog.showMessageBoxSync({type:'warning',title:'Bank Setu local database recovery',message:'The previous Windows local database was not found.',detail:`Original location: ${found.original}\nVerified local backups: ${found.backups.length}\nReconnect a missing drive or recover a verified backup before starting with a new database. Google Sheets/Drive can restore synchronized customers and photos. Offline-only changes and unuploaded pending operations in the missing database may be unrecoverable.`,buttons:choices,defaultId:0,cancelId:choices.length-1,noLink:true});
+    if(choices[selection]==='Search Again')dataDirectory=resolveDataDirectory(options);
+    else if(selection<0||choices[selection]==='Quit')return app.quit();
+    else {
+      const backup=choices[selection]==='Restore Verified Local Backup'?found.backups[0]:undefined;
+      const confirmed=dialog.showMessageBoxSync({type:'warning',title:'Confirm Bank Setu recovery',message:backup?'Restore a copy of the verified local backup?':'Create New Local Database & Restore from Google Cloud?',detail:'The original database, configured path, encryption profile, pending queue and backups will remain untouched. Cloud recovery requires login and verification of the correct tenant. Changes that never reached Google or a backup may be unrecoverable.',buttons:['Cancel','Confirm Recovery'],defaultId:0,cancelId:0,noLink:true});
+      if(confirmed!==1)return app.quit();
+      const recovery=initializeRecovery(options,backup);
+      dataDirectory=recovery.directory;
+      try{
+        store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
+        recovery.activate();
+      }catch(cause){store?.close();throw cause;}
+    }
+  }
+  if(!store)store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
+  pinFirstInstall(options,dataDirectory);
   const publicKey=require('../src/generated/licensePublicKey.json');
   const licenseAuthority=createLicenseAuthority(publicKey,store);
   ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);if(background?.status().uid&&background.status().uid!==uid)background.clear();});
@@ -91,6 +115,25 @@ if(primaryInstance)app.whenReady().then(async()=>{
     return { path: userData, databasePath, usedBytes: directoryBytes(databasePath), freeBytes, totalBytes };
   };
   ipcMain.handle('local:storage',(event)=>{trusted(event);return localStorageInfo();});
+  const recoveryMarker=recoveryFile(dataDirectory);
+  const recoveryState=()=>fs.existsSync(recoveryMarker)?JSON.parse(fs.readFileSync(recoveryMarker,'utf8')):null;
+  ipcMain.handle('local:recovery-status',(event,scope)=>{
+    trusted(event);scopeCheck(scope);
+    const marker=recoveryState(),state=store.read(scope);
+    return {pending:!!marker&&!marker.scopes?.[scope],downloaded:state.records.filter(record=>!record.deleted&&!!record.revision).length,cursor:state.pull?.cursor||0,completed:!!state.pull?.lastCompletedAt,originalFound:!!marker?.original&&fs.existsSync(path.join(marker.original,'customers.sqlite'))};
+  });
+  ipcMain.handle('local:recovery-complete',(event,scope,expectedCount,revision)=>{
+    trusted(event);scopeCheck(scope);
+    const marker=recoveryState();
+    if(!marker||marker.scopes?.[scope])return false;
+    const state=store.read(scope);
+    if(!Number.isSafeInteger(expectedCount)||expectedCount<0||!revision||state.pull?.remoteRevision!==revision||!state.pull.lastCompletedAt||state.pull.cursor||state.pull.changePending||
+       state.records.filter(record=>!record.deleted&&!!record.revision).length!==expectedCount)
+      throw Error('Cloud recovery has not been fully verified; resume the download before normal upload.');
+    const next={...marker,scopes:{...marker.scopes,[scope]:{completedAt:Date.now(),revision,records:expectedCount}}};
+    const temp=recoveryMarker+'.'+require('node:crypto').randomUUID()+'.tmp';fs.writeFileSync(temp,JSON.stringify(next),{flag:'wx',mode:0o600});fs.renameSync(temp,recoveryMarker);
+    return true;
+  });
   ipcMain.handle('local:read',(event,scope)=>{trusted(event);scopeCheck(scope);return store.read(scope);});
   ipcMain.handle('local:commit',(event,scope,before,after,receipt)=>{
     trusted(event);scopeCheck(scope);

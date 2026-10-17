@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
   openCustomerPdf: data => ipcRenderer.invoke('customer-pdf:open',data),
   read: scope => ipcRenderer.invoke('local:read',scope),
   storage: () => ipcRenderer.invoke('local:storage'),
+  recoveryStatus: scope => ipcRenderer.invoke('local:recovery-status',scope),
+  completeRecovery: (scope,count,revision) => ipcRenderer.invoke('local:recovery-complete',scope,count,revision),
   commit: (scope,before,after,receipt) => ipcRenderer.invoke('local:commit',scope,before,after,receipt),
   copyText: text => ipcRenderer.invoke('clipboard:write-text',text),
   shareImage: image => ipcRenderer.invoke('clipboard:share-image',image),

@@ -994,3 +994,40 @@ test('a failed write is never repeated speculatively and its pending operation r
   assert.equal(state.operations[0].state,'pending');assert.equal(state.records[0].recordId,saved.recordId);
  }finally{navigator.onLine=false;}
 });
+test('Windows replacement database resumes partial cloud download and does not upload pending work until verified',async()=>{
+ storage.clear();connect('windows-cloud-recovery');navigator.onLine=false;
+ const scope='user-a:tenant-a:windows-cloud-recovery';
+ const offline=await request({action:'saveCustomer',customer:{...customer,accountNo:'offline-only'}});
+ const cloudIds=[crypto.randomUUID(),crypto.randomUUID()];
+ const cloud=cloudIds.map((recordId,i)=>({...customer,recordId,rowNumber:i+2,revision:'remote-1',accountNo:String(900+i)}));
+ let pending=true,writes=0,failSecond=true,completed=0;
+ window.bankSetuDesktop={
+   recoveryStatus:async()=>({pending,downloaded:(await repository.read(scope)).records.filter(r=>!!r.revision).length,cursor:(await repository.read(scope)).pull?.cursor||0,completed:!pending}),
+   completeRecovery:async(_scope,count,revision)=>{
+     assert.equal(_scope,scope);assert.equal(count,2);assert.equal(revision,'remote-1');
+     const state=await repository.read(scope);
+     assert.equal(state.pull.cursor,0);assert.equal(state.records.filter(r=>!!r.revision&&!r.deleted).length,2);
+     pending=false;completed++;return true;
+   }
+ };
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'windows-cloud-recovery',activeIds:cloudIds,deletedIds:[],remoteRevision:'remote-1'};
+ handler=async(_url,init)=>{
+   const body=JSON.parse(init.body);
+   if(body.action==='syncCustomerOperation'){writes++;return Response.json({success:true,rowNumber:5,revision:'remote-2',customer:body.operation.customer});}
+   assert.equal(body.action,'getCustomerPage');
+   if(body.cursor===0)return Response.json({success:true,customers:[cloud[0]],hasNextPage:true,nextCursor:1});
+   if(failSecond){failSecond=false;throw new Error('Temporary cloud outage');}
+   return Response.json({success:true,customers:[cloud[1]],hasNextPage:false});
+ };
+ navigator.onLine=true;
+ try{
+   await assert.rejects(engine.syncNow(true),/Temporary cloud outage/);
+   assert.equal(writes,0);assert.equal(completed,0);
+   assert.equal((await repository.read(scope)).pull.cursor,1);
+   await engine.syncNow(true);
+   assert.equal(completed,1);assert.equal(writes,0);
+   assert.equal((await repository.read(scope)).records.filter(r=>!!r.revision).length,2);
+   await engine.syncNow(true);
+   assert.equal(writes,1);assert.equal((await repository.read(scope)).operations.some(o=>o.recordId===offline.recordId),false);
+ }finally{delete window.bankSetuDesktop;protectionOverride=undefined;navigator.onLine=false;}
+});

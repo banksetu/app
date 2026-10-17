@@ -85,3 +85,53 @@ test('licensed workspace marker is atomic, survives restart and cannot be downgr
  assert.equal(store.isLicensed(scope),true);store.close();
  fs.rmSync(directory,{recursive:true,force:true});
 });
+test('first Windows install creates a writable App Data database and pins it only after creation',()=>{
+  const {resolveDataDirectory,inspectDataDirectory,pinFirstInstall}=require('./data-directory.cjs');
+  const root=fixture(),userData=path.join(root,'AppData'),args={userData,platform:'win32',executable:path.join(root,'app.exe'),env:{ProgramData:path.join(root,'system')}};
+  assert.equal(inspectDataDirectory(args).kind,'first-install');
+  const directory=resolveDataDirectory(args);
+  assert.equal(fs.existsSync(path.join(userData,'banksetu-database-location.json')),false);
+  const store=createStore(directory);store.close();pinFirstInstall(args,directory);
+  assert.equal(resolveDataDirectory(args),directory);
+  fs.rmSync(root,{recursive:true,force:true});
+});
+test('missing pinned database finds a verified backup, copies it, and retains the original pin and pending queue',()=>{
+  const {resolveDataDirectory,inspectDataDirectory,initializeRecovery}=require('./data-directory.cjs');
+  const root=fixture(),userData=path.join(root,'AppData'),old=path.join(root,'old'),args={userData,platform:'win32',executable:path.join(root,'app.exe'),env:{BANKSETU_DATA_DIR:old,ProgramData:path.join(root,'system')}};
+  const original=createStore(old);original.commit('u:tenant:connection',empty,{records:[{recordId:'old'}],operations:[{operationId:'offline-only'}]});
+  original.backup();original.close();resolveDataDirectory(args);
+  const pin=fs.readFileSync(path.join(userData,'banksetu-database-location.json'),'utf8');
+  fs.unlinkSync(path.join(old,'customers.sqlite'));
+  const found=inspectDataDirectory(args);assert.equal(found.kind,'missing');assert(found.backups.length>0);
+  const recovery=initializeRecovery(args,found.backups[0]);
+  const copy=createStore(recovery.directory);assert.equal(copy.read('u:tenant:connection').operations[0].operationId,'offline-only');copy.close();recovery.activate();
+  assert.equal(resolveDataDirectory(args),recovery.directory);
+  assert.equal(fs.readFileSync(path.join(userData,'banksetu-database-location.json'),'utf8'),pin);
+  // A returned original must not replace the explicitly selected recovery database.
+  const returned=createStore(old);returned.close();
+  assert.equal(resolveDataDirectory(args),recovery.directory);
+  fs.rmSync(root,{recursive:true,force:true});
+});
+test('cloud recovery requires a missing old database and keeps a resumable marker across offline restart',()=>{
+  const {resolveDataDirectory,inspectDataDirectory,initializeRecovery,recoveryFile}=require('./data-directory.cjs');
+  const root=fixture(),userData=path.join(root,'AppData'),old=path.join(root,'old'),args={userData,platform:'win32',executable:path.join(root,'app.exe'),env:{BANKSETU_DATA_DIR:old,ProgramData:path.join(root,'system')}};
+  const original=createStore(old);original.close();resolveDataDirectory(args);fs.unlinkSync(path.join(old,'customers.sqlite'));
+  const result=initializeRecovery(args);
+  const store=createStore(result.directory);
+  const scope='u:tenant-a:connection-a';
+  store.commit(scope,empty,{records:[{recordId:'part',revision:'r1'}],operations:[],pull:{cursor:250,seen:['part'],startedAt:Date.now()}});
+  store.close();result.activate();
+  assert.equal(resolveDataDirectory(args),result.directory);
+  const restarted=createStore(result.directory);assert.equal(restarted.read(scope).pull.cursor,250);assert.deepEqual(restarted.read('u:tenant-b:connection-b'),empty);restarted.close();
+  assert.equal(JSON.parse(fs.readFileSync(recoveryFile(result.directory),'utf8')).scopes[scope],undefined);
+  assert.equal(inspectDataDirectory(args).kind,'recovery');
+  fs.rmSync(root,{recursive:true,force:true});
+});
+test('a reinstall with a surviving Windows profile and no pin cannot silently create empty storage',()=>{
+  const {resolveDataDirectory}=require('./data-directory.cjs');
+  const root=fixture(),userData=path.join(root,'AppData');fs.mkdirSync(path.join(userData,'IndexedDB'),{recursive:true});
+  const args={userData,platform:'win32',executable:path.join(root,'app.exe'),env:{ProgramData:path.join(root,'system')}};
+  assert.throws(()=>resolveDataDirectory(args),error=>error.code==='MISSING_DATABASE');
+  assert.equal(fs.existsSync(path.join(userData,'database','customers.sqlite')),false);
+  fs.rmSync(root,{recursive:true,force:true});
+});
