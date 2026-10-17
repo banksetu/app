@@ -127,6 +127,38 @@ test('cloud recovery requires a missing old database and keeps a resumable marke
   assert.equal(inspectDataDirectory(args).kind,'recovery');
   fs.rmSync(root,{recursive:true,force:true});
 });
+test('a missing recovery database can be recovered again without erasing the original pin or earlier pointer',()=>{
+  const {resolveDataDirectory,inspectDataDirectory,initializeRecovery}=require('./data-directory.cjs');
+  const root=fixture(),userData=path.join(root,'AppData'),old=path.join(root,'old');
+  const args={userData,platform:'win32',executable:path.join(root,'app.exe'),env:{BANKSETU_DATA_DIR:old,ProgramData:path.join(root,'system')}};
+  const original=createStore(old);original.close();resolveDataDirectory(args);
+  const originalPin=fs.readFileSync(path.join(userData,'banksetu-database-location.json'),'utf8');
+  fs.unlinkSync(path.join(old,'customers.sqlite'));
+  const first=initializeRecovery(args);const firstStore=createStore(first.directory);firstStore.close();first.activate();
+  const previous=fs.readFileSync(path.join(userData,'banksetu-active-database.json'),'utf8');
+  fs.unlinkSync(path.join(first.directory,'customers.sqlite'));
+  assert.equal(inspectDataDirectory(args).kind,'missing');
+  const next=initializeRecovery(args);const nextStore=createStore(next.directory);nextStore.close();next.activate();
+  assert.equal(resolveDataDirectory(args),next.directory);
+  assert.equal(fs.readFileSync(path.join(userData,'banksetu-database-location.json'),'utf8'),originalPin);
+  const history=fs.readdirSync(userData).filter(name=>/^banksetu-active-database-[\w-]+\.json$/.test(name));
+  assert.equal(history.length,1);
+  assert.equal(fs.readFileSync(path.join(userData,history[0]),'utf8'),previous);
+  assert(fs.existsSync(first.directory));
+  fs.rmSync(root,{recursive:true,force:true});
+});
+test('Search Again keeps recovery available until the old database is reconnected',()=>{
+  const {resolveDataDirectory,rescanDataDirectory}=require('./data-directory.cjs');
+  const root=fixture(),userData=path.join(root,'AppData'),old=path.join(root,'old');
+  const args={userData,platform:'win32',executable:path.join(root,'app.exe'),env:{BANKSETU_DATA_DIR:old,ProgramData:path.join(root,'system')}};
+  const original=createStore(old);original.close();resolveDataDirectory(args);
+  fs.unlinkSync(path.join(old,'customers.sqlite'));
+  assert.equal(rescanDataDirectory(args),null);
+  assert.equal(rescanDataDirectory(args),null);
+  const returned=createStore(old);returned.close();
+  assert.equal(rescanDataDirectory(args),old);
+  fs.rmSync(root,{recursive:true,force:true});
+});
 test('a reinstall with a surviving Windows profile and no pin cannot silently create empty storage',()=>{
   const {resolveDataDirectory}=require('./data-directory.cjs');
   const root=fixture(),userData=path.join(root,'AppData');fs.mkdirSync(path.join(userData,'IndexedDB'),{recursive:true});
