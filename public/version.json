@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.87",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.87/BankSetu-Setup-1.0.87-x64.exe",
+  "latestVersion": "1.0.88",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.88/BankSetu-Setup-1.0.88-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.87",
-  "releaseTag": "v1.0.87",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.87",
+  "version": "1.0.88",
+  "releaseTag": "v1.0.88",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.88",
   "releaseDate": "2026-10-17",
-  "windowsVersion": "1.0.87",
-  "androidBuild": 1000087,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.87/BankSetu-Setup-1.0.87-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.87/BankSetu-Android-1000087.apk",
+  "windowsVersion": "1.0.88",
+  "androidBuild": 1000088,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.88/BankSetu-Setup-1.0.88-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.88/BankSetu-Android-1000088.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.87",
+      "version": "1.0.88",
       "releaseDate": "2026-10-17",
       "categories": {
         "Improvements": [
-          "Merge pull request 41 from banksetu/codex/sync-reliability-20261016."
+          "Recover missing Windows local database safely."
         ]
       }
     },
     "android": {
-      "version": "1.0.87",
+      "version": "1.0.88",
       "releaseDate": "2026-10-17",
       "categories": {
         "Improvements": [
-          "Merge pull request 41 from banksetu/codex/sync-reliability-20261016."
+          "Recover missing Windows local database safely."
         ]
       }
     }
