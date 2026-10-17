@@ -135,6 +135,50 @@
   padding: 0 24px 24px;
 }
 
+.admin-user-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 16px 0 8px;
+  padding: 13px 15px;
+  border: 1px solid rgba(66, 231, 212, .22);
+  border-radius: 14px;
+  background: rgba(44, 225, 208, .07);
+  color: #eefcff;
+}
+
+.admin-user-group-heading > div:first-child,
+.admin-user-group-owner {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-user-group-heading small {
+  color: #91a6bd;
+  font-size: 11px;
+}
+
+.admin-user-group-owner {
+  text-align: right;
+}
+
+.admin-user-group-owner > span {
+  color: #42e7d4;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+
+@media (max-width: 620px) {
+  .admin-user-group-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .admin-user-group-owner { text-align: left; }
+}
+
 .admin-user-card {
   display: grid;
   grid-template-columns: minmax(230px, 1.3fr) minmax(190px, 0.8fr) auto;

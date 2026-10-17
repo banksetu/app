@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:schema": "node scripts/check-sheet-schema.mjs",
     "release": "node scripts/release.mjs",
     "lint": "eslint .",
     "preview": "vite preview"

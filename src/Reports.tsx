@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAuth } from "firebase/auth";
 import type { CSSProperties } from "react";
+import { getTenantApiUrl } from "./tenantApi";
 
 type ActivityItem = {
   id: string;
@@ -11,6 +12,7 @@ type ActivityItem = {
   customerId?: string;
   details: string;
   user?: string;
+  email?: string;
 };
 
 export default function Reports() {
@@ -23,8 +25,7 @@ export default function Reports() {
     setError("");
 
     try {
-      const apiUrl =
-        localStorage.getItem("bankSetuApiUrl")?.trim() || "";
+      const apiUrl = getTenantApiUrl();
 
       if (!apiUrl) {
         throw new Error("Google Sheet API URL is not configured.");
@@ -67,23 +68,27 @@ export default function Reports() {
         );
       }
 
-      const rows = Array.isArray(result.activities)
+      const rows: unknown[] = Array.isArray(result.activities)
         ? result.activities
         : Array.isArray(result.recentActivities)
           ? result.recentActivities
           : [];
 
       setActivities(
-        rows.slice(0, 10).map((item: any, index: number) => ({
-          id: String(item?.id || `${Date.now()}-${index}`),
-          dateTime: String(item?.dateTime || ""),
-          activity: String(item?.activity || item?.action || item?.type || ""),
-          customerName: String(item?.customerName || ""),
-          accountNo: String(item?.accountNo || ""),
-          customerId: String(item?.customerId || item?.cif || ""),
-          details: String(item?.details || ""),
-          user: String(item?.user || item?.email || ""),
-        }))
+        rows.slice(0, 10).map((item, index) => {
+          const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+          return {
+            id: String(row.id || `${Date.now()}-${index}`),
+            dateTime: String(row.dateTime || ""),
+            activity: String(row.activity || row.action || row.type || ""),
+            customerName: String(row.customerName || ""),
+            accountNo: String(row.accountNo || ""),
+            customerId: String(row.customerId || row.cif || ""),
+            details: String(row.details || ""),
+            user: String(row.user || row.actorName || ""),
+            email: String(row.email || ""),
+          };
+        })
       );
     } catch (err) {
       console.error("Recent activity load failed:", err);
@@ -99,7 +104,8 @@ export default function Reports() {
   };
 
   useEffect(() => {
-    void loadActivities();
+    const timer = window.setTimeout(() => void loadActivities(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
@@ -213,7 +219,12 @@ export default function Reports() {
                         </td>
 
                         <td style={styles.td}>{item.details || "—"}</td>
-                        <td style={styles.td}>{item.user || "—"}</td>
+                        <td style={styles.td}>
+                          <div>{item.user || item.email || "—"}</div>
+                          {item.email && item.email !== item.user ? (
+                            <div style={styles.subValue}>{item.email}</div>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -25,6 +25,7 @@ import {
   reauthenticateWithCredential,
 
 } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 
 
@@ -195,12 +196,6 @@ type ApiResponse = {
    CONSTANTS
 
 \========================================================= */
-
-
-
-const API_STORAGE_KEY =
-
-  "bankSetuApiUrl";
 
 
 
@@ -812,17 +807,7 @@ function CustomerEntry() {
 
   const getApiUrl = () => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem(
-
-          API_STORAGE_KEY
-
-        )
-
-        ?.trim();
+    const apiUrl = getTenantApiUrl();
 
 
 
@@ -2228,7 +2213,7 @@ function CustomerEntry() {
 
 
 
-          /Customer\s*Name\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
+          /Customer\s*Name\s*[:-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
 
         ]
 
@@ -2312,7 +2297,7 @@ function CustomerEntry() {
 
 
 
-          /Customer\s*Id\s*[:\-]?\s*([A-Z0-9]+)/i,
+          /Customer\s*Id\s*[:-]?\s*([A-Z0-9]+)/i,
 
         ]
 
@@ -2406,7 +2391,7 @@ function CustomerEntry() {
 
         [
 
-          /C\/O\s*[:\-]\s*([^,]+)/i,
+          /C\/O\s*[:-]\s*([^,]+)/i,
 
 
 
@@ -6377,7 +6362,7 @@ function normalizeDateForInput(
 
     clean.match(
 
-      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+      /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/
 
     );
 

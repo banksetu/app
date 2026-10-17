@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -7,10 +7,10 @@ import {
   type User,
 } from "firebase/auth";
 import { doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 import { auth, db } from "./firebase";
 import Dashboard from "./Dashboard";
-import Signup from "./Signup";
 
 import "./App.css";
 
@@ -20,9 +20,11 @@ type UserProfile = {
   status?: string;
   subscriptionStatus?: string;
   email?: string;
+  tenantId?: string;
 };
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
+const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
 
 function getAccessError(profile: UserProfile): string {
   const status = normalize(profile.status);
@@ -44,7 +46,6 @@ function getAccessError(profile: UserProfile): string {
 }
 
 function App() {
-  const [screen, setScreen] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -56,28 +57,41 @@ function App() {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<BankSetuRole>("user");
+  const [accountRole, setAccountRole] = useState("user");
 
   const loginAttemptRef = useRef(false);
+  const ownerBootstrapAttemptRef = useRef(false);
   const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
 
-  const clearProfileListener = () => {
+  const clearProfileListener = useCallback(() => {
     if (profileUnsubscribeRef.current) {
       profileUnsubscribeRef.current();
       profileUnsubscribeRef.current = null;
     }
-  };
+  }, []);
 
-  const applyProfile = (profile: UserProfile) => {
-    const role: BankSetuRole = normalize(profile.role) === "admin" ? "admin" : "user";
+  const applyProfile = useCallback((profile: UserProfile) => {
+    const normalizedRole = normalize(profile.role);
+    setAccountRole(normalizedRole || "user");
+    const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole)
+      ? "admin"
+      : "user";
     setUserRole(role);
     sessionStorage.setItem("bankSetuRole", role);
+    if (typeof profile.tenantId === "string" && profile.tenantId.trim()) {
+      sessionStorage.setItem("bankSetuTenantId", profile.tenantId.trim());
+    } else {
+      sessionStorage.removeItem("bankSetuTenantId");
+    }
     return role;
-  };
+  }, []);
 
-  const rejectSession = async (message: string) => {
+  const rejectSession = useCallback(async (message: string) => {
     clearProfileListener();
     sessionStorage.removeItem("bankSetuRole");
+    sessionStorage.removeItem("bankSetuTenantId");
     setUserRole("user");
+    setAccountRole("user");
     setIsLoggedIn(false);
     setLoginSuccess(false);
     setError(message);
@@ -89,15 +103,37 @@ function App() {
         console.error("Sign out after access rejection failed:", signOutError);
       }
     }
-  };
+  }, [clearProfileListener]);
 
-  const watchUserProfile = (user: User) => {
+  const watchUserProfile = useCallback((user: User) => {
     clearProfileListener();
 
     const userRef = doc(db, "users", user.uid);
     profileUnsubscribeRef.current = onSnapshot(
       userRef,
       async (snapshot) => {
+        const existingProfile = snapshot.exists() ? snapshot.data() as UserProfile : null;
+        const mayBootstrapOwner = normalize(user.email) === MASTER_OWNER_EMAIL &&
+          user.emailVerified &&
+          !ownerBootstrapAttemptRef.current &&
+          (!existingProfile || normalize(existingProfile.role) === "admin");
+        if (mayBootstrapOwner) {
+          ownerBootstrapAttemptRef.current = true;
+          setError("Setting up the verified Bank Setu Master Admin account…");
+          try {
+            await httpsCallable(getFunctions(), "bootstrapMasterOwner")({});
+            return;
+          } catch (bootstrapError: unknown) {
+            const code = String((bootstrapError as { code?: string }).code || "");
+            if (!(existingProfile && code.endsWith("already-exists"))) {
+              await rejectSession(bootstrapError instanceof Error
+                ? bootstrapError.message
+                : "Unable to set up the Master Admin account.");
+              setCheckingSession(false);
+              return;
+            }
+          }
+        }
         if (!snapshot.exists()) {
           await rejectSession(
             "Your Bank Setu profile was not found. Please contact the administrator."
@@ -106,7 +142,7 @@ function App() {
           return;
         }
 
-        const profile = snapshot.data() as UserProfile;
+        const profile = existingProfile as UserProfile;
         applyProfile(profile);
 
         const accessError = getAccessError(profile);
@@ -129,13 +165,18 @@ function App() {
         setCheckingSession(false);
       }
     );
-  };
+  }, [applyProfile, clearProfileListener, rejectSession]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
+        ownerBootstrapAttemptRef.current = false;
         clearProfileListener();
+        sessionStorage.removeItem("bankSetuRole");
+        sessionStorage.removeItem("bankSetuTenantId");
         setIsLoggedIn(false);
+        setUserRole("user");
+        setAccountRole("user");
         setCheckingSession(false);
         return;
       }
@@ -148,7 +189,7 @@ function App() {
       unsubscribe();
       clearProfileListener();
     };
-  }, []);
+  }, [clearProfileListener, watchUserProfile]);
 
   const handleForgotPassword = async () => {
     setError("");
@@ -166,7 +207,8 @@ function App() {
       setSuccessMessage(
         "Password reset link sent. Please check your email inbox or spam folder."
       );
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string };
       console.error("Password reset error:", err);
 
       if (err.code === "auth/invalid-email") {
@@ -227,7 +269,8 @@ function App() {
       await new Promise((resolve) => setTimeout(resolve, 1200));
       setIsLoggedIn(true);
       setLoginSuccess(false);
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string };
       console.error("Login error:", err);
 
       if (err.code === "auth/user-disabled") {
@@ -254,14 +297,15 @@ function App() {
       clearProfileListener();
       await signOut(auth);
       sessionStorage.removeItem("bankSetuRole");
+      sessionStorage.removeItem("bankSetuTenantId");
       setIsLoggedIn(false);
       setUserRole("user");
+      setAccountRole("user");
       setEmail("");
       setPassword("");
       setError("");
       setSuccessMessage("");
       setLoginSuccess(false);
-      setScreen("login");
     } catch (err) {
       console.error("Logout error:", err);
     }
@@ -294,22 +338,8 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} />
+        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} />
       </div>
-    );
-  }
-
-  if (screen === "signup") {
-    return (
-      <Signup
-        onBackToLogin={() => {
-          setScreen("login");
-          setError("");
-          setSuccessMessage(
-            "New accounts can sign in after administrator approval."
-          );
-        }}
-      />
     );
   }
 
@@ -415,22 +445,11 @@ function App() {
                 {!loading && <span className="arrow">→</span>}
               </button>
 
-              <button
-                type="button"
-                className="create-account-button"
-                onClick={() => {
-                  setScreen("signup");
-                  setError("");
-                  setSuccessMessage("");
-                }}
-              >
-                Create Account
-              </button>
             </div>
           </form>
 
           <p className="approval-note compact-approval-note">
-            New registrations require administrator approval.
+            New accounts are created by the Bank Setu administrator.
           </p>
 
           <div className="login-footer">
