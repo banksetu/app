@@ -802,6 +802,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
         page.style.setProperty("--alignment-y", `${offset.y}mm`);
         page.classList.add("alignment-print-active");
       }
+      if (isAssamQuick) await document.fonts.load('9.45px "Assam Passbook Mono"');
       const printOutcome=await printCurrentDocument(duplex);
       if (test) {
         setMessage(printOutcome.accepted?"Test print accepted by the printer.":"Test print dialog opened; confirm the result in the system dialog.");

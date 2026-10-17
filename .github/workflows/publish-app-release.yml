@@ -9,6 +9,9 @@ on:
       - src/core/photoState.ts
       - apps-script/Code.gs
       - desktop/**
+      - src/AssamQuickPassbook.tsx
+      - src/Passbook.tsx
+      - src/assets/**
       - .github/workflows/publish-app-release.yml
 permissions:
   contents: read
