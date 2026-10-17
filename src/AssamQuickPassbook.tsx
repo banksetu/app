@@ -75,8 +75,17 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .assam-quick-photo { border:0.4mm solid #333; padding:0.5mm; height:38mm; }
       .assam-quick-photo img { width:100%; height:100%; object-fit:cover; display:block; }
       .assam-quick-lines { text-align:left; white-space:pre-wrap; overflow-wrap:anywhere; }
+      /* Printed fields only: compress labels, colons and values to 70% horizontally.
+         Existing A4 page dimensions, row height and absolute field anchors are unchanged. */
       .assam-quick-field { display:grid; grid-template-columns:20mm minmax(0,1fr); column-gap:0; }
       .assam-quick-field > span:first-child { white-space:nowrap; }
+      .assam-quick-field > span,
+      .assam-quick-inline-field {
+        transform:scaleX(.70);
+        transform-origin:left center;
+        letter-spacing:normal;
+      }
+      .assam-quick-field > span:nth-child(2) { width:calc(100% / .70); }
       .assam-quick-address { grid-template-columns:17mm minmax(0,1fr); }
       .assam-quick-manager { border-top:0.3mm solid #0782b2; color:#0782b2;
         text-align:center; font:bold 4.5mm/7mm Arial,sans-serif; }
@@ -117,9 +126,9 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
         <div className="assam-quick-field"><span>BRANCH NAME:</span><span>{branch}</span></div>
         <div className="assam-quick-field"><span>BR. ADDRESS:</span><span>{upper(branchAddress)}</span></div>
       </div>
-      <div style={at(81,123,58)}>IFSC CODE: {upper(bankInfo.ifsc || (referenceBranch ? "PUNB0RRBAGB" : ""))}</div>
-      <div style={at(134,123,12)}>{bankInfo.branchCode || referenceBranch ? "(" + upper(bankInfo.branchCode || "7345") + ")" : ""}</div>
-      <div style={at(81,136,60)}>MICR CODE: {upper(bankInfo.micr || (referenceBranch ? "788116106" : ""))}</div>
+      <div className="assam-quick-inline-field" style={at(81,123,58)}>IFSC CODE: {upper(bankInfo.ifsc || (referenceBranch ? "PUNB0RRBAGB" : ""))}</div>
+      <div className="assam-quick-inline-field" style={at(134,123,12)}>{bankInfo.branchCode || referenceBranch ? "(" + upper(bankInfo.branchCode || "7345") + ")" : ""}</div>
+      <div className="assam-quick-inline-field" style={at(81,136,60)}>MICR CODE: {upper(bankInfo.micr || (referenceBranch ? "788116106" : ""))}</div>
       <div className="assam-quick-lines" style={at(16,140,64)}>
         <div className="assam-quick-field"><span>BR. EMAIL:</span><span>{upper(bankInfo.branchEmail)}</span></div>
         <div className="assam-quick-field"><span>CUSTOMER ID:</span><span>{upper(c.enrolId)}</span></div>
