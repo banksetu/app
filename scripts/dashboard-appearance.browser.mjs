@@ -35,7 +35,7 @@ try {
       info:getComputedStyle(document.querySelector('.bank-info-strip span')).color,
       customer:getComputedStyle(document.querySelector('.all-customer-data')).backgroundColor,
       heading:getComputedStyle(document.querySelector('.all-customer-data th')).backgroundColor,
-      row:getComputedStyle(document.querySelector('.all-customer-data td')).backgroundColor,
+      row:getComputedStyle(document.querySelector('.all-customer-data tbody tr')).backgroundColor,
       tile:getComputedStyle(document.querySelector('.license-tile')).backgroundColor,
       license:getComputedStyle(document.querySelector('.license-client-table td')).backgroundColor,
       layout:getComputedStyle(document.querySelector('.license-client-table tr')).display,
