@@ -159,6 +159,19 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 const remoteDiscoveries=new Map<string,number>();
+function recordProof(record: CachedRecord) {
+  const customer={...record.customer};
+  for(const key of ["photoDataUrl","photoPreview","pdfDataUrl","photoNeedsBaselineHash"])delete customer[key];
+  const data=JSON.stringify([record.revision,customer]);
+  let first=2166136261,second=0x9e3779b9;
+  for(let i=0;i<data.length;i++){first=Math.imul(first^data.charCodeAt(i),16777619);second=Math.imul(second^data.charCodeAt(i),2246822519);}
+  return `${data.length}:${first>>>0}:${second>>>0}`;
+}
+function recordManifest(records: CachedRecord[]) {
+  const manifest:Record<string,string>={};
+  for(const record of records)if(!record.deleted&&!record.pending&&record.revision)manifest[record.recordId]=recordProof(record);
+  return manifest;
+}
 async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {remoteRevision?:string;changeCursor?:number;changeEpoch?:string;lastFullCheckAt?:number;cursor:number;seen:string[];startedAt:number;pageSize?:number;pageSuccesses?:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   let discovered=0,notifyRemote=false;
@@ -183,10 +196,11 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if(value.hasNextPage){
         if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
         state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
-      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),lastFullCheckAt:checkpoint.lastFullCheckAt,changeCursor:checkpoint.changeCursor,changeEpoch:checkpoint.changeEpoch,cacheLimited:state.pull?.cacheLimited,pageSize:Math.max(50,checkpoint.pageSize||250),remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
+      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),lastFullCheckAt:checkpoint.lastFullCheckAt,changeCursor:checkpoint.changeCursor,changeEpoch:checkpoint.changeEpoch,recordManifest:recordManifest(state.records),cacheLimited:state.pull?.cacheLimited,pageSize:Math.max(50,checkpoint.pageSize||250),remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
     }
     applyPhotoIndex(state);
     trimCache(state);
+    if(checkpoint&&!value.hasNextPage&&state.pull)state.pull.recordManifest=recordManifest(state.records);
   });
   if(checkpoint){const count=(remoteDiscoveries.get(scope)||0)+discovered;if(notifyRemote){remoteDiscoveries.delete(scope);if(count>0)notifySystem({key:`remote-records:${Date.now()}`,title:'New customer records synced',body:`${count} new customer record${count===1?'':'s'} synced from another device.`,page:'sync-backup',category:'sync',cooldownMs:30*60_000});}else remoteDiscoveries.set(scope,count);if(remoteDiscoveries.size>5)remoteDiscoveries.delete(remoteDiscoveries.keys().next().value!);}
   announce();
@@ -376,7 +390,12 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     throw new Error("Cloud restore requires a full authenticated customer snapshot; the local database was retained. Update this workspace's Code.gs.");
   if(protection.incremental){
     shouldPull=false;
-    const ids=[...new Set(protection.changedIds||[])];
+    const manifest=initial.pull?.recordManifest||{};
+    const localById=new Map(initial.records.map(record=>[record.recordId,record]));
+    const damaged=Object.entries(manifest).filter(([id,proof])=>{
+      const record=localById.get(id);return !record||(!record.pending&&!record.deleted&&recordProof(record)!==proof);
+    }).map(([id])=>id);
+    const ids=[...new Set([...(protection.changedIds||[]),...damaged])];
     for(let offset=0;offset<ids.length;offset+=50){
       const batch=ids.slice(offset,offset+50);
       const value=await send({action:"getCustomerChanges",changeEpoch:protection.changeEpoch,recordIds:batch});
@@ -387,7 +406,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       await cacheResponse(scope,value);
     }
     if(protection.deletedIds?.length)await applySyncProtection(scope,{...protection,deletedIds:protection.deletedIds,changedIds:[]});
-    await repository.transact(scope,state=>{if(state.pull){state.pull.changeCursor=protection.changeCursor;state.pull.changeEpoch=protection.changeEpoch;state.pull.changePending=protection.hasMoreChanges===true;state.pull.lastCompletedAt=Date.now();}});
+    await repository.transact(scope,state=>{if(state.pull){state.pull.changeCursor=protection.changeCursor;state.pull.changeEpoch=protection.changeEpoch;state.pull.changePending=protection.hasMoreChanges===true;state.pull.lastCompletedAt=Date.now();state.pull.recordManifest=recordManifest(state.records);}});
   }
   // A lost local row cannot be found from a remote cursor alone. The hourly
   // authoritative ID inventory repairs small gaps without transferring every
@@ -408,7 +427,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(protection.remoteRevision && initial.pull?.lastCompletedAt && !initial.pull.cursor && initial.pull.remoteRevision===protection.remoteRevision &&
      (!pending || initial.operations.every(op=>op.state!=="pending" || (op.action==="markAfsmSent" && (afsmBridgeUpgrade.get(scope)?.retryAt||0)>Date.now())))){
     shouldPull=false;
-    await repository.transact(scope,state=>{if(state.pull){state.pull.lastCompletedAt=Date.now();state.pull.lastFullCheckAt=Date.now();state.pull.changeCursor=protection.changeCursor;state.pull.changeEpoch=protection.changeEpoch;}});
+    await repository.transact(scope,state=>{if(state.pull){state.pull.lastCompletedAt=Date.now();state.pull.lastFullCheckAt=Date.now();state.pull.changeCursor=protection.changeCursor;state.pull.changeEpoch=protection.changeEpoch;state.pull.recordManifest=recordManifest(state.records);}});
   }
   const afsmDeferred=()=>!!afsmBridgeUpgrade.get(scope) && afsmBridgeUpgrade.get(scope)!.retryAt>Date.now() && !refresh;
   const pendingQueue=initial.operations.filter(op=>op.state==="pending");

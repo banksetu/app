@@ -966,6 +966,26 @@ test('completed checkpoint reopened after six days checks only the journal, even
   assert.equal(state.operations.length,0);assert.equal(state.records[0].revision,'r1');
  }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
+test('years-old checkpoint repairs a damaged local record by ID without customer pagination',async()=>{
+ storage.clear();connect('integrity-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:integrity-device',id=crypto.randomUUID(),now=Date.now();
+ await repository.transact(scope,state=>{
+  state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,recordId:id}}];
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-3*365*86400000,changeCursor:8,changeEpoch:'epoch'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'integrity-device',incremental:true,changeCursor:8,changeEpoch:'epoch',changedIds:[],deletedIds:[],hasMoreChanges:false};
+ let transferred=0,pages=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage'){pages++;throw Error('Full customer pagination is unnecessary');}
+  assert.deepEqual(body.recordIds,[id]);transferred++;return Response.json({success:true,customers:[{...customer,recordId:id,rowNumber:2,revision:'r1'}],deletedIds:[]});};
+ try{
+  await engine.syncNow(true);
+  await repository.transact(scope,state=>{state.records[0].customer.name='Locally damaged';});
+  await engine.syncNow(true);
+  const state=await repository.read(scope);assert.equal(transferred,1);assert.equal(pages,0);
+  assert.equal(state.records[0].customer.name,customer.name);assert.equal(state.pull.changeCursor,8);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
 test('same cloud revision repairs 100 missing local IDs without downloading 2,000 rows',async()=>{
  storage.clear();connect('gap-device');navigator.onLine=true;
  const scope='user-a:tenant-a:gap-device',now=Date.now();

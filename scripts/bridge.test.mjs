@@ -47,25 +47,25 @@ test('incremental journal preserves a deletion tombstone and resolves latest act
  assert.equal(delta.incremental,true);assert.deepEqual(Array.from(delta.deletedIds),[id]);assert.equal(delta.changedIds.length,0);
  assert.deepEqual(Array.from(context.getCustomerChanges({connectionId:'bound',changeEpoch:epoch,recordIds:[id]},actor).deletedIds),[id]);
  assert(context.syncCustomerOperation({connectionId:'bound',operation:deletion},user).replayed);
- assert.equal(journal.getLastRow(),3);
+ assert.equal(journal.getLastRow(),1);
+ const indexed=tabs.get('BANKSETU_CHANGE_LATEST').getRange(2,1,1,5).getDisplayValues()[0];
+ assert.equal(indexed[1],'DELETE');assert.equal(indexed[2],deletion.operationId);
 });
-test('old cloud history compacts in bounded batches and stale devices rebootstrap',()=>{
+test('old cloud history compacts without invalidating dormant device checkpoints',()=>{
  const {context,tabs}=bridge(),actor={...user,spreadsheetId:'synthetic-sheet'};
  context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
  {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('already installed')}};
  const first=context.syncProtection({action:'getSyncProtection',connectionId:'bound'},actor);
  const journal=tabs.get('BANKSETU_CUSTOMER_CHANGES'),old=new Date(Date.now()-31*86400000).toISOString();
  for(let i=0;i<10001;i++)journal.appendRow([crypto.randomUUID(),'UPSERT',crypto.randomUUID(),'bound',old]);
- const result=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()},actor);
- assert.equal(result.incremental,undefined);assert.notEqual(result.changeEpoch,first.changeEpoch);
- assert.equal(journal.getLastRow(),9002);assert.equal(journal.getRange(1,7,1,1).getDisplayValues()[0][0],'COMPACTING');
- assert.equal(context.getCustomerChanges({connectionId:'bound',changeEpoch:first.changeEpoch,recordIds:[]},actor).code,'REBASE_REQUIRED');
- for(let i=0;i<9;i++)context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:result.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()},actor);
- assert.equal(journal.getLastRow(),2);
- const final=context.syncProtection({action:'getSyncProtection',connectionId:'bound'},actor);
- assert.equal(final.changeEpoch,result.changeEpoch);assert.equal(final.changeCursor,0);
- assert.equal(journal.getLastRow(),1);
- assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()},actor).incremental,undefined);
+ for(let i=0;i<32;i++)context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:0},actor);
+ const latest=tabs.get('BANKSETU_CHANGE_LATEST');assert.equal(latest.getLastRow(),10002);
+ assert.equal(journal.getLastRow(),1,'old event rows are removed after the latest index is durable');
+ const firstPage=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:0},actor);
+ assert.equal(firstPage.incremental,true);assert.equal(firstPage.changedIds.length,500);
+ assert.equal(firstPage.changeEpoch,first.changeEpoch);assert.equal(firstPage.hasMoreChanges,true);
+ const final=context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:first.changeEpoch,changeCursor:10001},actor);
+ assert.equal(final.incremental,true);assert.equal(final.changedIds.length,0);assert.equal(final.changeCursor,10001);
 });
 test('manual Sheet edit is journaled and manual row removal forces a safe full reconciliation',()=>{
  const {context,rows,tabs}=bridge(),actor={...user,spreadsheetId:'synthetic-sheet'},id=crypto.randomUUID();
