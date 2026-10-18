@@ -11,6 +11,7 @@ try {
     assert(light.sidebar.includes('gradient'),'Light Mode keeps Master menu gradient');
     assert(light.overview.includes('gradient'),'Light Mode keeps overview gradient');
     await page.locator('.banksetu-app-shell').evaluate(el=>el.dataset.appearance='dark');
+    await page.waitForTimeout(350); // Existing card entrance animation must finish before sampling paint.
     const dark = await page.evaluate(() => {
       const sidebar=document.querySelector('.banksetu-sidebar'),toggle=document.querySelector('.banksetu-appearance'),nav=sidebar.querySelector('nav');
       const toggleRect=toggle.getBoundingClientRect(),sideRect=sidebar.getBoundingClientRect();
