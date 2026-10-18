@@ -21,14 +21,16 @@ test('incremental journal is idempotent and returns only changed rows for this c
  assert.equal(batch.customers.length,1);assert.equal(batch.customers[0].recordId,id);
  assert.equal(context.getCustomerChanges({connectionId:'other',changeEpoch:epoch,recordIds:[id]},actor).code,'CONNECTION_CHANGED');
 });
-test('reopening after three idle hours uses journal; daily audit remains available',()=>{
+test('completed checkpoint uses journal after hours or days without scanning customer rows',()=>{
  const {context,tabs}=bridge(),actor={...user,spreadsheetId:'synthetic-sheet'};
  context.ScriptApp={getProjectTriggers:()=>[{getHandlerFunction:()=> 'bankSetuCustomerEdited',getTriggerSourceId:()=> 'synthetic-sheet'},
  {getHandlerFunction:()=> 'bankSetuCustomerStructureChanged',getTriggerSourceId:()=> 'synthetic-sheet'}],newTrigger:()=>{throw Error('already installed')}};
  const baseline=context.syncProtection({action:'getSyncProtection',connectionId:'bound'},actor);
  const read=age=>context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:baseline.changeEpoch,changeCursor:0,lastFullCheckAt:Date.now()-age},actor);
  assert.equal(read(3*60*60*1000).incremental,true);
- assert.equal(read(25*60*60*1000).incremental,undefined);
+ assert.equal(read(25*60*60*1000).incremental,true);
+ assert.equal(read(6*24*60*60*1000).incremental,true);
+ assert.equal(context.syncProtection({action:'getSyncProtection',connectionId:'bound',changeEpoch:baseline.changeEpoch,changeCursor:0},actor).incremental,true);
  assert.equal(tabs.get('BANKSETU_CUSTOMER_CHANGES').getLastRow(),1);
 });
 test('incremental journal preserves a deletion tombstone and resolves latest action',()=>{

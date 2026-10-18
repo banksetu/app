@@ -3238,10 +3238,9 @@ function syncProtection(request, authUser) {
     }
     const triggersReady=customerChangeTriggersReady(authUser);
     const cursor=Number(request.changeCursor);
-    // The client checks every hour, but an hour of inactivity is not a reason
-    // to reread every customer. Keep a bounded daily authoritative audit for
-    // missed manual Sheet events and use the durable journal between audits.
-    if(!compacting&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange&&request.lastFullCheckAt&&Date.now()-Number(request.lastFullCheckAt)>=0&&Date.now()-Number(request.lastFullCheckAt)<24*60*60*1000){
+    // A completed checkpoint has no time limit. The journal epoch and cursor
+    // identify the cloud state even when a device has been closed for days.
+    if(!compacting&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange){
       const size=Math.min(500,latestChange-cursor);
       const events=size?changes.getRange(cursor+2,1,size,4).getDisplayValues():[];
       const relevant=events.filter(row=>row[3]===authUser.connectionId||row[3]==="MANUAL");

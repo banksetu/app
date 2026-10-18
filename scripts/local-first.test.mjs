@@ -12,6 +12,7 @@ Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:
 let handler=async()=>{throw new Error('offline');};
 let protectionOverride;
 let protectionCalls=0;
+let protectionRequest;
 let inventoryOverride,inventoryCalls=0;
 let photoIndexOverride;
 globalThis.fetch=async(...args)=>{
@@ -19,6 +20,7 @@ globalThis.fetch=async(...args)=>{
  if(body.action==='getPhotoPresence'){inventoryCalls++;if(photoIndexOverride)return Response.json(photoIndexOverride);return new Response(JSON.stringify({success:true,complete:true,connectionId:storage.get('bankSetuConnectionId'),customerIds:inventoryOverride||[]}));}
  if(body.action==='getSyncProtection'){
    protectionCalls++;
+   protectionRequest=body;
    const connectionId=storage.get('bankSetuConnectionId');
    const scope=`${globalThis.__auth.currentUser.uid}:${storage.get('bankSetuMasterLocalEnabled')==='true'?`master:${globalThis.__auth.currentUser.uid}`:storage.get('bankSetuTenantId')}:${connectionId}`;
    const state=await repository.read(scope);
@@ -944,12 +946,12 @@ test('durable change cursor downloads one changed record, applies deletion, and 
   await engine.syncNow(true);state=await repository.read(scope);assert.equal(batches,1);assert.equal(pages,0);
  }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
-test('completed checkpoint reopened after three hours checks metadata without customer pages',async()=>{
+test('completed checkpoint reopened after six days checks only the journal, even without an old audit timestamp',async()=>{
  storage.clear();connect('reopened-complete');navigator.onLine=true;
  const scope='user-a:tenant-a:reopened-complete',now=Date.now(),id=crypto.randomUUID();
  await repository.transact(scope,state=>{
   state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,recordId:id}}];
-  state.pull={cursor:0,seen:[],startedAt:now-3*60*60*1000,lastCompletedAt:now-3*60*60*1000,lastFullCheckAt:now-3*60*60*1000,changeCursor:7,changeEpoch:'epoch',remoteRevision:'r1'};
+  state.pull={cursor:0,seen:[],startedAt:now-6*24*60*60*1000,lastCompletedAt:now-6*24*60*60*1000,changeCursor:7,changeEpoch:'epoch',remoteRevision:'r1'};
   state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
  });
  protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'reopened-complete',incremental:true,changeCursor:7,changeEpoch:'epoch',changedIds:[],deletedIds:[],hasMoreChanges:false};
@@ -958,6 +960,8 @@ test('completed checkpoint reopened after three hours checks metadata without cu
  try{
   await engine.syncNow(true);
   const state=await repository.read(scope);
+  assert.equal(protectionRequest.changeCursor,7);assert.equal(protectionRequest.changeEpoch,'epoch');
+  assert.equal(protectionRequest.lastFullCheckAt,undefined);
   assert.equal(pages,0);assert.equal(state.pull.cursor,0);assert.equal(state.pull.changeCursor,7);
   assert.equal(state.operations.length,0);assert.equal(state.records[0].revision,'r1');
  }finally{protectionOverride=undefined;navigator.onLine=false;}
