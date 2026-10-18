@@ -32,7 +32,7 @@ async function request(body: Record<string, unknown>) {
   return response.json();
 }
 
-async function previewImage(card: HTMLElement): Promise<Blob> {
+async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   const width = Math.ceil(card.getBoundingClientRect().width);
   if (!width) throw new Error("Customer preview is not visible. Open it again and retry.");
   const host = document.createElement("div");
@@ -54,16 +54,17 @@ async function previewImage(card: HTMLElement): Promise<Blob> {
       }
       await Promise.race([img.decode(),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Photo capture timed out.")),3000))]);
     }
-    const canvas=await html2canvas(copy,{backgroundColor:null,scale:2,useCORS:true,allowTaint:false,logging:false,
+    const canvas=await html2canvas(copy,{backgroundColor:forPdf?'#ffffff':null,scale:forPdf?1.5:2,useCORS:true,allowTaint:false,logging:false,
       width,height:Math.ceil(copy.scrollHeight),scrollX:0,scrollY:0});
-    return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Share image cannot be created.")),"image/png"));
+    try{return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("Customer image cannot be created.")),forPdf?'image/jpeg':'image/png',forPdf?.84:undefined));}
+    finally{canvas.width=0;canvas.height=0;}
   } finally {
     host.remove();
   }
 }
 
-export function snapshot(customer: Customer, card?: HTMLElement | null): Promise<Blob> {
-  if (card) return previewImage(card);
+export function snapshot(customer: Customer, card?: HTMLElement | null, forPdf=false): Promise<Blob> {
+  if (card) return previewImage(card,forPdf);
   return new Promise(async (resolve, reject) => {
     try {
       const fields = visibleFields(customer);

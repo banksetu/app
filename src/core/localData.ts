@@ -159,7 +159,7 @@ async function hideLocallyDeleted(scope: string, value: Record<string, unknown>,
 }
 function announce() { window.dispatchEvent(new Event("banksetu-sync-change")); }
 const remoteDiscoveries=new Map<string,number>();
-async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {remoteRevision?:string;changeCursor?:number;changeEpoch?:string;lastFullCheckAt?:number;cursor:number;seen:string[];startedAt:number;pageSize?:number}) {
+async function cacheResponse(scope: string, value: Record<string, unknown>, checkpoint?: {remoteRevision?:string;changeCursor?:number;changeEpoch?:string;lastFullCheckAt?:number;cursor:number;seen:string[];startedAt:number;pageSize?:number;pageSuccesses?:number}) {
   const list = (Array.isArray(value.customers) ? value.customers : value.customer ? [{...value.customer as Customer,rowNumber:value.rowNumber}] : []) as Customer[];
   let discovered=0,notifyRemote=false;
   await repository.transact(scope, state => {
@@ -183,7 +183,7 @@ async function cacheResponse(scope: string, value: Record<string, unknown>, chec
       if(value.hasNextPage){
         if(!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=checkpoint.cursor)throw Error("Google returned an invalid sync cursor.");
         state.pull={...checkpoint,cursor:Number(value.nextCursor),seen:[...seen]};
-      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),lastFullCheckAt:checkpoint.lastFullCheckAt,changeCursor:checkpoint.changeCursor,changeEpoch:checkpoint.changeEpoch,cacheLimited:state.pull?.cacheLimited,pageSize:checkpoint.pageSize,remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
+      }else {state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),lastFullCheckAt:checkpoint.lastFullCheckAt,changeCursor:checkpoint.changeCursor,changeEpoch:checkpoint.changeEpoch,cacheLimited:state.pull?.cacheLimited,pageSize:Math.max(50,checkpoint.pageSize||250),remoteRevision:checkpoint.remoteRevision};notifyRemote=true;}
     }
     applyPhotoIndex(state);
     trimCache(state);
@@ -467,7 +467,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       if((oversized||timedOut)&&pageSize>25){
         const smaller=Math.max(25,Math.floor(pageSize/2));
         await repository.transact(scope,current=>{
-          if((current.pull?.cursor||0)===pull.cursor)current.pull={...pull,pageSize:smaller};
+          if((current.pull?.cursor||0)===pull.cursor)current.pull={...pull,pageSize:smaller,pageSuccesses:0};
         });
         queueMicrotask(()=>window.dispatchEvent(new Event("banksetu-sync-request")));
         return;
@@ -480,7 +480,11 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     if(value.customers.some((customer:Customer)=>!customer.recordId))throw new Error("The Google bridge must return stable customer IDs before automatic download can continue.");
     if(value.hasNextPage && (!Number.isSafeInteger(value.nextCursor)||Number(value.nextCursor)<=pull.cursor))throw new Error("Google returned an invalid sync cursor.");
     // Page data and resume cursor must commit together across crash/restart.
-    await cacheResponse(scope,value,pull);
+    const successes=(pull.pageSuccesses||0)+1;
+    // Two successful bounded pages justify a cautious increase. A timeout
+    // clears the streak, so a temporary 25-row fallback cannot persist forever.
+    const grown=successes>=2&&pageSize<250;
+    await cacheResponse(scope,value,{...pull,pageSize:grown?Math.min(250,Math.max(pageSize+25,Math.floor(pageSize*1.25))):pageSize,pageSuccesses:grown?0:successes});
     if(!value.hasNextPage)break;
   }
   const afterPull=await repository.read(scope);

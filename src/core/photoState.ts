@@ -32,12 +32,18 @@ export function applyPhotoIndex(state:import('./schema').LocalState):void {
   const index=state.photoIndex;if(!index)return;
   const byId=new Map(index.entries.map(entry=>[entry.fileId,entry]));
   const byCustomer=new Map<string,PhotoIndexEntry>();
-  for(const entry of index.entries)if(!entry.deleted&&entry.customerId){const old=byCustomer.get(entry.customerId);if(!old||entry.revision>old.revision)byCustomer.set(entry.customerId,entry);}
+  const ambiguous=new Set<string>();
+  for(const entry of index.entries)if(!entry.deleted&&entry.customerId){
+    if(byCustomer.has(entry.customerId))ambiguous.add(entry.customerId);
+    else byCustomer.set(entry.customerId,entry);
+  }
   for(const record of state.records){
     if(record.deleted||record.pending)continue;
     const customer=record.customer;
     if(customer.photoRemoved===true){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;customer.photoAvailable=false;customer.photoState='NO_PHOTO';customer.photoIndexWaiting=false;continue;}
-    const id=drivePhotoId(customer.photoUrl),entry=id?byId.get(id):customer.photoRemoved?undefined:byCustomer.get(String(customer.enrolId||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100));
+    const name=String(customer.enrolId||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100);
+    const id=drivePhotoId(customer.photoUrl),entry=id?byId.get(id):customer.photoRemoved||ambiguous.has(name)?undefined:byCustomer.get(name);
+    if(!id&&ambiguous.has(name)){customer.photoState='AMBIGUOUS';customer.photoIndexWaiting=false;continue;}
     if(entry&&!entry.deleted){
       if(customer.photoVersion!==entry.version||drivePhotoId(customer.photoUrl)!==entry.fileId){
         // A legacy preview needs one bounded, persisted checksum comparison.
