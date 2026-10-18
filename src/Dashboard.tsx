@@ -6,6 +6,8 @@ import SlideNotifications from "./SlideNotifications";
 import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
+import { customerAnalytics } from "./core/dashboardAnalytics";
+import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -279,6 +281,14 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // compatibility. It has the same global appearance permissions as the
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
+  const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
+  const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
+  useEffect(() => {
+    const restore = () => {const {uid,tenantId}=appearanceIdentity();setAppearance(storedAppearance(localStorage,uid,tenantId));};
+    window.addEventListener('banksetu-workspace-change', restore);
+    return () => window.removeEventListener('banksetu-workspace-change', restore);
+  }, []);
+  const changeAppearance = (mode: Appearance) => { const {uid,tenantId}=appearanceIdentity();if(!uid)return;localStorage.setItem(appearanceStorageKey(uid,tenantId), mode);setAppearance(mode); };
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
@@ -861,7 +871,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   return (
 
-    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
+    <main className="banksetu-app-shell" data-appearance={appearance} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
       <SlideNotifications />
 
       {mobileMenuOpen && (
@@ -960,6 +970,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
           {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
+        <div className="banksetu-appearance" role="group" aria-label="Appearance">
+          <button type="button" aria-pressed={appearance === 'light'} className={appearance === 'light' ? 'selected' : ''} onClick={() => changeAppearance('light')}><span aria-hidden="true">☀</span> Light</button>
+          <button type="button" aria-pressed={appearance === 'dark'} className={appearance === 'dark' ? 'selected' : ''} onClick={() => changeAppearance('dark')}><span aria-hidden="true">☾</span> Dark</button>
+        </div>
 
       </aside>
 
@@ -2929,6 +2943,7 @@ function DashboardHome({
       inactiveAccounts: 0,
 
     });
+  const [analyticsRows, setAnalyticsRows] = useState<Record<string, unknown>[] | null>(null);
 
   const [statsLoading, setStatsLoading] =
 
@@ -2988,6 +3003,7 @@ function DashboardHome({
               };
               if (!cancelled) {
                 setDashboardStats(localStats);
+                setAnalyticsRows(records);
                 statsLoadedOnce.current=true;
                 setStatsLoading(false);
                 setStatsError("");
@@ -3204,6 +3220,9 @@ function DashboardHome({
 
         if (!cancelled) {
           const active=[...customerIds.values()];
+          // Legacy workspaces already loaded these pages for the overview;
+          // charts must not request the same customers a second time.
+          setAnalyticsRows(active);
           const status=(customer:Record<string,unknown>,field:string)=>String(customer[field]??"").trim().toLowerCase();
 
           setDashboardStats({
@@ -3487,10 +3506,48 @@ function DashboardHome({
 
       </section>
 
+      <DashboardAnalytics rows={analyticsRows} stats={dashboardStats} loading={statsLoading} />
+
     </>
 
   );
 
+}
+
+function DashboardAnalytics({ rows, stats, loading }: { rows: Record<string, unknown>[] | null; stats: { kycPending:number; passbookPending:number; inactiveAccounts:number }; loading:boolean }) {
+  const analytics = rows === null ? null : customerAnalytics(rows);
+  const months = analytics?.months || [];
+  const maxEntries = Math.max(1, ...months.map(month => month.entries));
+  const maxGrowth = Math.max(1, ...months.map(month => month.growth));
+  const statuses = [
+    { title:'KYC Pending', count:stats.kycPending, color:'#38bdf8' },
+    { title:'Passbook Pending', count:stats.passbookPending, color:'#a78bfa' },
+    { title:'Inactive Accounts', count:stats.inactiveAccounts, color:'#fbbf24' },
+  ];
+  return <section className="dashboard-analytics" aria-label="Customer analytics">
+    <h2>Analytics</h2>
+    <div className="dashboard-analytics-grid">
+      <article className="dashboard-analytics-card"><h3>Customer Growth</h3>
+        {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable. No historical totals estimated.</p> : <>
+          <p>Currently active customers with recorded entry dates · {analytics.known} known{analytics.undated ? ` · ${analytics.undated} undated excluded` : ''}</p>
+          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.growth}`).join(', ')}>
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar growth" style={{height:`${Math.max(2, m.growth / maxGrowth * 100)}%`}} title={`${m.key}: ${m.growth}`} /><small>{m.label}</small></div>)}
+          </div><small>Deleted customers and records without entry dates are not included in historical totals.</small>
+        </>}
+      </article>
+      <article className="dashboard-analytics-card"><h3>Monthly Customer Entries</h3>
+        {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable.</p> : <>
+          <p>Recorded entries in the last 12 months</p>
+          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.entries}`).join(', ')}>
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} title={`${m.key}: ${m.entries}`} /><small>{m.label}</small></div>)}
+          </div><small>{analytics.undated} customer(s) without an entry date excluded.</small>
+        </>}
+      </article>
+      <article className="dashboard-analytics-card"><h3>Customer Status Analytics</h3><p>Current dashboard counts · categories may overlap</p>
+        {statuses.map(item => <div className="dashboard-analytics-status" key={item.title}><span>{item.title}</span><strong>{loading ? '…' : item.count}</strong><div className="dashboard-analytics-track"><span style={{width:`${stats.kycPending + stats.passbookPending + stats.inactiveAccounts ? item.count / Math.max(1, ...statuses.map(s=>s.count)) * 100 : 0}%`,background:item.color}} /></div></div>)}
+      </article>
+    </div>
+  </section>;
 }
 
 function QuickAction({

@@ -14,13 +14,14 @@ function render(page,blocked){
  const exports={};
  const component=name=>props=>React.createElement('div',{'data-component':name},name==='LicenseNotice'?props.permission.state:undefined);
  const require=path=>{
-  if(path==='react')return {...React,useState:value=>{index++;return React.useState(index===1?page:index===22?true:value);}};
+  if(path==='react')return {...React,useState:value=>{index++;return React.useState(index===2?page:index===23?true:value);}};
   if(path==='react/jsx-runtime')return jsx;
   if(path==='react-dom')return {createPortal:()=>null};
   if(path==='./core/useSyncStatus')return {useSyncStatus:()=>({records:1,pending:1,online:true})};
   if(path==='./SupportCenter')return {__esModule:true,default:component('SupportCenter'),useSupportUnread:()=>0};
   if(path==='./core/licensePolicy')return {canOpenLicensePage:(name,readOnly)=>!readOnly||['dashboard','customers','all-customer-data','settings','sync-backup','license-management','support'].includes(name)};
   if(path==='./core/localData')return {localModeEnabled:()=>false};
+  if(path==='./core/appearance')return {storedAppearance:()=> 'light',appearanceStorageKey:()=> 'test'};
   if(path.endsWith('.png'))return {__esModule:true,default:'logo.png'};
   if(path==='./tenantApi')return {tenantStorageKey:key=>key,getTenantApiUrl:()=>''};
   return {__esModule:true,default:component(path.slice(2)),getAuth:()=>({currentUser:{uid:'user-a'}})};
