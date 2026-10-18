@@ -362,7 +362,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   const photoCheckDue=!!initial.photoDiscoveryError&&photoRetryDue || initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || !!initial.records.length&&!initial.photoIndex&&!initial.photoPresence&&photoRetryDue || !!initial.photoIndex && (initial.photoIndex.complete?Date.now()-initial.photoIndex.checkedAt>=IDLE_RECONCILE_MS:photoRetryDue);
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<IDLE_RECONCILE_MS){await hashPhotoBaseline(scope,signal);return;}
   if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
-  const protection=await send({action:"getSyncProtection",...(!recovering?.pending&&initial.pull?.changeEpoch&&initial.pull?.changeCursor!==undefined&&!initial.pull.cursor&&initial.pull.lastCompletedAt&&initial.pull.lastFullCheckAt?{changeEpoch:initial.pull.changeEpoch,changeCursor:initial.pull.changeCursor,lastFullCheckAt:initial.pull.lastFullCheckAt}:{})}) as SyncProtection;
+  const protection=await send({action:"getSyncProtection",...(!recovering?.pending&&initial.pull?.changeEpoch&&initial.pull?.changeCursor!==undefined&&!initial.pull.cursor&&initial.pull.lastCompletedAt?{changeEpoch:initial.pull.changeEpoch,changeCursor:initial.pull.changeCursor}:{})}) as SyncProtection;
   await applySyncProtection(scope,protection);
   // Only the authenticated, connection-checked POST can retire an old AFSM
   // bridge warning. GET /status alone does not prove the write route works.
