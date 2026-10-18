@@ -3062,6 +3062,55 @@ function syncDeletionRows(sheet, connectionId) {
 }
 const SYNC_RESET_SHEET = "BANKSETU_SYNC_RESETS";
 const SYNC_CHANGES_SHEET = "BANKSETU_CUSTOMER_CHANGES";
+const SYNC_LATEST_SHEET = "BANKSETU_CHANGE_LATEST";
+function syncLatestSheet(sheet){
+  const book=sheet.getParent();let latest=book.getSheetByName(SYNC_LATEST_SHEET);
+  if(!latest){latest=book.insertSheet(SYNC_LATEST_SHEET);latest.getRange(1,1,1,5).setValues([["RECORD ID","ACTION","OPERATION ID","CONNECTION ID","SEQUENCE"]]);latest.hideSheet();}
+  if(latest.getRange(1,1,1,5).getDisplayValues()[0].join("|")!=="RECORD ID|ACTION|OPERATION ID|CONNECTION ID|SEQUENCE")
+    throw new Error("Latest change index name is in use. No sync cursor was advanced.");
+  return latest;
+}
+function syncChangeHead(ledger){
+  const stored=Number(ledger.getRange(1,8,1,1).getDisplayValues()[0][0]);
+  return Math.max(ledger.getLastRow()-1,Number.isSafeInteger(stored)?stored:0);
+}
+function indexSyncChange(latest,row,sequence){
+  const count=latest.getLastRow()-1;
+  const entries=count?latest.getRange(2,1,count,5).getDisplayValues():[];
+  const index=entries.findIndex(entry=>entry[0]===row[0]&&entry[3]===row[3]);
+  if(index>=0 && Number(entries[index][4])>=sequence)return;
+  const values=[row[0],row[1],row[2],row[3],sequence];
+  if(index>=0)latest.getRange(index+2,1,1,5).setValues([values]);else latest.appendRow(values);
+}
+// The old journal had row-position cursors. Migrate it in bounded pieces before
+// removing any row; an interrupted migration resumes without invalidating cursors.
+function advanceSyncIndex(sheet,ledger){
+  const latest=syncLatestSheet(sheet),head=syncChangeHead(ledger);
+  const progress=Number(ledger.getRange(1,9,1,1).getDisplayValues()[0][0])||0;
+  if(progress<head){
+    const count=Math.min(500,head-progress,Math.max(0,ledger.getLastRow()-1-progress));
+    const rows=count?ledger.getRange(progress+2,1,count,4).getDisplayValues():[];
+    const oldCount=latest.getLastRow()-1;
+    const existing=oldCount?latest.getRange(2,1,oldCount,5).getDisplayValues():[];
+    const positions=new Map(existing.map((row,i)=>[row[3]+":"+row[0],i]));
+    const additions=[];
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i],sequence=progress+i+1,key=row[3]+":"+row[0],position=positions.get(key);
+      if(position!==undefined){
+        const before=position<existing.length?existing[position]:additions[position-existing.length];
+        if(Number(before[4])>=sequence)continue;
+        const value=[row[0],row[1],row[2],row[3],sequence];
+        if(position<existing.length){latest.getRange(position+2,1,1,5).setValues([value]);existing[position]=value;}
+        else additions[position-existing.length]=value;
+      }else{positions.set(key,existing.length+additions.length);additions.push([row[0],row[1],row[2],row[3],sequence]);}
+    }
+    if(additions.length)latest.getRange(oldCount+2,1,additions.length,5).setValues(additions);
+    if(rows.length){if(progress+rows.length>=head)ledger.getRange(1,8,1,1).setValues([[head]]);
+      ledger.getRange(1,9,1,1).setValues([[progress+rows.length]]);}
+    SpreadsheetApp.flush();
+  }
+  return {latest,ready:(Number(ledger.getRange(1,9,1,1).getDisplayValues()[0][0])||0)>=head};
+}
 function syncChangeSheet(sheet, create) {
   const book=sheet.getParent();let ledger=book.getSheetByName(SYNC_CHANGES_SHEET);
   if(!ledger&&create){ledger=book.insertSheet(SYNC_CHANGES_SHEET);ledger.getRange(1,1,1,7).setValues([["RECORD ID","ACTION","OPERATION ID","CONNECTION ID","AT","EPOCH:"+Utilities.getUuid(),""]]);ledger.hideSheet();}
@@ -3073,15 +3122,44 @@ function syncChangeSheet(sheet, create) {
 }
 function recordSyncChange(sheet,recordId,action,operationId,connectionId){
   const ledger=syncChangeSheet(sheet,true),count=ledger.getLastRow()-1;
+  const latest=syncLatestSheet(sheet),latestCount=latest.getLastRow()-1;
+  if(latestCount){
+    const matching=latest.getRange(2,1,latestCount,5).getDisplayValues().find(row=>row[0]===recordId&&row[3]===connectionId);
+    if(matching&&matching[2]===operationId){
+      const head=syncChangeHead(ledger),sequence=Number(matching[4]);
+      if(sequence>head){ledger.getRange(1,8,1,1).setValues([[sequence]]);
+        if(Number(ledger.getRange(1,9,1,1).getDisplayValues()[0][0])===head)ledger.getRange(1,9,1,1).setValues([[sequence]]);
+        SpreadsheetApp.flush();}
+      return;
+    }
+  }
   // A timed-out operation can be replayed. Its customer row and its change
   // event must both be repairable with the same stable operation identity.
   if(count){
     const column=ledger.getRange(2,3,count,1);
     const found=typeof column.createTextFinder==="function"?column.createTextFinder(operationId).matchEntireCell(true).findNext()
       :column.getDisplayValues().some(row=>row[0]===operationId);
-    if(found)return;
+    if(found){
+      const rows=ledger.getRange(2,1,count,8).getDisplayValues();
+      const index=rows.findIndex(row=>row[2]===operationId);
+      if(index>=0){const sequence=Number(rows[index][7])||index+1;
+        indexSyncChange(latest,rows[index],sequence);
+        if(syncChangeHead(ledger)<sequence)ledger.getRange(1,8,1,1).setValues([[sequence]]);
+        if(Number(ledger.getRange(1,9,1,1).getDisplayValues()[0][0])===sequence-1)
+          ledger.getRange(1,9,1,1).setValues([[sequence]]);
+        SpreadsheetApp.flush();}
+      return;
+    }
   }
-  ledger.appendRow([recordId,action,operationId,connectionId,new Date().toISOString()]);SpreadsheetApp.flush();
+  const head=syncChangeHead(ledger),sequence=head+1;
+  ledger.appendRow([recordId,action,operationId,connectionId,new Date().toISOString(),"","",sequence]);
+  // The row is durable before publishing the head. Replayed operations repair
+  // an interrupted index write using their stable operation ID.
+  indexSyncChange(latest,[recordId,action,operationId,connectionId],sequence);
+  ledger.getRange(1,8,1,1).setValues([[sequence]]);
+  if(Number(ledger.getRange(1,9,1,1).getDisplayValues()[0][0])===head)
+    ledger.getRange(1,9,1,1).setValues([[sequence]]);
+  SpreadsheetApp.flush();
 }
 function customerChangeTriggersReady(authUser){
   try{return installCustomerChangeTriggers(authUser.spreadsheetId);}
@@ -3227,20 +3305,16 @@ function syncProtection(request, authUser) {
       } else if (index>=0) resetId=rows[index][1];
     }
     const changes=syncChangeSheet(sheet,true);
-    let latestChange=changes.getLastRow()-1;
-    let epoch=changes.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6);
-    let compacting=changes.getRange(1,7,1,1).getDisplayValues()[0][0]==="COMPACTING";
-    if(!compacting&&latestChange>10000){
-      const oldest=Date.parse(changes.getRange(2,5,1,1).getDisplayValues()[0][0]);
-      if(latestChange>20000||(Number.isFinite(oldest)&&Date.now()-oldest>30*24*60*60*1000)){
-        epoch=Utilities.getUuid();changes.getRange(1,6,1,2).setValues([["EPOCH:"+epoch,"COMPACTING"]]);SpreadsheetApp.flush();compacting=true;
-      }
+    const latestChange=syncChangeHead(changes);
+    const epoch=changes.getRange(1,6,1,1).getDisplayValues()[0][0].slice(6);
+    const compacting=changes.getRange(1,7,1,1).getDisplayValues()[0][0]==="COMPACTING";
+    const indexed=compacting?null:advanceSyncIndex(sheet,changes);
+    if(indexed?.ready&&changes.getLastRow()>1){
+      changes.deleteRows(2,Math.min(1000,changes.getLastRow()-1));SpreadsheetApp.flush();
     }
     const triggersReady=customerChangeTriggersReady(authUser);
     const cursor=Number(request.changeCursor);
-    // A completed checkpoint has no time limit. The journal epoch and cursor
-    // identify the cloud state even when a device has been closed for days.
-    if(!compacting&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange){
+    if(!compacting&&!indexed?.ready&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange){
       const size=Math.min(500,latestChange-cursor);
       const events=size?changes.getRange(cursor+2,1,size,4).getDisplayValues():[];
       const relevant=events.filter(row=>row[3]===authUser.connectionId||row[3]==="MANUAL");
@@ -3249,15 +3323,34 @@ function syncProtection(request, authUser) {
         incremental:true,changeJournalReady:true,changeEpoch:epoch,changeCursor:cursor+size,hasMoreChanges:cursor+size<latestChange,
         changedIds:[...latestById].filter(([,action])=>action==="UPSERT").map(([id])=>id),deletedIds:[...latestById].filter(([,action])=>action==="DELETE").map(([id])=>id)});
     }
+    // A completed checkpoint has no time limit. The journal epoch and cursor
+    // identify the cloud state even when a device has been closed for days.
+    if(!compacting&&indexed?.ready&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange){
+      const count=indexed.latest.getLastRow()-1;
+      const entries=count?indexed.latest.getRange(2,1,count,5).getDisplayValues():[];
+      const latestById=new Map();
+      for(const row of entries)if((row[3]===authUser.connectionId||row[3]==="MANUAL")&&Number(row[4])>cursor){
+        const prior=latestById.get(row[0]);if(!prior||Number(row[4])>Number(prior[4]))latestById.set(row[0],row);
+      }
+      const relevant=[...latestById.values()].sort((a,b)=>Number(a[4])-Number(b[4]));
+      if(!relevant.some(row=>row[1]==="RECONCILE")){
+        const page=relevant.slice(0,500);
+        return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,photoIndexVersion:1,afsmVersion:1,
+          incremental:true,changeJournalReady:true,changeEpoch:epoch,changeCursor:relevant.length>page.length?Number(page[page.length-1][4]):latestChange,hasMoreChanges:relevant.length>page.length,
+          changedIds:page.filter(row=>row[1]==="UPSERT").map(row=>row[0]),deletedIds:page.filter(row=>row[1]==="DELETE").map(row=>row[0])});
+      }
+    }
     ensureSyncMetadata(sheet);
     const rows=sheet.getLastRow()>1?sheet.getRange(2,1,sheet.getLastRow()-1,syncDataWidth(sheet)).getDisplayValues():[];
     const remoteRevision=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(rows)).map(byte=>(byte+256).toString(16).slice(-2)).join("");
     if(compacting){
-      // A new epoch was committed first. Any interrupted cleanup forces every
-      // device through this full, authoritative scan before it can use a cursor.
+      // Legacy interrupted compaction still requires an authoritative recovery.
       const remove=Math.min(1000,latestChange);
-      if(remove){changes.deleteRows(2,remove);SpreadsheetApp.flush();latestChange-=remove;}
-      if(!latestChange){changes.getRange(1,7,1,1).setValues([[""]]);SpreadsheetApp.flush();}
+      if(remove){changes.deleteRows(2,remove);SpreadsheetApp.flush();}
+      if(changes.getLastRow()===1){
+        const stale=syncLatestSheet(sheet);if(stale.getLastRow()>1)stale.deleteRows(2,stale.getLastRow()-1);
+        changes.getRange(1,7,1,3).setValues([["",0,0]]);SpreadsheetApp.flush();
+      }
     }
     return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,remoteRevision,changeJournalReady:triggersReady,changeEpoch:epoch,changeCursor:latestChange,photoIndexVersion:1,afsmVersion:1,
       activeIds:rows.filter(row=>row[26]!=="true").map(row=>String(row[24])).filter(Boolean),
