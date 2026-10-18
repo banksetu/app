@@ -944,6 +944,24 @@ test('durable change cursor downloads one changed record, applies deletion, and 
   await engine.syncNow(true);state=await repository.read(scope);assert.equal(batches,1);assert.equal(pages,0);
  }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
+test('completed checkpoint reopened after three hours checks metadata without customer pages',async()=>{
+ storage.clear();connect('reopened-complete');navigator.onLine=true;
+ const scope='user-a:tenant-a:reopened-complete',now=Date.now(),id=crypto.randomUUID();
+ await repository.transact(scope,state=>{
+  state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,recordId:id}}];
+  state.pull={cursor:0,seen:[],startedAt:now-3*60*60*1000,lastCompletedAt:now-3*60*60*1000,lastFullCheckAt:now-3*60*60*1000,changeCursor:7,changeEpoch:'epoch',remoteRevision:'r1'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'reopened-complete',incremental:true,changeCursor:7,changeEpoch:'epoch',changedIds:[],deletedIds:[],hasMoreChanges:false};
+ let pages=0;
+ handler=async(_url,init)=>{pages++;throw Error(`Unexpected ${JSON.parse(init.body).action}`);};
+ try{
+  await engine.syncNow(true);
+  const state=await repository.read(scope);
+  assert.equal(pages,0);assert.equal(state.pull.cursor,0);assert.equal(state.pull.changeCursor,7);
+  assert.equal(state.operations.length,0);assert.equal(state.records[0].revision,'r1');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
 test('same cloud revision repairs 100 missing local IDs without downloading 2,000 rows',async()=>{
  storage.clear();connect('gap-device');navigator.onLine=true;
  const scope='user-a:tenant-a:gap-device',now=Date.now();

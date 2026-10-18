@@ -37,6 +37,16 @@ export function applyPhotoIndex(state:import('./schema').LocalState):void {
     if(byCustomer.has(entry.customerId))ambiguous.add(entry.customerId);
     else byCustomer.set(entry.customerId,entry);
   }
+  // Filename discovery is safe only when the ID names exactly one local
+  // customer too. Legacy sheets can contain duplicate or normalized IDs.
+  const customerNames=new Set<string>();
+  for(const record of state.records){
+    if(record.deleted)continue;
+    const name=String(record.customer.enrolId||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100);
+    if(!name)continue;
+    if(customerNames.has(name))ambiguous.add(name);
+    else customerNames.add(name);
+  }
   for(const record of state.records){
     if(record.deleted||record.pending)continue;
     const customer=record.customer;
