@@ -34,4 +34,5 @@ jobs:
       - run: npm run build
       - run: node --test scripts/bank-pdf.test.mjs
       - run: npx playwright install --with-deps chromium
+      - run: node scripts/dashboard-appearance.browser.mjs
       - run: node scripts/mapping-ui-smoke.mjs
