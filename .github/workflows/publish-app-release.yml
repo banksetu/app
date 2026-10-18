@@ -4,6 +4,10 @@ on:
   push:
     branches: [codex/spark-client-workspace-20261001]
     paths:
+      - src/Dashboard.tsx
+      - src/App.css
+      - src/core/appearance.ts
+      - src/core/dashboardAnalytics.ts
       - src/core/afsm.ts
       - src/core/localData.ts
       - src/core/photoState.ts
