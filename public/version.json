@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.92",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.92/BankSetu-Setup-1.0.92-x64.exe",
+  "latestVersion": "1.0.93",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.93/BankSetu-Setup-1.0.93-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.92",
-  "releaseTag": "v1.0.92",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.92",
+  "version": "1.0.93",
+  "releaseTag": "v1.0.93",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.93",
   "releaseDate": "2026-10-18",
-  "windowsVersion": "1.0.92",
-  "androidBuild": 1000092,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.92/BankSetu-Setup-1.0.92-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.92/BankSetu-Android-1000092.apk",
+  "windowsVersion": "1.0.93",
+  "androidBuild": 1000093,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.93/BankSetu-Setup-1.0.93-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.93/BankSetu-Android-1000093.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.92",
+      "version": "1.0.93",
       "releaseDate": "2026-10-18",
       "categories": {
         "Improvements": [
-          "Keep completed sync checkpoints valid across idle days."
+          "Maintenance and reliability updates."
         ]
       }
     },
     "android": {
-      "version": "1.0.92",
+      "version": "1.0.93",
       "releaseDate": "2026-10-18",
       "categories": {
         "Improvements": [
-          "Keep completed sync checkpoints valid across idle days."
+          "Maintenance and reliability updates."
         ]
       }
     }
