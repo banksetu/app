@@ -34,6 +34,7 @@ try {
     await page.addStyleTag({path:'src/App.css'});
     await page.locator('.banksetu-main-workspace').evaluate(el=>el.insertAdjacentHTML('beforeend','<section class="pdf-dialog"><label class="pdf-mode"><input type="radio" checked><strong>Account Number Range</strong></label><div class="pdf-detail"><p>Selected local customers</p></div></section>'));
     await page.locator('body').evaluate(el=>el.insertAdjacentHTML('beforeend','<div class="print-alignment-overlay"><div class="print-alignment-window"><div class="print-alignment-settings"><div class="print-alignment-panel"><h3>Move Layout</h3><div class="print-alignment-saved"><strong>Current saved setting</strong></div><div class="print-alignment-frame">Paper preview</div></div></div></div></div>'));
+    await page.waitForTimeout(350); // Let existing button and section entrance transitions settle before checking colors.
     const surfaces=await page.evaluate(()=>({header:getComputedStyle(document.querySelector('.persistent-bank-header')).backgroundColor,
       info:getComputedStyle(document.querySelector('.bank-info-strip span')).color,
       customer:getComputedStyle(document.querySelector('.all-customer-data')).backgroundColor,
