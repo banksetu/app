@@ -8,6 +8,21 @@ test('completed no-photo evidence skips unknowns; incomplete baseline cannot ass
  state.photoIndex.complete=true;applyPhotoIndex(state);assert.equal(state.records[0].customer.photoState,'NO_PHOTO');assert.equal(state.records[0].customer.photoAvailable,false);assert.equal(state.records[0].customer.photoIndexWaiting,false);
  applyPhotoIndex(state);assert.equal(state.records[0].customer.photoIndexWaiting,false);
 });
+test('manual Drive filename matches only one customer photo; ambiguous duplicates are not assigned',()=>{
+ const state={records:[record('record-id')],operations:[],photoIndex:{revision:2,complete:true,entries:[entry('file-a'),entry('file-b')]}};
+ state.records[0].customer.enrolId='file-a';
+ applyPhotoIndex(state);assert.equal(state.records[0].customer.photoUrl,'https://drive.google.com/file/d/file-a/view');
+ state.records[0].customer.photoUrl='';state.records[0].customer.enrolId='shared';
+ state.photoIndex.entries=[{...entry('file-a'),customerId:'shared'},{...entry('file-b'),customerId:'shared'}];
+ applyPhotoIndex(state);assert.equal(state.records[0].customer.photoUrl,'');assert.equal(state.records[0].customer.photoState,'AMBIGUOUS');
+});
+test('duplicate local IDs cannot claim a manually uploaded Drive photo',()=>{
+ const state={records:[record('one'),record('two')],operations:[],photoIndex:{revision:1,complete:true,entries:[{...entry('manual'),customerId:'same'}]}};
+ for(const item of state.records)item.customer.enrolId='same';
+ applyPhotoIndex(state);
+ assert(state.records.every(item=>item.customer.photoUrl===''));
+ assert(state.records.every(item=>item.customer.photoState==='AMBIGUOUS'));
+});
 test('large completed inventory retires waiting flags and skips customers with no photo',()=>{
  const records=Array.from({length:2767},(_,i)=>record(`customer-${i}`));
  for(const item of records)item.customer.photoIndexWaiting=true;

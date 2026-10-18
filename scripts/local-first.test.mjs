@@ -198,9 +198,10 @@ test('oversized Google pages shrink with a durable cursor and resume without dup
  let state=await repository.read(scope);assert.deepEqual(sizes.slice(0,3),[250,125,62]);assert.equal(state.pull.pageSize,31);assert.equal(state.records.length,0);
  await assert.rejects(engine.syncNow(true),/Connection interrupted/);
  state=await repository.read(scope);assert.equal(state.pull.cursor,31);assert.equal(state.records.length,31);
- await engine.syncNow(true);state=await repository.read(scope);
+ for(let i=0;i<10;i++){await engine.syncNow(true);state=await repository.read(scope);if(!state.pull.cursor)break;}
  assert.equal(state.records.length,130);assert.equal(new Set(state.records.map(record=>record.recordId)).size,130);
- assert.equal(state.pull.pageSize,31);assert.equal(state.pull.cursor,0);
+ assert(sizes.some(size=>size>31&&size<62),'successful pages eventually increase the batch size');
+ assert(state.pull.pageSize>=50);assert.equal(state.pull.cursor,0);
 });
 
 test('interrupted download resumes its cursor, exposes error and never overwrites a pending local edit',async()=>{
@@ -927,7 +928,7 @@ test('durable change cursor downloads one changed record, applies deletion, and 
  const scope='user-a:tenant-a:delta-device',oldId=crypto.randomUUID(),newId=crypto.randomUUID(),now=Date.now();
  await repository.transact(scope,state=>{
   state.records=[{key:oldId,scope,recordId:oldId,rowNumber:2,revision:'old',pending:false,customer:{...customer,recordId:oldId}}];
-  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-1000,lastFullCheckAt:now-1000,changeCursor:4,changeEpoch:'synthetic-epoch',remoteRevision:'baseline'};
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-3*60*60*1000,lastFullCheckAt:now-3*60*60*1000,changeCursor:4,changeEpoch:'synthetic-epoch',remoteRevision:'baseline'};
   state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
  });
  protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'delta-device',incremental:true,changeCursor:6,changeEpoch:'synthetic-epoch',changedIds:[newId],deletedIds:[oldId],hasMoreChanges:false};
@@ -941,6 +942,24 @@ test('durable change cursor downloads one changed record, applies deletion, and 
   assert.equal(state.records.find(item=>item.recordId===newId).customer.name,customer.name);
   protectionOverride={...protectionOverride,changedIds:[],deletedIds:[],changeCursor:6};
   await engine.syncNow(true);state=await repository.read(scope);assert.equal(batches,1);assert.equal(pages,0);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('completed checkpoint reopened after three hours checks metadata without customer pages',async()=>{
+ storage.clear();connect('reopened-complete');navigator.onLine=true;
+ const scope='user-a:tenant-a:reopened-complete',now=Date.now(),id=crypto.randomUUID();
+ await repository.transact(scope,state=>{
+  state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,recordId:id}}];
+  state.pull={cursor:0,seen:[],startedAt:now-3*60*60*1000,lastCompletedAt:now-3*60*60*1000,lastFullCheckAt:now-3*60*60*1000,changeCursor:7,changeEpoch:'epoch',remoteRevision:'r1'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'reopened-complete',incremental:true,changeCursor:7,changeEpoch:'epoch',changedIds:[],deletedIds:[],hasMoreChanges:false};
+ let pages=0;
+ handler=async(_url,init)=>{pages++;throw Error(`Unexpected ${JSON.parse(init.body).action}`);};
+ try{
+  await engine.syncNow(true);
+  const state=await repository.read(scope);
+  assert.equal(pages,0);assert.equal(state.pull.cursor,0);assert.equal(state.pull.changeCursor,7);
+  assert.equal(state.operations.length,0);assert.equal(state.records[0].revision,'r1');
  }finally{protectionOverride=undefined;navigator.onLine=false;}
 });
 test('same cloud revision repairs 100 missing local IDs without downloading 2,000 rows',async()=>{

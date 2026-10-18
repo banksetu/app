@@ -3,7 +3,7 @@ import { afsmDisplay } from "./core/afsm";
 import { identity } from "./core/localData";
 import { snapshot } from "./AllCustomerData";
 import { isAndroid, printAndroidPdf } from "./platform/android/runtime";
-import { customerPdfBuilder } from "./core/customerPdf";
+import { customerPdfBuilder, customersPerPdfPage } from "./core/customerPdf";
 import PdfDocumentPreview from "./PdfDocumentPreview";
 import { classifyRecovery } from "./core/recovery";
 import { Filesystem, Directory } from "@capacitor/filesystem";
@@ -231,6 +231,7 @@ export default function Customers() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfIncomplete, setPdfIncomplete] = useState(false);
   const pdfGenerating = useRef(false);
+  const pdfCancelled = useRef(false);
   const [pdfBlob,setPdfBlob]=useState<Blob|null>(null);
   const [afsmBatch,setAfsmBatch]=useState<AfsmBatch|null>(null);
   const [pdfCount,setPdfCount]=useState(0);
@@ -606,13 +607,14 @@ export default function Customers() {
   };
   const makeAllCustomersPdf = async (records: Record<string, unknown>[]) => {
     if(!pdfValid||!records.length||pdfGenerating.current)return;
-    pdfGenerating.current=true;setPdfLoading(true);setPdfBlob(null);setAfsmBatch(null);setError('');setPdfProgress(0);
+    pdfGenerating.current=true;pdfCancelled.current=false;setPdfLoading(true);setPdfBlob(null);setAfsmBatch(null);setError('');setPdfProgress(0);
     try{
       await requireLicensedWrite();
       const batchScope=localModeEnabled()?identity():null;
       const batchIds=records.map(record=>String(record.recordId||""));
       const builder=customerPdfBuilder();
       for(let index=0;index<records.length;index++){
+        if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
         const item=previewCustomer(records[index]);
         const host=document.createElement('div');host.style.cssText='position:fixed;top:0;left:0;width:1100px;z-index:-1;pointer-events:none';
         host.innerHTML=renderToStaticMarkup(<CustomerPreviewCard customer={item}/>);
@@ -620,26 +622,23 @@ export default function Customers() {
         try{
           const card=host.querySelector<HTMLElement>('.customer-preview');
           if(!card)throw Error('Customer preview layout is unavailable.');
+          card.classList.add('pdf-capture');
           card.style.cssText+=';width:1100px!important;max-height:none!important;overflow:visible!important';
-          const image=await snapshot(item as unknown as Record<string,unknown>,card);
-          const bitmap=await createImageBitmap(image);
-          try{
-            const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;
-            const context=canvas.getContext('2d');if(!context)throw Error('Customer PDF image is unavailable.');
-            context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0);
-            builder.add({dataUrl:canvas.toDataURL('image/jpeg',.88),width:canvas.width,height:canvas.height});
-            canvas.width=0;canvas.height=0;
-          }finally{bitmap.close();}
+          const image=await snapshot(item as unknown as Record<string,unknown>,card,true);
+          const size=card.getBoundingClientRect();
+          const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Customer PDF image could not be read.'));reader.readAsDataURL(image);});
+          builder.add({dataUrl,width:size.width,height:card.scrollHeight});
         }finally{host.remove();}
         setPdfProgress(index+1);
-        if(index%3===2)await new Promise(resolve=>setTimeout(resolve,0));
+        if(index%customersPerPdfPage===customersPerPdfPage-1)await new Promise(resolve=>setTimeout(resolve,0));
       }
+      if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
       const file=builder.finish();if(file.size<1000)throw Error('PDF output is empty. Retry generation.');
       await requireLicensedWrite();
       if(batchScope&&identity()!==batchScope)throw Error("Workspace changed. Generate the PDF again.");
       setPdfBlob(file);setPdfCount(builder.count);
       if(batchScope&&batchIds.every(Boolean))setAfsmBatch({scope:batchScope,ids:batchIds,operationId:crypto.randomUUID()});
-      setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/3)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
+      setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/customersPerPdfPage)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
       recordSafeRecovery('pdf','generate','verified');
     }catch(reason){
       recordSafeRecovery(classifyRecovery(reason),'generate','attention');
@@ -1449,6 +1448,16 @@ export default function Customers() {
 
         }
 
+        /* Only the All PDF capture is compacted; normal preview and print stay intact. */
+        .customer-preview.pdf-capture { min-height: 0; padding: 8px 12px; border-radius: 4px; box-shadow: none; }
+        .pdf-capture .customer-preview-heading { margin-bottom: 6px; padding-bottom: 4px; border-bottom-width: 1px; }
+        .pdf-capture .customer-preview-heading h2 { font-size: 18px; }
+        .pdf-capture .customer-grid { grid-template-columns: 1fr 1.2fr 100px; gap: 12px; }
+        .pdf-capture .info-row { margin-bottom: 3px; line-height: 1.18; font-size: 15px; }
+        .pdf-capture .photo-box { width: 90px; height: 108px; border-width: 1px; }
+        .pdf-capture .photo-label { margin-top: 3px; font-size: 10px; }
+        .pdf-capture .customer-status-strip { margin-top: 5px; padding-top: 5px; }
+
         /* =============================================
 
            BUTTONS
@@ -1992,7 +2001,7 @@ export default function Customers() {
           <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
           {error && <p role="alert">{error}</p>}
           <p>Select which customers' preview PDFs you want to generate and download.</p>
-          {pdfBlob ? <><p>{pdfCount} customers · {Math.ceil(pdfCount/3)} A4 pages{pdfIncomplete?' · Partial local/cloud data':''}</p><PdfDocumentPreview file={pdfBlob}/>{afsmBatch ? <AfsmConfirmation key={afsmBatch.operationId} batch={afsmBatch}/> : <p>AFSM confirmation requires this workspace’s verified local database and stable customer IDs. Connect it in Sync &amp; Backup, then generate the PDF again.</p>}<div className="pdf-actions"><button type="button" onClick={()=>{setPdfBlob(null);setPdfOpen(false)}}>Close</button><button type="button" disabled={pdfBusy} onClick={()=>void saveCustomersPdf()}>Download / Save</button><button type="button" disabled={pdfBusy} onClick={()=>void printCustomersPdf()}>Print</button></div></> : <><div className="pdf-layout">
+          {pdfBlob ? <><p>{pdfCount} customers · {Math.ceil(pdfCount/customersPerPdfPage)} A4 pages{pdfIncomplete?' · Partial local/cloud data':''}</p><PdfDocumentPreview file={pdfBlob}/>{afsmBatch ? <AfsmConfirmation key={afsmBatch.operationId} batch={afsmBatch}/> : <p>AFSM confirmation requires this workspace’s verified local database and stable customer IDs. Connect it in Sync &amp; Backup, then generate the PDF again.</p>}<div className="pdf-actions"><button type="button" onClick={()=>{setPdfBlob(null);setPdfOpen(false)}}>Close</button><button type="button" disabled={pdfBusy} onClick={()=>void saveCustomersPdf()}>Download / Save</button><button type="button" disabled={pdfBusy} onClick={()=>void printCustomersPdf()}>Print</button></div></> : <><div className="pdf-layout">
             <div className="pdf-modes">{([['all','All Customers'],['date','Date Wise'],['account','Account Number Range'],['search','Search Customer']] as const).map(([mode,label]) => <label className="pdf-mode" key={mode}><input type="radio" name="pdf-mode" checked={pdfMode === mode} onChange={() => {setPdfMode(mode);setPdfFrom('');setPdfTo('');setPdfSelected(new Set());}}/><strong>{label}</strong></label>)}</div>
             <div className="pdf-detail">
               <strong>{pdfMode === 'all' ? 'All Customers' : pdfMode === 'date' ? 'Account Opening Date' : pdfMode === 'account' ? 'Account Number Range' : 'Search Customer'}</strong>
@@ -2001,10 +2010,10 @@ export default function Customers() {
               {pdfMode === 'search' && <><div className="pdf-fields"><label>Name, account number or customer ID<input type="search" value={pdfSearch} onChange={event=>setPdfSearch(event.target.value)}/></label></div><label><input type="checkbox" checked={pdfMatches.length>0 && pdfMatches.every(record=>pdfSelected.has(pdfKey(record)))} onChange={event=>setPdfSelected(current=>{const next=new Set(current);pdfMatches.forEach(record=>{if(event.target.checked) next.add(pdfKey(record));else next.delete(pdfKey(record));});return next;})}/> Select all filtered results ({pdfMatches.length})</label><div className="pdf-results">{pdfMatches.map(record=><label key={pdfKey(record)}><input type="checkbox" checked={pdfSelected.has(pdfKey(record))} onChange={event=>setPdfSelected(current=>{const next=new Set(current);if(event.target.checked) next.add(pdfKey(record));else next.delete(pdfKey(record));return next;})}/>{String(record.name||'Unnamed')} · {String(record.accountNo||'No account')} · {String(record.enrolId||'No ID')}</label>)}</div></>}
               <p>{pdfLoading ? 'Loading local customers…' : `${pdfChosen.length} selected of ${pdfRecords.length} local customers`}</p>
               {pdfIncomplete && <p>Local download is incomplete. This export may be partial.</p>}
-              <small>Output: one A4 PDF preview with the existing customer layout. The PDF has three customer sections per A4 page. Preview, save and print controls appear after generation.</small>
+              <small>Output: one A4 PDF preview with the existing customer layout. The PDF has five customer sections per A4 page. Preview, save and print controls appear after generation.</small>
             </div>
           </div>
-          <div className="pdf-actions"><button type="button" onClick={()=>setPdfOpen(false)} disabled={pdfLoading}>Cancel</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
+          <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfGenerating.current)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfGenerating.current?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
         </div>
       </div>}
 

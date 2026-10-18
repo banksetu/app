@@ -1,12 +1,12 @@
 import { jsPDF } from 'jspdf';
 
 export type CustomerPdfImage={dataUrl:string;width:number;height:number};
-export const customersPerPdfPage=3;
+export const customersPerPdfPage=5;
 
-/** A4 portrait with three fixed, unclipped customer sections. Image capture keeps Unicode and photos. */
+/** A4 portrait with five fixed, unclipped customer sections. Image capture keeps Unicode and photos. */
 export function customerPdfBuilder(){
   const pdf=new jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
-  const margin=8,slotHeight=91,gap=3,usableWidth=194;
+  const margin=5,slotHeight=56.6,gap=1,usableWidth=200;
   let count=0;
   return { add(image:CustomerPdfImage){
     const index=count++;
