@@ -26,5 +26,25 @@ try {
     assert(dark.navScroll);assert(!dark.overflow);assert.deepEqual(dark.order,['dashboard-stats-grid','dashboard-quick-panel','dashboard-analytics']);
     await page.close();
   }
+  for (const width of [390,1280]) {
+    const page=await browser.newPage({viewport:{width,height:844}});
+    await page.setContent(`<main class="banksetu-app-shell" data-appearance="dark"><section class="banksetu-main-workspace"><header class="persistent-bank-header" style="background:#fff"><div class="bank-logo-zone"><img alt="Bank logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9S3CqVEAAAAASUVORK5CYII=" /></div><div class="bank-info-strip"><h2>Bank name</h2><span>Branch details</span></div></header><section class="all-customer-data" style="background:#fff"><h2>All Customer Data</h2><table><thead><tr><th style="background:#f9e8ee">Customer ID</th></tr></thead><tbody><tr style="background:#fff"><td>Sample</td></tr></tbody></table></section><section class="license-panel"><div class="license-summary"><button class="license-tile"><div><strong>1</strong><small>Active clients</small></div></button></div><nav class="license-tabs"><button>All Clients</button></nav><div class="license-request-board"><div class="license-history-scroll"><table class="license-history license-client-table"><thead><tr>${Array.from({length:9},(_,i)=>`<th>Column ${i}</th>`).join('')}</tr></thead><tbody><tr>${Array.from({length:9},(_,i)=>`<td>${i===2?'Synthetic Client':'Value'}</td>`).join('')}</tr></tbody></table></div></div></section></section></main>`);
+    await page.addStyleTag({path:'src/LicenseManagement.css'});
+    await page.addStyleTag({path:'src/App.css'});
+    const surfaces=await page.evaluate(()=>({header:getComputedStyle(document.querySelector('.persistent-bank-header')).backgroundColor,
+      info:getComputedStyle(document.querySelector('.bank-info-strip span')).color,
+      customer:getComputedStyle(document.querySelector('.all-customer-data')).backgroundColor,
+      heading:getComputedStyle(document.querySelector('.all-customer-data th')).backgroundColor,
+      row:getComputedStyle(document.querySelector('.all-customer-data td')).backgroundColor,
+      tile:getComputedStyle(document.querySelector('.license-tile')).backgroundColor,
+      license:getComputedStyle(document.querySelector('.license-client-table td')).backgroundColor,
+      layout:getComputedStyle(document.querySelector('.license-client-table tr')).display,
+      overflow:document.documentElement.scrollWidth>innerWidth+1}));
+    assert.equal(surfaces.header,'rgb(23, 35, 56)');assert.equal(surfaces.customer,'rgb(23, 35, 56)');
+    assert.equal(surfaces.heading,'rgb(35, 50, 73)');assert.equal(surfaces.row,'rgb(23, 35, 56)');
+    assert.equal(surfaces.tile,'rgb(23, 35, 56)');assert.equal(surfaces.license,'rgb(23, 35, 56)');
+    assert.equal(surfaces.info,'rgb(203, 213, 225)');assert.equal(surfaces.layout,width===390?'grid':'table-row');
+    assert(!surfaces.overflow,JSON.stringify(surfaces));await page.close();
+  }
 } finally { await browser.close(); }
 console.log('Sidebar bottom, light gradients, dark cards, mobile overflow and section order passed.');
