@@ -3326,6 +3326,10 @@ function syncProtection(request, authUser) {
     // A completed checkpoint has no time limit. The journal epoch and cursor
     // identify the cloud state even when a device has been closed for days.
     if(!compacting&&indexed?.ready&&triggersReady&&request.action==="getSyncProtection"&&request.changeEpoch===epoch&&request.changeCursor!==undefined&&Number.isSafeInteger(cursor)&&cursor>=0&&cursor<=latestChange){
+      // A matching durable head proves there are no newer events. Avoid
+      // reading the per-customer index merely because the app was idle.
+      if(cursor===latestChange)return jsonResponse({success:true,protectionVersion:1,connectionId:authUser.connectionId,resetId,photoIndexVersion:1,afsmVersion:1,
+        incremental:true,changeJournalReady:true,changeEpoch:epoch,changeCursor:latestChange,hasMoreChanges:false,changedIds:[],deletedIds:[]});
       const count=indexed.latest.getLastRow()-1;
       const entries=count?indexed.latest.getRange(2,1,count,5).getDisplayValues():[];
       const latestById=new Map();
