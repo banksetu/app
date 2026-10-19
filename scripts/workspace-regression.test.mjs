@@ -69,9 +69,13 @@ test("authenticated saves persist only the actor's tenant and preserve all three
   try{
     const bankInfo={bankName:"Client A",passbookBank:"Union Bank of India",branchName:"Branch A",cspCode:"",operatorName:"A",address:"A"};
     const bBefore=JSON.stringify(documents.get("tenantSettings/B"));
-    assert.equal((await save("adminA",{bankInfo,bankLogo:"data:image/png;base64,AAAA",tenantId:"B",spreadsheetId:"master",bankFormats:{}})).status,200);
+    assert.equal((await save("adminA",{bankInfo:{...bankInfo,branchAddress:"Road A",ifsc:"ABCD0123456"},bankLogo:"data:image/png;base64,AAAA",tenantId:"B",spreadsheetId:"master",bankFormats:{}})).status,200);
+    // A previously deployed client sends only old fields; it must not erase new branch details.
+    assert.equal((await save("adminA",{bankInfo})).status,200);
     const saved=documents.get("tenantSettings/A").fields;
     assert.equal(saved.passbookBank.stringValue,"Union Bank of India");
+    assert.equal(saved.bankInfo.mapValue.fields.branchAddress.stringValue,"Road A");
+    assert.equal(saved.bankInfo.mapValue.fields.ifsc.stringValue,"ABCD0123456");
     assert.equal(saved.bankLogo.stringValue,"data:image/png;base64,AAAA");
     assert.equal(saved.spreadsheetId.stringValue,"sheetA");
     assert.deepEqual(saved.bankFormats,encode(formats));
