@@ -1,0 +1,60 @@
+name: Bank Setu — Passbook private web preview
+on:
+  push:
+    branches: [codex/passbook-master-private-preview-20261019]
+    paths:
+      - 'src/Passbook.tsx'
+      - 'src/passbookMasterPdf.ts'
+      - 'public/passbook/**'
+      - '.github/workflows/passbook-private-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: banksetu-passbook-private-preview
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test scripts/passbook-master-pdf.test.mjs scripts/passbook-info-layout.test.mjs desktop/print-preview.test.cjs
+      - run: npm run build:hosting && npm run test:portfolio
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Identify preview build
+        run: node scripts/write-portfolio-deployment.mjs
+      - name: Prepare Firebase credential
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: node scripts/firebase-credential.mjs
+      - name: Deploy Hosting preview channel only
+        run: npx --yes firebase-tools@15.31.0 hosting:channel:deploy passbook-master-review --expires 30d --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive --json > "$RUNNER_TEMP/passbook-preview-result.json"
+      - name: Verify preview URL and report
+        env:
+          PREVIEW_COMMIT: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync,appendFileSync} from 'node:fs';
+          const result=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/passbook-preview-result.json','utf8'));
+          const payload=result.result || result;
+          const urls=JSON.stringify(payload).match(/https:\/\/banksetu-app--[a-z0-9-]+\.web\.app/g) || [];
+          if(!urls.length)throw Error('Preview URL was not returned by Firebase');
+          const base=urls[0].replace(/\/$/,'');
+          const [page,asset,stamp]=await Promise.all([
+            fetch(base+'/app/',{cache:'no-store'}),
+            fetch(base+'/app/passbook/master-blank.png',{cache:'no-store'}),
+            fetch(base+'/app/deployment.json',{cache:'no-store'})
+          ]);
+          const html=await page.text();
+          const deployment=await stamp.json();
+          if(!page.ok || !asset.ok || !stamp.ok || !html.includes('/app/assets/') || deployment.commit!==process.env.PREVIEW_COMMIT) throw Error('Passbook preview verification failed');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY,'Verified authenticated passbook preview: '+base+'/app/\n');
+          console.log('Verified preview:',base+'/app/');
+          NODE
