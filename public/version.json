@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.101",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.101/BankSetu-Setup-1.0.101-x64.exe",
+  "latestVersion": "1.0.102",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.102/BankSetu-Setup-1.0.102-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.101",
-  "releaseTag": "v1.0.101",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.101",
+  "version": "1.0.102",
+  "releaseTag": "v1.0.102",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.102",
   "releaseDate": "2026-10-19",
-  "windowsVersion": "1.0.101",
-  "androidBuild": 1000101,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.101/BankSetu-Setup-1.0.101-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.101/BankSetu-Android-1000101.apk",
+  "windowsVersion": "1.0.102",
+  "androidBuild": 1000102,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.102/BankSetu-Setup-1.0.102-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.102/BankSetu-Android-1000102.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.101",
+      "version": "1.0.102",
       "releaseDate": "2026-10-19",
       "categories": {
         "Improvements": [
-          "Release candidate: native passbook master PDF."
+          "Merge pull request 54 from banksetu/codex/restore-passbook-menu-v80-20261019."
         ]
       }
     },
     "android": {
-      "version": "1.0.101",
+      "version": "1.0.102",
       "releaseDate": "2026-10-19",
       "categories": {
         "Improvements": [
-          "Release candidate: native passbook master PDF."
+          "Merge pull request 54 from banksetu/codex/restore-passbook-menu-v80-20261019."
         ]
       }
     }
