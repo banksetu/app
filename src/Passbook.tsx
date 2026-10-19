@@ -15,6 +15,7 @@ import { getTenantApiUrl } from "./tenantApi";
 
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
+import ApprovedPassbookInfo, { approvedPassbookValues, approvedPassbookProblems } from "./ApprovedPassbookInfo";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
@@ -348,6 +349,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   const missingBranch = missingPassbookBranchFields(BRANCH);
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
   const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isApprovedAssamPrint = formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
   const alignmentEnabled = isUnion || isAssamBank(alignmentBank);
 
@@ -772,6 +774,11 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
     try {
       await requireLicensedWrite();
+
+      if (isApprovedAssamPrint) {
+        const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
+        if (problems.length) throw new Error(`Passbook data cannot fit the approved format: ${problems.join('; ')}. The font and compression have not been changed.`);
+      }
 
       /*
 
@@ -2454,7 +2461,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
           {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
-<div className="passbook-shell" style={isAssamBank(bankInfo?.passbookBank)?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
+<div className="passbook-shell" style={isApprovedAssamPrint?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
             {/* HOVER EDIT */}
 
@@ -2496,11 +2503,11 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
             {/* BOTTOM PRINT PAGE */}
 
-            <div className="passbook-print-area" style={isAssamBank(bankInfo?.passbookBank)?{top:'85mm',width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
+            <div className="passbook-print-area" style={isApprovedAssamPrint?{top:'85mm',width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
 
 
-              <PassbookInfoFields customer={p} bank={BRANCH} />
+              {isApprovedAssamPrint ? <ApprovedPassbookInfo customer={p} bank={BRANCH} /> : <PassbookInfoFields customer={p} bank={BRANCH} />}
 
             </div>
 
