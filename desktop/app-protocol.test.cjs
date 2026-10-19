@@ -9,9 +9,11 @@ test('packaged protocol serves app and assets, rejects missing or escaped paths'
  try{
  await fs.writeFile(path.join(root,'index.html'),'<html>Bank Setu</html>');
  await fs.writeFile(path.join(root,'main.js'),'export const ready=true');
+ await fs.writeFile(path.join(root,'print.ttf'),'synthetic font bytes');
  const handle=createAppProtocol(root);
  for(const pathname of ['/','/index.html']){const r=await handle({url:'banksetu://app'+pathname});assert.equal(r.status,200);assert.match(await r.text(),/Bank Setu/);}
  assert.match((await handle({url:'banksetu://app/main.js'})).headers.get('content-type'),/javascript/);
+ assert.equal((await handle({url:'banksetu://app/print.ttf'})).headers.get('content-type'),'font/ttf');
  assert.equal((await handle({url:'banksetu://app/missing.js'})).status,404);
  assert.equal((await handle({url:'banksetu://evil/index.html'})).status,403);
  assert.equal((await handle({url:'banksetu://app/..%2fsecret'})).status,403);
