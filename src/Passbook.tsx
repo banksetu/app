@@ -20,7 +20,8 @@ import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
   RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
   RIGHT_HOLDER_VALUE_X_MM, RIGHT_JOINT_COLON_X_MM, RIGHT_JOINT_VALUE_X_MM, RIGHT_ADDRESS_X_MM,
-  leftRows, targetWidthsMm, fitTextScale, addressPrintLines, passbookBranchForTenant, missingPassbookBranchFields } from "./passbookInfoLayout";
+  RIGHT_BRANCH_CODE_X_MM, PASSBOOK_ROW_MM, leftRows, targetWidthsMm, fitTextScale,
+  addressPrintLines, passbookBranchAddress, passbookBranchForTenant, missingPassbookBranchFields } from "./passbookInfoLayout";
 
 
 
@@ -304,31 +305,31 @@ function makePrintAddress(customer: Customer) {
 
 function PassbookInfoFields({customer,bank}: {customer:Customer; bank:{name:string;addressLine1:string;postOffice:string;district:string;pin:string;email:string;ifsc:string;micr:string;branchCode:string}}) {
   const values:Record<string,string>={
-    branchName:bank.name,branchAddress:bank.addressLine1,branchPostOffice:bank.postOffice,
-    branchDistrict:bank.district,branchPinCode:bank.pin,branchEmail:bank.email,
+    branchName:bank.name,branchAddress:passbookBranchAddress(bank.addressLine1,bank.postOffice),
+    branchDistrict:bank.district?`DIST:-${bank.district}`:'',branchPinCode:bank.pin,branchEmail:bank.email,
     enrolId:printText(customer.enrolId),accountNo:printText(customer.accountNo),pan:printText(customer.pan),
     contact:printText(customer.contact),accountOpeningDate:formatDate(customer.accountOpeningDate),
-    issueDate:formatDate(customer.issueDate||customer.accountOpeningDate),operatedBy:'SELF',
-    nominee:safe(customer.nominee)?'1':'',
+    issueDate:formatDate(customer.issueDate||''),operatedBy:'SELF',
+    nominee:printText(customer.nominee),
   };
-  const text=(value:string,x:number,y:number,width:number,font=2.7)=><span style={{position:'absolute',left:`${x}mm`,top:`${y}mm`,width:`${width}mm`,fontSize:`${font}mm`,lineHeight:'3.45mm',whiteSpace:'nowrap',overflow:'visible',transform:`scaleX(${fitTextScale(value,width,font)})`,transformOrigin:'left top'}}>{value}</span>;
+  const text=(value:string,x:number,y:number,width:number,font=3)=><span style={{position:'absolute',left:`${x}mm`,top:`${y}mm`,width:`${width}mm`,fontSize:`${font}mm`,lineHeight:`${PASSBOOK_ROW_MM}mm`,whiteSpace:'nowrap',overflow:'visible',transform:`scaleX(${fitTextScale(value,width,font)})`,transformOrigin:'left top'}}>{value}</span>;
   const label=(value:string,x:number,y:number,colonX:number,gap=1)=><>{text(value,x,y,colonX-x-gap)}{text(':',colonX,y,1)}</>;
   const right=(name:string,value:string,y:number,colonX:number,valueX:number,gap=1)=><div key={name} className="pb-info-row">{label(name,RIGHT_LABEL_X_MM,y,colonX,gap)}{text(value,valueX,y,PASSBOOK_CONTENT_END_MM-valueX)}</div>;
-  const address=addressPrintLines(makePrintAddress(customer).toUpperCase());
+  const address=addressPrintLines(makePrintAddress(customer).toUpperCase(),29);
   return <div className="pb-info-layout" aria-label="Customer information printed on passbook">
     {leftRows.map(([name,y,key])=><div key={key} className="pb-info-row">
-      {label(name,LEFT_LABEL_X_MM,y,LEFT_COLON_X_MM)}
+      {name && label(name,LEFT_LABEL_X_MM,y,LEFT_COLON_X_MM)}
       {text(values[key]||'',LEFT_VALUE_X_MM,y,targetWidthsMm[key]||RIGHT_LABEL_X_MM-LEFT_VALUE_X_MM)}
     </div>)}
-    {right('IFSC CODE',printText(bank.ifsc),23.1,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
-    {bank.branchCode && text(`(${printText(bank.branchCode)})`,117.4,23.1,20)}
-    {right('MICR CODE',printText(bank.micr),35.5,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
-    {right('ACC. HOLDER',printText(customer.name),42.9,RIGHT_HOLDER_COLON_X_MM,RIGHT_HOLDER_VALUE_X_MM,2)}
-    {right('JOINT HOLDER',printText(customer.jointHolder),46.35,RIGHT_JOINT_COLON_X_MM,RIGHT_JOINT_VALUE_X_MM)}
-    {text('CUST ADD.',RIGHT_LABEL_X_MM,50,RIGHT_ADDRESS_X_MM-RIGHT_LABEL_X_MM-1)}
-    <div className="pb-info-address" style={{position:'absolute',left:`${RIGHT_ADDRESS_X_MM}mm`,top:'50mm',width:`${PASSBOOK_CONTENT_END_MM-RIGHT_ADDRESS_X_MM}mm`,fontSize:'2.5mm',lineHeight:'3.45mm',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>
-      {address.map((line,index)=><div key={index} style={{minHeight:'3.45mm'}}>{line}</div>)}
-    </div>
+    {right('IFSC CODE',printText(bank.ifsc),21.9,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
+    {bank.branchCode && text(`(${printText(bank.branchCode)})`,RIGHT_BRANCH_CODE_X_MM,21.9,PASSBOOK_CONTENT_END_MM-RIGHT_BRANCH_CODE_X_MM)}
+    {right('MICR CODE',printText(bank.micr),34.35,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
+    {right('ACC. HOLDER',printText(customer.name),42.65,RIGHT_HOLDER_COLON_X_MM,RIGHT_HOLDER_VALUE_X_MM,2)}
+    {right('JOINT HOLDER',printText(customer.jointHolder),46.8,RIGHT_JOINT_COLON_X_MM,RIGHT_JOINT_VALUE_X_MM)}
+    {text('CUST ADD.',RIGHT_LABEL_X_MM,50.95,RIGHT_ADDRESS_X_MM-RIGHT_LABEL_X_MM-1)}
+    {address.map((line,index)=><div key={index} className="pb-info-address-line">
+      {text(line,RIGHT_ADDRESS_X_MM,50.95+index*PASSBOOK_ROW_MM,PASSBOOK_CONTENT_END_MM-RIGHT_ADDRESS_X_MM)}
+    </div>)}
   </div>;
 }
 
@@ -1553,7 +1554,8 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           padding: 0;
 
         }
-        .pb-info-layout{position:absolute;inset:0;color:#111!important;font-family:"Courier New","Liberation Mono",monospace;font-weight:600;letter-spacing:0;text-transform:uppercase}
+        @font-face{font-family:"Bank Setu Passbook Mono";src:url("/fonts/BankSetuPassbookMono-Bold.ttf") format("truetype");font-style:normal;font-weight:700;font-display:block}
+        .pb-info-layout{position:absolute;inset:0;color:#161616!important;font-family:"Bank Setu Passbook Mono","Courier New",monospace;font-weight:700;letter-spacing:0;text-transform:uppercase}
         .pb-info-layout *{color:#111!important;box-sizing:border-box;text-align:left!important}
 
 

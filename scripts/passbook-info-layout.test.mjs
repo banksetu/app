@@ -22,13 +22,22 @@ test('tenant branch values stay separate and missing settings never get sample d
 
 test('physical columns use separate colon groups and preserve 206 mm paper whitespace',()=>{
   assert.equal(layout.PASSBOOK_PAPER_WIDTH_MM,206);assert.equal(layout.PASSBOOK_CONTENT_END_MM,149);
-  assert(layout.LEFT_LABEL_X_MM+19<=layout.LEFT_COLON_X_MM);
-  assert.equal(layout.LEFT_VALUE_X_MM-layout.LEFT_COLON_X_MM,4); // 1 mm glyph + 3 mm clear gap.
+  assert.equal(layout.LEFT_LABEL_X_MM,7);
+  assert.equal(layout.LEFT_COLON_X_MM,26.5);
+  assert.equal(layout.LEFT_VALUE_X_MM,29);
   assert.equal(layout.RIGHT_CODE_VALUE_X_MM-layout.RIGHT_CODE_COLON_X_MM,4);
   assert.notEqual(layout.RIGHT_CODE_COLON_X_MM,layout.RIGHT_HOLDER_COLON_X_MM);
   assert.notEqual(layout.RIGHT_ADDRESS_X_MM,layout.RIGHT_HOLDER_VALUE_X_MM);
+  assert.equal(layout.RIGHT_BRANCH_CODE_X_MM,138.5);
+  assert.deepEqual(layout.leftRows.slice(0,5).map(row=>row[0]),['BRANCH NAME','BR. ADDRESS','','','BR. EMAIL']);
+  assert.equal(layout.leftRows.at(-1)[1]-layout.leftRows[0][1],12*layout.PASSBOOK_ROW_MM);
   assert.deepEqual(['enrolId','accountNo','pan','contact','accountOpeningDate','issueDate','operatedBy'].map(x=>layout.targetWidthsMm[x]),[16,22,18,21,17,17,6]);
   assert.equal(new Set(layout.leftRows.map(row=>row[1])).size,layout.leftRows.length);
+});
+
+test('branch address includes the tenant post office once without replacing its address',()=>{
+  assert.equal(layout.passbookBranchAddress('PO:-BADARPUR','BADARPUR'),'PO:-BADARPUR');
+  assert.equal(layout.passbookBranchAddress('MAIN ROAD','OTHER PO'),'MAIN ROAD PO:-OTHER PO');
 });
 
 test('long names and four address lines preserve all source characters',()=>{
@@ -45,4 +54,6 @@ test('Passbook Print uses the data-only layout without built-in Badarpur brandin
   assert(!source.includes('DEFAULT_BRANCH'));
   assert(!source.includes('HEAD OFFICE : GUWAHATI'));
   assert(!source.includes('PUNB0RRBAGB'));
+  assert(source.includes('nominee:printText(customer.nominee)'));
+  assert(source.includes("issueDate:formatDate(customer.issueDate||'')"));
 });
