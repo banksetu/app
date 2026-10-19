@@ -1039,6 +1039,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   };
 
   const p = previewCustomer;
+  const masterOnly=formatType==='passbook' && isAssamBank(bankInfo?.passbookBank);
 
 
 
@@ -2312,7 +2313,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
         <p>
 
-          Search customer • Preview • Temporary Edit • Print
+          {masterOnly?'Approved A4 account-number preview':'Search customer • Preview • Temporary Edit • Print'}
 
         </p>
 
@@ -2322,7 +2323,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-      {formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && <section className="master-preview-private" style={{margin:'16px 0',padding:16,border:'1px solid #7184a2',borderRadius:12,background:'#172338',color:'#f8fafc'}}>
+      {masterOnly && <section className="master-preview-private" style={{margin:'16px 0',padding:16,border:'1px solid #7184a2',borderRadius:12,background:'#172338',color:'#f8fafc'}}>
         <h2 style={{marginTop:0}}>BANK SETU — PASSBOOK PRINT PREVIEW</h2>
         <form onSubmit={searchMasterAccount} style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'end'}}>
           <label>Account Number<br/><input aria-label="Exact Account Number" inputMode="numeric" autoComplete="off" value={masterAccount} onChange={event=>setMasterAccount(event.target.value)} style={{padding:10,color:'#f8fafc',background:'#233249',border:'1px solid #7184a2',borderRadius:6}}/></label>
@@ -2342,6 +2343,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         </div>}
       </section>}
 
+      <div hidden={masterOnly} style={{display:masterOnly?'none':undefined}}>
       {/* SEARCH */}
 
       <form
@@ -2945,6 +2947,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         onClose={() => setAlignmentOpen(false)}
         onPrint={(offset, test, duplex) => printPassbook(offset, test, duplex)}
       />}
+      </div>
     </div>
 
   );
