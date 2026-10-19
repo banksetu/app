@@ -542,15 +542,16 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const address=String(found.fullAddress||makePrintAddress(found)).split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
       if(address.length>4)throw new Error('Address has more than four lines; request a placement rule before printing.');
       const date=found.issueDate?formatDate(found.issueDate):'';
-      const branchAddress=BRANCH.addressLine1 && BRANCH.addressLine1!==BRANCH.postOffice
-        ? `${BRANCH.addressLine1} ${BRANCH.postOffice}`.trim():BRANCH.postOffice;
+      const configuredAddress=BRANCH.addressLine1.replace(/^PO\s*:\s*-\s*/i,'').trim();
+      const branchAddress=configuredAddress && configuredAddress!==BRANCH.postOffice
+        ? `${configuredAddress}, ${BRANCH.postOffice}`.replace(/,\s*$/,''):configuredAddress||BRANCH.postOffice;
       const values:MasterValues={
         branchName:BRANCH.name,postOffice:branchAddress,district:BRANCH.district,branchPin:BRANCH.pin,
         branchEmail:BRANCH.email,ifsc:BRANCH.ifsc,micr:BRANCH.micr,
         branchCode:BRANCH.branchCode?`(${BRANCH.branchCode})`:'',
         customerId:String(found.enrolId??''),accountNo:String(found.accountNo??''),holder:printText(found.name),
         jointHolder:printText(found.jointHolder),pan:printText(found.pan),mobile:String(found.contact??''),
-        openedOn:formatDate(found.accountOpeningDate),issueDate:date,
+        openedOn:safe(found.accountOpeningDate),issueDate:date,
         operatedBy:printText((found as Customer & {operatedBy?:string}).operatedBy),nominee:printText(found.nominee),
         address1:printText(address[0]),address2:printText(address[1]),address3:printText(address[2]),address4:printText(address[3]),
         amount:masterAmount.trim(),bottomDate:date,
