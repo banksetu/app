@@ -1,6 +1,6 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon','.woff2':'font/woff2','.pdf':'application/pdf','.wasm':'application/wasm'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.ico':'image/x-icon','.woff2':'font/woff2','.ttf':'font/ttf','.pdf':'application/pdf','.wasm':'application/wasm'};
 // Read packaged ASAR files through Electron's filesystem implementation, avoiding
 // file:// network loading of resources under the custom secure origin on Windows.
 function createAppProtocol(root){
