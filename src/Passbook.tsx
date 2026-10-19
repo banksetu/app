@@ -1,4 +1,4 @@
-import { localDataFetch, getDataIdToken } from "./core/localData";
+import { localDataFetch, getDataIdToken, getActiveLocalCustomers } from "./core/localData";
 import { requireLicensedWrite } from "./core/licenseAccess";
 import {
 
@@ -17,6 +17,7 @@ import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } f
 import UnionPassbook from "./UnionPassbook";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
+import { createMasterPassbookPdf, type MasterValues } from "./passbookMasterPdf";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
   RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
   RIGHT_HOLDER_VALUE_X_MM, RIGHT_JOINT_COLON_X_MM, RIGHT_JOINT_VALUE_X_MM, RIGHT_ADDRESS_X_MM,
@@ -353,6 +354,16 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
   const [query, setQuery] = useState("");
+  const [masterAccount, setMasterAccount] = useState("");
+  const [masterAmount, setMasterAmount] = useState("");
+  const [masterUrl, setMasterUrl] = useState("");
+  const [masterReferenceUrl, setMasterReferenceUrl] = useState("");
+  const [masterResult, setMasterResult] = useState<{name:string;accountNo:string}|null>(null);
+  const [masterError, setMasterError] = useState("");
+  const [masterLoading, setMasterLoading] = useState(false);
+  useEffect(()=>()=>{if(masterUrl)URL.revokeObjectURL(masterUrl);},[masterUrl]);
+  useEffect(()=>()=>{if(masterReferenceUrl)URL.revokeObjectURL(masterReferenceUrl);},[masterReferenceUrl]);
+  useEffect(()=>{setMasterUrl('');setMasterResult(null);},[bankInfo?.passbookBank,bankInfo?.branchName,bankInfo?.ifsc]);
 
   const [customer, setCustomer] =
 
@@ -500,6 +511,55 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   };
 
 
+
+  // Read only: PDF preview and print never update customer or passbook status.
+  const searchMasterAccount = async (event:FormEvent) => {
+    event.preventDefault();
+    const account=masterAccount.trim();
+    setMasterError('');setMasterUrl('');setMasterResult(null);
+    if(!account){setMasterError('Enter the exact account number.');return;}
+    if(!getAuth().currentUser){setMasterError('Sign in before searching.');return;}
+    if(missingBranch.length){setMasterError(`Complete Bank Information: ${missingBranch.join(', ')}.`);return;}
+    setMasterLoading(true);
+    try {
+      const local=await getActiveLocalCustomers() as unknown as Customer[];
+      const exact=local.filter(record=>String(record.accountNo??'').trim()===account);
+      if(exact.length>1)throw new Error('Multiple local records have this account number. Resolve the ambiguity before printing.');
+      let found:Customer|undefined=exact[0];
+      if(!found){
+        const result=await apiRequest({action:'searchCustomer',query:account,includePhoto:false});
+        const candidates:Customer[]=Array.isArray(result.matches)?result.matches:result.customer?[result.customer]:[];
+        const matches=candidates.filter(item=>String(item.accountNo??'').trim()===account);
+        if(matches.length!==1)throw new Error(matches.length?'Account number is ambiguous.':'No exact account number matched in this tenant.');
+        const selected=matches[0] as Customer & {rowNumber?:number};
+        if(result.multipleMatches && selected.rowNumber){
+          const detail=await apiRequest({action:'getCustomerByRowNumber',rowNumber:selected.rowNumber,includePhoto:false});
+          if(String(detail.customer?.accountNo??'').trim()!==account)throw new Error('Account changed during lookup. Please search again.');
+          found=detail.customer as Customer;
+        }else found=selected;
+      }
+      if(!found || String(found.accountNo??'').trim()!==account)throw new Error('Account lookup could not be verified.');
+      const address=String(found.fullAddress||makePrintAddress(found)).split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+      if(address.length>4)throw new Error('Address has more than four lines; request a placement rule before printing.');
+      const date=found.issueDate?formatDate(found.issueDate):'';
+      const branchAddress=BRANCH.addressLine1 && BRANCH.addressLine1!==BRANCH.postOffice
+        ? `${BRANCH.addressLine1} ${BRANCH.postOffice}`.trim():BRANCH.postOffice;
+      const values:MasterValues={
+        branchName:BRANCH.name,postOffice:branchAddress,district:BRANCH.district,branchPin:BRANCH.pin,
+        branchEmail:BRANCH.email,ifsc:BRANCH.ifsc,micr:BRANCH.micr,
+        branchCode:BRANCH.branchCode?`(${BRANCH.branchCode})`:'',
+        customerId:String(found.enrolId??''),accountNo:String(found.accountNo??''),holder:printText(found.name),
+        jointHolder:printText(found.jointHolder),pan:printText(found.pan),mobile:String(found.contact??''),
+        openedOn:formatDate(found.accountOpeningDate),issueDate:date,
+        operatedBy:printText((found as Customer & {operatedBy?:string}).operatedBy),nominee:printText(found.nominee),
+        address1:printText(address[0]),address2:printText(address[1]),address3:printText(address[2]),address4:printText(address[3]),
+        amount:masterAmount.trim(),bottomDate:date,
+      };
+      const blob=await createMasterPassbookPdf(values);
+      setMasterUrl(URL.createObjectURL(blob));setMasterResult({name:found.name,accountNo:account});
+    }catch(e){setMasterError(e instanceof Error?e.message:'Preview could not be generated.');}
+    finally{setMasterLoading(false);}
+  };
 
   /* =======================================================
 
@@ -2260,6 +2320,26 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
+
+      {formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && <section className="master-preview-private" style={{margin:'16px 0',padding:16,border:'1px solid #7184a2',borderRadius:12,background:'#172338',color:'#f8fafc'}}>
+        <h2 style={{marginTop:0}}>BANK SETU — PASSBOOK PRINT PREVIEW</h2>
+        <form onSubmit={searchMasterAccount} style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'end'}}>
+          <label>Account Number<br/><input aria-label="Exact Account Number" inputMode="numeric" autoComplete="off" value={masterAccount} onChange={event=>setMasterAccount(event.target.value)} style={{padding:10,color:'#f8fafc',background:'#233249',border:'1px solid #7184a2',borderRadius:6}}/></label>
+          <label>Amount (only if confirmed)<br/><input aria-label="Passbook Amount" value={masterAmount} onChange={event=>setMasterAmount(event.target.value)} style={{padding:10,color:'#f8fafc',background:'#233249',border:'1px solid #7184a2',borderRadius:6}}/></label>
+          <button type="submit" disabled={masterLoading} style={{padding:11}}>{masterLoading?'Searching…':'Search Customer'}</button>
+        </form>
+        {masterError && <p role="alert" style={{color:'#ffb9b9'}}>{masterError}</p>}
+        {masterResult && masterUrl && <div>
+          <p>{masterResult.name} — {masterResult.accountNo}</p>
+          <p><a href={masterUrl} download={`passbook-${masterResult.accountNo}.pdf`} style={{color:'#9fe8ff'}}>Download PDF</a>{' · '}
+            <button type="button" onClick={()=>document.getElementById('master-passbook-pdf')?.querySelector('iframe')?.contentWindow?.print()}>Print A4 PDF</button></p>
+          <label>Compare with approved master (local file only): <input type="file" accept="application/pdf" onChange={event=>setMasterReferenceUrl(event.target.files?.[0]?URL.createObjectURL(event.target.files[0]):'')}/></label>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:12}}>
+            <div id="master-passbook-pdf" style={{flex:'1 1 320px',minWidth:0}}><strong>Generated A4</strong><iframe title="Generated passbook A4 PDF" src={masterUrl} style={{width:'100%',height:540,background:'white',border:0}}/></div>
+            {masterReferenceUrl && <div style={{flex:'1 1 320px',minWidth:0}}><strong>Approved master A4</strong><iframe title="Approved master PDF" src={masterReferenceUrl} style={{width:'100%',height:540,background:'white',border:0}}/></div>}
+          </div>
+        </div>}
+      </section>}
 
       {/* SEARCH */}
 
