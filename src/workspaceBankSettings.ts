@@ -1,5 +1,6 @@
-export type SavedBankInfo = { bankName:string; passbookBank:string; branchName:string; cspCode:string; operatorName:string; address:string };
-const fields = ["bankName","passbookBank","branchName","cspCode","operatorName","address"] as const;
+export type SavedBankInfo = { bankName:string; passbookBank:string; branchName:string; cspCode:string; operatorName:string; address:string;
+  branchAddress:string; branchPostOffice:string; branchDistrict:string; branchPinCode:string; branchEmail:string; ifsc:string; micr:string; branchCode:string };
+const fields = ["bankName","passbookBank","branchName","cspCode","operatorName","address","branchAddress","branchPostOffice","branchDistrict","branchPinCode","branchEmail","ifsc","micr","branchCode"] as const;
 export function restoreWorkspaceBankSettings(data:Record<string,unknown>) {
   const nested = data.bankInfo && typeof data.bankInfo === "object" ? data.bankInfo as Record<string,unknown> : {};
   const bankInfo = Object.fromEntries(fields.map(field=>[field,typeof data[field] === "string" ? data[field] : typeof nested[field] === "string" ? nested[field] : ""])) as SavedBankInfo;

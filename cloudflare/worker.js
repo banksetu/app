@@ -19,6 +19,17 @@ export function validateWorkspaceBankPatch(body) {
       if (typeof input[key] !== "string" || input[key].trim().length > limit) throw new Error("Enter valid bank, branch and operator details.");
       bankInfo[key] = input[key].trim();
     }
+    // Optional for older clients/workspaces. Keep unrelated tenant settings intact.
+    const extraLimits = {branchAddress:240,branchPostOffice:120,branchDistrict:120,branchPinCode:6,branchEmail:254,ifsc:11,micr:9,branchCode:20};
+    for (const [key,limit] of Object.entries(extraLimits)) {
+      if (input[key] === undefined) continue;
+      if (typeof input[key] !== "string" || input[key].trim().length > limit) throw new Error("Enter valid passbook branch details.");
+      bankInfo[key] = input[key].trim();
+    }
+    if (bankInfo.branchPinCode && !/^\d{6}$/.test(bankInfo.branchPinCode)) throw new Error("Branch PIN must have six digits.");
+    if (bankInfo.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(bankInfo.ifsc)) throw new Error("Enter a valid 11-character IFSC.");
+    if (bankInfo.micr && !/^\d{9}$/.test(bankInfo.micr)) throw new Error("Branch MICR must have nine digits.");
+    if (bankInfo.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bankInfo.branchEmail)) throw new Error("Enter a valid branch email.");
     if (!bankInfo.bankName || !bankInfo.passbookBank) throw new Error("Enter Bank / CSP name and select a bank.");
     Object.assign(output, bankInfo, { bankInfo });
   }
@@ -1053,6 +1064,15 @@ async function handleMasterOperation(request, env, actor, route) {
     let patch;
     try { patch = validateWorkspaceBankPatch(body); }
     catch(error) { return json({error:error.message},400); }
+    if (patch.bankInfo) {
+      const previous=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+      const old=decodeFields(previous?.fields||{});
+      const extra=["branchAddress","branchPostOffice","branchDistrict","branchPinCode","branchEmail","ifsc","micr","branchCode"];
+      for(const key of extra) if(patch.bankInfo[key]===undefined && typeof (old.bankInfo||{})[key]==="string") {
+        patch.bankInfo[key]=old.bankInfo[key];
+      }
+      for(const key of extra) if(patch.bankInfo[key]!==undefined) patch[key]=patch.bankInfo[key];
+    }
     const metadata = {updatedAt:new Date().toISOString(),updatedBy:actor.uid};
     if (role === "client_admin") metadata.tenantId = actor.profile.tenantId;
     await putDocument(env,path,{...patch,...metadata});

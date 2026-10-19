@@ -148,6 +148,10 @@ test("bank settings patches preserve unrelated Drive and template configuration"
   assert.equal(patch.bankName,"Bank");assert.deepEqual(patch.bankInfo,{...bankInfo,bankName:"Bank"});
   assert(!("spreadsheetId" in patch));assert(!("bankFormats" in patch));assert(!("tenantId" in patch));
   assert.deepEqual(validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,AAAA"}),{bankLogo:"data:image/png;base64,AAAA"});
+  const extended=validateWorkspaceBankPatch({bankInfo:{...bankInfo,branchAddress:"Main Road",branchPostOffice:"Post A",branchDistrict:"District A",branchPinCode:"123456",branchEmail:"branch@example.invalid",ifsc:"ABCD0123456",micr:"123456789",branchCode:"7345"}});
+  assert.equal(extended.bankInfo.branchPinCode,"123456");assert.equal(extended.ifsc,"ABCD0123456");
+  assert.throws(()=>validateWorkspaceBankPatch({bankInfo:{...bankInfo,branchPinCode:"abc"}}),/PIN/);
+  assert.throws(()=>validateWorkspaceBankPatch({bankInfo:{...bankInfo,ifsc:"wrong"}}),/IFSC/);
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"https://untrusted.example/logo"}));
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,"+"A".repeat(150000)}));
 });

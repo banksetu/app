@@ -92,6 +92,8 @@ type BankInfo = {
   operatorName: string;
 
   address: string;
+  branchAddress: string; branchPostOffice: string; branchDistrict: string; branchPinCode: string;
+  branchEmail: string; ifsc: string; micr: string; branchCode: string;
 
 };
 
@@ -108,6 +110,8 @@ const emptyBankInfo: BankInfo = {
   operatorName: "",
 
   address: "",
+  branchAddress:"", branchPostOffice:"", branchDistrict:"", branchPinCode:"",
+  branchEmail:"", ifsc:"", micr:"", branchCode:"",
 
 };
 
@@ -511,6 +515,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       operatorName: bankInfoDraft.operatorName.trim(),
 
       address: bankInfoDraft.address.trim(),
+      branchAddress:bankInfoDraft.branchAddress.trim(), branchPostOffice:bankInfoDraft.branchPostOffice.trim(),
+      branchDistrict:bankInfoDraft.branchDistrict.trim(), branchPinCode:bankInfoDraft.branchPinCode.trim(),
+      branchEmail:bankInfoDraft.branchEmail.trim(), ifsc:bankInfoDraft.ifsc.trim(),
+      micr:bankInfoDraft.micr.trim(), branchCode:bankInfoDraft.branchCode.trim(),
 
     };
 
@@ -529,6 +537,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       return;
 
     }
+    if (cleaned.branchPinCode && !/^\d{6}$/.test(cleaned.branchPinCode)) { alert("Enter a six-digit Branch PIN Code."); return; }
+    if (cleaned.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(cleaned.ifsc)) { alert("Enter a valid 11-character IFSC Code."); return; }
+    if (cleaned.micr && !/^\d{9}$/.test(cleaned.micr)) { alert("Enter a nine-digit MICR Code."); return; }
+    if (cleaned.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.branchEmail)) { alert("Enter a valid Branch Email."); return; }
 
     try {
 
@@ -1424,7 +1436,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           {bankSettingsReady && activePage === "passbook" && !licenseReadOnly && (
 
-            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} />
+            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} onOpenBankInformation={canManageBankSettings?openBankInfoEditor:undefined} />
 
           )}
 
@@ -1726,6 +1738,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                 />
 
               </label>
+
+              {([['branchAddress','Branch Address'],['branchPostOffice','Branch Post Office'],['branchDistrict','Branch District'],['branchPinCode','Branch PIN Code'],['branchEmail','Branch Email'],['ifsc','IFSC Code'],['micr','MICR Code'],['branchCode','Branch Code']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
+                <span style={styles.bankInfoFieldLabel}>{label}</span>
+                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='branchPinCode'||field==='micr'?'numeric':'text'} maxLength={field==='branchPinCode'?6:field==='micr'?9:field==='ifsc'?11:field==='branchEmail'?254:field==='branchCode'?20:120}/>
+              </label>)}
 
             </div>
 

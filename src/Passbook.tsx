@@ -17,6 +17,10 @@ import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } f
 import UnionPassbook from "./UnionPassbook";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
+import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
+  RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
+  RIGHT_HOLDER_VALUE_X_MM, RIGHT_JOINT_COLON_X_MM, RIGHT_JOINT_VALUE_X_MM, RIGHT_ADDRESS_X_MM,
+  leftRows, targetWidthsMm, fitTextScale, addressPrintLines, passbookBranchForTenant, missingPassbookBranchFields } from "./passbookInfoLayout";
 
 
 
@@ -83,6 +87,8 @@ type Customer = {
   photoUrl?: string;
 
   photoPreview?: string;
+  jointHolder?: string;
+  issueDate?: string;
 
 };
 
@@ -169,40 +175,6 @@ const emptyCustomer: Customer = {
   pan: "",
 
   aofNo: "",
-
-};
-
-
-
-/* =========================================================
-
-   FIXED BRANCH INFORMATION
-
-========================================================= */
-
-
-
-const DEFAULT_BRANCH = {
-
-  name: "BADARPUR",
-
-  addressLine1: "PO:-BADARPUR",
-
-  addressLine2: "DIST:-KARIMGANJ",
-
-  pin: "788806",
-
-
-
-  ifsc: "PUNB0RRBAGB",
-
-  branchCode: "7345",
-
-  micr: "788116106",
-
-
-
-  email: "",
 
 };
 
@@ -330,6 +302,36 @@ function makePrintAddress(customer: Customer) {
 
 }
 
+function PassbookInfoFields({customer,bank}: {customer:Customer; bank:{name:string;addressLine1:string;postOffice:string;district:string;pin:string;email:string;ifsc:string;micr:string;branchCode:string}}) {
+  const values:Record<string,string>={
+    branchName:bank.name,branchAddress:bank.addressLine1,branchPostOffice:bank.postOffice,
+    branchDistrict:bank.district,branchPinCode:bank.pin,branchEmail:bank.email,
+    enrolId:printText(customer.enrolId),accountNo:printText(customer.accountNo),pan:printText(customer.pan),
+    contact:printText(customer.contact),accountOpeningDate:formatDate(customer.accountOpeningDate),
+    issueDate:formatDate(customer.issueDate||customer.accountOpeningDate),operatedBy:'SELF',
+    nominee:safe(customer.nominee)?'1':'',
+  };
+  const text=(value:string,x:number,y:number,width:number,font=2.7)=><span style={{position:'absolute',left:`${x}mm`,top:`${y}mm`,width:`${width}mm`,fontSize:`${font}mm`,lineHeight:'3.45mm',whiteSpace:'nowrap',overflow:'visible',transform:`scaleX(${fitTextScale(value,width,font)})`,transformOrigin:'left top'}}>{value}</span>;
+  const label=(value:string,x:number,y:number,colonX:number,gap=1)=><>{text(value,x,y,colonX-x-gap)}{text(':',colonX,y,1)}</>;
+  const right=(name:string,value:string,y:number,colonX:number,valueX:number,gap=1)=><div key={name} className="pb-info-row">{label(name,RIGHT_LABEL_X_MM,y,colonX,gap)}{text(value,valueX,y,PASSBOOK_CONTENT_END_MM-valueX)}</div>;
+  const address=addressPrintLines(makePrintAddress(customer).toUpperCase());
+  return <div className="pb-info-layout" aria-label="Customer information printed on passbook">
+    {leftRows.map(([name,y,key])=><div key={key} className="pb-info-row">
+      {label(name,LEFT_LABEL_X_MM,y,LEFT_COLON_X_MM)}
+      {text(values[key]||'',LEFT_VALUE_X_MM,y,targetWidthsMm[key]||RIGHT_LABEL_X_MM-LEFT_VALUE_X_MM)}
+    </div>)}
+    {right('IFSC CODE',printText(bank.ifsc),23.1,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
+    {bank.branchCode && text(`(${printText(bank.branchCode)})`,117.4,23.1,20)}
+    {right('MICR CODE',printText(bank.micr),35.5,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
+    {right('ACC. HOLDER',printText(customer.name),42.9,RIGHT_HOLDER_COLON_X_MM,RIGHT_HOLDER_VALUE_X_MM,2)}
+    {right('JOINT HOLDER',printText(customer.jointHolder),46.35,RIGHT_JOINT_COLON_X_MM,RIGHT_JOINT_VALUE_X_MM)}
+    {text('CUST ADD.',RIGHT_LABEL_X_MM,50,RIGHT_ADDRESS_X_MM-RIGHT_LABEL_X_MM-1)}
+    <div className="pb-info-address" style={{position:'absolute',left:`${RIGHT_ADDRESS_X_MM}mm`,top:'50mm',width:`${PASSBOOK_CONTENT_END_MM-RIGHT_ADDRESS_X_MM}mm`,fontSize:'2.5mm',lineHeight:'3.45mm',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>
+      {address.map((line,index)=><div key={index} style={{minHeight:'3.45mm'}}>{line}</div>)}
+    </div>
+  </div>;
+}
+
 
 
 /* =========================================================
@@ -340,21 +342,9 @@ function makePrintAddress(customer: Customer) {
 
 
 
-export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo; bankLogo?: string }) {
-  const workspaceBranch = bankInfo?.branchName?.trim();
-  const referenceBranch = !workspaceBranch || workspaceBranch.toUpperCase() === "BADARPUR";
-  const branchAddress = bankInfo?.address?.trim().split(/\n+/) || [];
-  const BRANCH = {
-    ...DEFAULT_BRANCH,
-    name: workspaceBranch?.toUpperCase() || DEFAULT_BRANCH.name,
-    addressLine1: branchAddress[0]?.toUpperCase() || (referenceBranch ? DEFAULT_BRANCH.addressLine1 : ""),
-    addressLine2: branchAddress.slice(1).join(" ").toUpperCase() || (referenceBranch ? DEFAULT_BRANCH.addressLine2 : ""),
-    pin: referenceBranch ? DEFAULT_BRANCH.pin : "",
-    ifsc: bankInfo?.ifsc || (referenceBranch ? DEFAULT_BRANCH.ifsc : ""),
-    micr: bankInfo?.micr || (referenceBranch ? DEFAULT_BRANCH.micr : ""),
-    branchCode: bankInfo?.branchCode || (referenceBranch ? DEFAULT_BRANCH.branchCode : ""),
-    email: bankInfo?.branchEmail || "",
-  };
+export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, onOpenBankInformation }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo; bankLogo?: string; onOpenBankInformation?:()=>void }) {
+  const BRANCH = passbookBranchForTenant(bankInfo);
+  const missingBranch = missingPassbookBranchFields(BRANCH);
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
   const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
@@ -739,6 +729,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
   const printPassbook = async (offset?: PrintOffset, test = false, duplex = false): Promise<PrintOutcome | void> => {
+    if (formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) {
+      setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
+    }
 
     if (!previewCustomer) {
 
@@ -903,6 +896,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
   ======================================================= */
 
   const directPrinterSend = async () => {
+    if (formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) {
+      setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
+    }
     if (!previewCustomer) {
       setError("Search and load a customer first.");
       return;
@@ -928,8 +924,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
             branch: {
               name: BRANCH.name,
               addressLine1: BRANCH.addressLine1,
-              addressLine2: BRANCH.addressLine2,
+              addressLine2: [BRANCH.postOffice,BRANCH.district].filter(Boolean).join(" "),
               pin: BRANCH.pin,
+              postOffice:BRANCH.postOffice,district:BRANCH.district,
               ifsc: BRANCH.ifsc,
               branchCode: BRANCH.branchCode,
               micr: BRANCH.micr,
@@ -1556,6 +1553,8 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
           padding: 0;
 
         }
+        .pb-info-layout{position:absolute;inset:0;color:#111!important;font-family:"Courier New","Liberation Mono",monospace;font-weight:600;letter-spacing:0;text-transform:uppercase}
+        .pb-info-layout *{color:#111!important;box-sizing:border-box;text-align:left!important}
 
 
 
@@ -2217,9 +2216,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
           @page { size: 210mm 297mm; margin: 0; }
           @media print {
             html, body { width:210mm!important; height:297mm!important; }
-            .passbook-shell { width:210mm!important; height:170mm!important; overflow:visible!important; }
+            .passbook-shell { width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:175mm!important; overflow:visible!important; }
             .passbook-cover-space { height:85mm!important; }
-            .passbook-print-area { top:85mm!important; height:85mm!important; }
+            .passbook-print-area { top:85mm!important; width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:85mm!important; }
           }
         ` : ""}
         ${isUnion ? `
@@ -2453,7 +2452,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
           {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
-<div className="passbook-shell">
+<div className="passbook-shell" style={isAssamBank(bankInfo?.passbookBank)?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
             {/* HOVER EDIT */}
 
@@ -2495,213 +2494,11 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
             {/* BOTTOM PRINT PAGE */}
 
-            <div className="passbook-print-area">
+            <div className="passbook-print-area" style={isAssamBank(bankInfo?.passbookBank)?{top:'85mm',width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
 
 
-              {/* FIXED LEFT */}
-
-              <div className="pb-block pb-branch">
-
-                <div className="pb-line">
-
-                  BRANCH NAME: {BRANCH.name}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  BR. ADDRESS: {BRANCH.addressLine1}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  {"             "}
-
-                  {BRANCH.addressLine2}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  {"             "}
-
-                  {BRANCH.pin}
-
-                </div>
-
-              </div>
-
-
-
-              {/* FIXED RIGHT */}
-
-              <div className="pb-block pb-ifsc">
-
-                IFSC CODE: {BRANCH.ifsc}
-
-              </div>
-
-
-
-              <div className="pb-block pb-branch-code">
-
-                ({BRANCH.branchCode})
-
-              </div>
-
-
-
-              <div className="pb-block pb-micr">
-
-                MICR CODE: {BRANCH.micr}
-
-              </div>
-
-
-
-              {/* LEFT CUSTOMER */}
-
-              <div className="pb-block pb-left-customer">
-
-                <div className="pb-line">
-
-                  BR. EMAIL : {BRANCH.email}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  CUSTOMER ID: {printText(p.enrolId)}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  ACCOUNT NO.: {printText(p.accountNo)}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  PAN NUMBER : {printText(p.pan)}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  MOBILE NO. : {printText(p.contact)}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  OPENED ON  :{" "}
-
-                  {formatDate(
-
-                    p.accountOpeningDate
-
-                  )}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  ISSUE DATE :{" "}
-
-                  {formatDate(
-
-                    p.accountOpeningDate
-
-                  )}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  OPERATED BY: SELF
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  NOMINEE    :{" "}
-
-                  {safe(p.nominee)
-
-                    ? "1"
-
-                    : ""}
-
-                </div>
-
-              </div>
-
-
-
-              {/* RIGHT CUSTOMER */}
-
-              <div className="pb-block pb-right-customer">
-
-                <div className="pb-line">
-
-                  ACC. HOLDER : {printText(p.name)}
-
-                </div>
-
-
-
-                <div className="pb-line">
-
-                  JOINT HOLDER:
-
-                </div>
-
-
-
-                <div className="pb-address-line">
-
-                  <span className="pb-address-label">
-
-                    CUST ADD. :
-
-                  </span>
-
-
-
-                  <span className="pb-address-value">
-
-                    {makePrintAddress(p).toUpperCase()}
-
-                  </span>
-
-                </div>
-
-              </div>
+              <PassbookInfoFields customer={p} bank={BRANCH} />
 
             </div>
 
@@ -2989,6 +2786,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
 
           {/* BUTTONS */}
+          {formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length>0 && <p role="alert" className="passbook-bank-warning">Complete Bank Information before printing: {missingBranch.join(', ')}. {onOpenBankInformation && <button type="button" onClick={onOpenBankInformation}>Open Bank Information</button>}</p>}
 
           <div className="passbook-actions">
 
@@ -2998,7 +2796,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo }
 
               className="passbook-button print-button"
 
-              onClick={() => { if (alignmentEnabled) setAlignmentOpen(true); else void printPassbook(); }}
+              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) setAlignmentOpen(true); else void printPassbook(); }}
 
               disabled={printing}
 

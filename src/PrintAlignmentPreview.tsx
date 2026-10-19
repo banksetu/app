@@ -40,7 +40,7 @@ function sourceDocument(selector: string): string {
     .union-document{width:210mm!important;height:170mm!important;overflow:visible!important}
     .union-lower,.union-fold{top:85mm!important}.union-lower{height:85mm!important}
     .assam-quick-document{width:210mm!important;height:170mm!important}
-    .passbook-shell{width:210mm!important;height:170mm!important;overflow:visible!important}
+    .passbook-shell{width:206mm!important;height:175mm!important;overflow:visible!important}
     .passbook-cover-space{height:85mm!important}.passbook-print-area{top:85mm!important;height:85mm!important}
     .passbook-page{padding:0!important;margin:0!important;min-height:0!important}.preview-edit-button,.assam-quick-edit,.union-edit,.cover-note{display:none!important}
   </style></head><body><div class="passbook-page">${source.outerHTML}</div></body></html>`;
