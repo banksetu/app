@@ -12,7 +12,7 @@ permissions:
   contents: read
 concurrency:
   group: banksetu-passbook-private-preview
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   preview:
     runs-on: ubuntu-latest
@@ -37,7 +37,7 @@ jobs:
         run: node scripts/firebase-credential.mjs
       - name: Deploy Hosting preview channel only
         run: |
-          if ! npx --yes firebase-tools@15.31.0 hosting:channel:deploy passbook-master-review --expires 30d --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive --json > "$RUNNER_TEMP/passbook-preview-result.json"; then
+          if ! npx --yes firebase-tools@15.31.0 hosting:channel:deploy passbook-master-review --expires 30d --config firebase.portfolio.json --only banksetu-app --project banksetu-69e2f --non-interactive --json > "$RUNNER_TEMP/passbook-preview-result.json"; then
             node --input-type=module -e "import{readFileSync}from'node:fs';const x=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/passbook-preview-result.json'));console.error(x.error?.message || x.message || 'Firebase preview deployment failed');"
             exit 1
           fi
