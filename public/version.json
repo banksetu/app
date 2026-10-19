@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.96",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.96/BankSetu-Setup-1.0.96-x64.exe",
+  "latestVersion": "1.0.97",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.97/BankSetu-Setup-1.0.97-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.96",
-  "releaseTag": "v1.0.96",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.96",
-  "releaseDate": "2026-10-18",
-  "windowsVersion": "1.0.96",
-  "androidBuild": 1000096,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.96/BankSetu-Setup-1.0.96-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.96/BankSetu-Android-1000096.apk",
+  "version": "1.0.97",
+  "releaseTag": "v1.0.97",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.97",
+  "releaseDate": "2026-10-19",
+  "windowsVersion": "1.0.97",
+  "androidBuild": 1000097,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.97/BankSetu-Setup-1.0.97-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.97/BankSetu-Android-1000097.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.96",
-      "releaseDate": "2026-10-18",
+      "version": "1.0.97",
+      "releaseDate": "2026-10-19",
       "categories": {
         "Improvements": [
-          "Fix dark mode surfaces and dialogs for bank and licensing."
+          "Maintenance and reliability updates."
         ]
       }
     },
     "android": {
-      "version": "1.0.96",
-      "releaseDate": "2026-10-18",
+      "version": "1.0.97",
+      "releaseDate": "2026-10-19",
       "categories": {
         "Improvements": [
-          "Fix dark mode surfaces and dialogs for bank and licensing."
+          "Maintenance and reliability updates."
         ]
       }
     }
