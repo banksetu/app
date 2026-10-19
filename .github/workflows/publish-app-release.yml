@@ -5,6 +5,9 @@ on:
     branches: [codex/spark-client-workspace-20261001]
     paths:
       - src/Dashboard.tsx
+      - src/Passbook.tsx
+      - src/passbookInfoLayout.ts
+      - public/fonts/**
       - src/App.css
       - src/core/appearance.ts
       - src/core/dashboardAnalytics.ts
