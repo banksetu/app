@@ -18,6 +18,8 @@ import UnionPassbook from "./UnionPassbook";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { createMasterPassbookPdf, type MasterValues } from "./passbookMasterPdf";
+import PdfDocumentPreview from "./PdfDocumentPreview";
+import { savePdfDocument, printPdfDocument } from "./core/pdfActions";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
   RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
   RIGHT_HOLDER_VALUE_X_MM, RIGHT_JOINT_COLON_X_MM, RIGHT_JOINT_VALUE_X_MM, RIGHT_ADDRESS_X_MM,
@@ -356,14 +358,12 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   const [query, setQuery] = useState("");
   const [masterAccount, setMasterAccount] = useState("");
   const [masterAmount, setMasterAmount] = useState("");
-  const [masterUrl, setMasterUrl] = useState("");
-  const [masterReferenceUrl, setMasterReferenceUrl] = useState("");
+  const [masterDocument, setMasterDocument] = useState<Blob|null>(null);
+  const [masterReference, setMasterReference] = useState<Blob|null>(null);
   const [masterResult, setMasterResult] = useState<{name:string;accountNo:string}|null>(null);
   const [masterError, setMasterError] = useState("");
   const [masterLoading, setMasterLoading] = useState(false);
-  useEffect(()=>()=>{if(masterUrl)URL.revokeObjectURL(masterUrl);},[masterUrl]);
-  useEffect(()=>()=>{if(masterReferenceUrl)URL.revokeObjectURL(masterReferenceUrl);},[masterReferenceUrl]);
-  useEffect(()=>{setMasterUrl('');setMasterResult(null);},[bankInfo?.passbookBank,bankInfo?.branchName,bankInfo?.ifsc]);
+  useEffect(()=>{setMasterDocument(null);setMasterResult(null);},[bankInfo?.passbookBank,bankInfo?.branchName,bankInfo?.ifsc]);
 
   const [customer, setCustomer] =
 
@@ -516,7 +516,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   const searchMasterAccount = async (event:FormEvent) => {
     event.preventDefault();
     const account=masterAccount.trim();
-    setMasterError('');setMasterUrl('');setMasterResult(null);
+    setMasterError('');setMasterDocument(null);setMasterResult(null);
     if(!account){setMasterError('Enter the exact account number.');return;}
     if(!getAuth().currentUser){setMasterError('Sign in before searching.');return;}
     if(missingBranch.length){setMasterError(`Complete Bank Information: ${missingBranch.join(', ')}.`);return;}
@@ -557,7 +557,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         amount:masterAmount.trim(),bottomDate:date,
       };
       const blob=await createMasterPassbookPdf(values);
-      setMasterUrl(URL.createObjectURL(blob));setMasterResult({name:found.name,accountNo:account});
+      setMasterDocument(blob);setMasterResult({name:found.name,accountNo:account});
     }catch(e){setMasterError(e instanceof Error?e.message:'Preview could not be generated.');}
     finally{setMasterLoading(false);}
   };
@@ -2324,6 +2324,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
       {masterOnly && <section className="master-preview-private" style={{margin:'16px 0',padding:16,border:'1px solid #7184a2',borderRadius:12,background:'#172338',color:'#f8fafc'}}>
+        <style>{`.master-preview-private .customer-pdf-preview{height:min(68vh,760px);overflow:auto;background:#dce5f2;border-radius:10px;padding:10px}.master-preview-private .customer-pdf-page{display:grid;justify-items:center;gap:5px;margin:0 auto 12px;max-width:720px;color:#18354d}.master-preview-private .customer-pdf-page canvas{width:100%;height:auto;background:white}`}</style>
         <h2 style={{marginTop:0}}>BANK SETU — PASSBOOK PRINT PREVIEW</h2>
         <form onSubmit={searchMasterAccount} style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'end'}}>
           <label>Account Number<br/><input aria-label="Exact Account Number" inputMode="numeric" autoComplete="off" value={masterAccount} onChange={event=>setMasterAccount(event.target.value)} style={{padding:10,color:'#f8fafc',background:'#233249',border:'1px solid #7184a2',borderRadius:6}}/></label>
@@ -2331,14 +2332,14 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           <button type="submit" disabled={masterLoading} style={{padding:11}}>{masterLoading?'Searching…':'Search Customer'}</button>
         </form>
         {masterError && <p role="alert" style={{color:'#ffb9b9'}}>{masterError}</p>}
-        {masterResult && masterUrl && <div>
+        {masterResult && masterDocument && <div>
           <p>{masterResult.name} — {masterResult.accountNo}</p>
-          <p><a href={masterUrl} download={`passbook-${masterResult.accountNo}.pdf`} style={{color:'#9fe8ff'}}>Download PDF</a>{' · '}
-            <button type="button" onClick={()=>document.getElementById('master-passbook-pdf')?.querySelector('iframe')?.contentWindow?.print()}>Print A4 PDF</button></p>
-          <label>Compare with approved master (local file only): <input type="file" accept="application/pdf" onChange={event=>setMasterReferenceUrl(event.target.files?.[0]?URL.createObjectURL(event.target.files[0]):'')}/></label>
+          <p><button type="button" onClick={()=>void savePdfDocument(masterDocument,`BankSetu-passbook-${masterResult.accountNo.replace(/[^a-zA-Z0-9_-]/g,'_')}.pdf`,'Bank Setu Passbook').catch(reason=>setMasterError(reason instanceof Error?reason.message:'PDF could not be saved.'))}>Download / Save PDF</button>{' · '}
+            <button type="button" onClick={()=>void printPdfDocument(masterDocument).catch(reason=>setMasterError(reason instanceof Error?reason.message:'PDF print could not be opened.'))}>Print A4 PDF</button></p>
+          <label>Compare with approved master (local file only): <input type="file" accept="application/pdf" onChange={event=>setMasterReference(event.target.files?.[0]||null)}/></label>
           <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:12}}>
-            <div id="master-passbook-pdf" style={{flex:'1 1 320px',minWidth:0}}><strong>Generated A4</strong><iframe title="Generated passbook A4 PDF" src={masterUrl} style={{width:'100%',height:540,background:'white',border:0}}/></div>
-            {masterReferenceUrl && <div style={{flex:'1 1 320px',minWidth:0}}><strong>Approved master A4</strong><iframe title="Approved master PDF" src={masterReferenceUrl} style={{width:'100%',height:540,background:'white',border:0}}/></div>}
+            <div style={{flex:'1 1 320px',minWidth:0}}><strong>Generated A4</strong><PdfDocumentPreview file={masterDocument}/></div>
+            {masterReference && <div style={{flex:'1 1 320px',minWidth:0}}><strong>Approved master A4</strong><PdfDocumentPreview file={masterReference}/></div>}
           </div>
         </div>}
       </section>}
