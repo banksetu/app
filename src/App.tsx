@@ -27,6 +27,8 @@ import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
 
+const passbookPreviewOnly = import.meta.env.VITE_PASSBOOK_PREVIEW_ONLY === "true";
+
 type BankSetuRole = "admin" | "user";
 type UserProfile = {
   role?: string;
@@ -100,7 +102,7 @@ function App() {
   const lastNativeLicense=useRef<{tenantId:string;state:string;revision:number}|null>(null);
   useEffect(()=>startNotificationNavigation(),[]);
   useEffect(()=>{
-    if(!isLoggedIn)return;
+    if(!isLoggedIn || passbookPreviewOnly)return;
     void registerAndroidPush();
     const resume=()=>{if(document.visibilityState==='visible')void registerAndroidPush();};
     document.addEventListener('visibilitychange',resume);
@@ -361,6 +363,10 @@ function App() {
   useEffect(()=>{
     if(!isLoggedIn)return;
     configureConnectionRecovery(prepareClientWorkspace);
+    if(passbookPreviewOnly){
+      void prepareClientWorkspace().catch(()=>{/* The preview reports unavailable connections during search. */});
+      return()=>configureConnectionRecovery(undefined);
+    }
     if(licenseReadOnly){
       void prepareClientWorkspace().catch(()=>{/* A verified offline workspace still permits local viewing and backup. */});
       return()=>configureConnectionRecovery(undefined);
@@ -513,7 +519,7 @@ function App() {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
         <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
-        <SoftwareUpdateNotice />
+        {!passbookPreviewOnly && <SoftwareUpdateNotice />}
       </div>
     );
   }

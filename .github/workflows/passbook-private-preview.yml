@@ -28,6 +28,7 @@ jobs:
       - run: npm run build:hosting && npm run test:portfolio
         env:
           VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+          VITE_PASSBOOK_PREVIEW_ONLY: 'true'
       - name: Identify preview build
         run: node scripts/write-portfolio-deployment.mjs
       - name: Prepare Firebase credential
@@ -35,7 +36,11 @@ jobs:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
         run: node scripts/firebase-credential.mjs
       - name: Deploy Hosting preview channel only
-        run: npx --yes firebase-tools@15.31.0 hosting:channel:deploy passbook-master-review --expires 30d --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive --json > "$RUNNER_TEMP/passbook-preview-result.json"
+        run: |
+          if ! npx --yes firebase-tools@15.31.0 hosting:channel:deploy passbook-master-review --expires 30d --config firebase.portfolio.json --only hosting:banksetu-app --project banksetu-69e2f --non-interactive --json > "$RUNNER_TEMP/passbook-preview-result.json"; then
+            node --input-type=module -e "import{readFileSync}from'node:fs';const x=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/passbook-preview-result.json'));console.error(x.error?.message || x.message || 'Firebase preview deployment failed');"
+            exit 1
+          fi
       - name: Verify preview URL and report
         env:
           PREVIEW_COMMIT: ${{ github.sha }}

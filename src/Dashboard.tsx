@@ -56,6 +56,7 @@ import BankFormats from "./BankFormats";
 
 
 import SelectedBankDocument from "./SelectedBankDocument";
+import { isAssamBank } from "./AssamQuickPassbook";
 
 import Customers from "./Customers";
 import FormsSendToBranch from "./FormsSendToBranch";
@@ -279,7 +280,8 @@ type PageName =
   | "support";
 
 function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, licenseWarning = "", licensePermission, demoExpired = false }: DashboardProps) {
-  useEffect(()=>startPresence(),[]);
+  const passbookPreviewOnly = import.meta.env.VITE_PASSBOOK_PREVIEW_ONLY === "true";
+  useEffect(()=>{if(passbookPreviewOnly)return;return startPresence();},[passbookPreviewOnly]);
 
   // The verified legacy Master Admin is represented as `admin` for backward
   // compatibility. It has the same global appearance permissions as the
@@ -880,6 +882,22 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const apiConfigured =
 
     !!getTenantApiUrl();
+
+  if(passbookPreviewOnly)return (
+    <main className="banksetu-app-shell" data-appearance={appearance} style={{...styles.page, minHeight:'100vh'} as CSSProperties}>
+      <section style={{maxWidth:920,width:'100%',margin:'0 auto',padding:'16px'}}>
+        <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:18}}>
+          <h1 style={{fontSize:22}}>BANK SETU — PASSBOOK PRINT PREVIEW</h1>
+          <button type="button" onClick={onLogout}>Logout</button>
+        </header>
+        <p>This private review page allows account lookup and PDF inspection only. It does not save customer changes.</p>
+        {!bankSettingsReady ? <p role="status">{bankSettingsError || 'Loading tenant Bank Information…'}</p>
+          : licenseReadOnly ? <p role="status">{licenseWarning || 'An active license is required for this preview.'}</p>
+          : !isAssamBank(bankInfo.passbookBank) ? <p role="status">The approved master preview is available for the configured Assam Gramin Bank format.</p>
+          : <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} />}
+      </section>
+    </main>
+  );
 
   return (
 

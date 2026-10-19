@@ -31,6 +31,8 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if (init?.method !== "POST" || typeof init.body !== "string") return networkFetch(input, init);
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(init.body); } catch { return networkFetch(input, init); }
+  if(import.meta.env.VITE_PASSBOOK_PREVIEW_ONLY === "true" && !["searchCustomer","getCustomerByRowNumber"].includes(String(payload.action||"")))
+    throw new Error("The passbook review link permits account lookup only.");
   if (supportedWrites.has(String(payload.action || "")) || ["uploadPDF","uploadBankFormatSample","getBankFormatPreview","publishLocalReset","syncCustomerOperation"].includes(String(payload.action || ""))) await requireLicensedWrite();
   if (!localModeEnabled()) return networkFetch(input, init);
   const url = String(input);
