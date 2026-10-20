@@ -3615,7 +3615,9 @@ function syncCustomerOperation(request, authUser, preparedMedia) {
     customer.updatedBy = authUser.email;
     operations.push(op.operationId);
     if (JSON.stringify(operations).length > 45000) throw new Error("Operation history is full. Archive this record before further edits.");
-    const row = customerToRow(customer, existing ? existing[21] : new Date(), new Date()).concat([op.recordId,JSON.stringify(operations),op.action === "deleteCustomer" ? "true" : ""]);
+    const entryTime=Number(op.createdAt);
+    const createdAt=existing ? existing[21] : Number.isFinite(entryTime)&&entryTime>=946684800000&&entryTime<=Date.now() ? new Date(entryTime) : new Date();
+    const row = customerToRow(customer, createdAt, new Date()).concat([op.recordId,JSON.stringify(operations),op.action === "deleteCustomer" ? "true" : ""]);
     const rowNumber = existing ? index+2 : sheet.getLastRow()+1;
     if (statusOnly || passbookAction) {
       for(const field of passbookAction?["passbookStatus"]:patchKeys)sheet.getRange(rowNumber,field==="status"?5:12,1,1).setValues([[customer[field]]]);

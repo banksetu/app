@@ -3798,7 +3798,10 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 .banksetu-sidebar .banksetu-appearance button.selected{background:#fff;color:#263047;box-shadow:0 2px 8px #09152a44}
 .banksetu-sidebar .banksetu-appearance button:focus-visible{outline:2px solid #67e8f9;outline-offset:2px}
 .banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;padding-bottom:2px!important}
-.banksetu-sidebar nav{min-height:0;overflow-y:auto;flex:1;scrollbar-width:thin}
+.banksetu-sidebar nav{min-height:0;overflow-y:auto;overflow-x:hidden;flex:1}
+/* Keep wheel, touch and keyboard scrolling without sidebar scrollbar chrome. */
+.banksetu-sidebar,.banksetu-sidebar nav{scrollbar-width:none;-ms-overflow-style:none}
+.banksetu-sidebar::-webkit-scrollbar,.banksetu-sidebar nav::-webkit-scrollbar{display:none;width:0;height:0}
 @media(max-width:760px){.banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;padding-bottom:calc(2px + env(safe-area-inset-bottom,0px))!important}.banksetu-sidebar .banksetu-appearance{bottom:0}}
 
 .dashboard-analytics{margin-top:18px;color:var(--bs-text)}
@@ -3891,3 +3894,66 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
   body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-section h3{background:#233249!important;color:#f8fafc!important}
 }
 @media print{.banksetu-app-shell[data-appearance="dark"]{color-scheme:light!important}.banksetu-app-shell[data-appearance="dark"] :is(.passbook-print-area,.pb-block){background:#fff!important;color:#111827!important}}
+
+/* These feature surfaces also contain inline/light styles. Keep appearance
+   scoped to screen UI; printable passbook artwork is deliberately untouched. */
+@media screen {
+  .banksetu-app-shell[data-appearance="dark"] .sync-center,
+  .banksetu-app-shell[data-appearance="dark"] .sync-body {
+    background:#111c30!important;color:#f8fafc!important;border-color:#29374d!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] :is(.sync-header,.sync-protection) {
+    background:linear-gradient(125deg,#172338,#233249)!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] :is(.sync-card,.sync-card-icon,.sync-storage-details,.sync-health) {
+    background:#172338!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .sync-health {margin-top:14px;padding:14px;border:1px solid #354661;border-radius:12px;overflow-wrap:anywhere}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(span,p,small,summary,li) {color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(h2,strong,.sync-card-copy>span,.sync-summary span) {color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(.sync-header-actions a,.sync-health button,.sync-card>button,.sync-maintenance button) {
+    background:#233249!important;color:#c7dcff!important;border:1px solid #42536b!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(.backup-action,.excel-action,.restore-action) {
+    background:#1c3046!important;color:#e2e8f0!important;border-color:#42536b!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .sync-center .backup-action {color:#99f6cf!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center .excel-action {color:#a9ceff!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center .restore-action {color:#ffe0a3!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-maintenance button:first-child {background:#3b2136!important;color:#ffc4d9!important;border-color:#77445e!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-summary em {background:#123e34!important;color:#a7f3d0!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-summary em.pending {background:#493816!important;color:#fde68a!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-summary em.error,
+  .banksetu-app-shell[data-appearance="dark"] .sync-error-card {background:#4a2636!important;color:#fecdd3!important;border-color:#a5576d!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-error-card :is(p,strong) {color:#fecdd3!important}
+
+  .banksetu-app-shell[data-appearance="dark"] .reports-panel,
+  .banksetu-app-shell[data-appearance="dark"] .reports-mobile article {background:#172338!important;color:#f8fafc!important;border-color:#354661!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-panel-header {border-color:#354661!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page th {background:#233249!important;color:#e2e8f0!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page tbody tr {background:#172338!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page tbody tr:nth-child(even) {background:#1c2a40!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page :is(td,td div,.reports-mobile span) {color:#cbd5e1!important;border-color:#354661!important}
+
+  .banksetu-app-shell[data-appearance="dark"] :is(.settings-admin-hero,.master-client-intro,.admin-owner-summary,.admin-client-workspace,.admin-client-workspace-header,.admin-client-children,.admin-client-children-heading,.admin-user-group-heading) {
+    background:#172338!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-stats>div {background:#233249!important;border:1px solid #354661!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page :is(.admin-users-toolbar button,.admin-user-meta>span,.admin-client-seat-count) {background:#233249!important;color:#dbeafe!important;border-color:#42536b!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page :is(.admin-users-kicker,.admin-owner-label,.admin-user-info span,.admin-user-info small,.admin-client-empty,.admin-client-children-heading span,.master-client-create) {color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-actions :is(.approve,.unblock) {background:#153e34!important;color:#a7f3d0!important;border-color:#326954!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-actions .block {background:#493816!important;color:#fde68a!important;border-color:#796130!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-actions :is(.delete,.deny) {background:#4a2636!important;color:#fecdd3!important;border-color:#a5576d!important}
+
+  /* Dialogs can be mounted outside the shell as well as within the page. */
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay .admin-users-panel) {
+    background:#172338!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay) :is(h2,h3,label,strong,button) {color:#f8fafc!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay) :is(p,small,span,pre) {color:#cbd5e1!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay) :is(input,select,textarea) {background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-choice,.excel-export-options,.excel-export-estimate) {background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-choice:has(input:checked) {background:#1e453e!important;border-color:#59d7ad!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-footer button:first-child {background:#33455f!important;color:#f8fafc!important;border:1px solid #52657e;border-radius:8px;padding:10px 16px}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-panel [role="alert"] {color:#fecaca!important}
+}

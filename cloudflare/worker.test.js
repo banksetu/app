@@ -13,6 +13,8 @@ test('support cleanup deletes only the verified tenant thread and its children',
   globalThis.fetch=async (url,options={})=>{
     const target=String(url),method=options.method||'GET';
     if(target.includes('oauth2.googleapis.com/token'))return Response.json({access_token:'test',expires_in:3600});
+    if(target.endsWith('/documents:runQuery'))return Response.json([]);
+    if(target.endsWith('/documents:commit')){for(const write of JSON.parse(options.body).writes){deleted.push(write.delete.split('/documents/')[1]);messages=messages.filter(name=>name!==write.delete);}return Response.json({});}
     if(target.endsWith('/documents/supportConversations/client-a/messages?pageSize=50'))return Response.json({documents:messages.map(name=>({name,fields:{tenantId:{stringValue:'tenant-a'}}}))});
     if(target.endsWith('/documents/supportConversations/client-a') && method==='GET')return present?Response.json({fields:{tenantId:{stringValue:'tenant-a'}}}):Response.json({}, {status:404});
     if(method==='DELETE') { const path=target.split('/documents/')[1];deleted.push(path);if(path.includes('/messages/'))messages=messages.filter(name=>!name.endsWith(path.split('/').at(-1)));else present=false;return Response.json({}); }

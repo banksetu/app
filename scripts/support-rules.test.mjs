@@ -6,6 +6,8 @@ const env=await initializeTestEnvironment({projectId:"banksetu-support-test",fir
 const seed=env.unauthenticatedContext().firestore();
 await env.withSecurityRulesDisabled(async context=>{
   const db=context.firestore();
+  await setDoc(doc(db,'tenants','t1'),{status:'active'});
+  await setDoc(doc(db,'tenants','t2'),{status:'active'});
   for(const [uid,data] of Object.entries({master:{role:"master_owner",status:"approved",subscriptionStatus:"active"},c1:{role:"client_admin",tenantId:"t1",status:"approved",subscriptionStatus:"active"},c2:{role:"client_user",tenantId:"t2",status:"approved",subscriptionStatus:"active"}}))await setDoc(doc(db,"users",uid),data);
   await setDoc(doc(db,"supportConversations","c1"),{clientUid:"c1",clientName:"Client 1",clientEmail:"c1@test",tenantId:"t1",lastMessage:"hello",updatedAt:new Date(),unreadForMaster:true,unreadForClient:false});
   await setDoc(doc(db,"supportAnnouncements","all"),{title:"All",body:"Global",global:true,recipientUids:[],tenantIds:[],createdAt:new Date(),createdBy:"master"});
@@ -28,6 +30,19 @@ await assertFails(addDoc(collection(c1,"supportAnnouncements"),{title:"Bad",body
 await assertSucceeds(addDoc(collection(master,"supportAnnouncements"),{title:"Good",body:"Allowed",global:true,recipientUids:[],tenantIds:[],createdAt:serverTimestamp(),createdBy:"master"}));
 await assertSucceeds(setDoc(doc(c1,"supportAnnouncementReads","c1_all"),{userId:"c1",announcementId:"all",readAt:serverTimestamp()}));
 await assertFails(setDoc(doc(c1,"supportAnnouncementReads","c2_all"),{userId:"c2",announcementId:"all",readAt:serverTimestamp()}));
+await env.withSecurityRulesDisabled(async context=>{
+ const db=context.firestore();
+ await setDoc(doc(db,'supportMedia','file'),{tenantId:'t1'});
+ await setDoc(doc(db,'supportMedia','file','chunks','0'),{data:'private bytes'});
+});
+for(const db of [master,c1,c2]){
+ await assertFails(getDoc(doc(db,'supportMedia','file')));
+ await assertFails(getDoc(doc(db,'supportMedia','file','chunks','0')));
+ await assertFails(setDoc(doc(db,'supportMedia','forged'),{tenantId:'t1'}));
+}
+await assertFails(addDoc(collection(c1,'supportConversations','c1','messages'),{text:'forged',senderUid:'c1',senderRole:'client_admin',clientUid:'c1',tenantId:'t1',createdAt:serverTimestamp(),attachment:{id:'forged'}}));
+await env.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),'tenants','t1'),{status:'offboarding'}));
+await assertFails(addDoc(collection(master,'supportConversations','c1','messages'),{text:'racing deletion',senderUid:'master',senderRole:'master_owner',clientUid:'c1',tenantId:'t1',createdAt:serverTimestamp()}));
 await env.cleanup();
 void seed;
 console.log("support Firestore role and tenant isolation tests PASS");

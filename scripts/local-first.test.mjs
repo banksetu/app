@@ -24,7 +24,7 @@ globalThis.fetch=async(...args)=>{
    const connectionId=storage.get('bankSetuConnectionId');
    const scope=`${globalThis.__auth.currentUser.uid}:${storage.get('bankSetuMasterLocalEnabled')==='true'?`master:${globalThis.__auth.currentUser.uid}`:storage.get('bankSetuTenantId')}:${connectionId}`;
    const state=await repository.read(scope);
-   return new Response(JSON.stringify(protectionOverride||{success:true,protectionVersion:1,photoIndexVersion:photoIndexOverride?1:undefined,connectionId,resetId:'',activeIds:state.records.filter(r=>r.revision).map(r=>r.recordId),deletedIds:[]}));
+   return new Response(JSON.stringify((typeof protectionOverride==='function'?await protectionOverride(body):protectionOverride)||{success:true,protectionVersion:1,photoIndexVersion:photoIndexOverride?1:undefined,connectionId,resetId:'',activeIds:state.records.filter(r=>r.revision).map(r=>r.recordId),deletedIds:[]}));
  }
  return handler(...args);
 };
@@ -38,6 +38,103 @@ const engine=await import(compile(source));
 function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
 const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
 const photoIndex=(connectionId,entries=[])=>({success:true,photoIndexVersion:1,connectionId,revision:entries.length,complete:true,entries});
+test('offline customer entry records its creation date immediately and later edits preserve it for analytics',async()=>{
+ storage.clear();connect('analytics-entry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer});
+ const first=(await engine.getActiveLocalCustomers())[0];assert(Number.isFinite(Date.parse(first.createdAt)));
+ await request({action:'updateCustomer',rowNumber:saved.rowNumber,customer:{...customer,name:'Edited name',createdAt:'2000-01-01T00:00:00Z'}});
+ const next=(await engine.getActiveLocalCustomers())[0];assert.equal(next.createdAt,first.createdAt);
+ assert.equal((await repository.read('user-a:tenant-a:analytics-entry')).operations[0].customer.createdAt,first.createdAt);
+});
+async function recoveryFixture(connection,recordId=crypto.randomUUID()){
+ storage.clear();connect(connection);navigator.onLine=true;
+ const scope=`user-a:tenant-a:${connection}`,now=Date.now();
+ const cloud={...customer,recordId,rowNumber:2,revision:'r1',photoUrl:'saved-photo',photoState:'SYNCED'};
+ await repository.transact(scope,state=>{
+  state.records=[{key:recordId,scope,recordId,rowNumber:2,revision:'r1',pending:false,customer:{...cloud,photoPreview:'data:image/png;base64,c2F2ZWQ='}}];
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-1000,changeCursor:5,changeEpoch:'old-epoch',remoteRevision:'same-revision'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+  state.photoPresence={checkedAt:now,customerIds:[customer.enrolId]};
+ });
+ const full={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:connection,activeIds:[recordId],deletedIds:[],remoteRevision:'same-revision',changeEpoch:'new-epoch',changeCursor:9};
+ const delta={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:connection,incremental:true,changedIds:[recordId],deletedIds:[],changeEpoch:'old-epoch',changeCursor:6,hasMoreChanges:false};
+ return {scope,recordId,cloud,full,delta};
+}
+for(const failure of ['rebase','missing row','duplicate row','legacy ID'])test(`mobile journal ${failure} recovers once through a verified snapshot and retains cached photo`,async()=>{
+ const f=await recoveryFixture(`mobile-${failure}`,failure==='legacy ID'?'legacy-row-id':undefined);
+ let fullRequests=0,batches=0,pages=0;
+ protectionOverride=body=>{
+  if(body.changeEpoch==='new-epoch')return {...f.delta,changedIds:[],changeEpoch:'new-epoch',changeCursor:9};
+  if(body.changeEpoch)return f.delta;
+  fullRequests++;return f.full;
+ };
+ handler=async(_url,init)=>{
+  const body=JSON.parse(init.body);
+  if(body.action==='getCustomerChanges'){
+   batches++;
+   return Response.json(failure==='rebase'?{success:false,code:'REBASE_REQUIRED'}:
+    {success:true,customers:failure==='duplicate row'?[f.cloud,f.cloud]:[],deletedIds:[]});
+  }
+  assert.equal(body.action,'getCustomerPage');assert.equal(body.cursor,0);pages++;
+  return Response.json({success:true,customers:[f.cloud],hasNextPage:false});
+ };
+ try{
+  await engine.syncNow(true);const state=await repository.read(f.scope);
+  assert.equal(fullRequests,1);assert.equal(pages,1);assert.equal(batches,failure==='legacy ID'?0:1);
+  assert.equal(state.pull.changeEpoch,'new-epoch');assert.equal(state.pull.changeCursor,9);assert.equal(state.pull.cursor,0);
+  assert.equal(state.records.length,1);assert.equal(state.records[0].customer.photoPreview,'data:image/png;base64,c2F2ZWQ=');
+  assert.equal((await engine.getLocalStatus()).error,'');
+  await engine.syncNow(true);assert.equal(fullRequests,1);assert.equal(pages,1,'reopening a recovered checkpoint does not rescan the Sheet');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('successful manual sync retires the previous background Recovering error immediately',async()=>{
+ const f=await recoveryFixture('manual-health');
+ globalThis.document=new EventTarget();document.visibilityState='visible';
+ engine.configureConnectionRecovery(async()=>{throw new Error('Synthetic bridge failure');});
+ const stop=engine.startLocalSync();
+ try{
+  for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(engine.getConnectionHealth().state,'recovering');
+  assert.match(engine.getConnectionHealth().error,/bridge failure/);
+  engine.configureConnectionRecovery(undefined);protectionOverride=f.full;
+  handler=async()=>Response.json({success:true,customers:[f.cloud],hasNextPage:false});
+  await engine.syncNow(true);
+  assert.equal(engine.getConnectionHealth().state,'healthy');assert.equal(engine.getConnectionHealth().error,'');
+  assert.equal((await engine.getLocalStatus()).error,'');
+ }finally{stop();engine.configureConnectionRecovery(undefined);protectionOverride=undefined;navigator.onLine=false;}
+});
+test('unverified recovery cannot advance a cursor, clear pending edits, lose photos or cross tenant connection',async()=>{
+ const f=await recoveryFixture('mobile-unverified');
+ await repository.transact(f.scope,state=>state.operations.push({key:'pending-edit',scope:f.scope,operationId:'pending-edit',recordId:f.recordId,action:'updateCustomer',customer:{name:'Pending name'},baseRevision:'r1',rowNumber:2,createdAt:Date.now(),state:'pending'}));
+ protectionOverride=body=>body.changeEpoch?f.delta:{...f.full,connectionId:'another-connection'};
+ handler=async()=>Response.json({success:false,code:'REBASE_REQUIRED'});
+ try{
+  await assert.rejects(engine.syncNow(true),/another workspace connection/);
+  const state=await repository.read(f.scope);
+  assert.equal(state.pull.changeCursor,5);assert.equal(state.pull.changeEpoch,'old-epoch');
+  assert.equal(state.operations[0].operationId,'pending-edit');assert.equal(state.operations[0].state,'pending');
+  assert.equal(state.records[0].customer.photoPreview,'data:image/png;base64,c2F2ZWQ=');assert.equal(state.records[0].deleted,undefined);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('interrupted full recovery resumes its durable page rather than retrying the stale change batch',async()=>{
+ const f=await recoveryFixture('mobile-restart');let pages=[],batches=0,interrupted=false;
+ protectionOverride=body=>body.changeEpoch?f.delta:f.full;
+ handler=async(_url,init)=>{
+  const body=JSON.parse(init.body);
+  if(body.action==='getCustomerChanges'){batches++;return Response.json({success:true,customers:[],deletedIds:[]});}
+  assert.equal(body.action,'getCustomerPage');pages.push(body.cursor);
+  if(body.cursor===0)return Response.json({success:true,customers:[f.cloud],hasNextPage:true,nextCursor:250});
+  if(!interrupted){interrupted=true;throw new Error('mobile download interrupted');}
+  return Response.json({success:true,customers:[],hasNextPage:false});
+ };
+ try{
+  await assert.rejects(engine.syncNow(true),/download interrupted/);
+  assert.equal((await repository.read(f.scope)).pull.cursor,250);
+  await engine.syncNow(true);const state=await repository.read(f.scope);
+  assert.deepEqual(pages,[0,250,250]);assert.equal(batches,1);assert.equal(state.pull.cursor,0);assert.equal(state.pull.changeEpoch,'new-epoch');
+  assert.equal(state.records[0].customer.photoPreview,'data:image/png;base64,c2F2ZWQ=');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
 test('bridge diagnostic compares public GET with authenticated tenant POST without touching local customer state',async()=>{
  storage.clear();connect('diagnostic-tenant');navigator.onLine=true;
  handler=async()=>Response.json({success:true,photoIndexVersion:1,afsmVersion:1});

@@ -27,3 +27,12 @@ test('personal appearance cannot leak between users or tenants', () => {
   assert.equal(storedAppearance(storage,'user-a','tenant-b'),'light');
   assert.equal(storedAppearance(storage,'','tenant-a'),'light');
 });
+
+test('Sheet display dates and local/offline creation dates count in Indian calendar months',()=>{
+ const now=new Date('2026-11-01T03:00:00+05:30');
+ for(const createdAt of ['19/10/2026 2:30:10 PM','19-10-2026','19/10/2026, 14:30:10','2026-10-19','10/19/2026','2026-10-19 14:30:10'])assert.equal(customerEntryMonth({createdAt},now),'2026-10');
+ assert.equal(customerEntryMonth({createdAt:'2026-10-31T20:00:00Z'},now),'2026-11');
+ for(const createdAt of ['31/02/2026','99/99/2026','19/10/2026 25:00','not a date'])assert.equal(customerEntryMonth({createdAt},now),null);
+ const result=customerAnalytics([{createdAt:'19/10/2026 14:30:00'},{createdAt:'2026-10-31T20:00:00Z'},{accountOpeningDate:'2026-10-19'}],now);
+ assert.equal(result.known,2);assert.equal(result.undated,1);assert.equal(result.thisMonth,1);assert.equal(result.monthlyAverage,2/12);
+});

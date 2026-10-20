@@ -195,10 +195,22 @@ service cloud.firestore {
 
     // Support conversations use the client UID as the document ID. A client
     // can access only its own thread; approved Master Admins can access all.
+    // Files/chunks are served only by the authenticated Worker and expire at 24h.
+    match /supportMedia/{mediaId} {
+      allow read, write: if false;
+      match /chunks/{chunkId} { allow read, write: if false; }
+    }
+    function supportOwnerActive(clientUid,tenantId) {
+      let owner=get(/databases/$(database)/documents/users/$(clientUid)).data;
+      return owner.status == 'approved' && owner.subscriptionStatus == 'active'
+        && owner.tenantId == tenantId
+        && get(/databases/$(database)/documents/tenants/$(tenantId)).data.status == 'active';
+    }
     match /supportConversations/{clientUid} {
       allow get, list: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
       allow create: if approvedUser()
         && request.resource.data.clientUid == clientUid
+        && supportOwnerActive(clientUid,request.resource.data.tenantId)
         && request.resource.data.keys().hasOnly([
           'clientUid', 'clientName', 'clientEmail', 'tenantId', 'lastMessage',
           'updatedAt', 'unreadForMaster', 'unreadForClient'
@@ -214,6 +226,7 @@ service cloud.firestore {
         && (supportAdmin() || (request.auth.uid == clientUid && request.resource.data.tenantId == myTenantId()));
       allow update: if approvedUser()
         && resource.data.clientUid == clientUid
+        && supportOwnerActive(clientUid,resource.data.tenantId)
         && request.resource.data.clientUid == clientUid
         && request.resource.data.tenantId == resource.data.tenantId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -230,6 +243,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
         allow create: if approvedUser()
+          && supportOwnerActive(clientUid,request.resource.data.tenantId)
           && request.resource.data.keys().hasOnly([
             'text', 'senderUid', 'senderRole', 'clientUid', 'tenantId', 'createdAt'
           ])

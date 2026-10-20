@@ -3,6 +3,11 @@ function bridge(){const rows=[['ENDROL ID','ACCOUNT NO','NAME']];const tabs=new 
  const context=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:()=>''})},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{getUuid:()=>crypto.randomUUID(),formatDate:date=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata'}).format(date),DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_alg,value)=>Array.from(crypto.createHash('sha256').update(value).digest())},SpreadsheetApp:{flush(){}},ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},console});vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);context.getSheet=()=>sheet;context.findDuplicates=()=>({accountNo:null,enrolId:null,uidaiNo:null});return {context,rows,tabs};}
 const makeOp=(id,action='saveCustomer')=>({recordId:id,operationId:crypto.randomUUID(),action,baseRevision:'',customer:{name:'Alice',accountNo:'1001',enrolId:'001',uidaiNo:'123456789012'}});
 const user={connectionId:'bound',role:'client_admin',email:'owner@example.com'};
+test('delayed offline upload retains the entry day rather than the sync day',()=>{
+ const {context,rows}=bridge(),op=makeOp(crypto.randomUUID());op.createdAt=Date.now()-86400000;
+ assert(context.syncCustomerOperation({connectionId:'bound',operation:op},user).success);
+ assert.equal(new Date(rows[1][21]).getTime(),op.createdAt);
+});
 test('incremental journal is idempotent and returns only changed rows for this connection',()=>{
  const {context,rows,tabs}=bridge();
  const id=crypto.randomUUID(),op=makeOp(id),saved=context.syncCustomerOperation({connectionId:'bound',operation:op},user);
