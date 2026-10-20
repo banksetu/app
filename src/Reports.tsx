@@ -103,7 +103,7 @@ export default function Reports() {
   }, []);
 
   return (
-    <section style={styles.page}>
+    <section className="reports-page" style={styles.page}>
       <div style={styles.header}>
         <div>
           <p style={styles.eyebrow}>REPORTS</p>
@@ -130,8 +130,8 @@ export default function Reports() {
         </div>
       </div>
 
-      <div style={styles.panel}>
-        <div style={styles.panelHeader}>
+      <div className="reports-panel" style={styles.panel}>
+        <div className="reports-panel-header" style={styles.panelHeader}>
           <div>
             <h2 style={styles.panelTitle}>Activity History</h2>
             <p style={styles.panelText}>
