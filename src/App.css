@@ -3798,7 +3798,10 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 .banksetu-sidebar .banksetu-appearance button.selected{background:#fff;color:#263047;box-shadow:0 2px 8px #09152a44}
 .banksetu-sidebar .banksetu-appearance button:focus-visible{outline:2px solid #67e8f9;outline-offset:2px}
 .banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;padding-bottom:2px!important}
-.banksetu-sidebar nav{min-height:0;overflow-y:auto;flex:1;scrollbar-width:thin}
+.banksetu-sidebar nav{min-height:0;overflow-y:auto;overflow-x:hidden;flex:1}
+/* Keep wheel, touch and keyboard scrolling without sidebar scrollbar chrome. */
+.banksetu-sidebar,.banksetu-sidebar nav{scrollbar-width:none;-ms-overflow-style:none}
+.banksetu-sidebar::-webkit-scrollbar,.banksetu-sidebar nav::-webkit-scrollbar{display:none;width:0;height:0}
 @media(max-width:760px){.banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;padding-bottom:calc(2px + env(safe-area-inset-bottom,0px))!important}.banksetu-sidebar .banksetu-appearance{bottom:0}}
 
 .dashboard-analytics{margin-top:18px;color:var(--bs-text)}
