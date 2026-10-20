@@ -347,7 +347,7 @@ function PassbookInfoFields({customer,bank}: {customer:Customer; bank:{name:stri
 export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, onOpenBankInformation }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo; bankLogo?: string; onOpenBankInformation?:()=>void }) {
   const BRANCH = passbookBranchForTenant(bankInfo);
   const missingBranch = missingPassbookBranchFields(BRANCH);
-  const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank);
+  const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isApprovedAssamPrint = formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
@@ -556,6 +556,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
+        ...((isApprovedAssamPrint || isAssamQuick) ? {nominee:'1'} : {}),
         photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
 
@@ -592,6 +593,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
+        ...((isApprovedAssamPrint || isAssamQuick) ? {nominee:'1'} : {}),
         photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
 
@@ -775,7 +777,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
     try {
       await requireLicensedWrite();
 
-      if (isApprovedAssamPrint) {
+      if (isApprovedAssamPrint || isAssamQuick) {
         const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
         if (problems.length) throw new Error(`Passbook data cannot fit the approved format: ${problems.join('; ')}. The font and compression have not been changed.`);
       }

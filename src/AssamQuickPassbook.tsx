@@ -1,3 +1,5 @@
+import {ApprovedPassbookArtwork,approvedPassbookValues} from './ApprovedPassbookInfo';
+import {passbookBranchForTenant} from './passbookInfoLayout';
 import type { CSSProperties } from "react";
 
 export type PassbookBankInfo = {
@@ -18,7 +20,7 @@ type RecordData = {
   enrolId: string; accountNo: string; name: string; contact: string;
   accountOpeningDate: string; fullAddress: string; address: string;
   postOffice: string; pinCode: string; pan: string; uidaiNo?: string; aadhaar?: string; aadhaarNo?: string; aadharNo?: string;
-  photoPreview?: string; photoUrl?: string; jointHolder?: string; issueDate?: string;
+  photoPreview?: string; photoUrl?: string; jointHolder?: string; issueDate?: string; nominee?: string; coName?: string;
 };
 
 const hints = [
@@ -31,11 +33,6 @@ const hints = [
   "For withdrawal of cash through withdrawal slips, production of the passbook is mandatory.",
 ];
 const upper = (value?: string) => String(value ?? "").trim().toUpperCase();
-function date(value?: string) {
-  if (!value) return "";
-  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return iso ? iso[3] + "-" + iso[2] + "-" + iso[1] : value;
-}
 const at = (left: number, top: number, width: number): CSSProperties => ({
   position: "absolute", left: left + "mm", top: top + "mm", width: width + "mm",
 });
@@ -43,10 +40,6 @@ const at = (left: number, top: number, width: number): CSSProperties => ({
 export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit }: {
   customer: RecordData; bankInfo?: PassbookBankInfo; onEdit: () => void;
 }) {
-  const branch = upper(bankInfo.branchName);
-  const referenceBranch = branch === "BADARPUR";
-  const branchAddress = bankInfo.address || (referenceBranch ? "PO:-BADARPUR\nDIST:-KARIMGANJ\n788806" : "");
-  const address = upper(c.fullAddress || [c.address, c.postOffice, c.pinCode].filter(Boolean).join("\n"));
   const photo = c.photoPreview || (/^(data:image\/|https:\/\/)/i.test(c.photoUrl || "") &&
     !/drive\.google\.com/i.test(c.photoUrl || "") ? c.photoUrl : "");
   return <div className="assam-quick-preview">
@@ -89,7 +82,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .assam-quick-field > span:nth-child(2) { width:calc(100% / .70); }
       .assam-quick-address { grid-template-columns:17mm minmax(0,1fr); }
       .assam-quick-manager { border-top:0.3mm solid #0782b2; color:#0782b2;
-        text-align:center; font:bold 4.5mm/7mm Arial,sans-serif; }
+        text-align:center; white-space:nowrap; font:bold 3.5mm/7mm Arial,sans-serif; }
       .assam-quick-edit { display:block; margin:12px auto 0; }
       @media print {
         @page { size:210mm 297mm; margin:0; }
@@ -123,27 +116,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       <div className="assam-quick-photo" style={at(146,98,30)}>
         {photo && <img src={photo} alt="Customer photograph" />}
       </div>
-      <div className="assam-quick-lines" style={at(16,123,62)}>
-        <div className="assam-quick-field"><span>BRANCH NAME:</span><span>{branch}</span></div>
-        <div className="assam-quick-field"><span>BR. ADDRESS:</span><span>{upper(branchAddress)}</span></div>
-      </div>
-      <div className="assam-quick-inline-field" style={at(81,123,58)}>IFSC CODE: {upper(bankInfo.ifsc || (referenceBranch ? "PUNB0RRBAGB" : ""))}</div>
-      <div className="assam-quick-inline-field" style={at(134,123,12)}>{bankInfo.branchCode || referenceBranch ? "(" + upper(bankInfo.branchCode || "7345") + ")" : ""}</div>
-      <div className="assam-quick-inline-field" style={at(81,136,60)}>MICR CODE: {upper(bankInfo.micr || (referenceBranch ? "788116106" : ""))}</div>
-      <div className="assam-quick-lines" style={at(16,140,64)}>
-        <div className="assam-quick-field"><span>BR. EMAIL:</span><span>{upper(bankInfo.branchEmail)}</span></div>
-        <div className="assam-quick-field"><span>CUSTOMER ID:</span><span>{upper(c.enrolId)}</span></div>
-        <div className="assam-quick-field"><span>ACCOUNT NO.:</span><span>{upper(c.accountNo)}</span></div>
-        <div className="assam-quick-field"><span>PAN NUMBER:</span><span>{upper(c.pan)}</span></div>
-        <div className="assam-quick-field"><span>MOBILE NO.:</span><span>{upper(c.contact)}</span></div>
-        <div className="assam-quick-field"><span>OPENED ON:</span><span>{date(c.accountOpeningDate)}</span></div>
-        <div className="assam-quick-field"><span>ISSUE DATE:</span><span>{date(c.issueDate)}</span></div>
-      </div>
-      <div className="assam-quick-lines" style={at(81,145,60)}>
-        <div className="assam-quick-field"><span>ACC. HOLDER:</span><span>{upper(c.name)}</span></div>
-        <div className="assam-quick-field"><span>JOINT HOLDER:</span><span>{upper(c.jointHolder)}</span></div>
-        <div className="assam-quick-field assam-quick-address"><span>CUST ADD.:</span><span>{address}</span></div>
-      </div>
+      <div className="assam-quick-data" style={{position:'absolute',left:0,top:'91mm'}}><ApprovedPassbookArtwork quick values={approvedPassbookValues(c,passbookBranchForTenant(bankInfo))}/></div>
       <div className="assam-quick-manager" style={at(144,157,36)}>Branch Manager</div>
     </article>
     <button type="button" className="passbook-button assam-quick-edit" onClick={onEdit}>Temporary Edit</button>

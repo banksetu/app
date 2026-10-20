@@ -9,6 +9,12 @@ type Branch = {name:string;postOffice:string;district:string;pin:string;email:st
 export type ApprovedPassbookValues = Record<string,string>;
 const upper = (value?:string) => String(value ?? '').trim().toUpperCase();
 const PT_PER_MM = 72 / 25.4;
+export const APPROVED_INFO_SLOTS:Record<string,ApprovedSlot> = {...APPROVED_SLOTS,
+  nominee:{...APPROVED_SLOTS.nominee,scale:.75,offsets:[],advance:APPROVED_SLOTS.holder.advance}};
+
+export function passbookPrintDate(now = new Date()) {
+  return [String(now.getDate()).padStart(2,'0'),String(now.getMonth()+1).padStart(2,'0'),now.getFullYear()].join('-');
+}
 
 function date(value:string|undefined, separator:string) {
   const raw=upper(value);
@@ -34,46 +40,45 @@ function textWidth(value:string,slot:ApprovedSlot) {
 }
 
 function addressLines(customer:Customer) {
-  const source=upper(customer.fullAddress) || [customer.address,customer.postOffice,customer.pinCode].map(upper).filter(Boolean).join('\n');
-  const careOf=upper(customer.coName);
-  const paragraphs=(careOf && !source.includes(careOf) ? `C/O ${careOf}\n${source}` : source).split(/\r?\n/);
-  const lines:string[]=[];
-  for(const paragraph of paragraphs) {
-    if(!paragraph.trim()){lines.push('');continue;}
-    let line='';
-    for(const word of paragraph.split(/\s+/)) {
-      const candidate=line ? `${line} ${word}` : word;
-      const slot=APPROVED_SLOTS[`address${Math.min(lines.length+1,4)}`];
-      if(line && textWidth(candidate,slot)>slot.end-slot.x) {lines.push(line);line=word;}
-      else line=candidate;
-    }
-    if(line)lines.push(line);
-  }
-  // The master reserves row three for locality and row four for the postal
-  // line. Keep that blank row when locality is absent, as in the approved sample.
-  if(lines.length===3 && /(?:\bPIN\b|\bINDIA\b)/.test(lines[2]))lines.splice(2,0,'');
-  // Keep every character. An overlong final line is reported before printing;
-  // it is never silently clipped, shrunk or moved onto another field's row.
-  return [lines[0]||'',lines[1]||'',lines[2]||'',lines.slice(3).join(' ')];
+  let source=upper(customer.fullAddress) || [customer.address,customer.postOffice,customer.pinCode].map(upper).filter(Boolean).join(', ');
+  const care=source.match(/^(?:C\/O|S\/O|D\/O|W\/O)\s*:?\s*([^,\n]+?)(?=\s+VILL(?:AGE)?\b|,|\n|$)/);
+  const careOf=upper(customer.coName) || care?.[1]?.trim() || '';
+  if(care)source=source.slice(care[0].length).replace(/^[,\s]+/,'');
+  const parts=source.split(/\r?\n|,/).map(value=>value.trim()).filter(Boolean);
+  const postal=/^(?:P\.?\s*O\.?\s*[: -]|POST(?:\s+OFFICE)?\b)/;
+  const locality=/^(?:DIST(?:RICT)?\b|ASSAM\b|INDIA\b|PIN\b|\d{6}$)/;
+  const village=upper(customer.address),post=upper(customer.postOffice);
+  const selected=parts.map((part,index)=> /^(?:VILL(?:AGE)?\b|VILL-)/.test(part) || postal.test(part) ||
+    (!!village && part===village) || (!!post && part===post) || (index===0 && !locality.test(part)));
+  const second=parts.filter((_,index)=>selected[index]).map(part=>part.replace(/^(VILL(?:AGE)?|P\.?\s*O\.?)\s*[:-]\s*/,'$1-'));
+  const third=parts.filter((_,index)=>!selected[index]);
+  if(post && !source.includes(post))second.push(`P.O-${post}`);
+  const pin=upper(customer.pinCode);
+  if(pin && !source.includes(pin))third.push(`PIN-${pin}`);
+  const location=third.join(', ').replace(/(?:^|,\s*)(\d{6})$/,(_,digits)=>`${third.length>1?', ':''}PIN-${digits}`);
+  // Three fixed rows, no length-based compression or truncation. Overflow is
+  // reported by approvedPassbookProblems at the same fixed glyph spacing.
+  return [careOf ? `C/O ${careOf}` : '',second.join(', '),location,''];
 }
 
-export function approvedPassbookValues(customer:Customer,bank:Branch):ApprovedPassbookValues {
+export function approvedPassbookValues(customer:Customer,bank:Branch,now = new Date()):ApprovedPassbookValues {
   const address=addressLines(customer);
+  const printedOn=passbookPrintDate(now);
   return {
     branchName:bank.name,postOffice:bank.postOffice,district:bank.district,branchPin:bank.pin,
     branchEmail:bank.email,ifsc:bank.ifsc,micr:bank.micr,
     branchCode:bank.branchCode ? `(${bank.branchCode.replace(/^\(|\)$/g,'')})` : '',
     customerId:upper(customer.enrolId),accountNo:upper(customer.accountNo),holder:upper(customer.name),
     jointHolder:upper(customer.jointHolder),pan:upper(customer.pan),mobile:upper(customer.contact),
-    openedOn:date(customer.accountOpeningDate,'/'),issueDate:date(customer.issueDate,'-'),
-    operatedBy:'SELF',nominee:upper(customer.nominee),
+    openedOn:date(customer.accountOpeningDate,'-'),issueDate:printedOn,
+    operatedBy:'SELF',nominee:upper(customer.nominee ?? '1'),
     address1:address[0],address2:address[1],address3:address[2],address4:address[3],
-    amount:'0.00',bottomDate:date(customer.issueDate,'-'),
+    amount:'0.00',bottomDate:printedOn,
   };
 }
 
 export function approvedPassbookProblems(values:ApprovedPassbookValues):string[] {
-  return Object.entries(APPROVED_SLOTS).flatMap(([key,slot])=>{
+  return Object.entries(APPROVED_INFO_SLOTS).flatMap(([key,slot])=>{
     const value=values[key]||'';
     const glyphs=slot.font==='footer' ? APPROVED_FOOTER_GLYPHS : APPROVED_GLYPHS;
     if([...value].some(char=>glyphs[char]===undefined))return [`${key}: contains a character outside the approved font`];
@@ -81,19 +86,20 @@ export function approvedPassbookProblems(values:ApprovedPassbookValues):string[]
   });
 }
 
-export function ApprovedPassbookArtwork({values}:{values:ApprovedPassbookValues}) {
+export function ApprovedPassbookArtwork({values,quick=false}:{values:ApprovedPassbookValues;quick?:boolean}) {
   const glyph=(char:string,x:number,y:number,scale:number,footer=false,key?:string|number)=>{
     const path=(footer ? APPROVED_FOOTER_GLYPHS : APPROVED_GLYPHS)[char];
     const unit=11/(footer?1000:2048);
     return path ? <path key={key} d={path} transform={`translate(${x} ${y}) scale(${unit*scale} ${-unit})`} /> : null;
   };
+  const slots=quick?{...APPROVED_INFO_SLOTS,branchCode:{...APPROVED_INFO_SLOTS.branchCode,x:134*PT_PER_MM}}:APPROVED_INFO_SLOTS;
   return <svg className="pb-approved-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*PT_PER_MM} ${206*PT_PER_MM} ${85*PT_PER_MM}`}
     width="206mm" height="85mm" role="img" aria-label="Approved passbook customer information"
     style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible'}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{APPROVED_LABELS.map((c,index)=>glyph(c.char,c.x,c.y,c.scale,false,index))}</g>
-    {Object.entries(APPROVED_SLOTS).map(([key,slot])=>{
+    {Object.entries(slots).map(([key,slot])=>{
       const value=values[key]||'';
       return <g key={key} data-field={key} aria-label={`${key}: ${value}`}>
         <title>{value}</title>
