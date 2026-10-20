@@ -2171,7 +2171,7 @@ export default function Customers() {
 
           </div>
 
-          <div style={{padding:"12px",background:"white",color:"#18354d",borderRadius:8}}><strong>Form Send to Branch</strong>: {afsmDisplay(customer as unknown as Record<string,unknown>)}</div>
+          <div style={{padding:"12px",background:"var(--app-dark-surface, white)",color:"var(--app-dark-text, #18354d)",borderRadius:8}}><strong>Form Send to Branch</strong>: {afsmDisplay(customer as unknown as Record<string,unknown>)}</div>
           <CustomerPreviewCard customer={customer} />
 
           {/* =========================================

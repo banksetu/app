@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('bankSetuDesktop', {
+  setAppearance: mode => ipcRenderer.invoke('appearance:set',mode),
   backgroundStatus: () => ipcRenderer.invoke('background:status'),
   bindBackground: value => ipcRenderer.invoke('background:bind',value),
   clearBackground: () => ipcRenderer.invoke('background:clear'),

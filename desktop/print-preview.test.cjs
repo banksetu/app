@@ -2,6 +2,13 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {EventEmitter}=require('node:events');
 const {installPrintPreview}=require('./print-preview.cjs');
+test('print controls inherit app dark appearance without changing PDF pixels or accepting markup as a theme',()=>{
+ const {previewHtml}=require('./print-preview.cjs'),pdf=Buffer.from('%PDF synthetic white paper');
+ const dark=previewHtml(pdf,[],'dark'),light=previewHtml(pdf,[],'light');
+ assert(dark.includes('<html data-appearance="dark">'));assert(light.includes('<html data-appearance="light">'));
+ assert(dark.includes('color-scheme:dark'));assert(dark.includes(pdf.toString('base64')));
+ assert(previewHtml(pdf,[],'"><script>bad</script>').includes('<html data-appearance="light">'));
+});
 test('Windows preview freezes print HTML, isolates IPC, validates settings and keeps passbook size',async()=>{
   const handlers=new Map(),windows=[],pdfOptions=[],printOptions=[];
   class FakeWindow extends EventEmitter{

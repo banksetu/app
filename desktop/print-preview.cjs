@@ -34,13 +34,14 @@ function capturePrintDocument() {
   return '<!doctype html>'+copy.outerHTML;
 }
 const installPrintScript='window.bankSetuPrintJob=(options={})=>{window.dispatchEvent(new Event("beforeprint"));const html=('
-  +capturePrintDocument.toString()+')();return window.bankSetuPrint.preview(html,options).finally(()=>window.dispatchEvent(new Event("afterprint")));};window.print=()=>{void window.bankSetuPrintJob().catch(error=>alert("Print preview failed: "+error.message));};';
+  +capturePrintDocument.toString()+')();return window.bankSetuPrint.preview(html,{...options,appearance:document.documentElement.dataset.appearance||document.querySelector(".banksetu-app-shell")?.dataset.appearance||"light"}).finally(()=>window.dispatchEvent(new Event("afterprint")));};window.print=()=>{void window.bankSetuPrintJob().catch(error=>alert("Print preview failed: "+error.message));};';
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-function previewHtml(pdf,printers) {
+function previewHtml(pdf,printers,appearance="light") {
+  appearance=appearance==="dark"?"dark":"light";
   const options=printers.map(printer=>'<option value="'+escape(printer.name)+'"'+(printer.isDefault?' selected':'')+'>'+escape(printer.displayName||printer.name)+'</option>').join('');
-  return '<!doctype html><html><head><meta charset="utf-8"><title>Bank Setu · Print</title><style>'+
-    '*{box-sizing:border-box}body{margin:0;font:14px system-ui;background:#e8eaed;color:#202124;display:grid;grid-template-columns:1fr 320px;height:100vh}iframe{width:100%;height:100%;border:0}aside{padding:26px;background:white;display:flex;flex-direction:column;gap:18px;overflow:auto}h2{margin:0;font-size:22px}label{display:grid;gap:8px}select,input{width:100%;padding:10px;border:1px solid #dadce0;border-radius:6px;font:inherit}.buttons{display:flex;gap:10px;margin-top:auto}button{padding:11px 16px;border:0;border-radius:6px;background:#1967d2;color:white;font:inherit;cursor:pointer}button.secondary{background:#eef1f5;color:#202124}#status{font-size:12px;min-height:30px;overflow-wrap:anywhere}</style></head><body>'+
+  return '<!doctype html><html data-appearance="'+appearance+'"><head><meta charset="utf-8"><title>Bank Setu · Print</title><style>'+
+    '*{box-sizing:border-box}body{margin:0;font:14px system-ui;background:#e8eaed;color:#202124;display:grid;grid-template-columns:1fr 320px;height:100vh}iframe{width:100%;height:100%;border:0}aside{padding:26px;background:white;display:flex;flex-direction:column;gap:18px;overflow:auto}h2{margin:0;font-size:22px}label{display:grid;gap:8px}select,input{width:100%;padding:10px;border:1px solid #dadce0;border-radius:6px;font:inherit}.buttons{display:flex;gap:10px;margin-top:auto}button{padding:11px 16px;border:0;border-radius:6px;background:#1967d2;color:white;font:inherit;cursor:pointer}button.secondary{background:#eef1f5;color:#202124}#status{font-size:12px;min-height:30px;overflow-wrap:anywhere}html[data-appearance=dark]{color-scheme:dark}html[data-appearance=dark] body{background:#0b1220;color:#f8fafc}html[data-appearance=dark] aside{background:#172338}html[data-appearance=dark] :is(select,input){background:#233249;color:#f8fafc;border-color:#42536b}html[data-appearance=dark] button.secondary{background:#33455f;color:#f8fafc}</style></head><body>'+
     '<iframe id="preview" title="Print page preview" src="data:application/pdf;base64,'+pdf.toString('base64')+'#toolbar=0"></iframe><aside><h2>Print</h2>'+
     '<label>Destination<select id="destination">'+options+'<option value="pdf">Save as PDF</option></select></label>'+
     '<label>Pages<input id="pages" placeholder="All pages · e.g. 1-3, 5"></label>'+
@@ -115,7 +116,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
       preview.webContents.setWindowOpenHandler(()=>({action:'deny'}));
       preview.webContents.on('will-navigate',e=>e.preventDefault());
       preview.once('closed',cleanup);
-      await preview.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(previewHtml(pdf,printers)));
+      await preview.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(previewHtml(pdf,printers,requested?.appearance)));
       if(requested?.duplex===true)await preview.webContents.executeJavaScript('document.getElementById("duplex").checked=true').catch(()=>{});
       return completion;
     }catch(error){const cancelled=state.closed;if(preview&&!preview.isDestroyed())preview.destroy();cleanup();if(cancelled)return {cancelled:true};throw error;}
@@ -148,4 +149,4 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
   });
   return {attach};
 }
-module.exports={installPrintPreview,capturePrintDocument};
+module.exports={installPrintPreview,capturePrintDocument,previewHtml};

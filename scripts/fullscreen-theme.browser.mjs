@@ -1,0 +1,49 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import{createRequire}from'node:module';
+import {createServer}from'vite';import react from'@vitejs/plugin-react';import{chromium}from'playwright';
+process.chdir(new URL('..',import.meta.url).pathname);fs.mkdirSync('test-evidence',{recursive:true});
+const row={recordId:'synthetic-record',rowNumber:2,enrolId:'SAMPLE001',name:'Synthetic Customer',accountNo:'0001234567890',contact:'0000000000',nominee:'Synthetic Nominee',accountOpeningDate:'2026-10-19',status:'Active',fullAddress:'Synthetic locality',gender:'Male'};
+const mocks={
+ './core/localData':`const row=${JSON.stringify(row)};export const localModeEnabled=()=>true;export const getActiveLocalCustomers=async()=>[row];export const getLocalSnapshot=async()=>({records:[{recordId:row.recordId,customer:row}],operations:[]});export const getDataIdToken=async()=> 'synthetic';export const localDataFetch=async()=>({ok:true,json:async()=>({success:true,customer:row,rowNumber:2,customers:[row]}),text:async()=>JSON.stringify({success:true,customer:row,rowNumber:2,customers:[row]})});`,
+ './core/licenseAccess':`export const requireLicensedWrite=async()=>{};`,
+ './firebase':`export const auth={currentUser:{uid:'synthetic-admin',email:'synthetic@example.test',getIdToken:async()=> 'synthetic'}};export const db={};`,
+ 'firebase/auth':`export const getAuth=()=>({currentUser:{uid:'synthetic-admin',email:'synthetic@example.test'}});export const setPersistence=async()=>{};export const inMemoryPersistence={};export const signInWithEmailAndPassword=async()=>({});export const signOut=async()=>{};`,
+ './tenantApi':`export const getTenantApiUrl=()=>'/synthetic';`,
+ 'firebase/firestore':`export const doc=()=>({});export const getDocFromServer=async()=>({exists:()=>true,data:()=>({})});`,
+ './googleIdentity':`export const loadGoogleIdentity=async()=>{};export const requestGoogleToken=async()=>({});`,
+ './workerApi':`export const callBankSetuWorker=async()=>({});`,
+ './platform/android/runtime':`export const isAndroid=()=>false;`,
+};
+fs.writeFileSync('test-evidence/fullscreen-theme.html','<meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/test-evidence/fullscreen-theme.tsx"></script>');
+fs.writeFileSync('test-evidence/fullscreen-theme.tsx',`import React from'react';import{createRoot}from'react-dom/client';import AllCustomerData from'../src/AllCustomerData';import CustomerEntry from'../src/CustomerEntry';import BankFormats from'../src/BankFormats';import{confirmAction,showMessage}from'../src/uiDialogs';import'../src/index.css';import'../src/App.css';sessionStorage.setItem('bankSetuTenantId','synthetic-tenant');sessionStorage.setItem('bankSetuAccountRole','master_owner');const q=new URLSearchParams(location.search);document.documentElement.dataset.appearance=q.get('mode')||'dark';const page=q.get('page');createRoot(document.getElementById('root')).render(<main className="banksetu-app-shell" data-appearance={q.get('mode')||'dark'}><div className="banksetu-main-workspace">{page==='entry'?<CustomerEntry bankName="Assam Gramin Bank"/>:page==='preview'?<AllCustomerData/>:page==='formats'?<BankFormats enabled canManage bankName="Union Bank of India"/>:<><button onClick={()=>void confirmAction('Synthetic confirmation').then(value=>window.testConfirmed=value)}>Open confirmation</button><button onClick={()=>void showMessage('Synthetic alert')}>Open alert</button><div className="update-dialog"><h2>Software Update</h2><div className="update-progress"><p>Downloading</p></div></div><div className="admin-users-toolbar"><input placeholder="Search users"/><button>Refresh</button></div><div className="print-alignment-frame" style={{width:100,height:80}}><strong>Original paper</strong></div></>}</div></main>);`);
+const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'fullscreen-theme-fixture',enforce:'pre',resolveId(source,importer){if(importer?.includes('/src/')&&mocks[source])return '\0fullscreen:'+source;},load(id){if(id.startsWith('\0fullscreen:'))return mocks[id.slice(12)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true,watch:{ignored:['**/test-evidence/**']}}});
+let browser;
+const bg=(page,selector)=>page.locator(selector).first().evaluate(el=>getComputedStyle(el).backgroundColor);
+try{
+ await server.listen();browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote']});
+ for(const width of [360,390,1280,1920]){
+  const page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const go=async name=>page.goto(`http://127.0.0.1:5197/test-evidence/fullscreen-theme.html?page=${name}`);
+  await go('dialogs');await page.getByRole('button',{name:'Open confirmation'}).waitFor();
+  const box=await page.locator('#root').evaluate(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return{left:r.left,right:r.right,width:innerWidth,border:s.borderLeftWidth,height:r.height,screen:innerHeight};});
+  assert.equal(box.left,0);assert.equal(box.right,box.width);assert.equal(box.border,'0px');assert(box.height>=box.screen);
+  assert.equal(await bg(page,'.admin-users-toolbar'),'rgb(23, 35, 56)');assert.equal(await bg(page,'.update-dialog'),'rgb(23, 35, 56)');
+  assert.equal(await bg(page,'.print-alignment-frame'),'rgb(255, 255, 255)');
+  await page.getByRole('button',{name:'Open confirmation'}).click();const dialog=page.getByRole('dialog',{name:'Confirm action'});await dialog.waitFor();assert.equal(await bg(page,'.app-message-dialog'),'rgb(23, 35, 56)');
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.evaluate(()=>window.testConfirmed),false);
+  await page.getByRole('button',{name:'Open confirmation'}).click();await page.getByRole('dialog',{name:'Confirm action'}).getByRole('button',{name:'Confirm',exact:true}).click();assert.equal(await page.evaluate(()=>window.testConfirmed),true);
+  await page.getByRole('button',{name:'Open alert'}).click();await page.getByRole('alertdialog',{name:'Bank Setu'}).getByRole('button',{name:'OK'}).click();
+  await go('preview');await page.locator('tbody tr').first().click();const preview=page.getByRole('dialog',{name:'Customer Preview'});await preview.waitFor();
+  for(const label of ['Print','Close']){const style=await preview.getByRole('button',{name:label,exact:true}).evaluate(el=>({bg:getComputedStyle(el).backgroundColor,fg:getComputedStyle(el).color}));assert.equal(style.bg,'rgb(35, 50, 73)');assert.equal(style.fg,'rgb(248, 250, 252)');}
+  await page.screenshot({path:`test-evidence/preview-dark-${width}.png`,fullPage:false});
+  await preview.getByRole('button',{name:'Close',exact:true}).click();
+  await go('entry');await page.getByPlaceholder('Search customer...').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();
+  await page.getByRole('button',{name:'Delete Customer',exact:false}).click();const deletion=page.getByRole('dialog',{name:'Delete Customer'});await deletion.waitFor();assert.equal(await deletion.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(23, 35, 56)');
+  for(const input of await deletion.locator('input').all())assert.equal(await input.evaluate(el=>getComputedStyle(el).color),'rgb(248, 250, 252)');
+  await page.screenshot({path:`test-evidence/delete-dark-${width}.png`,fullPage:false});await deletion.getByRole('button',{name:'Cancel',exact:true}).click();
+  await go('formats');await page.getByRole('heading',{name:'Passbook sample',exact:true}).waitFor();assert.equal(await bg(page,'.banksetu-main-workspace>section'),'rgb(23, 35, 56)');
+  await page.goto(`http://127.0.0.1:5197/test-evidence/fullscreen-theme.html?page=dialogs&mode=light`);await page.getByRole('button',{name:'Open confirmation'}).click();assert.equal(await bg(page,'.app-message-dialog'),'rgb(255, 255, 255)');await page.getByRole('dialog',{name:'Confirm action'}).getByRole('button',{name:'Cancel',exact:true}).click();
+  assert.deepEqual(errors,[]);await page.close();console.log(`PASS ${width}px: zero outer border, full viewport, real customer preview/delete, formats, dark portals, confirmations, alerts and original paper`);
+ }
+ const require=createRequire(import.meta.url),{previewHtml}=require('../desktop/print-preview.cjs');const page=await browser.newPage({viewport:{width:1280,height:900}});
+ await page.setContent(previewHtml(Buffer.from('%PDF-1.4'),[],'dark'));assert.equal(await bg(page,'aside'),'rgb(23, 35, 56)');assert.equal(await bg(page,'select'),'rgb(35, 50, 73)');await page.close();console.log('PASS: actual Windows print-dialog HTML uses app dark controls and original PDF bytes.');
+}finally{await browser?.close();await server.close();for(const file of ['test-evidence/fullscreen-theme.html','test-evidence/fullscreen-theme.tsx'])fs.rmSync(file,{force:true});}

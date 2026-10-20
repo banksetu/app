@@ -95,7 +95,7 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
   if (!enabled || loading) return null;
   if (placement === "onboarding" && config?.hasWorkspace && registrationSaved && config.dataApiReady && !completedThisSession) return null;
   if (placement === "manage" && !connectionUnlocked) return <div style={{border:"1px solid #37646c",borderRadius:10,padding:16,marginTop:16,background:"rgba(4,24,32,.72)"}}>
-    <h3 style={{color:"#eef7f7",marginTop:0}}>Google Sheet / Drive connection 🔒</h3>
+    <h3 style={{color:"var(--app-dark-text, #eef7f7)",marginTop:0}}>Google Sheet / Drive connection 🔒</h3>
     <p style={{lineHeight:1.6,marginBottom:0}}>यह connection सुरक्षित रूप से locked है। मौजूदा Sheet, Drive folder और bridge settings बदलने या restore करने के लिए ऊपर <strong>Verify Administrator</strong> करके unlock करें।</p>
     {config?.googleEmail && <p style={{fontSize:13,opacity:.85}}>Connected Google account: {config.googleEmail}</p>}
   </div>;
@@ -212,10 +212,10 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
   };
   return (
     <section style={cardStyle}>
-      <p style={{ margin: 0, color: "#63e2c4", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
-      <h2 style={{ margin: "8px 0", fontSize: 20, color: "#eef7f7" }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
+      <p style={{ margin: 0, color: "var(--app-dark-text, #63e2c4)", fontSize: 12, fontWeight: 800, letterSpacing: 1 }}>{placement === "manage" ? "CLIENT WORKSPACE SETTINGS" : "FIRST-TIME CLIENT REGISTRATION"}</p>
+      <h2 style={{ margin: "8px 0", fontSize: 20, color: "var(--app-dark-text, #eef7f7)" }}>{placement === "manage" ? "Bank and Google workspace" : "Set up your bank workspace"}</h2>
       <p style={copyStyle}>Save your bank and branch details, then connect your own Sheet and Drive folder below. Existing Google connections remain available.</p>
-      {placement==='onboarding'&&<>{wizardStep>0&&wizardStep<3&&<button type="button" style={buttonStyle} disabled={savingRegistration||connecting} onClick={()=>setWizardStep(wizardStep-1)}>Back</button>}<h3 style={{color:'#eef7f7'}}>Welcome to Bank Setu · Step {wizardStep+1} of 4</h3><nav aria-label="Registration progress" style={{display:'flex',gap:10,flexWrap:'wrap'}}>{['Your Details','Bank Info','Google Setup','Complete'].map((label,index)=><span key={label} aria-current={wizardStep===index?'step':undefined} style={{padding:'9px 14px',borderRadius:9,background:wizardStep===index?'#6862e4':'#173b47',color:'#fff'}}>{index+1}. {label}</span>)}</nav></>}
+      {placement==='onboarding'&&<>{wizardStep>0&&wizardStep<3&&<button type="button" style={buttonStyle} disabled={savingRegistration||connecting} onClick={()=>setWizardStep(wizardStep-1)}>Back</button>}<h3 style={{color:"var(--app-dark-text, #eef7f7)"}}>Welcome to Bank Setu · Step {wizardStep+1} of 4</h3><nav aria-label="Registration progress" style={{display:'flex',gap:10,flexWrap:'wrap'}}>{['Your Details','Bank Info','Google Setup','Complete'].map((label,index)=><span key={label} aria-current={wizardStep===index?'step':undefined} style={{padding:'9px 14px',borderRadius:9,background:wizardStep===index?'#6862e4':'#173b47',color:"var(--app-dark-text, #fff)"}}>{index+1}. {label}</span>)}</nav></>}
       {placement==='onboarding'&&wizardStep===0&&<form style={registrationForm} onSubmit={event=>{event.preventDefault();setDetailsPreview(true);}}><label style={registrationLabel}>Full Name<input required maxLength={120} style={registrationInput} value={registration.operatorName} onChange={event=>setRegistration({...registration,operatorName:event.target.value})}/></label><label style={registrationLabel}>Email Address<input readOnly style={registrationInput} value={auth.currentUser?.email||''}/></label><label style={registrationLabel}>Mobile Number (optional)<input type="tel" maxLength={20} pattern="[+0-9 ()-]{7,20}" style={registrationInput} value={registration.mobile} onChange={event=>setRegistration({...registration,mobile:event.target.value})}/></label><button type="submit" style={buttonStyle}>Next — Preview</button>{detailsPreview&&<div style={{gridColumn:'1 / -1'}}><h4>Review Your Details</h4><p>{registration.operatorName} · {auth.currentUser?.email} · {registration.mobile||'Mobile not supplied'}</p><button type="button" style={buttonStyle} onClick={()=>{setDetailsPreview(false);setWizardStep(1);}}>Confirm &amp; Continue to Bank Info</button></div>}</form>}
       {(placement==='manage'||wizardStep===2)&&<OptionBConnection tenantId={config?.tenantId || ""} disabled={!registrationSaved || workspaceStatus !== "active"} onConnected={placement==='onboarding'?finishSetup:undefined}/>}
       {placement==='onboarding'&&wizardStep===3&&<div role="status"><h3>Registration Complete</h3><p>Your own Sheet, Drive folder and Apps Script bridge are verified for this tenant.</p><button type="button" style={buttonStyle} onClick={()=>window.location.reload()}>Open My Workspace</button></div>}
@@ -228,8 +228,8 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
         <label style={{ ...registrationLabel, gridColumn: "1 / -1" }}>Branch / CSP address<textarea maxLength={500} style={{ ...registrationInput, minHeight: 70 }} value={registration.address} onChange={(event) => setRegistration((current) => ({ ...current, address: event.target.value }))} /></label>
         <button type="submit" style={buttonStyle} disabled={savingRegistration || workspaceStatus !== "active"}>{savingRegistration ? "Saving bank details…" : placement==="onboarding"?"Save Bank Info & Continue":"Save bank details"}</button>
       </form>}
-      {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "#8de3c8" }}>Bank details saved for {registration.bankName}. Next step: connect your own Sheet and Drive folder.</p>}
-      {config?.hasWorkspace && <p style={{ ...copyStyle, color: "#8de3c8" }}>Connected Google account: {config.googleEmail || "Workspace connected"}. Reconnect uses this same Drive folder and Sheet.</p>}
+      {registrationSaved && placement === "onboarding" && <p style={{ ...copyStyle, color: "var(--app-dark-text, #8de3c8)" }}>Bank details saved for {registration.bankName}. Next step: connect your own Sheet and Drive folder.</p>}
+      {config?.hasWorkspace && <p style={{ ...copyStyle, color: "var(--app-dark-text, #8de3c8)" }}>Connected Google account: {config.googleEmail || "Workspace connected"}. Reconnect uses this same Drive folder and Sheet.</p>}
       {config?.hasWorkspace && config.connectionMode !== "option-b" && registrationSaved && placement === "manage" && <label style={{ ...copyStyle, display: "flex", gap: 10, alignItems: "flex-start", margin: "12px 0", padding: 12, borderRadius: 9, background: "rgba(99,226,196,.08)" }}>
         <input type="checkbox" checked={shareConsent} onChange={(event) => setShareConsent(event.target.checked)} style={{ marginTop: 4 }} />
         <span>I understand that this workspace folder is shared with <strong>{config?.executorEmail || "the Bank Setu Apps Script account"}</strong> with writer access to save and sync my workspace data. I can remove this access in Google Drive, which will stop Bank Setu sync.</span>
@@ -242,21 +242,21 @@ export default function ClientGoogleSetup({ enabled, placement = "onboarding", c
       {config?.hasWorkspace && config.dataApiReady && <p style={copyStyle}>Your Google workspace is connected. Save the bank details above to complete registration.</p>}
       {config?.hasWorkspace && config.connectionMode !== "option-b" && !config?.oauthClientId && <p style={errorStyle}>Google sign-in configuration is missing. Contact the Master Admin.</p>}
       {error && <p role="alert" style={errorStyle}>{error}</p>}
-      {success && <p role="status" style={{ ...copyStyle, color: "#8de3c8" }}>{success}{config?.dataApiReady && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
+      {success && <p role="status" style={{ ...copyStyle, color: "var(--app-dark-text, #8de3c8)" }}>{success}{config?.dataApiReady && <><br /><button type="button" style={{ ...buttonStyle, marginTop: 10 }} onClick={() => window.location.reload()}>Open my workspace</button></>}</p>}
     </section>
   );
 }
 
 const cardStyle = {
   margin: "14px 0", padding: 18, borderRadius: 14,
-  border: "1px solid rgba(99,226,196,.35)", background: "rgba(8,31,40,.96)", color: "#eef7f7",
+  border: "1px solid rgba(99,226,196,.35)", background: "rgba(8,31,40,.96)", color: "var(--app-dark-text, #eef7f7)",
 };
-const copyStyle = { color: "#b8c9cd", fontSize: 13, lineHeight: 1.55 };
+const copyStyle = { color: "var(--app-dark-text, #b8c9cd)", fontSize: 13, lineHeight: 1.55 };
 const buttonStyle = {
-  padding: "10px 15px", border: 0, borderRadius: 9, color: "#06242a",
+  padding: "10px 15px", border: 0, borderRadius: 9, color: "var(--app-dark-text, #06242a)",
   background: "#63e2c4", fontWeight: 700, cursor: "pointer",
 };
-const errorStyle = { color: "#ffaaaa", fontSize: 13, lineHeight: 1.5 };
+const errorStyle = { color: "var(--app-dark-text, #ffaaaa)", fontSize: 13, lineHeight: 1.5 };
 const registrationForm = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12, margin: "18px 0" };
-const registrationLabel = { display: "grid", gap: 6, color: "#d8e8ea", fontSize: 12, fontWeight: 700 };
-const registrationInput = { width: "100%", minHeight: 40, padding: "9px 10px", border: "1px solid rgba(160,190,200,.32)", borderRadius: 8, background: "#0b2630", color: "#f2fbfc", font: "inherit" };
+const registrationLabel = { display: "grid", gap: 6, color: "var(--app-dark-text, #d8e8ea)", fontSize: 12, fontWeight: 700 };
+const registrationInput = { width: "100%", minHeight: 40, padding: "9px 10px", border: "1px solid rgba(160,190,200,.32)", borderRadius: 8, background: "#0b2630", color: "var(--app-dark-text, #f2fbfc)", font: "inherit" };

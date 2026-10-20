@@ -17,6 +17,21 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "BankSetuPrint")
 public class BankSetuPrintPlugin extends Plugin {
+    @PluginMethod public void setAppearance(PluginCall call) {
+        String mode=call.getString("mode");
+        if(!"dark".equals(mode)&&!"light".equals(mode)){call.reject("Invalid appearance.");return;}
+        getActivity().runOnUiThread(()->{
+            boolean dark="dark".equals(mode);
+            int color=android.graphics.Color.parseColor(dark?"#0b1220":"#f5f7ff");
+            getBridge().getWebView().setBackgroundColor(color);
+            getActivity().getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(color));
+            androidx.core.view.WindowInsetsControllerCompat insets=androidx.core.view.WindowCompat.getInsetsController(getActivity().getWindow(),getActivity().getWindow().getDecorView());
+            insets.setAppearanceLightStatusBars(!dark);insets.setAppearanceLightNavigationBars(!dark);
+            getActivity().getWindow().setStatusBarColor(color);
+            getActivity().getWindow().setNavigationBarColor(color);
+            call.resolve();
+        });
+    }
     @PluginMethod public void printPdf(PluginCall call) {
         String encoded=call.getString("base64");
         if(encoded==null || encoded.length()>40_000_000){call.reject("Invalid PDF size.");return;}

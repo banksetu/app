@@ -44,14 +44,24 @@ export function createSupportMediaService({request,decode,encode,name,isMaster})
   const writes=Array.from({length:meta.chunks},(_,i)=>({delete:`${document.name}/chunks/${i}`}));
   writes.push({delete:document.name});await commit(env,writes);
  };
+ const reply=async(env,clientUid,tenantId,messageId)=>{
+  if(messageId==null)return null;
+  if(typeof messageId!=='string'||!/^[A-Za-z0-9_-]{1,180}$/.test(messageId))fail('Invalid reply identity.');
+  const target=await get(env,`/supportConversations/${clientUid}/messages/${messageId}`),value=decode(target?.fields||{});
+  if(!target||value.clientUid!==clientUid||value.tenantId!==tenantId||!['photo','audio'].includes(value.attachment?.kind))fail('The photo/audio being replied to is unavailable.',404);
+  return {value:{messageId,kind:value.attachment.kind},verify:{verify:target.name,currentDocument:{updateTime:target.updateTime}}};
+ };
  return {
   async send(env,actor,body,now=Date.now()){
    const file=validateSupportMedia(body),clientUid=String(body.clientUid||actor.uid);
    const {owner,tenant,profile}=await peer(env,actor,clientUid);
    const id=`${actor.uid}_${body.operationId}`,path=`/supportMedia/${id}`;
+   const referenced=await reply(env,clientUid,profile.tenantId,body.replyToMessageId);
+   const previousMessage=await get(env,`/supportConversations/${clientUid}/messages/${id}`);
+   if(previousMessage&&decode(previousMessage.fields).attachment?.deletedAt)fail('This attachment was deleted. Choose a new send operation.',410);
    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',file.bytes))).map(n=>n.toString(16).padStart(2,'0')).join('');
    const existing=await get(env,path);
-   if(existing){const old=decode(existing.fields);if(old.senderUid!==actor.uid||old.clientUid!==clientUid||old.tenantId!==profile.tenantId||old.hash!==hash||old.caption!==file.text)fail('Send identity already belongs to a different attachment.',409);if(!Number.isFinite(Date.parse(old.expiresAt))||Date.parse(old.expiresAt)<=now)fail('This attachment has expired.',410);return {success:true,replayed:true,messageId:id,expiresAt:old.expiresAt};}
+   if(existing){const old=decode(existing.fields);if(old.senderUid!==actor.uid||old.clientUid!==clientUid||old.tenantId!==profile.tenantId||old.hash!==hash||old.caption!==file.text||(old.replyToMessageId||null)!==(body.replyToMessageId||null))fail('Send identity already belongs to a different attachment.',409);if(!Number.isFinite(Date.parse(old.expiresAt))||Date.parse(old.expiresAt)<=now)fail('This attachment has expired.',410);return {success:true,replayed:true,messageId:id,expiresAt:old.expiresAt};}
    // Bound temporary storage even if many clients upload before the next cron.
    if((await query(env,'supportMedia','tenantId',profile.tenantId,20)).length>=20||(await query(env,'supportMedia',null,null,200)).length>=200)fail('Temporary support media is full. Text chat is still available; retry after cleanup.',429);
    const conversationPath=`/supportConversations/${clientUid}`,conversation=await get(env,conversationPath);
@@ -60,13 +70,44 @@ export function createSupportMediaService({request,decode,encode,name,isMaster})
    const chunks=[]; // Base64 chunks are aligned to four characters.
    const width=4*Math.floor(CHUNK/3);
    for(let i=0;i<file.data.length;i+=width)chunks.push(file.data.slice(i,i+width));
-   const meta={clientUid,tenantId:profile.tenantId,senderUid:actor.uid,kind:file.kind,mimeType:file.mime,size:file.bytes.length,hash,caption:file.text,chunks:chunks.length,createdAt,expiresAt};
+   const meta={clientUid,tenantId:profile.tenantId,senderUid:actor.uid,kind:file.kind,mimeType:file.mime,size:file.bytes.length,hash,caption:file.text,chunks:chunks.length,createdAt,expiresAt,...(referenced?{replyToMessageId:body.replyToMessageId}:{})};
    const writes=[{verify:owner.name,currentDocument:{updateTime:owner.updateTime}},{verify:tenant.name,currentDocument:{updateTime:tenant.updateTime}},
     update(env,path,meta,{exists:false}),...chunks.map((data,i)=>update(env,`${path}/chunks/${i}`,{data},{exists:false})),
-    update(env,`${conversationPath}/messages/${id}`,{text:file.text,senderUid:actor.uid,senderRole:actor.profile.role,clientUid,tenantId:profile.tenantId,createdAt,attachment:{id,kind:file.kind,expiresAt}}, {exists:false}),
+    ...(referenced?[referenced.verify]:[]),
+    update(env,`${conversationPath}/messages/${id}`,{text:file.text,senderUid:actor.uid,senderRole:actor.profile.role,clientUid,tenantId:profile.tenantId,createdAt,attachment:{id,kind:file.kind,expiresAt},...(referenced?{replyTo:referenced.value}:{})}, {exists:false}),
     update(env,conversationPath,{clientUid,tenantId:profile.tenantId,clientName:String(profile.name||profile.email||'Client'),clientEmail:String(profile.email||''),lastMessage:file.text||`[${file.kind==='photo'?'Photo':'Audio'}]`,updatedAt:createdAt,unreadForMaster:!isMaster(actor),unreadForClient:isMaster(actor)},conversation?{updateTime:conversation.updateTime}:{exists:false})];
    await commit(env,writes);
    return {success:true,messageId:id,expiresAt:expiresAt.toISOString()};
+  },
+  async reply(env,actor,body,now=Date.now()){
+   const clientUid=String(body.clientUid||actor.uid),text=typeof body.text==='string'?body.text.trim():'';
+   if(!text||text.length>2000||!/^[a-f0-9-]{36}$/i.test(body.operationId||''))fail('Enter a reply of up to 2000 characters with a valid send identity.');
+   const {owner,tenant,profile}=await peer(env,actor,clientUid),referenced=await reply(env,clientUid,profile.tenantId,body.replyToMessageId);
+   if(!referenced)fail('Choose a photo or audio to reply to.');
+   const id=`${actor.uid}_${body.operationId}`,conversationPath=`/supportConversations/${clientUid}`,path=`${conversationPath}/messages/${id}`;
+   const old=await get(env,path);
+   if(old){const value=decode(old.fields);if(value.senderUid!==actor.uid||value.tenantId!==profile.tenantId||value.text!==text||value.replyTo?.messageId!==body.replyToMessageId)fail('Send identity belongs to another message.',409);return {success:true,messageId:id,replayed:true};}
+   const conversation=await get(env,conversationPath);
+   if(!conversation||decode(conversation.fields).tenantId!==profile.tenantId)fail('Support conversation workspace mismatch.',403);
+   const createdAt=new Date(now);
+   await commit(env,[{verify:owner.name,currentDocument:{updateTime:owner.updateTime}},{verify:tenant.name,currentDocument:{updateTime:tenant.updateTime}},referenced.verify,
+    update(env,path,{text,senderUid:actor.uid,senderRole:actor.profile.role,clientUid,tenantId:profile.tenantId,createdAt,replyTo:referenced.value},{exists:false}),
+    update(env,conversationPath,{...decode(conversation.fields),lastMessage:text,updatedAt:createdAt,unreadForMaster:!isMaster(actor),unreadForClient:isMaster(actor)},{updateTime:conversation.updateTime})]);
+   return {success:true,messageId:id};
+  },
+  async remove(env,actor,body,now=Date.now()){
+   const clientUid=String(body.clientUid||actor.uid),id=body.messageId;
+   if(typeof id!=='string'||!/^[A-Za-z0-9_-]{1,180}$/.test(id))fail('Invalid support message identity.');
+   const {owner,tenant,profile}=await peer(env,actor,clientUid),path=`/supportConversations/${clientUid}/messages/${id}`;
+   const message=await get(env,path),value=decode(message?.fields||{}),attachment=value.attachment;
+   if(!message||value.clientUid!==clientUid||value.tenantId!==profile.tenantId||value.senderUid!==actor.uid||!attachment||attachment.id!==id||!['photo','audio'].includes(attachment.kind))fail('Only the sender can delete this photo/audio.',403);
+   if(attachment.deletedAt)return {success:true,replayed:true,messageId:id};
+   const media=await get(env,`/supportMedia/${id}`),meta=decode(media?.fields||{});
+   if(media&&(meta.senderUid!==actor.uid||meta.clientUid!==clientUid||meta.tenantId!==profile.tenantId||!Number.isInteger(meta.chunks)||meta.chunks<1||meta.chunks>16))fail('Attachment storage identity mismatch.',409);
+   const writes=[{verify:owner.name,currentDocument:{updateTime:owner.updateTime}},{verify:tenant.name,currentDocument:{updateTime:tenant.updateTime}},
+    {...update(env,path,{attachment:{...attachment,deletedAt:new Date(now)}},{updateTime:message.updateTime}),updateMask:{fieldPaths:['attachment']}},
+    ...(media?[...Array.from({length:meta.chunks},(_,i)=>({delete:`${media.name}/chunks/${i}`})),{delete:media.name,currentDocument:{updateTime:media.updateTime}}]:[])];
+   await commit(env,writes);return {success:true,messageId:id};
   },
   async read(env,actor,body,now=Date.now()){
    if(typeof body.id!=='string'||! /^[A-Za-z0-9_-]{1,180}$/.test(body.id))fail('Invalid attachment identity.');

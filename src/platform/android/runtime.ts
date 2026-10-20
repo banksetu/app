@@ -1,3 +1,4 @@
+import {showMessage} from '../../uiDialogs';
 import { requireLicensedWrite } from "../../core/licenseAccess";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
@@ -14,7 +15,7 @@ const NativeUpdate = registerPlugin<{
 }>('BankSetuUpdate');
 export function startAndroidRuntime() {
   if (!isAndroid()) return;
-  window.print = () => { void printAndroidDocument(false).catch(error => window.alert(error instanceof Error?error.message:'Printing could not be started. Please retry.')); };
+  window.print = () => { void printAndroidDocument(false).catch(error => showMessage(error instanceof Error?error.message:'Printing could not be started. Please retry.')); };
   void App.addListener('appStateChange', ({ isActive }) => {
     if (isActive) window.dispatchEvent(new Event('online'));
   });

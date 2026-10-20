@@ -1,3 +1,4 @@
+import {confirmAction} from './uiDialogs';
 import { initializeApp, deleteApp } from "firebase/app";
 import { localDataFetch, getDataIdToken, localModeEnabled } from "./core/localData";
 import { CUSTOMER_PHOTO_MAX_BYTES, optimizeCustomerPhoto } from "./customerPhoto";
@@ -3706,7 +3707,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       const confirmed =
 
-        window.confirm(
+        await confirmAction(
 
           `Update customer "${form.name}"?`
 
@@ -5501,6 +5502,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
       {deleteModalOpen && (
 
         <div
+          className="customer-delete-overlay"
 
           style={
 
@@ -5511,6 +5513,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
         >
 
           <div
+            className="customer-delete-dialog" role="dialog" aria-modal="true" aria-label="Delete Customer"
 
             style={
 
@@ -6383,7 +6386,7 @@ const styles: Record<
 
     margin: 0,
 
-    color: "#42dfc4",
+    color: "var(--app-dark-text, #42dfc4)",
 
     fontSize: "9px",
 
@@ -6399,7 +6402,7 @@ const styles: Record<
 
     margin: "6px 0",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "29px",
 
@@ -6413,7 +6416,7 @@ const styles: Record<
 
     margin: 0,
 
-    color: "#91a7b3",
+    color: "var(--app-dark-text, #91a7b3)",
 
     fontSize: "11px",
 
@@ -6453,7 +6456,7 @@ const styles: Record<
 
       "1px solid rgba(55,220,195,0.12)",
 
-    color: "#47e1c7",
+    color: "var(--app-dark-text, #47e1c7)",
 
   },
 
@@ -6469,7 +6472,7 @@ const styles: Record<
 
       "1px solid rgba(59,153,246,0.15)",
 
-    color: "#74b8ff",
+    color: "var(--app-dark-text, #74b8ff)",
 
   },
 
@@ -6481,7 +6484,7 @@ const styles: Record<
 
     marginTop: "4px",
 
-    color: "#a2b5be",
+    color: "var(--app-dark-text, #a2b5be)",
 
     fontSize: "9px",
 
@@ -6505,7 +6508,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.07)",
 
-    color: "#4be1c7",
+    color: "var(--app-dark-text, #4be1c7)",
 
     cursor: "pointer",
 
@@ -6581,7 +6584,7 @@ const styles: Record<
 
     margin: 0,
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "8px",
 
@@ -6597,7 +6600,7 @@ const styles: Record<
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "18px",
 
@@ -6611,7 +6614,7 @@ const styles: Record<
 
     minHeight: "30px",
 
-    color: "#94a9b4",
+    color: "var(--app-dark-text, #94a9b4)",
 
     fontSize: "9px",
 
@@ -6653,7 +6656,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -6677,7 +6680,7 @@ const styles: Record<
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 900,
 
@@ -6737,7 +6740,7 @@ const styles: Record<
 
     gap: "4px",
 
-    color: "#718b98",
+    color: "var(--app-dark-text, #718b98)",
 
     fontSize: "9px",
 
@@ -6769,7 +6772,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.10)",
 
-    color: "#4be1c7",
+    color: "var(--app-dark-text, #4be1c7)",
 
     cursor: "pointer",
 
@@ -6795,7 +6798,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.045)",
 
-    color: "#48dfc5",
+    color: "var(--app-dark-text, #48dfc5)",
 
     cursor: "pointer",
 
@@ -6809,7 +6812,7 @@ const styles: Record<
 
     marginTop: "8px",
 
-    color: "#afc0c8",
+    color: "var(--app-dark-text, #afc0c8)",
 
     fontSize: "9px",
 
@@ -6845,7 +6848,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.07)",
 
-    color: "#4be2c8",
+    color: "var(--app-dark-text, #4be2c8)",
 
   },
 
@@ -6857,7 +6860,7 @@ const styles: Record<
 
       "rgba(255,80,80,0.07)",
 
-    color: "#ff9898",
+    color: "var(--app-dark-text, #ff9898)",
 
   },
 
@@ -6869,7 +6872,7 @@ const styles: Record<
 
       "rgba(66,153,225,0.07)",
 
-    color: "#8cc5ff",
+    color: "var(--app-dark-text, #8cc5ff)",
 
   },
 
@@ -6908,7 +6911,7 @@ const styles: Record<
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "20px",
 
@@ -6976,7 +6979,7 @@ const styles: Record<
 
   label: {
 
-    color: "#d8e4e9",
+    color: "var(--app-dark-text, #d8e4e9)",
 
     fontSize: "10px",
 
@@ -6988,7 +6991,7 @@ const styles: Record<
 
   required: {
 
-    color: "#ff8888",
+    color: "var(--app-dark-text, #ff8888)",
 
   },
 
@@ -7014,7 +7017,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -7058,7 +7061,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -7102,7 +7105,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -7140,7 +7143,7 @@ const styles: Record<
 
       "linear-gradient(90deg,#35dcbf,#2eaade)",
 
-    color: "#032329",
+    color: "var(--app-dark-text, #032329)",
 
     fontSize: "11px",
 
@@ -7166,7 +7169,7 @@ const styles: Record<
 
       "linear-gradient(90deg,#37dfc3,#35a7f1)",
 
-    color: "#032329",
+    color: "var(--app-dark-text, #032329)",
 
     fontWeight: 900,
 
@@ -7192,7 +7195,7 @@ const styles: Record<
 
       "rgba(255,80,80,0.055)",
 
-    color: "#ff9494",
+    color: "var(--app-dark-text, #ff9494)",
 
     fontWeight: 800,
 
@@ -7216,9 +7219,9 @@ const styles: Record<
 
     background:
 
-      "rgba(255,255,255,0.035)",
+      "var(--app-dark-surface, rgba(255,255,255,0.035))",
 
-    color: "#c5d4db",
+    color: "var(--app-dark-text, #c5d4db)",
 
     fontWeight: 800,
 
@@ -7268,7 +7271,7 @@ const styles: Record<
 
     borderRadius: "19px",
 
-    background: "linear-gradient(145deg, #ffffff 0%, #f4f1ff 48%, #edf7ff 100%)",
+    background: "var(--app-dark-surface, linear-gradient(145deg, #ffffff 0%, #f4f1ff 48%, #edf7ff 100%))",
 
     border:
 
@@ -7282,7 +7285,7 @@ const styles: Record<
 
   deleteTitle: {
 
-    color: "#2d2457",
+    color: "var(--app-dark-text, #2d2457)",
 
     fontSize: "21px",
 
@@ -7292,7 +7295,7 @@ const styles: Record<
 
   deleteWarning: {
 
-    color: "#b4233d",
+    color: "var(--app-dark-text, #b4233d)",
 
     fontSize: "10px",
 
@@ -7326,7 +7329,7 @@ const styles: Record<
 
     background: "#c83f4c",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontWeight: 800,
 
@@ -7346,9 +7349,9 @@ const styles: Record<
 
     border: "1px solid #d9dbe7",
 
-    background: "#eef0f7",
+    background: "var(--app-dark-surface, #eef0f7)",
 
-    color: "#34344c",
+    color: "var(--app-dark-text, #34344c)",
 
     fontWeight: 800,
 

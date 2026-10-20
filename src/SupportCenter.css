@@ -4,3 +4,12 @@
 
 .chat-compose{flex-wrap:wrap}.chat-compose textarea{min-width:0;flex:1 1 220px}.support-media-tools{flex:1 0 100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.support-media-tools>label{padding:8px 12px;border:1px solid #bed0e7;border-radius:9px;color:#214c83;background:#edf4ff;cursor:pointer;font-weight:700}.support-media-tools input{display:none}.support-media-tools small{flex:1 0 100%;color:#5e718a;font-size:11px}.support-selected-file{flex:1 0 100%;display:flex;gap:10px;align-items:center;overflow-wrap:anywhere;font-size:12px}.support-attachment{display:grid;gap:8px;min-width:0}.support-attachment img{max-width:100%;max-height:320px;object-fit:contain;border-radius:10px}.support-attachment audio{width:min(300px,100%)}.support-attachment button{padding:9px 12px;cursor:pointer;border:1px solid #bed0e7;border-radius:8px;background:#edf4ff;color:#214c83}.support-attachment small{font-size:11px}
 @media screen{.banksetu-app-shell[data-appearance="dark"] .support-page :is(.support-media-tools>label,.support-attachment button,.message:not(.mine)){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}.banksetu-app-shell[data-appearance="dark"] .support-media-tools small{color:#cbd5e1!important}}
+.support-reply-reference{margin:0 0 8px;padding:8px 11px;border-left:3px solid #6b74e8;background:#edf1ff;border-radius:7px;display:grid;gap:3px;overflow-wrap:anywhere;color:#263b5d}
+.support-reply-reference span{font-size:12px;white-space:pre-wrap}
+.support-reply-draft{display:flex;align-items:flex-start;gap:8px;grid-column:1/-1}
+.support-reply-draft blockquote{flex:1;margin:0}.support-reply-draft>button{flex:none}
+.support-message-actions{margin-top:6px}.support-message-actions summary{cursor:pointer;list-style:none;width:36px;text-align:center;border:1px solid #8a9db6;border-radius:7px;font-size:20px}
+.support-message-actions summary::-webkit-details-marker{display:none}.support-message-actions>div{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}
+.support-message-actions button,.support-delete-status button{border:1px solid #8a9db6;border-radius:7px;padding:7px 10px;background:#f1f5ff;color:#263b5d;cursor:pointer}
+.support-attachment .support-photo-open{display:block;padding:0;border:0;background:transparent;cursor:pointer}.support-photo-open img{display:block}
+.support-delete-status{padding:10px;border:1px solid #cc9c43;border-radius:8px;color:#704506;background:#fff6df}

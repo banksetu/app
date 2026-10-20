@@ -1650,7 +1650,8 @@ async function handleSupportMedia(request,env,actor,route){
     const raw=new Uint8Array(bytes);let offset=0;for(const part of parts){raw.set(part,offset);offset+=part.byteLength;}
     let body;try{body=JSON.parse(new TextDecoder().decode(raw));}catch{return json({error:'Invalid support request.'},400);}
     if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid support request.'},400);
-    return json(await (route==='/support-media-send'?supportMedia.send(env,actor,body):supportMedia.read(env,actor,body)),200,{'cache-control':'private, no-store'});
+    const action={'/support-media-send':'send','/support-media-read':'read','/support-media-delete':'remove','/support-media-reply':'reply'}[route];
+    return json(await supportMedia[action](env,actor,body),200,{'cache-control':'private, no-store'});
   }catch(error){return json({error:error instanceof Error?error.message:'Support media request failed.'},error.status||500,{'cache-control':'private, no-store'});}
 }
 async function licensePublicKey(env) {
@@ -1696,7 +1697,7 @@ export default {
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
-        "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read",
+        "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);

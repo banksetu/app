@@ -13,7 +13,7 @@ export default function LicenseReadOnlyCustomers() {
   }, []);
   const needle = query.trim().toLocaleLowerCase();
   const matching = rows.filter(row => [row.name, row.accountNo, row.enrolId].some(value => String(value || '').toLocaleLowerCase().includes(needle)));
-  return <section style={{ background: '#fff', borderRadius: 16, padding: 20 }}>
+  return <section style={{ background: "var(--app-dark-surface, #fff)", borderRadius: 16, padding: 20 }}>
     <h2>Existing customers · Read only</h2><p>{matching.length} of {rows.length} local records</p>
     <label>Search name, account number or customer ID<input value={query} onChange={event => setQuery(event.target.value)} style={{ display: 'block', width: '100%', maxWidth: 500, padding: 10, margin: '10px 0 20px' }}/></label>
     {error && <p role="alert">{error}</p>}

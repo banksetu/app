@@ -2,20 +2,24 @@ import fs from 'node:fs';import assert from 'node:assert/strict';import {resolve
 import {createServer}from'vite';import react from'@vitejs/plugin-react';import {chromium}from'playwright';
 process.chdir(resolve(import.meta.dirname,'..'));fs.mkdirSync('test-evidence',{recursive:true});
 const mocks={
+ '../firebase':`export const auth={currentUser:{uid:new URLSearchParams(location.search).get('role')==='master_owner'?'master':'client'}};`,
  './firebase':`export const auth={currentUser:{uid:new URLSearchParams(location.search).get('role')==='master_owner'?'master':'client',email:'synthetic@example.test'}};export const db={};`,
  'firebase/firestore':`window.chatMessages=[];window.chatCallbacks=[];const stamp=()=>({toDate:()=>new Date()});
  const ref=(parts)=>({path:parts.map(p=>typeof p==='object'?p.path||'':p).filter(Boolean).join('/')});export const collection=(...p)=>ref(p);export const doc=(...p)=>ref(p);export const query=(r)=>r;export const where=()=>({});export const orderBy=()=>({});export const limit=()=>({});export const serverTimestamp=stamp;
  export const getDocs=async()=>({docs:[{id:'client',data:()=>({name:'Synthetic Client',email:'client@example.test',tenantId:'tenant',role:'client_admin',status:'approved',subscriptionStatus:'active'})}]});
- const snap=(r)=>r.path.endsWith('/messages')?{docs:window.chatMessages.map((data,i)=>({id:String(i),data:()=>data}))}:r.path==='supportConversations/client'?{exists:()=>false,data:()=>({})}:{docs:[]};
+ const snap=(r)=>{if(r.path.endsWith('/messages'))return{docs:window.chatMessages.map((data,i)=>({id:data.id||data.attachment?.id||String(i),data:()=>data}))};if(r.path.includes('/messages/')){const target=window.chatMessages.find((data,i)=>(data.id||data.attachment?.id||String(i))===r.path.split('/').at(-1));return{exists:()=>!!target,data:()=>target};}return r.path==='supportConversations/client'?{exists:()=>false,data:()=>({})}:{docs:[]};};
  export const onSnapshot=(r,next)=>{const fn=()=>next(snap(r));window.chatCallbacks.push(fn);fn();return()=>window.chatCallbacks=window.chatCallbacks.filter(x=>x!==fn);};export const updateDoc=async()=>{};export const setDoc=async()=>{};
  export const addDoc=async(_r,data)=>{window.chatMessages.push(data);window.chatCallbacks.forEach(fn=>fn());};`,
  './workerApi':`window.mediaCalls=[];window.mediaFiles=new Map();export const callBankSetuWorker=async(route,body)=>{
  window.mediaCalls.push({route,...body});if(route==='/support-media-read')return window.mediaFiles.get(body.id);
- const id='fixture-'+window.mediaFiles.size,expires=Date.now()+86400000;window.mediaFiles.set(id,body);window.chatMessages.push({text:body.text,senderUid:new URLSearchParams(location.search).get('role')==='master_owner'?'master':'client',createdAt:{toDate:()=>new Date()},attachment:{id,kind:body.mimeType.startsWith('image/')?'photo':'audio',expiresAt:{toMillis:()=>expires}}});window.chatCallbacks.forEach(fn=>fn());return{success:true};};`,
+ if(route==='/support-media-delete'){if(window.failDelete)throw Error('Temporary deletion failure');const item=window.chatMessages.find(x=>x.attachment?.id===body.messageId);item.attachment.deletedAt='2026-10-20T12:00:00Z';window.mediaFiles.delete(body.messageId);window.chatCallbacks.forEach(fn=>fn());return{success:true};}
+ if(route==='/support-media-reply'){const target=window.chatMessages.find(x=>x.attachment?.id===body.replyToMessageId);window.chatMessages.push({id:'reply-'+window.chatMessages.length,text:body.text,senderUid:'master',createdAt:{toDate:()=>new Date()},replyTo:{messageId:body.replyToMessageId,kind:target.attachment.kind}});window.chatCallbacks.forEach(fn=>fn());return{success:true};}
+
+ const id='fixture-'+window.chatMessages.length,expires=Date.now()+86400000;window.mediaFiles.set(id,body);window.chatMessages.push({text:body.text,senderUid:new URLSearchParams(location.search).get('role')==='master_owner'?'master':'client',createdAt:{toDate:()=>new Date()},attachment:{id,kind:body.mimeType.startsWith('image/')?'photo':'audio',expiresAt:{toMillis:()=>expires}}});window.chatCallbacks.forEach(fn=>fn());return{success:true};};`,
 };
 fs.writeFileSync('test-evidence/support.html','<div id="root"></div><script type="module" src="/test-evidence/support.tsx"></script>');
-fs.writeFileSync('test-evidence/support.tsx',`import React,{useState}from'react';import{createRoot}from'react-dom/client';import SupportCenter from'../src/SupportCenter';import FloatingSupportButton from'../src/FloatingSupportButton';import'../src/App.css';const role=new URLSearchParams(location.search).get('role')||'client_admin';sessionStorage.setItem('bankSetuAccountRole',role);sessionStorage.setItem('bankSetuTenantId','tenant');function App(){const[open,setOpen]=useState(false);return <main className="banksetu-app-shell" data-appearance="dark"><div className="banksetu-main-workspace">{open&&<SupportCenter accountRole={role}/>}<FloatingSupportButton unread={0} open={()=>setOpen(true)}/></div></main>};createRoot(document.getElementById('root')).render(<App/>);`);
-const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'support-ui-fixture',enforce:'pre',resolveId(source,importer){if(importer?.includes('/src/')&&mocks[source])return'\0support:'+source;},load(id){if(id.startsWith('\0support:'))return mocks[id.slice(9)];}},react()],server:{host:'127.0.0.1',port:5199,strictPort:true}});
+fs.writeFileSync('test-evidence/support.tsx',`import React,{useState}from'react';import{createRoot}from'react-dom/client';import SupportCenter from'../src/SupportCenter';import FloatingSupportButton from'../src/FloatingSupportButton';import'../src/App.css';const role=new URLSearchParams(location.search).get('role')||'client_admin';document.documentElement.dataset.appearance='dark';sessionStorage.setItem('bankSetuAccountRole',role);sessionStorage.setItem('bankSetuTenantId','tenant');function App(){const[open,setOpen]=useState(false);return <main className="banksetu-app-shell" data-appearance="dark"><div className="banksetu-main-workspace">{open&&<SupportCenter accountRole={role}/>}<FloatingSupportButton unread={0} open={()=>setOpen(true)}/></div></main>};createRoot(document.getElementById('root')).render(<App/>);`);
+const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'support-ui-fixture',enforce:'pre',resolveId(source,importer){const key=source.startsWith('../')?'./'+source.slice(3):source;if(importer?.includes('/src/')&&mocks[key])return'\0support:'+key;},load(id){if(id.startsWith('\0support:'))return mocks[id.slice(9)];}},react()],server:{host:'127.0.0.1',port:5199,strictPort:true}});
 let browser;
 try{
  await server.listen();browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
@@ -40,7 +44,24 @@ try{
   assert.equal(await page.evaluate(()=>window.mediaCalls.filter(x=>x.route==='/support-media-send')[1].mimeType.startsWith('audio/')),true);
   await page.getByPlaceholder('Type your message…').fill('Text stays');await page.getByRole('button',{name:'Send',exact:true}).click();
   await page.getByText('Text stays',{exact:true}).waitFor();assert.equal(await page.locator('.message').count(),3);
+  await page.getByLabel('Photo options',{exact:true}).click();await page.getByRole('button',{name:'Reply',exact:true}).click();
+  await page.locator('.support-reply-draft').waitFor();await page.getByPlaceholder('Type your message…').fill('Please check the photo');await page.getByRole('button',{name:'Send',exact:true}).click();
+  await page.getByText('Please check the photo',{exact:true}).waitFor();assert.equal(await page.locator('.message .support-reply-reference').count(),1);
+  const photoMessage=page.locator('.message').filter({has:page.getByLabel('Photo options',{exact:true})});await photoMessage.getByLabel('Photo options',{exact:true}).click();await photoMessage.getByRole('button',{name:'Delete photo',exact:true}).click();
+  const confirmation=page.getByRole('dialog',{name:'Delete support attachment',exact:true});await confirmation.waitFor();
+  assert.equal(await confirmation.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(23, 35, 56)');
+  await confirmation.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.evaluate(()=>window.mediaFiles.size),2,'cancel never deletes bytes');
+  await photoMessage.getByRole('button',{name:'Delete photo',exact:true}).click();await page.getByRole('dialog',{name:'Delete support attachment',exact:true}).getByRole('button',{name:'Confirm',exact:true}).click();
+  await photoMessage.getByText('Photo deleted.',{exact:true}).waitFor();assert.equal(await page.locator('.support-attachment img').count(),0,'deleted photo URL revoked');
+  await page.locator('.message .support-reply-reference strong').getByText('Photo deleted',{exact:false}).waitFor();
+  assert.equal(await photoMessage.locator('p').innerText(),'Keep this caption');
+  await page.context().setOffline(true);const audioMessage=page.locator('.message').filter({has:page.getByLabel('Audio options',{exact:true})});await audioMessage.getByLabel('Audio options',{exact:true}).click();await audioMessage.getByRole('button',{name:'Delete audio',exact:true}).click();
+  await page.getByRole('dialog',{name:'Delete support attachment',exact:true}).getByRole('button',{name:'Confirm',exact:true}).click();await audioMessage.getByText('Delete pending · waiting for server confirmation',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.mediaFiles.size),1,'offline is pending, never falsely completed');await page.context().setOffline(false);
+  await audioMessage.getByText('Audio deleted.',{exact:true}).waitFor();assert.equal(await page.locator('audio').count(),0);assert.equal(await page.evaluate(()=>window.mediaFiles.size),0);
+  assert.equal(await page.locator('.support-delete-status').count(),0);assert.equal(await page.locator('.message').count(),4,'text/reply history survives both deletions');
+
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'support fits viewport');
-  assert.deepEqual(errors,[]);await page.close();console.log(`PASS: ${width}px ${role}: floating support → photo upload/view → voice record/send/play → persistent text`);
+  assert.deepEqual(errors,[]);await page.close();console.log(`PASS: ${width}px ${role}: floating support → photo upload/view → voice record/send/play → persistent text, quotes, cancel, online/offline delete and URL revocation`);
  }
 }finally{await browser?.close();await server.close();for(const file of ['test-evidence/support.html','test-evidence/support.tsx'])fs.rmSync(file,{force:true});}
