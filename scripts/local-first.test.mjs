@@ -38,6 +38,14 @@ const engine=await import(compile(source));
 function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
 const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
 const photoIndex=(connectionId,entries=[])=>({success:true,photoIndexVersion:1,connectionId,revision:entries.length,complete:true,entries});
+test('offline customer entry records its creation date immediately and later edits preserve it for analytics',async()=>{
+ storage.clear();connect('analytics-entry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer});
+ const first=(await engine.getActiveLocalCustomers())[0];assert(Number.isFinite(Date.parse(first.createdAt)));
+ await request({action:'updateCustomer',rowNumber:saved.rowNumber,customer:{...customer,name:'Edited name',createdAt:'2000-01-01T00:00:00Z'}});
+ const next=(await engine.getActiveLocalCustomers())[0];assert.equal(next.createdAt,first.createdAt);
+ assert.equal((await repository.read('user-a:tenant-a:analytics-entry')).operations[0].customer.createdAt,first.createdAt);
+});
 async function recoveryFixture(connection,recordId=crypto.randomUUID()){
  storage.clear();connect(connection);navigator.onLine=true;
  const scope=`user-a:tenant-a:${connection}`,now=Date.now();

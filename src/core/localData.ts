@@ -110,6 +110,7 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
   if(customer.photoRemoved===true){customer.photoUrl="";customer.photoPreview="";customer.photoDataUrl=undefined;customer.photoState="PENDING_DELETE";}
   const recordId = existing?.recordId || crypto.randomUUID();
   const operationId = crypto.randomUUID();
+  const entryCreatedAt = new Date().toISOString();
   let localRow = existing?.rowNumber || 0;
   await repository.transact(scope, current => {
     const previous = current.records.find(record => record.recordId === recordId);
@@ -118,6 +119,8 @@ export async function localDataFetch(input: RequestInfo | URL, init?: RequestIni
     if(action === "saveCustomer" && current.records.some(record=>!record.deleted && record.recordId!==recordId && ["accountNo","enrolId","uidaiNo"].some(key=>fold(customer[key])&&fold(customer[key])===fold(record.customer[key]))))
       throw new Error("A matching customer is already saved on this device. Duplicate save was blocked.");
     const combined = statusOnly ? {...previous?.customer,[statusField]:statusValue} : {...previous?.customer,...customer};
+    if(action === "saveCustomer")combined.createdAt=entryCreatedAt;
+    else if(previous?.customer.createdAt)combined.createdAt=previous.customer.createdAt;
     if(customer.photoDataUrl)combined.photoPreview=customer.photoDataUrl;
     if(action === "markPassbookDelivered")combined.passbookStatus="DELIVERED";
     if(action === "markPassbookPrinted")combined.passbookStatus="PRINTED";

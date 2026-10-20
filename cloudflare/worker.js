@@ -2,6 +2,7 @@ import { masterUsage } from "./masterStatus.js";
 import { DEFAULT_FLAGS, DEFAULT_PRICING, DEFAULT_PAYMENT_DETAILS, validatePaymentDetails, validatePricing, validateInquiry, licenseView, upgradeAmount, transitionLicense, currentTenantRecords } from "./licensing.js";
 import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
+import { createSupportMediaService } from "./supportMedia.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -1469,7 +1470,10 @@ async function cascadeClientAdminAction(env, actor, target, action) {
 }
 
 export async function purgeTenantSupportText(env, tenantId, users) {
-  for (const user of users) {
+  await supportMedia.purgeTenant(env,tenantId);
+  const threads=await supportMedia.conversations(env,tenantId);
+  const owners=[...new Map([...users,...threads.map(document=>({uid:document.name.split('/').at(-1)}))].map(user=>[user.uid,user])).values()];
+  for (const user of owners) {
     const uid = String(user.uid || "");
     if (!uid || uid.length > 128) throw new Error("Invalid support conversation owner.");
     const path = `/supportConversations/${encodeURIComponent(uid)}`;
@@ -1484,12 +1488,13 @@ export async function purgeTenantSupportText(env, tenantId, users) {
       for (const message of messages) {
         if (!message.name?.startsWith(`${firestoreDocumentName(env, path)}/messages/`)) throw new Error("Unexpected support message path.");
         if (decodeFields(message.fields || {}).tenantId !== tenantId) throw new Error("Support message tenant mismatch; cleanup stopped.");
-        await firestoreRequest(env, `/${message.name.split('/documents/')[1]}`, { method: "DELETE" });
       }
+      await firestoreRequest(env,':commit',{method:'POST',body:JSON.stringify({writes:messages.map(message=>({delete:message.name}))})});
       if (batch === 39) throw new Error("Support text cleanup is incomplete; the workspace remains blocked for retry.");
     }
     if (conversation) await firestoreRequest(env, path, { method: "DELETE" });
   }
+  if((await supportMedia.conversations(env,tenantId)).length)throw new Error('Support conversation cleanup is incomplete; the workspace remains blocked for retry.');
 }
 
 async function deleteClientWorkspace(env, actor, uid, tenantHint = "") {
@@ -1636,6 +1641,18 @@ async function handleAccountAction(request, env, actor, deleting) {
 }
 
 let cachedLicensePublicKey;
+export const supportMedia=createSupportMediaService({request:firestoreRequest,decode:decodeFields,encode:encodeFields,name:firestoreDocumentName,isMaster:actor=>isMasterActor(actor)||actor.profile.role==='master_admin'});
+async function handleSupportMedia(request,env,actor,route){
+  try{
+    const size=Number(request.headers.get('content-length')||0);if(size>3000000)return json({error:'Support attachment is too large.'},413);
+    const reader=request.body?.getReader(),parts=[];let bytes=0;
+    if(reader)for(;;){const next=await reader.read();if(next.done)break;bytes+=next.value.byteLength;if(bytes>3000000){await reader.cancel();return json({error:'Support attachment is too large.'},413);}parts.push(next.value);}
+    const raw=new Uint8Array(bytes);let offset=0;for(const part of parts){raw.set(part,offset);offset+=part.byteLength;}
+    let body;try{body=JSON.parse(new TextDecoder().decode(raw));}catch{return json({error:'Invalid support request.'},400);}
+    if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid support request.'},400);
+    return json(await (route==='/support-media-send'?supportMedia.send(env,actor,body):supportMedia.read(env,actor,body)),200,{'cache-control':'private, no-store'});
+  }catch(error){return json({error:error instanceof Error?error.message:'Support media request failed.'},error.status||500,{'cache-control':'private, no-store'});}
+}
 async function licensePublicKey(env) {
   if (!cachedLicensePublicKey) {
     const signed = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, { purpose: "license-key-discovery" });
@@ -1646,9 +1663,10 @@ async function licensePublicKey(env) {
 
 export default {
   async scheduled(_event, env) {
-    await purgeExpiredPushDevices(env);
-    await deliverScheduledNotices(env);
-    await drainQueuedPush(env);
+    const results=await Promise.allSettled([supportMedia.purgeExpired(env),(async()=>{
+      await purgeExpiredPushDevices(env);await deliverScheduledNotices(env);await drainQueuedPush(env);
+    })()]);
+    const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
   },
   async fetch(request, env, context) {
     if (new URL(request.url).pathname === "/license-public-key" && request.method === "GET") {
@@ -1678,7 +1696,7 @@ export default {
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
-        "/push-register", "/push-unregister", "/afsm-confirmation",
+        "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -1702,6 +1720,8 @@ export default {
       const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
+        : route.startsWith('/support-media-')
+        ? await handleSupportMedia(request,env,actor,route)
         : route.startsWith("/push-")
         ? await handlePushRegistration(request, env, actor, route)
         : migratedRoutes.includes(route)

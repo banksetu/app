@@ -3554,7 +3554,7 @@ function DashboardAnalytics({ rows, stats, loading }: { rows: Record<string, unk
       </article>
       <article className="dashboard-analytics-card"><h3>Monthly Customer Entries</h3>
         {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable.</p> : <>
-          <p>Recorded entries in the last 12 months</p>
+          <p>This month: {analytics.thisMonth} · Monthly average (12 months): {analytics.monthlyAverage.toFixed(2)}</p>
           <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.entries}`).join(', ')}>
             {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} title={`${m.key}: ${m.entries}`} /><small>{m.label}</small></div>)}
           </div><small>{analytics.undated} customer(s) without an entry date excluded.</small>
