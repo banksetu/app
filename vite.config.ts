@@ -6,6 +6,12 @@ const packageJson = JSON.parse(
   readFileSync("./package.json", "utf-8")
 );
 
+// Codespaces forwards this HTTP server through an HTTPS URL. A local browser
+// connects directly, so it must not be forced onto the proxy's port 443.
+const codespaceName = process.env.CODESPACE_NAME?.trim();
+const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN?.trim() || "app.github.dev";
+const forwardedHost = codespaceName ? `${codespaceName}-5173.${forwardingDomain}` : undefined;
+
 export default defineConfig({
   plugins: [react()],
 
@@ -14,13 +20,11 @@ export default defineConfig({
   },
 
   server: {
-    host: true,
+    host: forwardedHost ? "0.0.0.0" : "127.0.0.1",
     port: 5173,
     strictPort: true,
-
-    hmr: {
-      clientPort: 443,
-    },
+    allowedHosts: forwardedHost ? [forwardedHost] : [],
+    hmr: forwardedHost ? { protocol: "wss", host: forwardedHost, clientPort: 443 } : undefined,
 
     watch: {
       usePolling: true,
