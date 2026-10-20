@@ -1,0 +1,38 @@
+name: PR2 Bridge Windows acceptance (no release)
+on:
+  pull_request:
+    branches: [codex/spark-client-workspace-20261001, codex/fullscreen-support-theme-20261020]
+    paths: ['desktop/pr2*', 'desktop/pr2-helper/**', 'desktop/main.cjs', 'desktop/preload.cjs', 'desktop/license-guard*', 'src/Passbook.tsx', 'src/Pr2*', 'src/platform/pr2.ts', 'scripts/pr2*', 'package.json', '.github/workflows/pr2-validation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-pr2:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test desktop/pr2.test.cjs desktop/license-guard.test.cjs desktop/print-preview.test.cjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs
+      - run: npm run build
+      - name: Build existing NSIS installer with bundled native Bridge
+        run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Packaged Windows helper integrity and discovery
+        run: node scripts/pr2-installed-check.cjs
+      - name: Fresh installation, production upgrade, repair and uninstall
+        run: ./scripts/pr2-installer-check.ps1
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BankSetu-PR2-UNSIGNED-NOT-FOR-RELEASE
+          path: |
+            desktop-release/*.exe
+            build/pr2/manifest.json
+          if-no-files-found: error

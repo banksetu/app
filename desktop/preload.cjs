@@ -35,3 +35,15 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
 contextBridge.exposeInMainWorld('bankSetuPrint', {
   preview: (html,options) => ipcRenderer.invoke('print:preview', html, options)
 });
+
+// Fixed IPC surface: no HTTP listener, device paths or arbitrary RAW endpoint.
+contextBridge.exposeInMainWorld('bankSetuPr2', {
+  platform: process.platform, protocol: 1,
+  prepare: scope => ipcRenderer.invoke('pr2:prepare',scope),
+  discover: scope => ipcRenderer.invoke('pr2:discover',scope),
+  probe: request => ipcRenderer.invoke('pr2:probe',request),
+  acknowledge: request => ipcRenderer.invoke('pr2:acknowledge',request),
+  send: request => ipcRenderer.invoke('pr2:send',request),
+  cancel: request => ipcRenderer.invoke('pr2:cancel',request),
+  onProgress: callback => {const listener=(_event,value)=>callback(value);ipcRenderer.on('pr2:progress',listener);return ()=>ipcRenderer.removeListener('pr2:progress',listener);},
+});

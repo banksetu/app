@@ -78,6 +78,7 @@ function createLicenseAuthority(publicKey,store){
     receipt=signed;
   };
   const protectedAction=()=>{authorize(store,currentScope(),receipt);};
+  const protectedScope=scope=>{if(scope!==currentScope())throw Error("The active signed-in workspace changed.");protectedAction();};
   const commit=(scope,signed)=>{
     if(scope.startsWith('offline:'))return false;
     if(scope!==currentScope())throw Error('The active signed-in workspace changed.');
@@ -85,6 +86,6 @@ function createLicenseAuthority(publicKey,store){
     if(['client_admin','client_user'].includes(grant.role)&&(!receipt||signed?.payload!==receipt.payload||signed?.signature!==receipt.signature))throw Error('Verify the current license before saving customer changes.');
     return authorize(store,scope,signed);
   };
-  return {session,status,acceptReceipt,protectedAction,commit};
+  return {session,status,acceptReceipt,protectedAction,protectedScope,commit};
 }
 module.exports = {createLicenseGuard,createLicenseAuthority};
