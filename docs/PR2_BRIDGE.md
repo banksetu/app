@@ -26,3 +26,33 @@ Printer vertical default resolution (216/240 units/inch) must match its configur
 ## Acceptance still requiring real equipment
 
 PLQ-20 USB/PR2 bidirectional access with installed Windows driver; inserted before/after Print; no paper timeout/cancel; power/disconnect/jam; multiple printers; normal feed/release; repeated jobs without duplicates; compare every compressed text field and coordinates against approved passbook, with printer-side calibration only. PLQ-32/35 need separate documentation and hardware acceptance before enabling. Signing and ordinary end-user UAC/updater interaction need release-stage acceptance; CI silent installation is not that test. Never publish a release or change live update manifests before user approval.
+
+## Changed files (relative to PR #56)
+
+- `.github/workflows/pr2-validation.yml`
+- `.gitignore`
+- `desktop/license-guard.cjs`
+- `desktop/license-guard.test.cjs`
+- `desktop/main.cjs`
+- `desktop/pr2-bridge.cjs`
+- `desktop/pr2-build.cjs`
+- `desktop/pr2-helper/Bridge.cs`
+- `desktop/pr2-ipc.cjs`
+- `desktop/pr2-native.cjs`
+- `desktop/pr2-protocol.cjs`
+- `desktop/pr2-snapshot-smoke.cjs`
+- `desktop/pr2.test.cjs`
+- `desktop/preload.cjs`
+- `docs/PR2_BRIDGE.md`
+- `package.json`
+- `scripts/pr2-installed-check.cjs`
+- `scripts/pr2-installer-check.ps1`
+- `scripts/pr2-ui.browser.mjs`
+- `src/Passbook.tsx`
+- `src/Pr2PrinterDialog.css`
+- `src/Pr2PrinterDialog.tsx`
+- `src/platform/pr2.ts`
+
+## Recorded automated evidence
+
+Initial Windows acceptance run: https://github.com/banksetu/app/actions/runs/39473173159 — native helper compilation, app production build, NSIS packaging, installed helper checksum/protocol/discovery, fresh installation, upgrade from released v1.0.103, repair and uninstall all passed. These are disposable CI tests, not physical printer certification. Final commit checks are linked on draft PR #57. Local focused tests additionally cover native byte integrity, helper timeout/tamper detection, crash-review persistence, Android/Web gating and active Assam/Union graphics conversion.

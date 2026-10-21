@@ -7,7 +7,7 @@ function raster(){const bits=Buffer.alloc(100);bits[10]=128;bits[11]=128;bits[13
 function fixture(t,options={}){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-pr2-'));t.after(()=>fs.rmSync(directory,{force:true,recursive:true}));
  let time=0,last,ejected=false,closed=false,writes=[],paperIndex=0,fail=options.fail;
- const io={async handshake(){if(options.offline)throw Error('Bridge unavailable');},async list(){return {devices:options.devices||[device],queues:[{name:'Default office laser'}]};},async open(){closed=false;},close(){closed=true;},async write(b){if(closed)throw Error('closed');last=b;writes.push(b);if(fail&&b.equals(C.end))throw Error('communication lost');if(b.equals(C.eject))ejected=true;},async read(){if(last.equals(C.identity))return Buffer.from(options.wrongMode?[27,47,47]:[27,47,55]);if(last.equals(C.status))return Buffer.from([27,114,options.status||80]);if(last.equals(C.paper))return Buffer.from([27,66,53,ejected?65:(options.paper?.[Math.min(paperIndex++,options.paper.length-1)]||67),27,90]);throw Error('unexpected read');}};
+ const io={async handshake(){if(options.offline)throw Error('Bridge unavailable');},async list(){return {devices:options.devices||[device],queues:[{name:'Default office laser'}]};},async open(){closed=false;ejected=false;},close(){closed=true;},async write(b){if(closed)throw Error('closed');last=b;writes.push(b);if(fail&&b.equals(C.end))throw Error('communication lost');if(b.equals(C.eject))ejected=true;},async read(){if(last.equals(C.identity))return Buffer.from(options.wrongMode?[27,47,47]:[27,47,55]);if(last.equals(C.status))return Buffer.from([27,114,options.status||80]);if(last.equals(C.paper))return Buffer.from([27,66,53,ejected?65:(options.paper?.[Math.min(paperIndex++,options.paper.length-1)]||67),27,90]);throw Error('unexpected read');}};
  const args={directory,transport:()=>io,authorize:s=>{assert.equal(s,scope,'workspace authorization');},now:()=>time,wait:async ms=>{time+=ms;if(options.onWait)await options.onWait();},progress:options.progress};
  const bridge=createBridge(args),request={scope,id:crypto.randomUUID(),device,settings,raster:raster()};return {bridge,request,writes,io,directory,restart:()=>createBridge(args),clearFail:()=>fail=false};
 }
@@ -86,4 +86,14 @@ test('damaged or mismatched bundled helper fails before process launch',t=>{
 test('untrusted native caller rejected before authorization/helper',()=>{
  const handlers={};require('./pr2-ipc.cjs').installPr2({app:{getPath:()=>os.tmpdir(),on(){}},ipcMain:{handle:(n,f)=>handlers[n]=f},trusted:()=>{throw Error('Untrusted application frame');},authorize:()=>assert.fail('must not authorize'),getWindow:()=>null});
  assert.throws(()=>handlers['pr2:discover']({},scope),/Untrusted/);
+});
+
+test('explicit inspection of a crash-pending job survives a second restart',async t=>{
+ const f=fixture(t);await f.bridge.print(f.request);
+ const file=path.join(f.directory,'pr2-state-v1.json'),saved=JSON.parse(fs.readFileSync(file,'utf8'));
+ saved.jobs[f.request.id].state='sending';fs.writeFileSync(file,JSON.stringify(saved));
+ const restarted=f.restart();await assert.rejects(restarted.print({...f.request,id:crypto.randomUUID()}),/interrupted/);
+ restarted.acknowledge(scope,device.id);
+ const reviewed=f.restart();assert.equal((await reviewed.print(f.request)).completed,false);
+ assert.equal((await reviewed.print({...f.request,id:crypto.randomUUID()})).completed,true);
 });

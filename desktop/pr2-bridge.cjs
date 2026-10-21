@@ -22,7 +22,7 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
  return {
   async discover(scope){authorize(scope);const io=transport();try{await io.handshake();const found=await io.list();const preferences=saved.preferences[hash(scope)];return {...found,profiles:Object.values(PROFILES).map(({model,...p})=>p),preferences,devices:found.devices.map(d=>({...d,profile:Object.values(PROFILES).find(p=>p.model.test(d.name))?.id||null,requiresReview:!!saved.fences[d.id]}))};}finally{io.close();}},
   async probe(scope,device,settings){settings=settingsFor(scope,device,settings);if(active.has(device.id))throw Error('Printer is busy.');active.set(device.id,{scope,probing:true});let io;try{io=await connection(device,settings);active.get(device.id).io=io;if(active.get(device.id).cancelled)throw Error('Printer check cancelled.');return {pr2:true,paper:await identify(io),hardwareVerified:false};}finally{io?.close();active.delete(device.id);}},
-  acknowledge(scope,deviceId){authorize(scope);if(active.has(deviceId))throw Error('Wait for the active printer job.');delete saved.fences[deviceId];persist();},
+  acknowledge(scope,deviceId){authorize(scope);if(active.has(deviceId))throw Error('Wait for the active printer job.');delete saved.fences[deviceId];for(const job of Object.values(saved.jobs))if(job.deviceId===deviceId&&job.state==='sending')job.state='reviewed';persist();},
   cancel(scope,id){authorize(scope);for(const value of active.values())if(value.scope===scope&&(value.id===id||value.probing)){value.cancelled=true;value.io?.close();return true;}return false;},
   close(){for(const value of active.values()){value.cancelled=true;value.io?.close();}},
   async print({scope,id,device,settings,raster,test=false}){
