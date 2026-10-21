@@ -26,18 +26,31 @@ test('Word uses Courier New 10pt / 70%, one advance and clean zero',()=>{
  assert.equal((font.WORD_GLYPHS['0'].match(/M/g)||[]).length,2);
  const values=component.approvedPassbookValues({name:'TEST CUSTOMER',accountNo:'000100020003',nominee:'1'},branch);
  const html=renderToStaticMarkup(word.WordPassbookArtwork({values}));
- const scales=[...html.matchAll(/scale\(([^)]+)\)/g)].map(m=>m[1]);assert.equal(new Set(scales).size,1);
+ const scales=[...html.matchAll(/scale\(([^)]+)\)/g)].map(m=>m[1]);assert.equal(new Set(scales).size,2);
  assert.match(html,/width="206mm" height="85mm"/);
- assert.match(html,/translate\(307.70001 360.20078\)/);
+ assert(html.includes(`translate(${word.wordValueX('holder',values.holder)} 360.20078)`));
  assert(html.includes('data-label="JOINT HOLDER"'));
  assert.match(html,/aria-label="jointHolder: "/);
  assert.deepEqual(word.wordPassbookProblems(values),[]);
  const long={...values,holder:'LONG NAME '.repeat(50)};
  assert(word.wordPassbookProblems(long).some(p=>p.startsWith('holder:')));assert.equal(long.holder.length,500);
 });
-test('all label and colon origins/baselines come from original artwork',()=>{
- for(const label of word.WORD_LABELS)assert(artwork.APPROVED_LABELS.some(c=>c.x===label.x&&c.y===label.y));
- assert.deepEqual(word.WORD_LABELS.filter(c=>c.text===':').map(c=>[c.x,c.y]),artwork.APPROVED_LABELS.filter(c=>c.char===':').map(c=>[c.x,c.y]));
+test('colons form straight groups and holder labels share ink endpoint',()=>{
+ const labels=word.WORD_LABELS;
+ const left=labels.filter(l=>l.text===':'&&l.x<70);
+ assert.equal(new Set(left.map(l=>l.x)).size,1);
+ const holder=labels.find(l=>l.text==='ACC. HOLDER');
+ const joint=labels.find(l=>l.text==='JOINT HOLDER');
+ assert.equal(holder.x,joint.x);assert(joint.compression<1);
+ for(const key of ['holder','jointHolder']) assert.equal(labels.find(l=>l.text===':'&&l.y===component.APPROVED_INFO_SLOTS[key].y&&l.x>200).x,word.WORD_HOLDER_COLON_X);
+ assert.equal(word.WORD_LABEL_GAP_PT,.75);assert.equal(word.WORD_DATA_GAP_PT,3*72/25.4);
+ for(const key of ['branchName','holder','ifsc']){
+  const c=key==='branchName'?word.WORD_LEFT_COLON_X:key==='holder'?word.WORD_HOLDER_COLON_X:word.WORD_CODE_COLON_X;
+  const unit=font.WORD_FONT_SIZE_PT/font.WORD_FONT_UNITS*font.WORD_HORIZONTAL_SCALE;
+  const visibleStart=word.wordValueX(key,'TEST')+font.WORD_INK_BOUNDS.T[0]*unit;
+  assert(Math.abs(visibleStart-c-font.WORD_INK_BOUNDS[':'][1]*unit-word.WORD_DATA_GAP_PT)<1e-9);
+ }
+ for(const key in component.APPROVED_INFO_SLOTS) assert.equal(component.APPROVED_INFO_SLOTS[key].y,artwork.APPROVED_SLOTS[key].y);
 });
 test('new typography preserves tenant/customer binding, date, edits and three address rows',()=>{
  const a=component.approvedPassbookValues({name:'FIRST',accountOpeningDate:'19/10/2026',coName:'PARENT',fullAddress:'VILL-TEST, P.O-POST, ASSAM, 001200'},branch,new Date(2026,9,21));

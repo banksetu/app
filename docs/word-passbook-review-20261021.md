@@ -43,3 +43,14 @@ No version bump, production merge, release or deployment is authorized here.
 22 October review: restored the JOINT HOLDER label for empty values. Further
 colon spacing changes await resolution of the requested 3 mm versus 3 px
 gaps and the common holder-colon/unequal-label-width constraint.
+
+Follow-up correction: owner clarified 3 mm colon-to-data on both sides and
+explicitly authorized extra compression for the JOINT HOLDER label only.
+Implemented 1 CSS px (0.75 pt) reference-label ink-to-colon gap. All left main
+colons align to BRANCH NAME, IFSC/MICR form a separate group, and ACC. HOLDER /
+JOINT HOLDER form their own group. Both holder label starts and ink endpoints
+align; customer values remain 10 pt / 70%. Value ink begins 3 mm after colon
+ink, accounting for each initial glyph bearing. PO/DIST prefixes follow the
+left value column. Paper, row baselines, source/Quick/Union artwork unchanged.
+Replaces the earlier pending spacing question. Verified by targeted unit tests,
+actual-component browser screenshot/ink-bound checks and production build.

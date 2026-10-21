@@ -35,11 +35,14 @@ try{
  assert.equal(await page.locator('.passbook-shell img').count(),0);
 
  await page.locator('.pb-word-artwork').waitFor();
- await page.screenshot({path:'test-evidence/word-passbook-app.png',fullPage:true});
- await page.locator('.pb-word-artwork').screenshot({path:'test-evidence/word-passbook-closeup.png',scale:'device'});
+ const box=selector=>page.locator(selector).evaluate(el=>{const b=el.getBBox();return {x:b.x,width:b.width};});
+ const h=await box('[data-label="ACC. HOLDER"]'),j=await box('[data-label="JOINT HOLDER"]');
+ assert(Math.abs(h.x+h.width-j.x-j.width)<.001,'holder label ink endpoints align');
+ await page.screenshot({path:'test-evidence/word-passbook-aligned-app.png',fullPage:true});
+ await page.locator('.pb-word-artwork').screenshot({path:'test-evidence/word-passbook-aligned-closeup.png',scale:'device'});
  assert.equal(await page.locator('[data-label="JOINT HOLDER"]').count(),1);
  const shapes=await page.locator('.pb-word-artwork path').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.getAttribute('transform').split('scale(')[1]))]);
- assert.equal(shapes.length,1,'every glyph has identical font size and compression');
+ assert.equal(shapes.length,2,'joint label has approved additional compression; all other glyphs remain uniform');
  const origins=await page.locator('[data-field] path:first-of-type').evaluateAll(nodes=>nodes.map(n=>({field:n.parentElement.dataset.field,transform:n.getAttribute('transform')})));
  fs.writeFileSync('test-evidence/word-origins.json',JSON.stringify(origins,null,2));
  assert.deepEqual(errors,[]);
