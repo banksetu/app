@@ -1,0 +1,26 @@
+name: Isolated PR2 Local Agent (no deployment)
+on:
+  push:
+    branches: [codex/pr2-local-test-20261021]
+    paths: ['tools/pr2-local/**', '.github/workflows/pr2-local-agent.yml']
+permissions:
+  contents: read
+jobs:
+  software-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: node --test tools/pr2-local/core.test.cjs desktop/pr2.test.cjs
+      - run: node tools/pr2-local/build.cjs
+      - name: Verify packaged helper handshake only (no printer access)
+        run: node -e "const c=require('./build/pr2-local/pr2-native.cjs').nativeClient('./build/pr2-local'); c.handshake().then(()=>c.close()).catch(e=>{c.close();throw e;});"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PR2-Local-Test-Agent
+          path: build/pr2-local/
+          if-no-files-found: error
+          retention-days: 7
