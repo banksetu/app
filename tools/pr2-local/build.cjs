@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const root=path.resolve(__dirname,'../..'),out=path.join(root,'build/pr2-local');
 fs.mkdirSync(out,{recursive:true});
 // Isolated derivative only: production helper, protocol and app remain untouched.
-let source=fs.readFileSync(path.join(root,'desktop/pr2-helper/Bridge.cs'),'utf8');
+let source=fs.readFileSync(path.join(root,'desktop/pr2-helper/Bridge.cs'),'utf8').replace(/\r\n/g,'\n');
 source=source.replace('public string path;','public string path; public bool targetHardware;');
 source=source.replace('transport=transport};','transport=transport,targetHardware=path.IndexOf("vid_04b8&pid_0005",StringComparison.OrdinalIgnoreCase)>=0};');
 source=source.replace('d.id,d.name,d.transport','d.id,d.name,d.transport,d.targetHardware');

@@ -30,9 +30,7 @@ async function main(){
  const resolution=action==='print'?Number(await prompt.question('Printer configuration vertical resolution (216 or 240): ')):undefined;
  await io.open(devices[Number(index)],{});
  // Extra raw RX events from isolated helper include partial/timeout evidence.
- const rawRead=io.read.bind(io);
  io.read=async n=>{const r=await io.rpc('read',{count:n},5000);const b=Buffer.from(r.data,'base64');log({direction:'RX-RAW',hex:b.toString('hex'),timedOut:!!r.timedOut,expected:n});if(r.timedOut||b.length!==n)throw Error('Incomplete response; inspect RX-RAW. No retry.');return b;};
- void rawRead;
  const result=await run({io,action,resolution,log,approve:async a=>await prompt.question('Permission for ONE '+a+' action on disposable test paper? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase(),fence:async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'})});
  log({result});
  }catch(e){log({error:e.message,physicalVerified:false});process.exitCode=1;}
