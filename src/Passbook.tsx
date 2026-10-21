@@ -1,3 +1,6 @@
+import Pr2PrinterDialog from "./Pr2PrinterDialog";
+import { windowsPr2, WINDOWS_PR2_MESSAGE } from "./platform/pr2";
+import { showMessage } from "./uiDialogs";
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { requireLicensedWrite } from "./core/licenseAccess";
 import {
@@ -893,97 +896,29 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-  /* =======================================================
-     DIRECT PR2 / OLIVETTI RAW PRINT
-
-     Browsers cannot open a USB/parallel printer and write RAW
-     bytes to it directly. This button therefore talks to a
-     small local printer bridge running on the operator PC.
-
-     The printer itself must already be configured in OLIVETTI
-     PR2/PR2E mode with PASSBOOK = Y. The local bridge receives
-     the passbook data and sends it as RAW data to the printer.
-  ======================================================= */
-
+  // The existing button uses only the Bank Setu Windows IPC bridge.
   const directPrinterSend = async () => {
-    if (formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) {
+    if (!windowsPr2()) { await showMessage(WINDOWS_PR2_MESSAGE); return; }
+    if (directPrinting || printing) return;
+    if (!previewCustomer || !rowNumber) { setError("Search and load a customer first."); return; }
+    if ((isApprovedAssamPrint || isAssamQuick) && missingBranch.length) {
       setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
     }
-    if (!previewCustomer) {
-      setError("Search and load a customer first.");
-      return;
+    if (isApprovedAssamPrint || isAssamQuick) {
+      const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
+      if (problems.length) { setError(problems.join(' ')); return; }
     }
+    try { await requireLicensedWrite(); setError(""); setMessage(""); setDirectPrinting(true); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Printing is unavailable.'); }
+  };
 
-    if (!rowNumber) {
-      setError("Customer row number is missing.");
-      return;
-    }
-
-    setDirectPrinting(true);
-    setError("");
-    setMessage("");
-
+  const directPrintCompleted = async () => {
+    setMessage("PR2 printer acknowledged processing and paper release. Check the physical print.");
     try {
-      await requireLicensedWrite();
-      const response = await localDataFetch("http://127.0.0.1:18181/print-pr2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "OLIVETTI_PR2",
-          passbook: {
-            branch: {
-              name: BRANCH.name,
-              addressLine1: BRANCH.addressLine1,
-              addressLine2: [BRANCH.postOffice,BRANCH.district].filter(Boolean).join(" "),
-              pin: BRANCH.pin,
-              postOffice:BRANCH.postOffice,district:BRANCH.district,
-              ifsc: BRANCH.ifsc,
-              branchCode: BRANCH.branchCode,
-              micr: BRANCH.micr,
-              email: BRANCH.email,
-            },
-            customer: {
-              enrolId: printText(previewCustomer.enrolId),
-              accountNo: printText(previewCustomer.accountNo),
-              pan: printText(previewCustomer.pan),
-              contact: printText(previewCustomer.contact),
-              accountOpeningDate: formatDate(previewCustomer.accountOpeningDate),
-              nominee: printText(previewCustomer.nominee),
-              name: printText(previewCustomer.name),
-              coName: printText(previewCustomer.coName),
-              address: makePrintAddress(previewCustomer),
-            },
-          },
-        }),
-      });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.success === false) {
-        throw new Error(result?.message || "Direct printer bridge rejected the print job.");
-      }
-
-      try {
-        await apiRequest({ action: "markPassbookPrinted", rowNumber });
-        setCustomer((previous) =>
-          previous ? { ...previous, passbookStatus: "Printed" } : previous
-        );
-        setPreviewCustomer((previous) =>
-          previous ? { ...previous, passbookStatus: "Printed" } : previous
-        );
-      } catch (statusError) {
-        console.warn("Direct print succeeded, but status update failed:", statusError);
-      }
-
-      setMessage("Passbook sent directly to Olivetti PR2 printer.");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message} Make sure the BANK SETU PR2 Bridge is running on this computer.`
-          : "Direct PR2 printing failed."
-      );
-    } finally {
-      setDirectPrinting(false);
-    }
+      await apiRequest({ action: "markPassbookPrinted", rowNumber });
+      setCustomer(previous => previous ? { ...previous, passbookStatus: "Printed" } : previous);
+      setPreviewCustomer(previous => previous ? { ...previous, passbookStatus: "Printed" } : previous);
+    } catch { setError("Printer acknowledged the job, but its status could not be saved. Do not print again just to update the status."); }
   };
 
   const p = previewCustomer;
@@ -1001,6 +936,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   return (
 
     <div className="passbook-page">
+      {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
 
       <style>{`
 
@@ -2833,7 +2769,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
               disabled={directPrinting || printing}
 
-              title="Send RAW passbook job through local Olivetti PR2 bridge"
+              title="Send the active passbook through the Bank Setu Windows PR2 Bridge"
 
             >
 

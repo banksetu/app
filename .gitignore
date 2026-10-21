@@ -36,3 +36,5 @@ public/client-bridge/Code.gs
 
 web-app-dist/
 test-evidence/
+
+/build/pr2/

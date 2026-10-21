@@ -25,7 +25,8 @@
     "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs scripts/verify-backend-release-gate.test.mjs desktop/testUpdater.test.cjs scripts/enforce-client-licenses.test.mjs",
     "build:web": "node scripts/prepare-client-assets.mjs && tsc -b && vite build --base=/app/ --outDir=web-app-dist && node scripts/generate-sw.mjs web-app-dist /app/",
     "build:hosting": "npm run build:portfolio && npm run build:web && node scripts/assemble-hosting-app.mjs",
-    "test:afsm": "node --test scripts/afsm.test.mjs scripts/afsm-local.test.mjs scripts/afsm-authority.test.mjs"
+    "test:afsm": "node --test scripts/afsm.test.mjs scripts/afsm-local.test.mjs scripts/afsm-authority.test.mjs",
+    "test:pr2": "node --test desktop/pr2.test.cjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
@@ -103,6 +104,17 @@
         "owner": "banksetu",
         "repo": "app",
         "releaseType": "release"
+      }
+    ],
+    "beforePack": "desktop/pr2-build.cjs",
+    "extraResources": [
+      {
+        "from": "build/pr2",
+        "to": "pr2",
+        "filter": [
+          "BankSetu.Pr2Bridge.exe",
+          "manifest.json"
+        ]
       }
     ]
   }

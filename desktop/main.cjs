@@ -84,6 +84,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     notice.on('click',()=>{if(openMain)void openMain(value.page);});
     notice.show();return true;
   });
+  require('./pr2-ipc.cjs').installPr2({app,ipcMain,BrowserWindow,trusted,authorize:scope=>licenseAuthority.protectedScope(scope),getWindow:()=>window});
   const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction()});
   const directoryBytes = directory => {
     let total = 0;
