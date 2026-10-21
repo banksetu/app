@@ -72,7 +72,7 @@ function nativeFixture(t,respond=true){
  const bytes=Buffer.from('synthetic executable');fs.writeFileSync(path.join(directory,'BankSetu.Pr2Bridge.exe'),bytes);fs.writeFileSync(path.join(directory,'manifest.json'),JSON.stringify({protocol:1,sha256:crypto.createHash('sha256').update(bytes).digest('hex')}));
  const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();let killed=false;child.kill=()=>{killed=true;};const received=[];
  child.stdin.on('data',data=>{const request=JSON.parse(data.toString());received.push(request);if(respond)queueMicrotask(()=>child.stdout.write(JSON.stringify({id:request.id,result:request.op==='hello'?{protocol:1}:{written:Buffer.from(request.data||'','base64').length}})+'\n'));});
- const client=require('./pr2-native.cjs').nativeClient(directory,{spawnProcess:(_exe,_args,options)=>{assert.equal(options.shell,false);return child;}});t.after(()=>client.close());return {client,received,directory,killed:()=>killed};
+ const client=require('./pr2-native.cjs').nativeClient(directory,{spawnProcess:(_exe,_args,options)=>{assert.equal(options.shell,false);return child;}});t.after(()=>client.close());return {client,child,received,directory,killed:()=>killed};
 }
 test('native RPC preserves zero bytes and escapes without text conversion',async t=>{
  const f=nativeFixture(t);await f.client.handshake();const bytes=Buffer.from([0,27,0,255,13,10,0]);await f.client.write(bytes);assert.deepEqual(Buffer.from(f.received[1].data,'base64'),bytes);
@@ -96,4 +96,11 @@ test('explicit inspection of a crash-pending job survives a second restart',asyn
  restarted.acknowledge(scope,device.id);
  const reviewed=f.restart();assert.equal((await reviewed.print(f.request)).completed,false);
  assert.equal((await reviewed.print({...f.request,id:crypto.randomUUID()})).completed,true);
+});
+
+test('native pipe failure rejects the job instead of crashing Electron',async t=>{
+ const f=nativeFixture(t,false),pending=f.client.rpc('read',{count:3});
+ assert.doesNotThrow(()=>f.child.stdin.emit('error',Error('EPIPE')));
+ await assert.rejects(pending,/interrupted/);assert.equal(f.killed(),true);
+ assert.doesNotThrow(()=>f.child.stdout.emit('error',Error('closed')));
 });

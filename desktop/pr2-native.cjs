@@ -8,8 +8,8 @@ function nativeClient(directory,{spawnProcess=spawn}={}){
  if(manifest.protocol!==VERSION||manifest.sha256!==crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'))throw Error('Printer Bridge is missing or damaged. Repair/reinstall the Bank Setu EXE.');
  const child=spawnProcess(executable,[],{windowsHide:true,stdio:['pipe','pipe','pipe'],shell:false});
  let seq=0,pending=null,buffer='',closed=false;
- const stop=()=>{closed=true;child.kill();if(pending){clearTimeout(pending.timer);pending.reject(Error('Printer communication interrupted. Do not resend until the physical result is checked.'));pending=null;}};
- child.on('error',stop);child.on('exit',stop);child.stderr.resume();
+ const stop=()=>{if(closed)return;closed=true;child.kill();if(pending){clearTimeout(pending.timer);pending.reject(Error('Printer communication interrupted. Do not resend until the physical result is checked.'));pending=null;}};
+ child.on('error',stop);child.on('exit',stop);child.stdin.on('error',stop);child.stdout.on('error',stop);child.stderr.on('error',stop);child.stderr.resume();
  child.stdout.on('data',data=>{
   buffer+=data.toString('utf8');if(buffer.length>2_000_000){stop();return;}
   let index;while((index=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,index);buffer=buffer.slice(index+1);let value;try{value=JSON.parse(line);}catch{stop();return;}
