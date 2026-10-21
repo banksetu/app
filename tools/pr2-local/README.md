@@ -1,5 +1,7 @@
 # Isolated Local PR2 Test Agent
 
+Current build: diagnostic v2 + unpaired local controller pilot. Motion is disabled. Automated remote dispatch/results and signed executable updates are blocked pending a supported private connection and trusted signer; do not treat this as an installed connected controller.
+
 Windows 10 x64 portable console package. No installer, admin privilege, service, runner, listener, GitHub token, remote jobs, auto-update, driver replacement, customer input or production app access. Node runtime is bundled by hosted CI. Close Bank Setu before use. Only USB interfaces whose enumerated path contains VID_04B8&PID_0005 may be opened. Operator confirms physical PLQ-20/PR2 and explicitly selects the device. Hardware IDs identify a candidate, not proof of emulation.
 
 ## One-time start
