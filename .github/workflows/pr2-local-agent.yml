@@ -2,10 +2,10 @@ name: Isolated PR2 Local Agent (no deployment)
 on:
   pull_request:
     branches: [codex/pr2-review-base-20261021]
-    paths: ['tools/pr2-local/**', '.github/workflows/pr2-local-agent.yml']
+    paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', '.github/workflows/pr2-local-agent.yml']
   push:
     branches: [codex/pr2-local-test-20261021]
-    paths: ['tools/pr2-local/**', '.github/workflows/pr2-local-agent.yml']
+    paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', '.github/workflows/pr2-local-agent.yml']
 permissions:
   contents: read
 jobs:

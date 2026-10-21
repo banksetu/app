@@ -42,7 +42,7 @@ source=source.replace('case "read": {', `case "capture": {
    case "read": {`);
 const cs=path.join(out,'LocalBridge.cs');fs.writeFileSync(cs,source);
 execFileSync(path.join(process.env.WINDIR,'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),['/nologo','/target:exe','/platform:x64','/r:System.Management.dll','/r:System.Web.Extensions.dll','/out:'+path.join(out,'BankSetu.Pr2Bridge.exe'),cs],{stdio:'inherit'});
-for(const f of ['agent.cjs','core.cjs','diagnostics.cjs','controller.cjs','controller-main.cjs','Start.cmd','Controller.cmd','README.md'])fs.copyFileSync(path.join(__dirname,f),path.join(out,f));
+for(const f of ['agent.cjs','core.cjs','diagnostics.cjs','controller.cjs','controller-main.cjs','Start.cmd','Controller.cmd','mailbox-crypto.cjs','mailbox.cjs','mailbox-session.cjs','pairing-gate.cjs','README.md'])fs.copyFileSync(path.join(__dirname,f),path.join(out,f));
 for(const f of ['pr2-native.cjs','pr2-protocol.cjs'])fs.copyFileSync(path.join(root,'desktop',f),path.join(out,f));
 fs.copyFileSync(process.execPath,path.join(out,'node.exe'));
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(path.join(out,f))).digest('hex');

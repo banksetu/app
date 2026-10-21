@@ -11,7 +11,7 @@ async function main(){
   console.log('Folder: '+directory);return;
  }
  const config=JSON.parse(fs.readFileSync(configFile,'utf8'));
- if(config.remoteTransport)throw Error('Remote transport unavailable: no supported dispatch/result connector paired');
+ if(config.remoteTransport)throw Error('Encrypted GitHub transport staged; activation blocked pending protected Work Mode key provider and Windows credential pairing');
  const bundleHash=crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'SHA256.json'))).digest('hex');
  if(config.bundleHash!==bundleHash)throw Error('Locally approved bundle pin mismatch; no automatic executable update');
  // Verify all packaged components before helper launch, using locally approved bundle pin as trust anchor.

@@ -8,7 +8,7 @@ function signedPayload(envelope,key){
 }
 function verifyJob(envelope,{key,deviceId,bundleHash,now=Date.now()}){
  const j=signedPayload(envelope,key);
- if(Object.keys(j).sort().join(',')!=='action,bundleHash,deviceId,expiresAt,id,issuedAt,version'||j.version!==1||!/^[-a-f0-9]{36}$/.test(j.id)||!/^[a-f0-9]{64}$/.test(j.deviceId)||j.deviceId!==deviceId||j.bundleHash!==bundleHash)throw Error('Job target/schema rejected');
+ if(Object.keys(j).sort().join(',')!=='action,bundleHash,deviceId,expiresAt,id,issuedAt,version'||j.version!==1||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(j.id)||!/^[a-f0-9]{64}$/.test(j.deviceId)||j.deviceId!==deviceId||j.bundleHash!==bundleHash)throw Error('Job target/schema rejected');
  if(!Number.isSafeInteger(j.issuedAt)||!Number.isSafeInteger(j.expiresAt)||j.issuedAt>now+5000||j.expiresAt<=now||j.expiresAt-j.issuedAt>300000||j.expiresAt<=j.issuedAt)throw Error('Job expired or time window invalid');
  // This diagnostic pilot intentionally has no motion or arbitrary parameters.
  if(j.action!=='diagnose')throw Error('Action blocked: physical tests require separate approval and validated protocol');
@@ -30,7 +30,7 @@ function controller({directory,key,deviceId,bundleHash,execute,log,now=Date.now}
  let consumed=fs.existsSync(ledger)?JSON.parse(fs.readFileSync(ledger,'utf8')):{};
  if(!consumed||Array.isArray(consumed)||typeof consumed!=='object')throw Error('Invalid durable ledger');
  let busy=false;
- return {async accept(envelope){
+ return {async accept(envelope,{onStarted=()=>{}}={}){
   if(busy)throw Error('Controller busy');
   if(fs.existsSync(path.join(directory,'STOP')))throw Error('Emergency stop active');
   const j=verifyJob(envelope,{key,deviceId,bundleHash,now:now()});
@@ -39,8 +39,8 @@ function controller({directory,key,deviceId,bundleHash,execute,log,now=Date.now}
   busy=true;
   try{
    consumed[j.id]={state:'started',time:now()};
-   const temp=ledger+'.tmp';fs.writeFileSync(temp,JSON.stringify(consumed));fs.renameSync(temp,ledger);
-   log({jobId:j.id,event:'accepted',action:j.action,time:now()});
+   const temp=ledger+'.tmp',fd=fs.openSync(temp,'w');try{fs.writeFileSync(fd,JSON.stringify(consumed));fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(temp,ledger);
+   log({jobId:j.id,event:'accepted',action:j.action,time:now()});onStarted();
    const result=await execute(j);
    log({jobId:j.id,event:'finished',physicalVerified:false,result,time:now()});return result;
   }catch(e){log({jobId:j.id,event:'failed-no-retry',error:e.message,time:now()});throw e;}
