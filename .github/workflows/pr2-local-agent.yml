@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-      - run: node --test tools/pr2-local/core.test.cjs desktop/pr2.test.cjs
+      - run: node --test tools/pr2-local/*.test.cjs desktop/pr2.test.cjs
       - run: node tools/pr2-local/build.cjs
       - name: Verify packaged helper handshake only (no printer access)
         run: node -e "const c=require('./build/pr2-local/pr2-native.cjs').nativeClient('./build/pr2-local'); c.handshake().then(()=>c.close()).catch(e=>{c.close();throw e;});"

@@ -27,11 +27,12 @@ async function main(){
  fs.unlinkSync(marker);
  }
  const action=await prompt.question('Action (diagnose / feed / print / eject): ');
+ if(action!=='diagnose')throw Error('Motion tests disabled pending diagnostic validation and separate approval');
  const resolution=action==='print'?Number(await prompt.question('Printer configuration vertical resolution (216 or 240): ')):undefined;
  await io.open(devices[Number(index)],{});
  // Extra raw RX events from isolated helper include partial/timeout evidence.
  io.read=async n=>{const r=await io.rpc('read',{count:n},5000);const b=Buffer.from(r.data,'base64');log({direction:'RX-RAW',hex:b.toString('hex'),timedOut:!!r.timedOut,expected:n});if(r.timedOut||b.length!==n)throw Error('Incomplete response; inspect RX-RAW. No retry.');return b;};
- const result=await run({io,action,resolution,log,approve:async a=>await prompt.question('Permission for ONE '+a+' action on disposable test paper? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase(),fence:async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'})});
+ const result=action==='diagnose'?await require('./diagnostics.cjs').diagnose({io,log}):await run({io,action,resolution,log,approve:async a=>await prompt.question('Permission for ONE '+a+' action on disposable test paper? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase(),fence:async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'})});
  log({result});
  }catch(e){log({error:e.message,physicalVerified:false});process.exitCode=1;}
  finally{io?.close();prompt.close();fs.closeSync(fd);fs.unlinkSync(lock);console.log('Report: '+report+'\nShare this file privately in ChatGPT, never in a public GitHub issue. Physical success requires your confirmation.');}
