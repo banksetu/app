@@ -1,3 +1,4 @@
+import {confirmAction} from './uiDialogs';
 import { localDataFetch, getDataIdToken } from "./core/localData";
 import { useEffect, useState } from "react";
 import { doc, getDocFromServer } from "firebase/firestore";
@@ -252,7 +253,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
       <button style={secondaryButton} disabled={Boolean(busy) || !workspace?.apiUrl} onClick={() => void testConnection()}>
         {busy === "connection-test" ? "Testing…" : "Test workspace connection"}
       </button>
-      {connectionCheck && <p role="status" style={{ color: "#176b54", fontSize: 13 }}>{connectionCheck}</p>}
+      {connectionCheck && <p role="status" style={{ color: "var(--app-dark-text, #176b54)", fontSize: 13 }}>{connectionCheck}</p>}
       <div style={grid}>
         {formats.map((item) => {
           const sample = workspace?.formats[item.id];
@@ -261,7 +262,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
             <article key={item.id} style={card}>
               <h2 style={{ margin: 0, fontSize: 17 }}>{item.title}</h2>
               <p style={copy}>{item.description}</p>
-              {sample ? <p style={{ ...copy, color: "#245d52", wordBreak: "break-word" }}>{sample.fileName}</p> : <p style={copy}>No sample uploaded yet.</p>}
+              {sample ? <p style={{ ...copy, color: "var(--app-dark-text, #245d52)", wordBreak: "break-word" }}>{sample.fileName}</p> : <p style={copy}>No sample uploaded yet.</p>}
               {canManage && (
                 <label style={uploadLabel}>
                   {busy === `upload:${item.id}` ? "Uploading…" : sample ? "Replace sample" : "Upload sample"}
@@ -273,8 +274,8 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
                 </label>
               )}
               {sample && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => void preview(item.id)}>{busy === `preview:${item.id}` ? "Loading preview…" : "Preview sample"}</button>}
-              {sample?.extractionMap?.length && canManage ? <button style={secondaryButton} disabled={Boolean(busy)} onClick={()=>{
-                if(!window.confirm("Replace print positions with the saved reading boxes? Old sample values inside these boxes will be cleared in the generated form."))return;
+              {sample?.extractionMap?.length && canManage ? <button style={secondaryButton} disabled={Boolean(busy)} onClick={async ()=>{
+                if(!await confirmAction("Replace print positions with the saved reading boxes? Old sample values inside these boxes will be cleared in the generated form."))return;
                 void saveMapping(item.id,sourceSectionsToPrint(sample.extractionMap!),sample.pageWidthMm||210,sample.pageHeightMm||297,"print").catch(reason=>setError(reason.message));
               }}>Print in the same sections</button> : null}
               {sample && canManage && <button style={secondaryButton} disabled={Boolean(busy)} onClick={() => {setMappingMode("extraction"); void editLayout(item.id);}}>Map data to read</button>}
@@ -286,8 +287,8 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
           );
         })}
       </div>
-      {error && <p role="alert" style={{ color: "#a22" }}>{error}</p>}
-      {message && <p role="status" style={{ color: "#176b54" }}>{message}</p>}
+      {error && <p role="alert" style={{ color: "var(--app-dark-text, #a22)" }}>{error}</p>}
+      {message && <p role="status" style={{ color: "var(--app-dark-text, #176b54)" }}>{message}</p>}
       {!workspace?.googleEmail && canManage && <p style={errorHint}>Connect your Google Drive first to store templates in your own account.</p>}
       {editingFormat && previews[editingFormat] && workspace && <BankFormatLayoutEditor key={`${editingFormat}-${mappingMode}`}
         mode={mappingMode}
@@ -304,13 +305,13 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
   );
 }
 
-const panel = { padding: 20, borderRadius: 16, background: "#f6f8fb", color: "#17202a", border: "1px solid #e1e7ef" };
-const eyebrow = { margin: 0, fontSize: 12, fontWeight: 800, letterSpacing: 1, color: "#117864" };
-const copy = { color: "#596579", fontSize: 13, lineHeight: 1.5 };
+const panel = { padding: 20, borderRadius: 16, background: "var(--app-dark-surface, #f6f8fb)", color: "var(--app-dark-text, #17202a)", border: "1px solid #e1e7ef" };
+const eyebrow = { margin: 0, fontSize: 12, fontWeight: 800, letterSpacing: 1, color: "var(--app-dark-text, #117864)" };
+const copy = { color: "var(--app-dark-text, #596579)", fontSize: 13, lineHeight: 1.5 };
 const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14, marginTop: 18 };
-const card = { padding: 16, borderRadius: 13, background: "#fff", border: "1px solid #e1e7ef", boxShadow: "0 8px 24px rgba(30,45,70,.06)" };
-const uploadLabel = { display: "inline-flex", alignItems: "center", minHeight: 40, padding: "0 13px", marginRight: 8, borderRadius: 9, background: "#176b54", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 700 };
-const secondaryButton = { minHeight: 40, padding: "0 13px", borderRadius: 9, border: "1px solid #c9d2df", background: "#fff", color: "#17202a", cursor: "pointer", fontSize: 13, fontWeight: 700 };
+const card = { padding: 16, borderRadius: 13, background: "var(--app-dark-surface, #fff)", border: "1px solid #e1e7ef", boxShadow: "0 8px 24px rgba(30,45,70,.06)" };
+const uploadLabel = { display: "inline-flex", alignItems: "center", minHeight: 40, padding: "0 13px", marginRight: 8, borderRadius: 9, background: "#176b54", color: "var(--app-dark-text, white)", cursor: "pointer", fontSize: 13, fontWeight: 700 };
+const secondaryButton = { minHeight: 40, padding: "0 13px", borderRadius: 9, border: "1px solid #c9d2df", background: "var(--app-dark-surface, #fff)", color: "var(--app-dark-text, #17202a)", cursor: "pointer", fontSize: 13, fontWeight: 700 };
 const previewFrame = { display: "block", width: "100%", height: 480, marginTop: 14, border: "1px solid #e1e7ef", borderRadius: 8 };
 const previewImage = { display: "block", maxWidth: "100%", maxHeight: 560, margin: "14px auto 0", border: "1px solid #e1e7ef", borderRadius: 8, objectFit: "contain" as const };
-const errorHint = { marginTop: 16, color: "#8a5b00", fontSize: 13 };
+const errorHint = { marginTop: 16, color: "var(--app-dark-text, #8a5b00)", fontSize: 13 };

@@ -1,3 +1,4 @@
+import {confirmAction} from './uiDialogs';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   collection,
@@ -256,7 +257,7 @@ function AdminUsers({ embedded = false }: Props) {
       ? `Remove ${user.email || "this Client Admin"} and deactivate every login in this client workspace? Their Google Drive folder and Sheet will remain in the owner's Drive.`
       : `Do you want to ${action} ${user.email || "this user"}?`;
 
-    if (!window.confirm(confirmText)) {
+    if (!await confirmAction(confirmText)) {
       return;
     }
 

@@ -30,7 +30,7 @@ export function setupPushFixture() {
     if(path===":commit"){
       const writes=JSON.parse(options.body).writes;if(beforeCommit){const next=beforeCommit;beforeCommit=undefined;next();}
       for(const write of writes){const name=write.update?.name||write.delete||write.verify;assert(name.startsWith(base+"/"));const old=store.get(name.slice(base.length+1));if(write.currentDocument?.exists===false&&old||write.currentDocument?.updateTime&&old?.updateTime!==write.currentDocument.updateTime)return Response.json({error:{message:"Conflict"}},{status:409});}
-      for(const write of writes){const name=write.update?.name||write.delete||write.verify,key=name.slice(base.length+1);if(write.verify)continue;if(write.delete)store.delete(key);else store.set(key,{...write.update,updateTime:new Date(Date.UTC(2026,9,13)+ ++revision).toISOString()});}
+      for(const write of writes){const name=write.update?.name||write.delete||write.verify,key=name.slice(base.length+1);if(write.verify)continue;if(write.delete)store.delete(key);else {const fields=write.updateMask?{...store.get(key)?.fields,...write.update.fields}:write.update.fields;store.set(key,{...write.update,fields,updateTime:new Date(Date.UTC(2026,9,13)+ ++revision).toISOString()});}}
       return Response.json({});
     }
     if(path===":batchGet")return Response.json(JSON.parse(options.body).documents.map(name=>store.has(name.slice(base.length+1))?{found:store.get(name.slice(base.length+1))}:{missing:name}));

@@ -1,5 +1,20 @@
 import {useEffect,useRef,useState} from 'react';
 import {callBankSetuWorker} from './workerApi';
+import {doc,onSnapshot} from 'firebase/firestore';
+import {db} from './firebase';
+
+export type SupportMedia={id:string;kind:'photo'|'audio';expiresAt:unknown;deletedAt?:unknown};
+export type SupportReply={messageId:string;kind:'photo'|'audio'};
+const milliseconds=(value:unknown)=>typeof value==='string'?Date.parse(value):(value as {toMillis?:()=>number})?.toMillis?.()||0;
+
+export function SupportReplyReference({clientUid,replyTo}:{clientUid:string;replyTo:SupportReply}){
+ const [target,setTarget]=useState<{text?:string;attachment?:SupportMedia}|null>(null),[unavailable,setUnavailable]=useState(false),[,tick]=useState(0);
+ useEffect(()=>onSnapshot(doc(db,'supportConversations',clientUid,'messages',replyTo.messageId),snapshot=>{setTarget(snapshot.exists()?snapshot.data():null);setUnavailable(!snapshot.exists());},()=>setUnavailable(true)),[clientUid,replyTo.messageId]);
+ const expiry=milliseconds(target?.attachment?.expiresAt);
+ useEffect(()=>{if(!expiry)return;const timer=setTimeout(()=>tick(x=>x+1),Math.max(0,expiry-Date.now()));return()=>clearTimeout(timer);},[expiry]);
+ const label=replyTo.kind==='photo'?'Photo':'Audio',status=unavailable?'unavailable':target?.attachment?.deletedAt?'deleted':expiry&&Date.now()>=expiry?'expired':'';
+ return <blockquote className="support-reply-reference"><strong>{replyTo.kind==='photo'?'▧':'♫'} {label}{status?` ${status}`:' reply'}</strong>{target?.text&&<span>{target.text.slice(0,160)}</span>}</blockquote>;
+}
 
 export async function supportFileData(file:File){
  if(!/^(image\/(jpeg|png|webp)|audio\/(webm|ogg|mpeg|mp4|wav|x-wav))$/.test(file.type.split(';')[0]))throw Error('Choose a JPEG, PNG, WebP photo or supported audio. Video is not supported.');
@@ -44,15 +59,16 @@ export function SupportMediaTools({disabled,onFile,onError,onRecording}:{disable
  </div>;
 }
 
-export function SupportAttachment({attachment}:{attachment:{id:string;kind:'photo'|'audio';expiresAt:unknown}}){
- const expiry=typeof attachment.expiresAt==='string'?Date.parse(attachment.expiresAt):(attachment.expiresAt as {toMillis?:()=>number})?.toMillis?.()||0;
+export function SupportAttachment({attachment,onActions}:{attachment:SupportMedia;onActions?:()=>void}){
+ const expiry=milliseconds(attachment.expiresAt),deleted=Boolean(attachment.deletedAt);
  const [expired,setExpired]=useState(Date.now()>=expiry),[url,setUrl]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const objectUrl=useRef(''),controller=useRef<AbortController|null>(null);
  useEffect(()=>{
-  const retire=()=>{if(Date.now()<expiry)return;controller.current?.abort();URL.revokeObjectURL(objectUrl.current);objectUrl.current='';setUrl('');setExpired(true);};
+  const retire=()=>{if(!deleted&&Date.now()<expiry)return;controller.current?.abort();URL.revokeObjectURL(objectUrl.current);objectUrl.current='';setUrl('');if(!deleted)setExpired(true);};
+  if(deleted)retire();
   const timer=setTimeout(retire,Math.max(0,expiry-Date.now()));document.addEventListener('visibilitychange',retire);
   return()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',retire);controller.current?.abort();URL.revokeObjectURL(objectUrl.current);};
- },[expiry]);
+ },[expiry,deleted]);
  const open=async()=>{
   const pending=new AbortController();controller.current=pending;setBusy(true);setError('');
   try{
@@ -62,5 +78,5 @@ export function SupportAttachment({attachment}:{attachment:{id:string;kind:'phot
    objectUrl.current=URL.createObjectURL(new Blob([data],{type:result.mimeType}));setUrl(objectUrl.current);
   }catch(reason){if(!pending.signal.aborted)setError(reason instanceof Error?reason.message:'Attachment could not be opened.');}finally{setBusy(false);}
  };
- return <div className="support-attachment">{expired?<small>{attachment.kind==='photo'?'Photo':'Audio'} expired after 24 hours.</small>:url?(attachment.kind==='photo'?<img src={url} alt="Support photo"/>:<audio controls preload="metadata" src={url}/>):<button type="button" disabled={busy} onClick={()=>void open()}>{busy?'Opening…':attachment.kind==='photo'?'View photo':'Play audio'}</button>}{error&&<small role="alert">{error}</small>}</div>;
+ return <div className="support-attachment">{deleted?<small>{attachment.kind==='photo'?'Photo':'Audio'} deleted.</small>:expired?<small>{attachment.kind==='photo'?'Photo':'Audio'} expired after 24 hours.</small>:url?(attachment.kind==='photo'?<button className="support-photo-open" type="button" aria-label="Support photo options" onClick={onActions}><img src={url} alt="Support photo"/></button>:<audio controls preload="metadata" src={url}/>):<button type="button" disabled={busy} onClick={()=>void open()}>{busy?'Opening…':attachment.kind==='photo'?'View photo':'Play audio'}</button>}{error&&<small role="alert">{error}</small>}</div>;
 }

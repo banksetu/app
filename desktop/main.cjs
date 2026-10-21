@@ -1,4 +1,4 @@
-const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage,clipboard,dialog,Notification,Tray,Menu} = require('electron');
+const {app,BrowserWindow,protocol,net,ipcMain,shell,safeStorage,clipboard,dialog,Notification,Tray,Menu,nativeTheme} = require('electron');
 const {execFileSync} = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -20,6 +20,7 @@ const trusted = event => {
 };
 const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{10,250}$/.test(scope)) throw new Error('Invalid workspace scope.');};
 if(primaryInstance)app.whenReady().then(async()=>{
+  ipcMain.handle('appearance:set',(event,mode)=>{trusted(event);if(!['light','dark'].includes(mode))throw Error('Invalid appearance.');nativeTheme.themeSource=mode;window.setBackgroundColor(mode==='dark'?'#0b1220':'#f5f7ff');});
   if(process.platform==='win32')app.setAppUserModelId('in.banksetu.desktop');
   let dataDirectory;
   const options=directoryOptions();
@@ -83,6 +84,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     notice.on('click',()=>{if(openMain)void openMain(value.page);});
     notice.show();return true;
   });
+  require('./pr2-ipc.cjs').installPr2({app,ipcMain,BrowserWindow,trusted,authorize:scope=>licenseAuthority.protectedScope(scope),getWindow:()=>window});
   const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction()});
   const directoryBytes = directory => {
     let total = 0;

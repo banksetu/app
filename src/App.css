@@ -3957,3 +3957,81 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
   body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-footer button:first-child {background:#33455f!important;color:#f8fafc!important;border:1px solid #52657e;border-radius:8px;padding:10px 16px}
   body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-panel [role="alert"] {color:#fecaca!important}
 }
+
+/* One document appearance also reaches body portals and app-owned dialogs.
+   Only screen paint changes; bank artwork, PDFs and printed pages retain ink. */
+@media screen {
+  html,body,#root{width:100%;max-width:none;margin:0;border:0;padding:0;min-height:100dvh;box-sizing:border-box}
+  #root{border-inline:0!important}
+  html[data-appearance="dark"]:root{
+    --app-dark-surface:#172338;--app-dark-text:#f8fafc;--app-dark-border-color:#42536b;
+    --bs-bg:#0b1220;--bs-surface:#172338;--bs-surface-soft:#233249;--bs-text:#f8fafc;--bs-muted:#cbd5e1;--bs-border:#354661;
+    --text:#cbd5e1;--text-h:#f8fafc;--bg:#0b1220;--border:#354661;--code-bg:#233249;
+    background:#0b1220;color:#f8fafc;color-scheme:dark;
+  }
+  html[data-appearance="light"]{color-scheme:light}
+  html[data-appearance="dark"]:root body,html[data-appearance="dark"]:root #root{background:#0b1220;color:#f8fafc}
+  html[data-appearance="dark"]:root :is(
+    [role="dialog"],[role="alertdialog"],dialog,.app-message-dialog,.customer-delete-dialog,
+    .admin-users-toolbar,.admin-users-list,.admin-users-header,.admin-user-group-heading,
+    .admin-owner-summary,.admin-client-workspace,.admin-client-children,.admin-user-card,
+    .bank-selection-required,.custom-bank-document,.client-document-search,.bank-format-print-wrap,
+    .license-welcome,.license-contact,.license-choices article,.banksetu-notice,
+    .settings-page,.master-client-intro,.support-page,.conversation-list,.chat-panel,.message-list,.chat-compose,
+    .announcement-editor,.announcement,.request-card,.faq-list details,.support-content-grid article,
+    .afsm-panel,.afsm-actions,.update-dialog,.update-notes,.update-progress,.update-versions,
+    .pdf-dialog,.pdf-detail,.pdf-results,.pdf-mode,.customer-pdf-preview,.license-drawer,
+    .license-card,.license-plan-options,.license-configuration,.license-features,.license-important,
+    .license-reference-panel,.license-analytics-card,.license-detail-panel,.license-note,
+    .print-alignment-settings,.print-alignment-window,.print-alignment-panel,.print-alignment-measures span
+  ){background:#172338!important;color:#f8fafc!important;border-color:#354661!important}
+  html[data-appearance="dark"]:root :is(.customer-preview-actions button,.admin-users-toolbar button,
+    .update-versions>div,.update-close,.support-reply-reference,.support-delete-status,
+    .support-message-actions>div,.support-selected-file,.message:not(.mine)){
+    background:#233249!important;color:#f8fafc!important;border-color:#42536b!important
+  }
+  /* Exclude document/paper descendants from all global UI paint. */
+  html[data-appearance="dark"]:root body :is(button,input,select,textarea,option,optgroup):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *,
+    [data-print-paper],[data-print-paper] *
+  )){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important;color-scheme:dark}
+  html[data-appearance="dark"]:root body :is(input,textarea)::placeholder{color:#adbed3!important;opacity:1}
+  html[data-appearance="dark"]:root body :is(h1,h2,h3,h4,h5,h6,label,legend,dt,dd,strong,summary,code,pre):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *,
+    [data-print-paper],[data-print-paper] *
+  )){color:#f8fafc!important}
+  html[data-appearance="dark"]:root body :is(p,small,time,figcaption):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *,
+    [data-print-paper],[data-print-paper] *
+  )){color:#cbd5e1!important}
+  html[data-appearance="dark"]:root body :is(table,thead,tbody,tr,th,td):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *
+  )){background:#172338!important;color:#f8fafc!important;border-color:#354661!important}
+  html[data-appearance="dark"]:root body thead th:not(:is(.paper *,.bank-format-print *,.passbook-print-area *,.pb-block *,.union-preview *,.assam-quick-preview *,.union-aof-page *,.print-alignment-frame *)){background:#233249!important}
+  html[data-appearance="dark"]:root :is(.app-dialog-confirm,.update-install,.license-primary){background:#2358aa!important;color:white!important;border-color:#5285d5!important}
+  html[data-appearance="dark"]:root :is(.delete,.license-danger,.customer-delete-dialog button:first-child){background:#58273a!important;color:#ffe1e7!important;border-color:#a75b73!important}
+  html[data-appearance="dark"]:root :is(.admin-user-actions .block,.sync-summary .pending){background:#493816!important;color:#fde68a!important}
+  html[data-appearance="dark"]:root :is(.admin-owner-active,.admin-user-status.status-approved){background:#123e34!important;color:#a7f3d0!important}
+  html[data-appearance="dark"]:root .support-reply-reference{border-left-color:#9ba7ff!important}
+  html[data-appearance="dark"]:root :is(.support-tabs .active,.license-tabs .selected,.banksetu-nav-item.active,.banksetu-appearance .selected,.conversation-list .selected){background:#294166!important;color:#f8fafc!important;border-color:#76b0ff!important}
+  html[data-appearance="dark"]:root :is(.paper,.bank-format-print){background:white!important;color:#111827!important}
+  html[data-appearance="dark"]:root :is(.paper,.bank-format-print) :is(h1,h2,h3,label,strong,p,small,td,th){color:#111827!important}
+  html[data-appearance="dark"]:root :is(.customer-delete-overlay,.admin-users-overlay,.license-modal-backdrop,.update-backdrop,.customer-preview-overlay){background:#030812bf!important}
+  html[data-appearance="dark"]:root :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid #67e8f9!important;outline-offset:3px}
+}
+.app-message-dialog{width:min(520px,calc(100vw - 28px));max-height:85dvh;overflow:auto;margin:auto;padding:24px;border:1px solid #c7d2e2;border-radius:16px;background:#fff;color:#172338;box-shadow:0 20px 70px #0007;text-align:left}
+.app-message-dialog::backdrop{background:#030812b8}
+.app-message-dialog h2{font-size:21px;margin:0 0 14px;color:inherit}.app-message-dialog p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;line-height:1.55}
+.app-dialog-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:22px}.app-dialog-actions button{padding:10px 18px;border-radius:9px;border:1px solid #aebbd0;background:#eef2f8;color:#20324c;cursor:pointer;font:inherit}.app-dialog-actions .app-dialog-confirm{background:#2358aa;color:white;border-color:#2358aa}

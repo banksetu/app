@@ -41,6 +41,7 @@ for(const db of [master,c1,c2]){
  await assertFails(setDoc(doc(db,'supportMedia','forged'),{tenantId:'t1'}));
 }
 await assertFails(addDoc(collection(c1,'supportConversations','c1','messages'),{text:'forged',senderUid:'c1',senderRole:'client_admin',clientUid:'c1',tenantId:'t1',createdAt:serverTimestamp(),attachment:{id:'forged'}}));
+for(const [db,senderUid,senderRole]of [[c1,'c1','client_admin'],[master,'master','master_owner']])await assertFails(addDoc(collection(db,'supportConversations','c1','messages'),{text:'unverified quote',senderUid,senderRole,clientUid:'c1',tenantId:'t1',createdAt:serverTimestamp(),replyTo:{messageId:'foreign-thread-message',kind:'photo'}}));
 await env.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),'tenants','t1'),{status:'offboarding'}));
 await assertFails(addDoc(collection(master,'supportConversations','c1','messages'),{text:'racing deletion',senderUid:'master',senderRole:'master_owner',clientUid:'c1',tenantId:'t1',createdAt:serverTimestamp()}));
 await env.cleanup();

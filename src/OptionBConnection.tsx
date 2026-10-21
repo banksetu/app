@@ -42,10 +42,10 @@ export default function OptionBConnection({tenantId, disabled, onConnected}: {te
     } catch(error) {setMessage(error instanceof Error?error.message:"Connection failed.");}finally{setBusy(false);}
   };
   return <div style={{border:"1px solid #37646c",borderRadius:10,padding:16,marginTop:16}}>
-    <h3 style={{color:"#eef7f7"}}>Google Sheet / Drive — Option B</h3>
+    <h3 style={{color:"var(--app-dark-text, #eef7f7)"}}>Google Sheet / Drive — Option B</h3>
     <p style={{lineHeight:1.6}}>पहली बार आपके अपने Google account में upload bridge authorize और deploy होना जरूरी है। उसके बाद app का connection दो steps में होगा। Bank Setu login email और Google resource owner email एक होने चाहिए।</p>
     <p><strong>1. Share:</strong> अपनी Sheet को Drive folder में रखें। दोनों पर नीचे वाले email को Editor access दें।</p>
-    <code style={{display:"block",overflowWrap:"anywhere",color:"#8de3c8"}}>{SERVICE_EMAIL}</code>
+    <code style={{display:"block",overflowWrap:"anywhere",color:"var(--app-dark-text, #8de3c8)"}}>{SERVICE_EMAIL}</code>
     <p><strong>2. Connect:</strong> दोनों links और पहले से तैयार upload bridge का URL डालें, फिर Test &amp; Connect दबाएँ।</p>
     {auth.currentUser&&!auth.currentUser.emailVerified&&<p role="status">पहले login email verify करें। <button type="button" onClick={()=>{void sendEmailVerification(auth.currentUser!).then(()=>setMessage("Verification email भेज दिया। Link खोलने के बाद app में फिर login करें।")).catch(error=>setMessage(error.message));}}>Send verification email</button></p>}
     <p style={{fontSize:12}}>Bridge tenant ID: <code>{tenantId}</code></p>
@@ -59,10 +59,10 @@ export default function OptionBConnection({tenantId, disabled, onConnected}: {te
       </div>
       {disabled&&<p role="status">Setup file अभी डाउनलोड कर सकते हैं। Test &amp; Connect चालू करने के लिए नीचे bank/branch details भरकर Save bank details करें। Workspace inactive हो तो Master से activate करवाएँ।</p>}
       <label>Client-owned upload bridge URL<input required type="url" value={bridgeUrl} onChange={event=>setBridgeUrl(event.target.value)} style={inputStyle}/></label>
-      <button disabled={disabled||busy||downloading} type="submit" style={{padding:12,borderRadius:8,border:0,background:"#63e2c4",color:"#06242a",fontWeight:700}}>{busy?"Checking permissions…":"Test & Connect"}</button>
+      <button disabled={disabled||busy||downloading} type="submit" style={{padding:12,borderRadius:8,border:0,background:"#63e2c4",color:"var(--app-dark-text, #06242a)",fontWeight:700}}>{busy?"Checking permissions…":"Test & Connect"}</button>
     </form>
     {message&&<p role="status" style={{overflowWrap:"anywhere"}}>{message}</p>}
     {sessionStorage.getItem("bankSetuConnectionMode")==="option-b"&&<button type="button" onClick={()=>window.location.reload()}>Open workspace</button>}
   </div>;
 }
-const inputStyle={display:"block",width:"100%",padding:10,marginTop:5,borderRadius:8,border:"1px solid #37646c",background:"#0b2630",color:"#eef7f7"};
+const inputStyle={display:"block",width:"100%",padding:10,marginTop:5,borderRadius:8,border:"1px solid #37646c",background:"#0b2630",color:"var(--app-dark-text, #eef7f7)"};

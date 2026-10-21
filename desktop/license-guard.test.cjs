@@ -80,7 +80,7 @@ test('native authorization persists suspension revision across restart, blocks p
   const data={records:[{scope,recordId:'customer',customer:{photoDataUrl:'retained-photo'}}],operations:[{scope,operationId:'pending'}]};
   store.commit(scope,empty,data,true);
   let authority=createLicenseAuthority(publicKey.export({format:'jwk'}),store);
-  authority.session(uid);authority.status(status('active',1),now);authority.acceptReceipt(receipt(),now);authority.protectedAction();
+  authority.session(uid);authority.status(status('active',1),now);authority.acceptReceipt(receipt(),now);authority.protectedAction();authority.protectedScope(scope);assert.throws(()=>authority.protectedScope(scope+'other'),/workspace changed/);
   authority.status(status('suspended',2),now);
   assert.throws(()=>authority.protectedAction());assert.throws(()=>authorize(store,scope,receipt(),now),/superseded/);
   store.close();store=createStore(directory);authority=createLicenseAuthority(publicKey.export({format:'jwk'}),store);authority.session(uid);

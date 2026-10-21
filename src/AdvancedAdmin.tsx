@@ -1,3 +1,4 @@
+import {confirmAction} from './uiDialogs';
 import { downloadAndroidUpdate, isAndroid } from './platform/android/runtime';
 import { checkAndroidUpdate } from './platform/android/updates';
 import { useEffect, useState } from "react";
@@ -357,7 +358,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       "Do you want to update the Bank Setu database connection?"
     );
 
@@ -529,7 +530,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       "Final confirmation: removing this connection will stop Google Sheet save and search features. Continue?"
     );
 
@@ -986,7 +987,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
 
         {isMasterOwner && <p style={styles.securityText}>
           Master Apps Script के existing project में updated code लगाकर उसी Web App deployment का नया version प्रकाशित करें।{" "}
-          <a href="/client-bridge/Code.gs?revision=v9-20261014" download="BankSetu-Master-Code.gs" style={{ color: "#8de3c8", fontWeight: 700 }}>Download updated Master Code.gs</a>
+          <a href="/client-bridge/Code.gs?revision=v9-20261014" download="BankSetu-Master-Code.gs" style={{ color: "var(--app-dark-text, #8de3c8)", fontWeight: 700 }}>Download updated Master Code.gs</a>
         </p>}
 
         {savedUrl && !unlocked && (
@@ -1286,10 +1287,10 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
 
       {downloadProgress !== null && (
         <div style={{ margin: "14px 0", width: "100%" }}>
-          <div style={{ height: "10px", borderRadius: "999px", background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+          <div style={{ height: "10px", borderRadius: "999px", background: "var(--app-dark-surface, rgba(255,255,255,0.10))", overflow: "hidden" }}>
             <div style={{ width: `${downloadProgress}%`, height: "100%", borderRadius: "999px", background: "linear-gradient(90deg,#35dec0,#29a8e8)", transition: "width .2s ease" }} />
           </div>
-          <div style={{ marginTop: "6px", textAlign: "center", color: "#8eeede", fontSize: "11px" }}>{downloadProgress}%</div>
+          <div style={{ marginTop: "6px", textAlign: "center", color: "var(--app-dark-text, #8eeede)", fontSize: "11px" }}>{downloadProgress}%</div>
         </div>
       )}
 
@@ -1454,7 +1455,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "8px",
 
@@ -1468,7 +1469,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "27px",
 
@@ -1478,7 +1479,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#91a7b3",
+    color: "var(--app-dark-text, #91a7b3)",
 
     fontSize: "10px",
 
@@ -1518,7 +1519,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "8px",
 
@@ -1532,7 +1533,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: "6px 0 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "19px",
 
@@ -1540,7 +1541,7 @@ const styles: Record<string, CSSProperties> = {
 
   securityText: {
 
-    color: "#94a8b4",
+    color: "var(--app-dark-text, #94a8b4)",
 
     fontSize: "9px",
 
@@ -1554,7 +1555,7 @@ const styles: Record<string, CSSProperties> = {
 
     borderRadius: "999px",
 
-    color: "#f0b95d",
+    color: "var(--app-dark-text, #f0b95d)",
 
     background:
 
@@ -1568,7 +1569,7 @@ const styles: Record<string, CSSProperties> = {
 
   unlockedBadge: {
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     background:
 
@@ -1590,7 +1591,7 @@ const styles: Record<string, CSSProperties> = {
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 800,
 
@@ -1612,9 +1613,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.04)",
+      "var(--app-dark-surface, rgba(255,255,255,0.04))",
 
-    color: "#d7e4e9",
+    color: "var(--app-dark-text, #d7e4e9)",
 
     cursor: "pointer",
 
@@ -1640,7 +1641,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "18px",
 
@@ -1648,7 +1649,7 @@ const styles: Record<string, CSSProperties> = {
 
   authText: {
 
-    color: "#91a6b2",
+    color: "var(--app-dark-text, #91a6b2)",
 
     fontSize: "9px",
 
@@ -1690,7 +1691,7 @@ const styles: Record<string, CSSProperties> = {
 
     marginBottom: "7px",
 
-    color: "#dce7eb",
+    color: "var(--app-dark-text, #dce7eb)",
 
     fontSize: "10px",
 
@@ -1718,7 +1719,7 @@ const styles: Record<string, CSSProperties> = {
 
     background: "#0a303c",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
   },
 
@@ -1736,13 +1737,13 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.035)",
+      "var(--app-dark-surface, rgba(255,255,255,0.035))",
 
   },
 
   savedLabel: {
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "7px",
 
@@ -1752,7 +1753,7 @@ const styles: Record<string, CSSProperties> = {
 
   savedUrl: {
 
-    color: "#a7bac4",
+    color: "var(--app-dark-text, #a7bac4)",
 
     fontSize: "9px",
 
@@ -1768,9 +1769,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.03)",
+      "var(--app-dark-surface, rgba(255,255,255,0.03))",
 
-    color: "#8fa5b2",
+    color: "var(--app-dark-text, #8fa5b2)",
 
     fontSize: "9px",
 
@@ -1802,7 +1803,7 @@ const styles: Record<string, CSSProperties> = {
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 800,
 
@@ -1824,7 +1825,7 @@ const styles: Record<string, CSSProperties> = {
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 800,
 
@@ -1848,7 +1849,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(55,220,195,0.06)",
 
-    color: "#4be1c7",
+    color: "var(--app-dark-text, #4be1c7)",
 
     cursor: "pointer",
 
@@ -1872,7 +1873,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(255,95,95,0.05)",
 
-    color: "#ff9292",
+    color: "var(--app-dark-text, #ff9292)",
 
     cursor: "pointer",
 
@@ -1894,9 +1895,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.04)",
+      "var(--app-dark-surface, rgba(255,255,255,0.04))",
 
-    color: "#c9d7de",
+    color: "var(--app-dark-text, #c9d7de)",
 
     cursor: "pointer",
 
@@ -1914,7 +1915,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(55,220,195,0.07)",
 
-    color: "#4be2c8",
+    color: "var(--app-dark-text, #4be2c8)",
 
     fontSize: "9px",
 
@@ -1926,7 +1927,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(255,90,90,0.07)",
 
-    color: "#ff9a9a",
+    color: "var(--app-dark-text, #ff9a9a)",
 
   },
 
@@ -1952,7 +1953,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#ff8e8e",
+    color: "var(--app-dark-text, #ff8e8e)",
 
     fontWeight: 800,
 
@@ -1960,7 +1961,7 @@ const styles: Record<string, CSSProperties> = {
 
   dangerText: {
 
-    color: "#b6a4a4",
+    color: "var(--app-dark-text, #b6a4a4)",
 
     fontSize: "9px",
 
@@ -1986,7 +1987,7 @@ const styles: Record<string, CSSProperties> = {
 
     background: "#26191d",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
   },
 
@@ -2002,7 +2003,7 @@ const styles: Record<string, CSSProperties> = {
 
     background: "#c83f4c",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontWeight: 800,
 
@@ -2025,17 +2026,17 @@ const styles: Record<string, CSSProperties> = {
     padding: "13px",
     borderRadius: "11px",
     background:
-      "rgba(255,255,255,0.035)",
+      "var(--app-dark-surface, rgba(255,255,255,0.035))",
   },
 
   versionValue: {
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
     fontSize: "16px",
   },
 
   updateText: {
     margin: "0",
-    color: "#a7bac4",
+    color: "var(--app-dark-text, #a7bac4)",
     fontSize: "10px",
     lineHeight: 1.6,
   },
@@ -2046,14 +2047,14 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "10px",
     background:
       "rgba(69,223,197,0.055)",
-    color: "#b9d9d3",
+    color: "var(--app-dark-text, #b9d9d3)",
     fontSize: "9px",
     lineHeight: 1.6,
   },
 
   updateHint: {
     margin: "14px 0 0",
-    color: "#718c99",
+    color: "var(--app-dark-text, #718c99)",
     fontSize: "8px",
     lineHeight: 1.6,
   },
@@ -2065,7 +2066,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     background:
       "rgba(69,223,197,0.10)",
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
   },
 
   statusBadge: {
@@ -2084,9 +2085,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.04)",
+      "var(--app-dark-surface, rgba(255,255,255,0.04))",
 
-    color: "#a9b9c1",
+    color: "var(--app-dark-text, #a9b9c1)",
 
   },
 
@@ -2096,7 +2097,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(239,186,86,0.08)",
 
-    color: "#efba56",
+    color: "var(--app-dark-text, #efba56)",
 
   },
 
@@ -2106,7 +2107,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(55,220,195,0.08)",
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
   },
 
@@ -2116,7 +2117,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(255,100,100,0.07)",
 
-    color: "#ff9090",
+    color: "var(--app-dark-text, #ff9090)",
 
   },
 

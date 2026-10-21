@@ -1,3 +1,4 @@
+import {showMessage} from './uiDialogs';
 import { canOpenLicensePage, type LicensePermission } from "./core/licensePolicy";
 import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
@@ -8,7 +9,7 @@ import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerAnalytics } from "./core/dashboardAnalytics";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -287,6 +288,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
+  useLayoutEffect(()=>{
+    document.documentElement.dataset.appearance=appearance;
+    void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
+    return()=>{delete document.documentElement.dataset.appearance;};
+  },[appearance]);
   useEffect(() => {
     const restore = () => {const {uid,tenantId}=appearanceIdentity();setAppearance(storedAppearance(localStorage,uid,tenantId));};
     window.addEventListener('banksetu-workspace-change', restore);
@@ -524,7 +530,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     if (!cleaned.bankName) {
 
-      alert("Please enter Bank / CSP Name.");
+      showMessage("Please enter Bank / CSP Name.");
 
       return;
 
@@ -532,15 +538,15 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     if (!cleaned.passbookBank) {
 
-      alert("Please select the bank for passbook printing.");
+      showMessage("Please select the bank for passbook printing.");
 
       return;
 
     }
-    if (cleaned.branchPinCode && !/^\d{6}$/.test(cleaned.branchPinCode)) { alert("Enter a six-digit Branch PIN Code."); return; }
-    if (cleaned.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(cleaned.ifsc)) { alert("Enter a valid 11-character IFSC Code."); return; }
-    if (cleaned.micr && !/^\d{9}$/.test(cleaned.micr)) { alert("Enter a nine-digit MICR Code."); return; }
-    if (cleaned.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.branchEmail)) { alert("Enter a valid Branch Email."); return; }
+    if (cleaned.branchPinCode && !/^\d{6}$/.test(cleaned.branchPinCode)) { showMessage("Enter a six-digit Branch PIN Code."); return; }
+    if (cleaned.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(cleaned.ifsc)) { showMessage("Enter a valid 11-character IFSC Code."); return; }
+    if (cleaned.micr && !/^\d{9}$/.test(cleaned.micr)) { showMessage("Enter a nine-digit MICR Code."); return; }
+    if (cleaned.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.branchEmail)) { showMessage("Enter a valid Branch Email."); return; }
 
     try {
 
@@ -562,7 +568,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       );
 
-      alert(
+      showMessage(
 
         "Bank information could not be saved to Firebase Cloud. Please check your internet connection and try again."
 
@@ -625,7 +631,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       });
     } catch (error) {
       console.error("Dashboard theme cloud save failed:", error);
-      alert("Dashboard theme could not be saved globally. Please try again.");
+      showMessage("Dashboard theme could not be saved globally. Please try again.");
     }
 
     setThemeModalOpen(false);
@@ -639,7 +645,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       await saveGlobalUiTheme({ menuTheme: themeId });
     } catch (error) {
       console.error("Menu theme cloud save failed:", error);
-      alert("Menu theme could not be saved globally. Please try again.");
+      showMessage("Menu theme could not be saved globally. Please try again.");
     }
 
     setMenuThemeModalOpen(false);
@@ -769,7 +775,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       setConfirmPassword("");
 
-      alert("Admin password changed successfully.");
+      showMessage("Admin password changed successfully.");
 
     } catch (error) {
 
@@ -866,7 +872,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       setBankLogo(bankLogo);
       try { localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),bankLogo); } catch { /* Firebase save already succeeded. */ }
     } catch(error) {
-      alert(error instanceof Error ? error.message : "The bank logo could not be saved to Firebase.");
+      showMessage(error instanceof Error ? error.message : "The bank logo could not be saved to Firebase.");
     }
   };
 
@@ -1392,10 +1398,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
           {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
-          {licenseReadOnly && <p role="status" style={{background:"#fff5dc",color:"#6a3f00",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
+          {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
-          {!bankSettingsReady && <p role="status" style={{color:"#414158",padding:16,background:"white",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
+          {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
           {activePage === "dashboard" && !licenseReadOnly && (
@@ -1420,7 +1426,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           {activePage === "settings" && (licenseReadOnly || userRole === "admin") && (
 
-            licenseReadOnly ? <section style={{background:"white",color:"#10204b",padding:20,borderRadius:12}}><h2>Account Settings</h2><p>Business settings are available after license activation. Your account and local backup remain accessible.</p><button type="button" onClick={openPasswordModal}>Change Password</button><button type="button" onClick={()=>openPage("license-management")}>License Status</button></section> : <Settings userRole={userRole} />
+            licenseReadOnly ? <section style={{background:"var(--app-dark-surface, white)",color:"var(--app-dark-text, #10204b)",padding:20,borderRadius:12}}><h2>Account Settings</h2><p>Business settings are available after license activation. Your account and local backup remain accessible.</p><button type="button" onClick={openPasswordModal}>Change Password</button><button type="button" onClick={()=>openPage("license-management")}>License Status</button></section> : <Settings userRole={userRole} />
 
           )}
 

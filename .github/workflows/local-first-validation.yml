@@ -34,6 +34,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Light and dark dashboard layout on mobile and desktop
         run: node scripts/dashboard-appearance.browser.mjs
+      - name: Fullscreen, dark portals and support media reply/delete
+        run: node scripts/fullscreen-theme.browser.mjs && node scripts/support-media.browser.mjs && node scripts/sync-settings-appearance.browser.mjs && node scripts/approved-passbook.browser.mjs
       - name: Licensing transitions and access regression checks
         run: npm run test:worker && npm run test:local && npm run test:updates
       - name: PDF canvas render and file replacement on mobile and desktop browsers

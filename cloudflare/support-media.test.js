@@ -97,3 +97,45 @@ test('video, invalid MIME bytes and oversize uploads are rejected; cleanup failu
   assert(!f.store.has('supportMedia/'+saved.messageId));
  }finally{f.restore();}
 });
+
+test('sender deletion removes all bytes atomically, preserves text and timestamp, and cannot be undone by upload retry',async()=>{
+ const f=fixture();try{
+  for(const [sender,receiver,type]of [['master','client-a','photo'],['client-a','master','audio']]){
+   const body=upload(type),saved=await(await f.call(sender,'/support-media-send',body)).json();
+   const path='supportConversations/client-a/messages/'+saved.messageId,before=f.values(f.store.get(path));
+   assert.equal((await f.call(receiver,'/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,403);
+   assert.equal((await f.call('client-b','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,403);
+   assert.equal((await f.call(sender,'/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,200);
+   assert.equal([...f.store.keys()].some(key=>key.startsWith('supportMedia/'+saved.messageId)),false);
+   const after=f.values(f.store.get(path));assert.equal(after.text,before.text);assert.equal(after.createdAt,before.createdAt);assert(after.attachment.deletedAt);
+   assert.equal((await f.call(receiver,'/support-media-read',{id:saved.messageId})).status,410);
+   assert.equal((await f.call(sender,'/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,200);
+   assert.equal((await f.call(sender,'/support-media-send',body)).status,410);
+  }
+ }finally{f.restore();}
+});
+test('replies keep references after file expiry/deletion, reject foreign references and preserve original media expiry',async()=>{
+ const f=fixture();try{
+  const saved=await(await f.call('client-a','/support-media-send',upload())).json();
+  const replyBody={clientUid:'client-a',operationId:crypto.randomUUID(),replyToMessageId:saved.messageId,text:'Please check this photo'};
+  const response=await f.call('master','/support-media-reply',replyBody);assert.equal(response.status,200,await response.clone().text());
+  const replied=await response.json();assert.equal((await f.call('master','/support-media-reply',replyBody)).status,200);
+  const mediaReply=await f.call('master','/support-media-send',{...upload('audio'),replyToMessageId:saved.messageId});assert.equal(mediaReply.status,200);
+  assert.equal(f.values(f.store.get('supportMedia/'+saved.messageId)).expiresAt,saved.expiresAt);
+  assert.equal((await f.call('client-b','/support-media-reply',{...replyBody,clientUid:'client-b',operationId:crypto.randomUUID()})).status,404);
+  await f.call('client-a','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId});
+  assert.equal(f.values(f.store.get('supportConversations/client-a/messages/'+replied.messageId)).replyTo.messageId,saved.messageId);
+  assert.equal((await f.call('master','/support-media-reply',{...replyBody,operationId:crypto.randomUUID()})).status,200);
+ }finally{f.restore();}
+});
+test('failed or racing manual deletion never reports success or partially deletes a file',async()=>{
+ const f=fixture();try{
+  const saved=await(await f.call('master','/support-media-send',upload())).json();
+  f.beforeNextCommit(()=>{throw Error('temporary storage failure');});
+  assert.equal((await f.call('master','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,500);
+  assert(f.store.has('supportMedia/'+saved.messageId));assert(!f.values(f.store.get('supportConversations/client-a/messages/'+saved.messageId)).attachment.deletedAt);
+  f.beforeNextCommit(()=>f.put('tenants/tenant-a',{status:'offboarding',ownerUid:'client-a'}));
+  assert.equal((await f.call('master','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,409);
+  assert(f.store.has('supportMedia/'+saved.messageId));
+ }finally{f.restore();}
+});

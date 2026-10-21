@@ -1,3 +1,4 @@
+import {confirmAction} from './uiDialogs';
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { extractBankCustomer } from "./bankPdf";
 import { useEffect, useRef, useState } from "react";
@@ -89,7 +90,7 @@ export default function BankFormatLayoutEditor({
   return <div style={overlay} role="dialog" aria-modal="true" aria-label="Bank format field mapping">
     <section style={dialog}>
       <header style={header}><div><h2 style={{ margin: 0 }}>{mode === "extraction" ? "PDF से डेटा पढ़ने के sections चुनें" : "फॉर्म में print की जगह चुनें"}</h2><p style={help}>{mode === "extraction" ? "Field चुनें, फिर उसकी value के चारों ओर box खींचें। Label और पास के columns को box में न लें। छोटे sections के लिए Zoom बढ़ाएँ। Account Opening में पहचाने labels से नया text template बनेगा।" : "Field चुनकर उसकी print position पर क्लिक करें।"}</p></div><button type="button" style={quiet} onClick={onClose}>Close</button></header>
-      {onModeChange && <div style={toolbar}><button type="button" style={quiet} disabled={mode==="extraction"} onClick={()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||window.confirm("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("extraction");}}>1. डेटा कहाँ से पढ़ें</button><button type="button" style={quiet} disabled={mode==="print"} onClick={()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||window.confirm("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("print");}}>2. कहाँ print करें</button><span>Switch करने से पहले Save करें।</span></div>}
+      {onModeChange && <div style={toolbar}><button type="button" style={quiet} disabled={mode==="extraction"} onClick={async ()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||await confirmAction("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("extraction");}}>1. डेटा कहाँ से पढ़ें</button><button type="button" style={quiet} disabled={mode==="print"} onClick={async ()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||await confirmAction("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("print");}}>2. कहाँ print करें</button><span>Switch करने से पहले Save करें।</span></div>}
       <div style={toolbar}>
         <label>Field to place <select value={selectedField} onChange={(event) => setSelectedField(event.target.value)}>{(mode === "print" ? BANK_PRINT_FIELD_OPTIONS : BANK_TEMPLATE_FIELD_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>Sample page <select value={selectedPage} onChange={(event) => setSelectedPage(Number(event.target.value))}>{pages.map((_, index) => <option key={index} value={index + 1}>Page {index + 1}</option>)}</select></label>
@@ -123,22 +124,22 @@ export default function BankFormatLayoutEditor({
         <label><input type="checkbox" checked={item.uppercase} onChange={(event) => setFieldMap((current) => current.map((row, i) => i === index ? { ...row, uppercase: event.target.checked } : row))} /> Uppercase</label>
         <button type="button" style={quiet} onClick={() => setFieldMap((current) => current.filter((_, i) => i !== index))}>Remove</button>
       </div>)}</div>
-      {mode === "extraction" && <section style={{marginTop:16,padding:12,background:"#eff9f6",borderRadius:10}}><strong>Test extraction — customer PDF चुनें (Drive पर upload नहीं होगा)</strong><input aria-label="Test extraction PDF" type="file" accept="application/pdf" disabled={testing} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void testExtraction(file);}} />{testing&&<p>Reading…</p>}<dl>{Object.entries(testValues).map(([field,value])=><div key={field}><dt>{field}</dt><dd>{value}</dd></div>)}</dl>{testPhoto&&<img src={testPhoto} alt="Extracted customer photo preview" style={{maxWidth:160,maxHeight:200}} />}<p style={help}>Text वाले PDF से extraction होता है। Scanned PDF में readable text न हो तो manual entry करें। Test values जाँचकर ही Save करें।</p></section>}
-      {error && <p role="alert" style={{ color: "#a22" }}>{error}</p>}
+      {mode === "extraction" && <section style={{marginTop:16,padding:12,background:"var(--app-dark-surface, #eff9f6)",borderRadius:10}}><strong>Test extraction — customer PDF चुनें (Drive पर upload नहीं होगा)</strong><input aria-label="Test extraction PDF" type="file" accept="application/pdf" disabled={testing} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void testExtraction(file);}} />{testing&&<p>Reading…</p>}<dl>{Object.entries(testValues).map(([field,value])=><div key={field}><dt>{field}</dt><dd>{value}</dd></div>)}</dl>{testPhoto&&<img src={testPhoto} alt="Extracted customer photo preview" style={{maxWidth:160,maxHeight:200}} />}<p style={help}>Text वाले PDF से extraction होता है। Scanned PDF में readable text न हो तो manual entry करें। Test values जाँचकर ही Save करें।</p></section>}
+      {error && <p role="alert" style={{ color: "var(--app-dark-text, #a22)" }}>{error}</p>}
       <footer style={footer}><span style={help}>Map each PDF page separately (up to 10 pages).</span><button type="button" style={saveButton} disabled={saving || testing} onClick={() => void save()}>{saving ? "Saving…" : mode === "extraction" ? "Save reading sections" : "Save print layout"}</button></footer>
     </section>
   </div>;
 }
 
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, zIndex: 10000, padding: 20, background: "rgba(10,20,30,.72)", overflow: "auto" };
-const dialog: React.CSSProperties = { maxWidth: 1020, margin: "20px auto", padding: 20, borderRadius: 16, background: "white", color: "#17202a", boxShadow: "0 20px 80px rgba(0,0,0,.3)" };
+const dialog: React.CSSProperties = { maxWidth: 1020, margin: "20px auto", padding: 20, borderRadius: 16, background: "var(--app-dark-surface, white)", color: "var(--app-dark-text, #17202a)", boxShadow: "0 20px 80px rgba(0,0,0,.3)" };
 const header: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 20, alignItems: "start" };
 const toolbar: React.CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, margin: "16px 0" };
 const canvas: React.CSSProperties = { position: "relative", margin: "0 auto", backgroundSize: "100% 100%", backgroundRepeat: "no-repeat", border: "1px solid #ccd3dc", cursor: "crosshair", overflow: "hidden" };
-const placed: React.CSSProperties = { position: "absolute", transform: "translate(-2px,-2px)", minHeight: 0, padding: 0, border: "1px solid #0b7665", background: "rgba(255,255,255,.82)", color: "#053f36", textAlign: "left", cursor: "move", whiteSpace: "nowrap", overflow: "hidden" };
+const placed: React.CSSProperties = { position: "absolute", transform: "translate(-2px,-2px)", minHeight: 0, padding: 0, border: "1px solid #0b7665", background: "var(--app-dark-surface, rgba(255,255,255,.82))", color: "var(--app-dark-text, #053f36)", textAlign: "left", cursor: "move", whiteSpace: "nowrap", overflow: "hidden" };
 const mapList: React.CSSProperties = { display: "grid", gap: 8, marginTop: 16 };
 const mapRow: React.CSSProperties = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: 10, border: "1px solid #e4e8ee", borderRadius: 8 };
 const footer: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginTop: 18 };
-const help: React.CSSProperties = { color: "#5c687a", fontSize: 13 };
-const quiet: React.CSSProperties = { minHeight: 34, padding: "0 10px", border: "1px solid #c9d2df", borderRadius: 8, background: "white", color: "#17202a", cursor: "pointer" };
-const saveButton: React.CSSProperties = { minHeight: 42, padding: "0 16px", border: 0, borderRadius: 9, background: "#176b54", color: "white", fontWeight: 700, cursor: "pointer" };
+const help: React.CSSProperties = { color: "var(--app-dark-text, #5c687a)", fontSize: 13 };
+const quiet: React.CSSProperties = { minHeight: 34, padding: "0 10px", border: "1px solid #c9d2df", borderRadius: 8, background: "var(--app-dark-surface, white)", color: "var(--app-dark-text, #17202a)", cursor: "pointer" };
+const saveButton: React.CSSProperties = { minHeight: 42, padding: "0 16px", border: 0, borderRadius: 9, background: "#176b54", color: "var(--app-dark-text, white)", fontWeight: 700, cursor: "pointer" };
