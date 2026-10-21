@@ -13,3 +13,22 @@ test('declined approval sends no motion',async()=>{const f=fixture(good());await
 test('unknown identity stops before status',async()=>{const f=fixture([[0,0,0]]);await assert.rejects(run({...f,action:'eject'}),/identity/);assert.equal(f.sent.length,2);});
 test('invalid action or resolution sends nothing',async()=>{for(const args of [{action:'shell'},{action:'print',resolution:100}]){const f=fixture([]);await assert.rejects(run({...f,...args}));assert.equal(f.sent.length,0);}});
 test('synthetic proof uses reused raster protocol',()=>{assert.ok(proof(216).length>3);});
+test('direct USB print proof rejects stale and shifted frames before motion',async()=>{
+ for(const frames of [
+  [[27,114,80]],
+  [[],[],[27,47,55],[27,47,55]]
+ ]){
+  const f=fixture([]);f.io.capture=async()=>Buffer.from(frames.shift()||[]);
+  await assert.rejects(run({...f,action:'print',resolution:216}));
+  assert.equal(f.fenced,0);
+  assert.equal(f.approved,0);
+  assert.ok(!f.sent.some(b=>b[1]===76));
+ }
+});
+test('direct USB proof accepts exact frames but never claims physical print',async()=>{
+ const f=fixture([]),frames=[[],[],...good(),[27,114,80],[27,66,53,64,27,90]];
+ f.io.capture=async()=>Buffer.from(frames.shift()||[]);
+ const result=await run({...f,action:'print',resolution:216});
+ assert.equal(f.approved,1);assert.equal(f.fenced,1);assert.equal(result.physicalVerified,false);
+ assert.ok(f.sent.some(b=>b[1]===76));
+});

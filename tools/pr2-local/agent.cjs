@@ -26,13 +26,15 @@ async function main(){
  if(await prompt.question('Prior motion may have occurred. Inspect paper and remove pending jobs. Type INSPECTED to unlock: ')!=='INSPECTED')throw Error('Physical review required');
  fs.unlinkSync(marker);
  }
- const action=await prompt.question('Action (diagnose / feed / print / eject): ');
- if(action!=='diagnose')throw Error('Motion tests disabled pending diagnostic validation and separate approval');
+ const action=await prompt.question('Action (diagnose / print): ');
+ if(!['diagnose','print'].includes(action))throw Error('Only diagnostic or one synthetic print proof is available');
  const resolution=action==='print'?Number(await prompt.question('Printer configuration vertical resolution (216 or 240): ')):undefined;
  await io.open(devices[Number(index)],{});
  // Extra raw RX events from isolated helper include partial/timeout evidence.
  io.read=async n=>{const r=await io.rpc('read',{count:n},5000);const b=Buffer.from(r.data,'base64');log({direction:'RX-RAW',hex:b.toString('hex'),timedOut:!!r.timedOut,expected:n});if(r.timedOut||b.length!==n)throw Error('Incomplete response; inspect RX-RAW. No retry.');return b;};
- const result=action==='diagnose'?await require('./diagnostics.cjs').diagnose({io,log}):await run({io,action,resolution,log,approve:async a=>await prompt.question('Permission for ONE '+a+' action on disposable test paper? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase(),fence:async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'})});
+ const diagnostic=await require('./diagnostics.cjs').diagnose({io,log});
+ if(action==='print'&&(!diagnostic.diagnosticFramesMatched||!['aligned','inserted'].includes(diagnostic.paperState)))throw Error('Strict frame association and aligned synthetic paper are required before the print proof');
+ const result=action==='diagnose'?diagnostic:await run({io,action,resolution,log,approve:async a=>await prompt.question('Permission for ONE '+a+' action on disposable test paper? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase(),fence:async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'})});
  log({result});
  }catch(e){log({error:e.message,physicalVerified:false});process.exitCode=1;}
  finally{io?.close();prompt.close();fs.closeSync(fd);fs.unlinkSync(lock);console.log('Report: '+report+'\nShare this file privately in ChatGPT, never in a public GitHub issue. Physical success requires your confirmation.');}

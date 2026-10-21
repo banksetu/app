@@ -11,8 +11,11 @@ async function run({io,action,resolution,approve,log,fence}){
  if(!['diagnose','feed','print','eject'].includes(action))throw Error('Unsupported action');
  if(action==='print'&&![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
  const tx=async(label,b)=>{log({direction:'TX',label,hex:hex(b)});await io.write(b);};
- const query=async(label,b,n)=>{await tx(label,b);const r=await io.read(n);log({direction:'RX',label,hex:hex(r)});return r;};
+ const direct=typeof io.capture==='function';
+ const query=async(label,b,n)=>{await tx(label,b);const r=direct?await io.capture():await io.read(n);log({direction:'RX',label,hex:hex(r)});if(r.length!==n)throw Error('Incomplete or mixed PR2 response; no motion');return r;};
+ if(direct&&(await io.capture()).length)throw Error('Stale USB input; no motion');
  await tx('control-procedure',C.start);
+ if(direct&&(await io.capture()).length)throw Error('Unexpected response to PR2 initialization; no motion');
  const identity=await query('identity',C.identity,3);
  if(!identity.equals(Buffer.from([27,47,55])))throw Error('Unknown identity; stop without feed/print/eject');
  const s=await query('status',C.status,3);

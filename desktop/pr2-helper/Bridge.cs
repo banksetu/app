@@ -78,13 +78,41 @@ class Bridge {
     } else {
      handle=CreateFile(d.path,0xC0000000,0,IntPtr.Zero,3,0x40000000,IntPtr.Zero);
      if(handle.IsInvalid)throw new Exception("Printer access failed (Windows "+Marshal.GetLastWin32Error()+"). Close other printer applications; check USB/COM/LPT and the driver. No driver is replaced.");
-     stream=new FileStream(handle,FileAccess.ReadWrite,4096,true);
+     // Avoid managed read-ahead across PR2 command/response transactions.
+     stream=new FileStream(handle,FileAccess.ReadWrite,1,true);
     }
     return new {opened=true};
    }
    case "write": {
     if(stream==null)throw new Exception("Printer not connected.");string encoded=Text(x,"data");if(encoded.Length>500000)throw new Exception("Printer packet too large.");
     byte[] bytes=Convert.FromBase64String(encoded);stream.Write(bytes,0,bytes.Length);stream.Flush();return new {written=bytes.Length};
+   }
+   case "capture": {
+    if(stream==null||handle==null)throw new Exception("Direct USB printer is not connected.");
+    byte[] bytes=new byte[256];int total=0;bool quiet=false;int zeroReads=0;
+    var segments=new List<object>();var watch=System.Diagnostics.Stopwatch.StartNew();long lastByteAt=0;
+    while(total<bytes.Length && watch.ElapsedMilliseconds<1500){
+     int wait=total==0?1000-(int)watch.ElapsedMilliseconds:150-(int)(watch.ElapsedMilliseconds-lastByteAt);
+     wait=Math.Min(wait,1500-(int)watch.ElapsedMilliseconds);
+     if(wait<=0){quiet=true;break;}
+     var pending=stream.BeginRead(bytes,total,bytes.Length-total,null,null);
+     if(!pending.AsyncWaitHandle.WaitOne(wait)){
+      CancelIoEx(handle,IntPtr.Zero);int late=0;
+      try{late=stream.EndRead(pending);}catch(IOException){}
+      if(late>0){segments.Add(new {offset=total,count=late,elapsedMs=watch.ElapsedMilliseconds,cancelRace=true});total+=late;}
+      quiet=true;break;
+     }
+     int n=stream.EndRead(pending);
+     if(n==0){
+      // Observed PLQ-20 USB interface completes empty reads before a delayed reply.
+      // Bound the wait before issuing the next command; never infer readiness here.
+      zeroReads++;System.Threading.Thread.Sleep(Math.Min(25,Math.Max(1,wait)));
+      continue;
+     }
+     segments.Add(new {offset=total,count=n,elapsedMs=watch.ElapsedMilliseconds,cancelRace=false});total+=n;lastByteAt=watch.ElapsedMilliseconds;
+    }
+    if(watch.ElapsedMilliseconds>=1500)quiet=true;
+    return new {data=Convert.ToBase64String(bytes,0,total),segments=segments,zeroReads=zeroReads,quietTimeout=quiet,limitReached=total==bytes.Length};
    }
    case "read": {
     if(stream==null)throw new Exception("Printer not connected.");int count=Number(x,"count",0);if(count<1||count>4096)throw new Exception("Invalid response size.");

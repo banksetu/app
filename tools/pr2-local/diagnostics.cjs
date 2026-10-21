@@ -24,11 +24,11 @@ async function diagnose({io,log}){
  await tx('paper',C.paper);const p=await capture('paper');
  const clean=!before.bytes.length&&!control.bytes.length&&![before,control,id,st,p].some(x=>x.limited);
  const shifted=before.bytes.length>0||st.bytes.equals(identity)||(!id.bytes.length&&p.bytes.length>0);
- let statusValid=false,paperValid=false;
+ let statusValid=false,paperValid=false,paperState=null;
  try{status(st.bytes,{allowNoPaper:true});statusValid=true;}catch(e){log({stage:'status',error:e.message,received:hex(st.bytes),expected:'1b 72 xx',identityInsteadOfStatus:st.bytes.equals(identity)});}
- try{const state=paper(p.bytes);paperValid=true;log({paper:state});}catch(e){log({stage:'paper',error:e.message});}
+ try{paperState=paper(p.bytes);paperValid=true;log({paper:paperState});}catch(e){log({stage:'paper',error:e.message});}
  const matched=id.bytes.equals(identity)&&statusValid&&paperValid&&clean;
- const result={diagnosticFramesMatched:matched,physicalVerified:false,motionAuthorized:false,
+ const result={diagnosticFramesMatched:matched,paperState,physicalVerified:false,motionAuthorized:false,
   finding:shifted?'response association unresolved; a late or stale frame was observed; no readiness inferred':matched?'strict-frames-match; physical verification still required':'incomplete, unexpected, stale or mixed response; no readiness inferred'};
  log({result});return result;
 }
