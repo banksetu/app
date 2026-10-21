@@ -16,3 +16,9 @@ test('observed shifted frame sequence is never accepted as ready',async()=>{
  assert.ok(f.logs.some(e=>e.stage==='status'&&e.identityInsteadOfStatus));
  assert.deepEqual(f.writes,[[27,110],[27,90],[27,106],[27,32,66]]);
 });
+test('valid no-document frame is not print-ready',async()=>{
+ const f=fixture([[],[],[27,47,55],[27,114,50],[27,66,53,66,27,90]]);
+ const r=await diagnose(f);
+ assert.equal(r.diagnosticFramesMatched,true);
+ assert.equal(r.statusReady,false);
+});

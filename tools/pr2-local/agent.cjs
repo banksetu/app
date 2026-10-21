@@ -33,7 +33,7 @@ async function main(){
  // Extra raw RX events from isolated helper include partial/timeout evidence.
  io.read=async n=>{const r=await io.rpc('read',{count:n},5000);const b=Buffer.from(r.data,'base64');log({direction:'RX-RAW',hex:b.toString('hex'),timedOut:!!r.timedOut,expected:n});if(r.timedOut||b.length!==n)throw Error('Incomplete response; inspect RX-RAW. No retry.');return b;};
  const diagnostic=await require('./diagnostics.cjs').diagnose({io,log});
- if(action==='print'&&(!diagnostic.diagnosticFramesMatched||!['aligned','inserted'].includes(diagnostic.paperState)))throw Error('Strict frame association and aligned synthetic paper are required before the print proof');
+ if(action==='print'&&(!diagnostic.diagnosticFramesMatched||!diagnostic.statusReady||!['aligned','inserted'].includes(diagnostic.paperState)))throw Error('Strict ready status and aligned synthetic paper are required before the print proof');
  const result=action==='diagnose'?diagnostic:await run({io,action,resolution,log,approve:async a=>await prompt.question('Permission for ONE '+a+' action on disposable test paper? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase(),fence:async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'})});
  log({result});
  }catch(e){log({error:e.message,physicalVerified:false});process.exitCode=1;}

@@ -32,3 +32,8 @@ test('direct USB proof accepts exact frames but never claims physical print',asy
  assert.equal(f.approved,1);assert.equal(f.fenced,1);assert.equal(result.physicalVerified,false);
  assert.ok(f.sent.some(b=>b[1]===76));
 });
+test('no-document status cannot authorize a print even with aligned paper bytes',async()=>{
+ const f=fixture([[27,47,55],[27,114,50],[27,66,53,66,27,90]]);
+ await assert.rejects(run({...f,action:'print',resolution:240}),/did not report ready/);
+ assert.equal(f.approved,0);assert.equal(f.fenced,0);
+});

@@ -20,9 +20,10 @@ async function run({io,action,resolution,approve,log,fence}){
  if(!identity.equals(Buffer.from([27,47,55])))throw Error('Unknown identity; stop without feed/print/eject');
  const s=await query('status',C.status,3);
  // Preserve raw evidence before strict existing parser rejects it; never guess readiness.
- status(s,{allowNoPaper:true});
+ const initialStatus=status(s,{allowNoPaper:true});
  let p=paper(await query('paper',C.paper,6));log({paper:p});
  if(action==='diagnose')return {transportAcknowledged:true,physicalVerified:false};
+ if(action==='print'&&initialStatus.ready!==true)throw Error('Printer did not report ready; no print proof sent');
  if(['feed','print'].includes(action)&&!['aligned','inserted'].includes(p))throw Error('Insert disposable test passbook and rerun after inspecting it');
  if(!await approve(action))throw Error('Local approval declined');
  await fence(); // durable review marker BEFORE first motion byte; never auto replay
