@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.103",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.103/BankSetu-Setup-1.0.103-x64.exe",
+  "latestVersion": "1.0.104",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.104/BankSetu-Setup-1.0.104-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.103",
-  "releaseTag": "v1.0.103",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.103",
-  "releaseDate": "2026-10-20",
-  "windowsVersion": "1.0.103",
-  "androidBuild": 1000103,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.103/BankSetu-Setup-1.0.103-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.103/BankSetu-Android-1000103.apk",
+  "version": "1.0.104",
+  "releaseTag": "v1.0.104",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.104",
+  "releaseDate": "2026-10-21",
+  "windowsVersion": "1.0.104",
+  "androidBuild": 1000104,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.104/BankSetu-Setup-1.0.104-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.104/BankSetu-Android-1000104.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.103",
-      "releaseDate": "2026-10-20",
+      "version": "1.0.104",
+      "releaseDate": "2026-10-21",
       "categories": {
         "Improvements": [
-          "Release approved passbooks, mobile fixes, analytics, support media and sidebar scrolling."
+          "Release fullscreen, dark mode, support media controls and PR2 testing bridge."
         ]
       }
     },
     "android": {
-      "version": "1.0.103",
-      "releaseDate": "2026-10-20",
+      "version": "1.0.104",
+      "releaseDate": "2026-10-21",
       "categories": {
         "Improvements": [
-          "Release approved passbooks, mobile fixes, analytics, support media and sidebar scrolling."
+          "Release fullscreen, dark mode, support media controls and PR2 testing bridge."
         ]
       }
     }
