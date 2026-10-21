@@ -61,7 +61,8 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     notify('Feeding the passbook. Do not remove it.');
     await job.io.write(chunks[0]);check();
     const inserted=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
-    status(await exchange(job.io,C.status,3,device.transport==='usb-direct'),{allowNoPaper:true});
+    const feedStatus=status(await exchange(job.io,C.status,3,device.transport==='usb-direct'),{allowNoPaper:true});
+    if(feedStatus.ready!==true)throw Error('Printer is not ready after feed. Graphics were stopped.');
     if(inserted!=='inserted')throw Error('Paper feed not confirmed ('+inserted+'). Graphics were stopped.');
     notify('Printing the active passbook layout. Do not remove the passbook.');
     for(const chunk of chunks.slice(1)){check();await job.io.write(chunk);}

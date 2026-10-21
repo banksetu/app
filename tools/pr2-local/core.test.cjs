@@ -39,6 +39,11 @@ test('aligned paper after feed blocks all graphics and keeps raw response',async
  assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));
  assert.ok(f.events.some(e=>e.label==='after-feed-paper'&&e.direction==='RX'&&e.hex==='1b 42 35 42 1b 5a'));
 });
+test('no-document status after feed blocks graphics even with inserted paper',async()=>{
+ const f=fixture([...good(),[27,66,53,67,27,90],[27,114,50]]);
+ await assert.rejects(run({...f,action:'print',resolution:216}),/not ready after feed/);
+ assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));
+});
 test('no-document status cannot authorize a print even with aligned paper bytes',async()=>{
  const f=fixture([[27,47,55],[27,114,50],[27,66,53,66,27,90]]);
  await assert.rejects(run({...f,action:'print',resolution:240}),/did not report ready/);

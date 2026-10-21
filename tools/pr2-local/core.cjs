@@ -35,7 +35,8 @@ async function run({io,action,resolution,approve,log,fence}){
   // An aligned document is at the feeder, not at the print position. Never
   // stream image bytes until the printer reports that it actually inserted it.
   p=paper(await query('after-feed-paper',C.paper,6));log({paper:p});
-  status(await query('after-feed-status',C.status,3),{allowNoPaper:true});
+  const feedStatus=status(await query('after-feed-status',C.status,3),{allowNoPaper:true});
+  if(feedStatus.ready!==true)throw Error('Printer is not ready after feed; graphics stopped. No automatic retry.');
   if(p!=='inserted')throw Error('Feed was not confirmed (paper='+p+'); graphics stopped. No automatic retry.');
   for(const b of chunks.slice(1))await tx('synthetic-print',b);
  }
