@@ -9,7 +9,7 @@ async function main(){
  const output=path.join(process.env.LOCALAPPDATA,'BankSetu-PR2-LocalTest');fs.mkdirSync(output,{recursive:true});
  const lock=path.join(output,'agent.lock');const fd=fs.openSync(lock,'wx');
  const report=path.join(output,'diagnostic-'+new Date().toISOString().replace(/[:.]/g,'-')+'.jsonl');
- const log=e=>{const row={time:new Date().toISOString(),...e};fs.appendFileSync(report,JSON.stringify(row)+'\n');console.log(JSON.stringify(row));};
+ const log=e=>{const row={time:new Date().toISOString(),...e};fs.appendFileSync(report,JSON.stringify(row)+'\n');const shown=e.label==='synthetic-print'&&e.direction==='TX'?{...row,hex:'[saved in private local report]',bytes:e.hex.split(' ').length}:row;console.log(JSON.stringify(shown));};
  const prompt=readline.createInterface({input:process.stdin,output:process.stdout});let io;
  try{
  log({agent:'local-pr2-v1',source:fs.readFileSync(path.join(base,'SOURCE.txt'),'utf8').trim(),physicalVerified:false});

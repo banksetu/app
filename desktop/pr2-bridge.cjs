@@ -58,8 +58,13 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     // Persist intent BEFORE the first feeding/graphics byte; a crash never triggers automatic replay.
     saved.jobs[id]={scope:scopeHash,deviceId:device.id,state:'sending',time:now()};
     const ids=Object.keys(saved.jobs);for(const old of ids.slice(0,Math.max(0,ids.length-200)))delete saved.jobs[old];persist();transmitted=true;
+    notify('Feeding the passbook. Do not remove it.');
+    await job.io.write(chunks[0]);check();
+    const inserted=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
+    status(await exchange(job.io,C.status,3,device.transport==='usb-direct'),{allowNoPaper:true});
+    if(inserted!=='inserted')throw Error('Paper feed not confirmed ('+inserted+'). Graphics were stopped.');
     notify('Printing the active passbook layout. Do not remove the passbook.');
-    for(const chunk of chunks){check();await job.io.write(chunk);}
+    for(const chunk of chunks.slice(1)){check();await job.io.write(chunk);}
     check();status(await exchange(job.io,C.status,3,device.transport==='usb-direct'));await job.io.write(C.eject);
     check();status(await exchange(job.io,C.status,3,device.transport==='usb-direct'));const released=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
     if(!['absent','released'].includes(released))throw Error('Print data was transmitted, but paper release was not confirmed.');

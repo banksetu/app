@@ -29,7 +29,16 @@ async function run({io,action,resolution,approve,log,fence}){
  await fence(); // durable review marker BEFORE first motion byte; never auto replay
  if(action==='feed')await tx('feed',Buffer.from([27,76,48,48,48]));
  if(action==='eject')await tx('eject',C.eject);
- if(action==='print')for(const b of proof(resolution))await tx('synthetic-print',b);
+ if(action==='print'){
+  const chunks=proof(resolution);
+  await tx('print-feed',chunks[0]);
+  // An aligned document is at the feeder, not at the print position. Never
+  // stream image bytes until the printer reports that it actually inserted it.
+  p=paper(await query('after-feed-paper',C.paper,6));log({paper:p});
+  status(await query('after-feed-status',C.status,3),{allowNoPaper:true});
+  if(p!=='inserted')throw Error('Feed was not confirmed (paper='+p+'); graphics stopped. No automatic retry.');
+  for(const b of chunks.slice(1))await tx('synthetic-print',b);
+ }
  status(await query('post-status',C.status,3),{allowNoPaper:true});
  p=paper(await query('post-paper',C.paper,6));log({paper:p});
  return {transportAcknowledged:true,physicalVerified:false,requiresHumanConfirmation:true};
