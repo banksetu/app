@@ -12,7 +12,7 @@ async function run({io,action,resolution,approve,log,fence}){
  if(action==='print'&&![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
  const tx=async(label,b)=>{log({direction:'TX',label,hex:hex(b)});await io.write(b);};
  const direct=typeof io.capture==='function';
- const query=async(label,b,n)=>{await tx(label,b);const r=direct?await io.capture():await io.read(n);log({direction:'RX',label,hex:hex(r)});if(r.length!==n)throw Error('Incomplete or mixed PR2 response; no motion');return r;};
+ const query=async(label,b,n)=>{await tx(label,b);const r=direct?await io.capture():await io.read(n);log({direction:'RX',label,hex:hex(r)});if(r.length!==n)throw Error('Incomplete or mixed PR2 response; printer motion state uncertain');return r;};
  if(direct&&(await io.capture()).length)throw Error('Stale USB input; no motion');
  await tx('control-procedure',C.start);
  if(direct&&(await io.capture()).length)throw Error('Unexpected response to PR2 initialization; no motion');
