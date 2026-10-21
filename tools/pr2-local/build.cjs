@@ -22,11 +22,12 @@ source=source.replace(old,`bool timedOut=false;var watch=System.Diagnostics.Stop
 source=source.replace('new FileStream(handle,FileAccess.ReadWrite,4096,true)', 'new FileStream(handle,FileAccess.ReadWrite,1,true)');
 source=source.replace('case "read": {', `case "capture": {
     if(stream==null||handle==null)throw new Exception("USB not connected.");
-    byte[] bytes=new byte[256];int total=0;bool quiet=false;
-    var segments=new List<object>();var watch=System.Diagnostics.Stopwatch.StartNew();
+    byte[] bytes=new byte[256];int total=0;bool quiet=false;int zeroReads=0;
+    var segments=new List<object>();var watch=System.Diagnostics.Stopwatch.StartNew();long lastByteAt=0;
     while(total<bytes.Length && watch.ElapsedMilliseconds<1500){
-     int wait=total==0?1000:150;wait=Math.Min(wait,1500-(int)watch.ElapsedMilliseconds);
-     if(wait<=0)break;
+     int wait=(total==0?1000-(int)watch.ElapsedMilliseconds:150-(int)(watch.ElapsedMilliseconds-lastByteAt));
+     wait=Math.Min(wait,1500-(int)watch.ElapsedMilliseconds);
+     if(wait<=0){quiet=true;break;}
      var pending=stream.BeginRead(bytes,total,bytes.Length-total,null,null);
      if(!pending.AsyncWaitHandle.WaitOne(wait)){
       CancelIoEx(handle,IntPtr.Zero);int late=0;
@@ -34,10 +35,17 @@ source=source.replace('case "read": {', `case "capture": {
       if(late>0){segments.Add(new {offset=total,count=late,elapsedMs=watch.ElapsedMilliseconds,cancelRace=true});total+=late;}
       quiet=true;break;
      }
-     int n=stream.EndRead(pending);if(n==0)break;
-     segments.Add(new {offset=total,count=n,elapsedMs=watch.ElapsedMilliseconds,cancelRace=false});total+=n;
+     int n=stream.EndRead(pending);
+     if(n==0){
+      // Some USB printer interfaces complete an empty read immediately even
+      // while a response is still arriving. Do not send the next command yet.
+      zeroReads++;System.Threading.Thread.Sleep(Math.Min(25,Math.Max(1,wait)));
+      continue;
+     }
+     segments.Add(new {offset=total,count=n,elapsedMs=watch.ElapsedMilliseconds,cancelRace=false});total+=n;lastByteAt=watch.ElapsedMilliseconds;
     }
-    return new {data=Convert.ToBase64String(bytes,0,total),segments=segments,quietTimeout=quiet,limitReached=total==bytes.Length||watch.ElapsedMilliseconds>=1500};
+    if(watch.ElapsedMilliseconds>=1500)quiet=true;
+    return new {data=Convert.ToBase64String(bytes,0,total),segments=segments,zeroReads=zeroReads,quietTimeout=quiet,limitReached=total==bytes.Length};
    }
    case "read": {`);
 const cs=path.join(out,'LocalBridge.cs');fs.writeFileSync(cs,source);

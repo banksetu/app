@@ -7,3 +7,12 @@ test('clean identity/status/paper sequence only acknowledges strict frames',asyn
 test('stale pre-input fails association even if later status valid',async()=>{const f=fixture([[27,47,55],[],[27,47,55],[27,114,80],[27,66,53,64,27,90]]);assert.equal((await diagnose(f)).diagnosticFramesMatched,false);});
 test('mixed and partial frames never silently resynchronized',()=>{assert.equal(classify(Buffer.from([27,47,55,27,114,80])),'unexpected-or-mixed');assert.equal(classify(Buffer.from([27,114])),'unexpected-or-mixed');});
 test('unexpected status still collects diagnostic paper bytes without any motion',async()=>{const f=fixture([[],[],[27,47,55],[1],[2]]);assert.equal((await diagnose(f)).diagnosticFramesMatched,false);assert.equal(f.writes.length,4);});
+test('observed shifted frame sequence is never accepted as ready',async()=>{
+ const f=fixture([[27,114,80],[],[],[27,47,55],[27,114,80]]);
+ const r=await diagnose(f);
+ assert.equal(r.diagnosticFramesMatched,false);
+ assert.equal(r.motionAuthorized,false);
+ assert.match(r.finding,/response association unresolved/);
+ assert.ok(f.logs.some(e=>e.stage==='status'&&e.identityInsteadOfStatus));
+ assert.deepEqual(f.writes,[[27,110],[27,90],[27,106],[27,32,66]]);
+});
