@@ -37,7 +37,7 @@ try{
  await page.locator('.pb-word-artwork').waitFor();
  await page.screenshot({path:'test-evidence/word-passbook-app.png',fullPage:true});
  await page.locator('.pb-word-artwork').screenshot({path:'test-evidence/word-passbook-closeup.png',scale:'device'});
- assert.equal(await page.locator('[data-label="JOINT HOLDER"]').count(),0);
+ assert.equal(await page.locator('[data-label="JOINT HOLDER"]').count(),1);
  const shapes=await page.locator('.pb-word-artwork path').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.getAttribute('transform').split('scale(')[1]))]);
  assert.equal(shapes.length,1,'every glyph has identical font size and compression');
  const origins=await page.locator('[data-field] path:first-of-type').evaluateAll(nodes=>nodes.map(n=>({field:n.parentElement.dataset.field,transform:n.getAttribute('transform')})));

@@ -33,13 +33,12 @@ export function WordPassbookArtwork({values}:{values:ApprovedPassbookValues}) {
   const unit=WORD_FONT_SIZE_PT/WORD_FONT_UNITS;
   const text=(value:string,x:number,y:number)=>[...value].map((char,index)=>WORD_GLYPHS[char]
     ? <path key={index} d={WORD_GLYPHS[char]} transform={`translate(${x+index*WORD_ADVANCE_PT} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE} ${-unit})`} /> : null);
-  const joint=APPROVED_INFO_SLOTS.jointHolder;
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
     width="206mm" height="85mm" role="img" aria-label="Passbook customer information — Courier New 10 pt, 70%"
     style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible'}}>
     <title>Passbook information</title>
-    <g aria-label="Passbook labels">{labels.filter(label=>values.jointHolder || !(label.y===joint.y && label.x>230)).map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y)}</g>)}</g>
+    <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y)}</g>)}</g>
     {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>
       <title>{values[key]||''}</title>{text(values[key]||'',slot.x,slot.y)}
     </g>)}

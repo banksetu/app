@@ -29,7 +29,8 @@ test('Word uses Courier New 10pt / 70%, one advance and clean zero',()=>{
  const scales=[...html.matchAll(/scale\(([^)]+)\)/g)].map(m=>m[1]);assert.equal(new Set(scales).size,1);
  assert.match(html,/width="206mm" height="85mm"/);
  assert.match(html,/translate\(307.70001 360.20078\)/);
- assert(!html.includes('data-label="JOINT HOLDER"'));
+ assert(html.includes('data-label="JOINT HOLDER"'));
+ assert.match(html,/aria-label="jointHolder: "/);
  assert.deepEqual(word.wordPassbookProblems(values),[]);
  const long={...values,holder:'LONG NAME '.repeat(50)};
  assert(word.wordPassbookProblems(long).some(p=>p.startsWith('holder:')));assert.equal(long.holder.length,500);

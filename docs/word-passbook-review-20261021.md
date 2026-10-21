@@ -14,7 +14,7 @@ x/y/end coordinates remain derived from the original artwork. The 206 x 85 mm
 SVG viewBox and containing 206 mm paper geometry are unchanged. No automatic
 fit, truncation, per-character compression or field-specific spacing survives
 in this renderer. Unsupported characters and overlong values block printing
-and report their field. Empty joint holder suppresses its label only, without
+and report their field. Empty joint holder retains its label and colon, with a blank value, without
 moving any row. Existing data binding and temporary-edit rules are reused.
 
 Font outlines: Microsoft Courier New Regular, cour.ttf, from the original
@@ -39,3 +39,7 @@ Run scripts/word-passbook.browser.mjs to reproduce both screenshots.
 No physical printer testing or new physical alignment claim is made.
 
 No version bump, production merge, release or deployment is authorized here.
+
+22 October review: restored the JOINT HOLDER label for empty values. Further
+colon spacing changes await resolution of the requested 3 mm versus 3 px
+gaps and the common holder-colon/unequal-label-width constraint.
