@@ -17,7 +17,7 @@ test('status and paper framing reject unsupported responses and identify jam/off
  assert.equal(paper(Buffer.from([27,66,53,64,27,90])),'absent');assert.throws(()=>paper(Buffer.from([27,66,53,70,27,90])),/unavailable/);
 });
 test('graphics preserves NUL, doubles ESC and uses PR2 top-LSB column packing',()=>{
- const chunks=rasterJob(raster(),settings);assert.deepEqual(chunks[5],Buffer.from([27,27,0,0]));
+ const chunks=rasterJob(raster(),settings);assert.deepEqual(chunks[6],Buffer.from([27,27,0,0]));
  assert.ok(chunks[0].equals(Buffer.from([27,76,48,48,48])));assert.ok(chunks.at(-1).equals(C.end));
  assert.throws(()=>rasterJob({...raster(),bits:'AAAA'},settings),/length/);
  assert.throws(()=>rasterJob(raster(),{...settings,offsetX:-10}),/outside/);
@@ -65,4 +65,25 @@ test('platform gate precedes customer lookup and obsolete HTTP path is gone',()=
 test('native IPC rejects web/non-Windows before accessing helper',async()=>{
  const handlers={};require('./pr2-ipc.cjs').installPr2({app:{getPath:()=>os.tmpdir(),on(){}},ipcMain:{handle:(name,fn)=>handlers[name]=fn},BrowserWindow:null,trusted:()=>{},authorize:()=>{},getWindow:()=>null});
  if(process.platform!=='win32')assert.throws(()=>handlers['pr2:discover']({},scope),/only Windows EXE/);
+});
+function nativeFixture(t,respond=true){
+ const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-native-'));t.after(()=>fs.rmSync(directory,{force:true,recursive:true}));
+ const bytes=Buffer.from('synthetic executable');fs.writeFileSync(path.join(directory,'BankSetu.Pr2Bridge.exe'),bytes);fs.writeFileSync(path.join(directory,'manifest.json'),JSON.stringify({protocol:1,sha256:crypto.createHash('sha256').update(bytes).digest('hex')}));
+ const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();let killed=false;child.kill=()=>{killed=true;};const received=[];
+ child.stdin.on('data',data=>{const request=JSON.parse(data.toString());received.push(request);if(respond)queueMicrotask(()=>child.stdout.write(JSON.stringify({id:request.id,result:request.op==='hello'?{protocol:1}:{written:Buffer.from(request.data||'','base64').length}})+'\n'));});
+ const client=require('./pr2-native.cjs').nativeClient(directory,{spawnProcess:(_exe,_args,options)=>{assert.equal(options.shell,false);return child;}});t.after(()=>client.close());return {client,received,directory,killed:()=>killed};
+}
+test('native RPC preserves zero bytes and escapes without text conversion',async t=>{
+ const f=nativeFixture(t);await f.client.handshake();const bytes=Buffer.from([0,27,0,255,13,10,0]);await f.client.write(bytes);assert.deepEqual(Buffer.from(f.received[1].data,'base64'),bytes);
+});
+test('native timeout terminates helper and never retries the write',async t=>{
+ const f=nativeFixture(t,false);await assert.rejects(f.client.rpc('read',{count:3},5),/interrupted/);assert.equal(f.killed(),true);assert.equal(f.received.length,1);await assert.rejects(f.client.handshake(),/closed/);
+});
+test('damaged or mismatched bundled helper fails before process launch',t=>{
+ const f=nativeFixture(t);fs.writeFileSync(path.join(f.directory,'BankSetu.Pr2Bridge.exe'),'changed');assert.throws(()=>require('./pr2-native.cjs').nativeClient(f.directory,{spawnProcess:()=>assert.fail('must not spawn')}),/damaged/);
+});
+test('untrusted native caller rejected before authorization/helper',()=>{
+ const handlers={};require('./pr2-ipc.cjs').installPr2({app:{getPath:()=>os.tmpdir(),on(){}},ipcMain:{handle:(n,f)=>handlers[n]=f},trusted:()=>{throw Error('Untrusted application frame');},authorize:()=>assert.fail('must not authorize'),getWindow:()=>null});
+ assert.throws(()=>handlers['pr2:discover']({},scope),/Untrusted/);
 });

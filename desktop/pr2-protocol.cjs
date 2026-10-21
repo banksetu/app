@@ -32,7 +32,7 @@ function rasterJob(r,settings){
  if(xMm<0||yMm<1||right*25.4/180+settings.offsetX>profile.maxWidthMm||bottom*25.4/180+settings.offsetY>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
  const width=right-left+1;
  // ESC L 000 feeds an aligned document normally. No reset, clamp, mode switch or forced eject.
- const chunks=[esc('L000'),esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(Math.round(xMm*120/25.4),3)),esc('!G1'),esc('1C'+digits(width,4)+'000')];
+ const chunks=[esc('L000'),esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(Math.round(xMm*120/25.4),3)),Buffer.from([13]),esc('!G1'),esc('1C'+digits(width,4)+'000')];
  for(let y=top;y<=bottom;y+=24){
   const bytes=[];
   for(let x=left;x<=right;x++)for(let block=0;block<3;block++){

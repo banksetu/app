@@ -3,7 +3,8 @@ const {spawn}=require('node:child_process');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const VERSION=1;
 function nativeClient(directory,{spawnProcess=spawn}={}){
- const executable=path.join(directory,'BankSetu.Pr2Bridge.exe'),manifest=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json'),'utf8'));
+ const executable=path.join(directory,'BankSetu.Pr2Bridge.exe');let manifest;
+ try{manifest=JSON.parse(fs.readFileSync(path.join(directory,'manifest.json'),'utf8'));if(!fs.existsSync(executable))throw Error();}catch{throw Error('Printer Bridge is missing or damaged. Repair/reinstall the Bank Setu EXE.');}
  if(manifest.protocol!==VERSION||manifest.sha256!==crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'))throw Error('Printer Bridge is missing or damaged. Repair/reinstall the Bank Setu EXE.');
  const child=spawnProcess(executable,[],{windowsHide:true,stdio:['pipe','pipe','pipe'],shell:false});
  let seq=0,pending=null,buffer='',closed=false;

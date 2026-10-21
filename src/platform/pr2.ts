@@ -19,8 +19,9 @@ declare global {interface Window {bankSetuPr2?:{
 export const windowsPr2=()=>window.bankSetuPr2?.platform==='win32'&&window.bankSetuPr2.protocol===1;
 export function canvasRaster(canvas:HTMLCanvasElement):Pr2Raster{
  const {width,height}=canvas,context=canvas.getContext('2d');if(!context)throw Error('Passbook graphics rendering is unavailable.');
- const data=context.getImageData(0,0,width,height).data,stride=Math.ceil(width/8),bytes=new Uint8Array(stride*height);
- for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4,a=data[i+3]/255,grey=(data[i]*.2126+data[i+1]*.7152+data[i+2]*.0722)*a+255*(1-a);if(grey<160)bytes[y*stride+(x>>3)]|=128>>(x&7);}
+ const image=context.getImageData(0,0,width,height),data=image.data,stride=Math.ceil(width/8),bytes=new Uint8Array(stride*height);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4,a=data[i+3]/255,grey=(data[i]*.2126+data[i+1]*.7152+data[i+2]*.0722)*a+255*(1-a);if(grey<160)bytes[y*stride+(x>>3)]|=128>>(x&7);data[i]=data[i+1]=data[i+2]=grey<160?0:255;data[i+3]=255;}
+ context.putImageData(image,0,0);
  let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));
  return {width,height,dpi:180,bits:btoa(text)};
 }

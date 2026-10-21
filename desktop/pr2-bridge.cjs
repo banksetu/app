@@ -21,9 +21,9 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
  async function identify(io){await io.write(C.start);const id=await exchange(io,C.identity,3);if(!id.equals(Buffer.from([27,47,55])))throw Error('The selected device did not confirm PR2 emulation. No print data sent.');status(await exchange(io,C.status,3),{allowNoPaper:true});return paper(await exchange(io,C.paper,6));}
  return {
   async discover(scope){authorize(scope);const io=transport();try{await io.handshake();const found=await io.list();const preferences=saved.preferences[hash(scope)];return {...found,profiles:Object.values(PROFILES).map(({model,...p})=>p),preferences,devices:found.devices.map(d=>({...d,profile:Object.values(PROFILES).find(p=>p.model.test(d.name))?.id||null,requiresReview:!!saved.fences[d.id]}))};}finally{io.close();}},
-  async probe(scope,device,settings){settings=settingsFor(scope,device,settings);if(active.has(device.id))throw Error('Printer is busy.');active.set(device.id,{scope,probing:true});let io;try{io=await connection(device,settings);active.get(device.id).io=io;return {pr2:true,paper:await identify(io),hardwareVerified:false};}finally{io?.close();active.delete(device.id);}},
+  async probe(scope,device,settings){settings=settingsFor(scope,device,settings);if(active.has(device.id))throw Error('Printer is busy.');active.set(device.id,{scope,probing:true});let io;try{io=await connection(device,settings);active.get(device.id).io=io;if(active.get(device.id).cancelled)throw Error('Printer check cancelled.');return {pr2:true,paper:await identify(io),hardwareVerified:false};}finally{io?.close();active.delete(device.id);}},
   acknowledge(scope,deviceId){authorize(scope);if(active.has(deviceId))throw Error('Wait for the active printer job.');delete saved.fences[deviceId];persist();},
-  cancel(scope,id){authorize(scope);for(const value of active.values())if(value.scope===scope&&value.id===id){value.cancelled=true;value.io?.close();return true;}return false;},
+  cancel(scope,id){authorize(scope);for(const value of active.values())if(value.scope===scope&&(value.id===id||value.probing)){value.cancelled=true;value.io?.close();return true;}return false;},
   close(){for(const value of active.values()){value.cancelled=true;value.io?.close();}},
   async print({scope,id,device,settings,raster,test=false}){
    settings=settingsFor(scope,device,settings);
@@ -51,7 +51,7 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     check();status(await exchange(job.io,C.status,3));await job.io.write(C.eject);
     check();status(await exchange(job.io,C.status,3));const released=paper(await exchange(job.io,C.paper,6));
     if(!['absent','released'].includes(released))throw Error('Print data was transmitted, but paper release was not confirmed.');
-    saved.jobs[id].state='completed';saved.preferences[scopeHash]={deviceId:device.id,...settings};persist();
+    check();saved.jobs[id].state='completed';saved.preferences[scopeHash]={deviceId:device.id,...settings};persist();
     return {state:'completed',completed:true,message:'PR2 device acknowledged processing and paper release. Inspect the physical print alignment.'};
    }catch(error){
     if(transmitted){saved.jobs[id].state='uncertain';saved.fences[device.id]=true;persist();return {state:'uncertain',completed:false,message:'Printing may have started. '+error.message+' No automatic resend. Inspect the passbook before retrying.'};}

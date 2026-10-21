@@ -19,6 +19,11 @@ jobs:
       - run: npm ci
       - run: node --test desktop/pr2.test.cjs desktop/license-guard.test.cjs desktop/print-preview.test.cjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs
       - run: npm run build
+      - run: npx playwright install chromium
+      - name: Existing bank templates and Windows-only button integration
+        run: node scripts/approved-passbook.browser.mjs && node scripts/pr2-ui.browser.mjs
+      - name: Windows secure IPC and packaged bank-template snapshot
+        run: npx electron desktop/pr2-snapshot-smoke.cjs
       - name: Build existing NSIS installer with bundled native Bridge
         run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=false
         env:

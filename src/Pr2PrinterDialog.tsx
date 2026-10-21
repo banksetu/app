@@ -41,7 +41,7 @@ export default function Pr2PrinterDialog({bankName,onClose,onComplete}:{bankName
   <button disabled={busy||done||!device||!settings.confirmMode||!settings.confirmModel} onClick={()=>void probe()}>Check printer</button>
   <button disabled={busy||done||!checked||!raster||device?.requiresReview} onClick={()=>void send(true)}>Print calibration test</button>
   <button disabled={busy||done||!checked||!raster||!settings.acceptRaster||device?.requiresReview} onClick={()=>void send(false)}>Send this passbook</button>
-  {busy&&<button onClick={()=>{void api.cancel({scope,id:job.current});setMessage('Cancellation requested. If printing started, inspect the passbook before retrying.');}}>Cancel job</button>}
+  {busy&&<button onClick={()=>{if(!running.current){onClose();return;}void api.cancel({scope,id:job.current}).catch(e=>setMessage((e as Error).message));setMessage('Cancellation requested. If printing started, inspect the passbook before retrying.');}}>Cancel job</button>}
   <button disabled={busy} onClick={onClose}>{done?'Close · review before next print':'Close'}</button></div>
  </section></div>;
 }
