@@ -1,6 +1,8 @@
+import { localDataFetch, getDataIdToken, getLocalSnapshot, localModeEnabled } from "./core/localData";
 import { useEffect, useState } from "react";
 import { getAuth } from "firebase/auth";
 import type { CSSProperties } from "react";
+import { getTenantApiUrl } from "./tenantApi";
 
 type ActivityItem = {
   id: string;
@@ -11,6 +13,7 @@ type ActivityItem = {
   customerId?: string;
   details: string;
   user?: string;
+  email?: string;
 };
 
 export default function Reports() {
@@ -21,89 +24,86 @@ export default function Reports() {
   const loadActivities = async () => {
     setLoading(true);
     setError("");
-
+    const user = getAuth().currentUser;
+    const uid = user?.uid;
+    const tenant = sessionStorage.getItem("bankSetuTenantId");
+    const connection = sessionStorage.getItem("bankSetuConnectionId");
+    const sameWorkspace = () => getAuth().currentUser?.uid === uid &&
+      sessionStorage.getItem("bankSetuTenantId") === tenant &&
+      sessionStorage.getItem("bankSetuConnectionId") === connection;
+    const entry = (customer: Record<string, unknown>, id: string, action: string, date: unknown): ActivityItem => ({
+      id, dateTime: String(date || ""), activity: action,
+      customerName: String(customer.name || ""), accountNo: String(customer.accountNo || ""),
+      customerId: String(customer.enrolId || ""), details: action === "Customer Deleted" ? "Deleted" : "Customer record",
+      user: String(customer.updatedBy || ""), email: "",
+    });
+    const recent = (items: ActivityItem[]) => [...new Map(items.map(item => [item.id,item] as const)).values()]
+      .sort((a,b) => (Date.parse(b.dateTime)||0)-(Date.parse(a.dateTime)||0)).slice(0,10);
+    let local: ActivityItem[] = [];
     try {
-      const apiUrl =
-        localStorage.getItem("bankSetuApiUrl")?.trim() || "";
-
-      if (!apiUrl) {
-        throw new Error("Google Sheet API URL is not configured.");
+      if (!user) throw new Error("An active customer workspace is required.");
+      if (localModeEnabled()) {
+        const snapshot = await getLocalSnapshot();
+        local = recent([
+          ...snapshot.records.filter(record => !record.deleted).map(record => {
+            const customer = record.customer as Record<string, unknown>;
+            return entry(customer, `customer:${record.recordId}`, "Customer Saved", customer.updatedAt || customer.createdAt || record.cachedAt);
+          }),
+          ...snapshot.operations.map(operation => {
+            const customer = snapshot.records.find(record => record.recordId === operation.recordId)?.customer || operation.customer;
+            const name = operation.action === "deleteCustomer" ? "Customer Delete Pending" : operation.action === "markPassbookPrinted" ? "Passbook Print Pending" : operation.action === "updateCustomer" ? "Customer Update Pending" : "Customer Sync Pending";
+            return {...entry(customer, `operation:${operation.operationId}`, name, operation.createdAt),details:"Google sync pending"};
+          }),
+        ]);
+        if (sameWorkspace()) setActivities(local);
       }
-
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (!user) {
-        throw new Error(
-          "Firebase login session is not available. Please login again."
-        );
-      }
-
-      const idToken = await user.getIdToken();
-
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-        },
-        body: JSON.stringify({
-          action: "getRecentActivities",
-          idToken,
-          limit: 10,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!result?.success) {
-        if (result?.code === "INVALID_ACTION") {
-          throw new Error(
-            "Recent Activity API is not available. Please deploy the latest Bank Setu Apps Script version."
-          );
+      if (!navigator.onLine) return;
+      const apiUrl = getTenantApiUrl();
+      if (!apiUrl) throw new Error("Customer workspace is unavailable.");
+      const idToken = await getDataIdToken();
+      const request = async (body: Record<string, unknown>) => {
+        const response = await localDataFetch(apiUrl, {method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+          body:JSON.stringify({...body,idToken})});
+        if (!response.ok) throw new Error("Customer workspace is unavailable.");
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message || "Recent activity unavailable.");
+        return result;
+      };
+      const [audit, first] = await Promise.allSettled([
+        request({action:"getRecentActivities",limit:10}),
+        request({action:"getAllCustomers",page:1,pageSize:1}),
+      ]);
+      const cloud: ActivityItem[] = [];
+      if (audit.status === "fulfilled") {
+        const rows = audit.value.activities || audit.value.recentActivities || [];
+        for (const [index,item] of (Array.isArray(rows)?rows:[]).entries()) {
+          const row=item as Record<string, unknown>;
+          cloud.push({id:String(row.id || `audit:${index}`),dateTime:String(row.dateTime||""),activity:String(row.activity||row.action||""),
+            customerName:String(row.customerName||""),accountNo:String(row.accountNo||""),customerId:String(row.customerId||row.cif||""),
+            details:String(row.details||""),user:String(row.user||row.actorName||""),email:String(row.email||"")});
         }
-
-        throw new Error(
-          result?.message || "Recent activities could not be loaded."
-        );
       }
-
-      const rows = Array.isArray(result.activities)
-        ? result.activities
-        : Array.isArray(result.recentActivities)
-          ? result.recentActivities
-          : [];
-
-      setActivities(
-        rows.slice(0, 10).map((item: any, index: number) => ({
-          id: String(item?.id || `${Date.now()}-${index}`),
-          dateTime: String(item?.dateTime || ""),
-          activity: String(item?.activity || item?.action || item?.type || ""),
-          customerName: String(item?.customerName || ""),
-          accountNo: String(item?.accountNo || ""),
-          customerId: String(item?.customerId || item?.cif || ""),
-          details: String(item?.details || ""),
-          user: String(item?.user || item?.email || ""),
-        }))
-      );
+      if (first.status === "fulfilled") {
+        const total=Number(first.value.totalRows || first.value.customers?.length || 0);
+        const page=Math.max(1,Math.ceil(total/100));
+        const customers=total>0 ? (await request({action:"getAllCustomers",page,pageSize:100})).customers || [] : [];
+        for (const customer of customers as Record<string, unknown>[])
+          cloud.push(entry(customer,`customer:${customer.recordId||customer.rowNumber}`,"Customer Saved",customer.updatedAt || customer.createdAt));
+      }
+      if (sameWorkspace()) setActivities(recent([...local,...cloud]));
+      if (audit.status === "rejected" && first.status === "rejected") throw first.reason;
     } catch (err) {
-      console.error("Recent activity load failed:", err);
-      setActivities([]);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Recent activities could not be loaded."
-      );
-    } finally {
-      setLoading(false);
-    }
+      if (sameWorkspace()) setError(err instanceof Error ? err.message : "Recent activities could not be loaded.");
+    } finally { if (sameWorkspace()) setLoading(false); }
   };
 
   useEffect(() => {
-    void loadActivities();
+    const timer = window.setTimeout(() => void loadActivities(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
-    <section style={styles.page}>
+    <section className="reports-page" style={styles.page}>
       <div style={styles.header}>
         <div>
           <p style={styles.eyebrow}>REPORTS</p>
@@ -130,8 +130,8 @@ export default function Reports() {
         </div>
       </div>
 
-      <div style={styles.panel}>
-        <div style={styles.panelHeader}>
+      <div className="reports-panel" style={styles.panel}>
+        <div className="reports-panel-header" style={styles.panelHeader}>
           <div>
             <h2 style={styles.panelTitle}>Activity History</h2>
             <p style={styles.panelText}>
@@ -142,7 +142,8 @@ export default function Reports() {
           <span style={styles.liveBadge}>● LIVE</span>
         </div>
 
-        {loading ? (
+        {error && activities.length > 0 && <p role="alert" style={styles.errorText}>{error}</p>}
+        {loading && !activities.length ? (
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>⏳</div>
             <h3 style={styles.emptyTitle}>Loading Activities...</h3>
@@ -150,7 +151,7 @@ export default function Reports() {
               Fetching the latest activity from Bank Setu.
             </p>
           </div>
-        ) : error ? (
+        ) : error && !activities.length ? (
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>⚠️</div>
             <h3 style={styles.emptyTitle}>Activity Could Not Be Loaded</h3>
@@ -183,7 +184,7 @@ export default function Reports() {
                       <th style={styles.th}>ACTIVITY</th>
                       <th style={styles.th}>CUSTOMER</th>
                       <th style={styles.th}>ACCOUNT / CIF</th>
-                      <th style={styles.th}>DETAILS</th>
+                      <th style={styles.th}>CHANGE / ACTION DETAILS</th>
                       <th style={styles.th}>USER</th>
                     </tr>
                   </thead>
@@ -213,7 +214,12 @@ export default function Reports() {
                         </td>
 
                         <td style={styles.td}>{item.details || "—"}</td>
-                        <td style={styles.td}>{item.user || "—"}</td>
+                        <td style={styles.td}>
+                          <div>{item.user || item.email || "—"}</div>
+                          {item.email && item.email !== item.user ? (
+                            <div style={styles.subValue}>{item.email}</div>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -247,7 +253,7 @@ export default function Reports() {
                     value={item.customerId || "—"}
                   />
                   <MobileRow
-                    label="Details"
+                    label="Change / Action Details"
                     value={item.details || "—"}
                   />
                   <MobileRow

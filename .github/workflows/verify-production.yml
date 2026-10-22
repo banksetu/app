@@ -1,0 +1,83 @@
+name: Verify Bank Setu production services
+
+on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/**
+      - cloudflare/**
+      - apps-script/Code.gs
+      - .github/workflows/verify-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout source history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the pushed Hosting deployment commit
+        run: |
+          echo "FRONTEND_COMMIT=$(git log --first-parent -1 --format=%H -- src cloudflare apps-script/Code.gs)" >> "$GITHUB_ENV"
+
+      - name: Check live Hosting commit, Worker health, and Apps Script isolation version
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const backendCommit=execFileSync('git',['log','--first-parent','-1','--format=%H','--','cloudflare','firestore.rules','.github/workflows/deploy-cloudflare.yml'],{encoding:'utf8'}).trim();
+          const includesCommit=(source,commit)=>{
+            if(!/^[a-f0-9]{40}$/.test(commit))return false;
+            try{execFileSync('git',['fetch','origin',commit],{stdio:'ignore'});execFileSync('git',['merge-base','--is-ancestor',source,commit],{stdio:'ignore'});return true;}catch{return false;}
+          };
+          const includesSource=commit=>includesCommit(process.env.FRONTEND_COMMIT,commit);
+
+          async function getJson(label, url) {
+            const response = await fetch(url, { redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(30000) });
+            if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
+            return response.json();
+          }
+
+          let hosting;
+          let hostingCommit = '';
+          for (let attempt = 1; attempt <= 180; attempt++) {
+            try {
+              hosting = await getJson('Firebase Hosting', `https://banksetu-app.web.app/deployment.json?revision=${process.env.FRONTEND_COMMIT}&attempt=${attempt}`);
+              hostingCommit = String(hosting.commit || '');
+              if (hostingCommit === process.env.FRONTEND_COMMIT || includesSource(hostingCommit)) break;
+            } catch (error) {
+              if (attempt === 180) throw error;
+            }
+            if (attempt < 180) await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+          assert.ok(includesSource(hostingCommit), `Live Hosting serves ${hostingCommit || 'unknown'}, which does not contain source ${process.env.FRONTEND_COMMIT}`);
+
+          const worker = await getJson('Cloudflare Worker', 'https://banksetu-client-api.banksetu2026.workers.dev/health');
+          assert.equal(worker.success, true);
+          assert.equal(worker.protected, true);
+          assert.equal(worker.licenseEnforcementVersion,2);
+          assert.ok(includesCommit(backendCommit,String(worker.commit||'')), `Worker commit ${worker.commit||'unknown'} does not contain backend source ${backendCommit}`);
+
+          const script = await getJson('Apps Script', 'https://script.google.com/macros/s/AKfycbxq3oN4nwfOQfiPs3NgaeBzxoWU2-JPFSZ4o-J5WLZrCF7wyflJwdPjyJ_QjFRHFBIT/exec?action=status');
+          assert.equal(script.success, true);
+          assert.equal(script.tenantIsolationVersion, 'v2', 'Apps Script is not deployed with tenant isolation v2');
+
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## Production smoke checks passed',
+            `Verified published commit: ${hostingCommit} (contains source ${process.env.FRONTEND_COMMIT})`,
+            'Firebase Hosting: live commit verified',
+            'Cloudflare Worker: health endpoint verified',
+            'Apps Script: tenant isolation v2 verified',
+            '',
+          ].join('\n'));
+          NODE

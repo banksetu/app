@@ -1,0 +1,86 @@
+import type { Customer } from "./schema";
+
+// The remote URL identifies the active photo. A different URL must not inherit
+// an earlier image or pending upload from this device.
+export function mergeRemotePhoto(customer: Customer, previous?: Customer): Customer {
+  const samePhoto = previous?.photoUrl === customer.photoUrl && previous?.enrolId === customer.enrolId && (!customer.photoVersion || previous?.photoVersion === customer.photoVersion);
+  return {
+    ...customer,
+    photoVersion: customer.photoVersion || (samePhoto ? previous?.photoVersion : undefined),
+    photoRemoved: customer.photoRemoved ?? (samePhoto ? previous?.photoRemoved : undefined),
+    photoDataUrl: samePhoto ? previous?.photoDataUrl || customer.photoDataUrl : customer.photoDataUrl,
+    photoPreview: customer.photoPreview || (samePhoto ? previous?.photoPreview : "") || "",
+  };
+}
+
+export function mergeUploadedPhoto(customer: Customer, local: Customer, uploaded: Customer): Customer {
+  return {
+    ...customer,
+    photoRemoved: customer.photoRemoved ?? local.photoRemoved,
+    photoContentHash: customer.photoContentHash || uploaded.photoContentHash || local.photoContentHash,
+    photoDataUrl: undefined,
+    photoPreview: uploaded.photoDataUrl || ((local.photoUrl === customer.photoUrl || (customer.photoContentHash && customer.photoContentHash===local.photoContentHash)) ? local.photoPreview : undefined) || customer.photoPreview || "",
+  };
+}
+
+export type PhotoIndexEntry = {fileId:string;customerId:string;url:string;version:string;hash?:string;revision:number;deleted:boolean};
+export type PhotoIndex = {indexId?:string;revision:number;complete:boolean;checkedAt:number;entries:PhotoIndexEntry[]};
+export function drivePhotoId(value:unknown):string {
+  const url=String(value||'');return url.match(/\/d\/([\w-]+)/)?.[1]||url.match(/[?&]id=([\w-]+)/)?.[1]||url;
+}
+export function applyPhotoIndex(state:import('./schema').LocalState):void {
+  const index=state.photoIndex;if(!index)return;
+  const byId=new Map(index.entries.map(entry=>[entry.fileId,entry]));
+  const byCustomer=new Map<string,PhotoIndexEntry>();
+  const ambiguous=new Set<string>();
+  for(const entry of index.entries)if(!entry.deleted&&entry.customerId){
+    if(byCustomer.has(entry.customerId))ambiguous.add(entry.customerId);
+    else byCustomer.set(entry.customerId,entry);
+  }
+  // Filename discovery is safe only when the ID names exactly one local
+  // customer too. Legacy sheets can contain duplicate or normalized IDs.
+  const customerNames=new Set<string>();
+  for(const record of state.records){
+    if(record.deleted)continue;
+    const name=String(record.customer.enrolId||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100);
+    if(!name)continue;
+    if(customerNames.has(name))ambiguous.add(name);
+    else customerNames.add(name);
+  }
+  for(const record of state.records){
+    if(record.deleted||record.pending)continue;
+    const customer=record.customer;
+    if(customer.photoRemoved===true){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;customer.photoAvailable=false;customer.photoState='NO_PHOTO';customer.photoIndexWaiting=false;continue;}
+    const name=String(customer.enrolId||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,100);
+    const id=drivePhotoId(customer.photoUrl),entry=id?byId.get(id):customer.photoRemoved||ambiguous.has(name)?undefined:byCustomer.get(name);
+    if(!id&&ambiguous.has(name)){customer.photoState='AMBIGUOUS';customer.photoIndexWaiting=false;continue;}
+    if(entry&&!entry.deleted){
+      if(customer.photoVersion!==entry.version||drivePhotoId(customer.photoUrl)!==entry.fileId){
+        // A legacy preview needs one bounded, persisted checksum comparison.
+        // Never trust a same URL alone when the content may have been replaced.
+        const legacy=customer.photoVersion===undefined&&drivePhotoId(customer.photoUrl)===entry.fileId&&!!customer.photoPreview;
+        if(legacy&&entry.hash&&!customer.photoContentHash){customer.photoNeedsBaselineHash=true;customer.photoState='INDEXING';continue;}
+        const baseline=legacy&&!!entry.hash&&customer.photoContentHash===entry.hash;
+        if(!baseline){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;}
+        customer.photoNeedsBaselineHash=false;
+        customer.photoUrl=entry.url;customer.photoVersion=entry.version;
+        record.photoMissingRef=undefined;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoLastError=undefined;record.photoCheckedAt=undefined;
+      }
+      customer.photoIndexWaiting=false;customer.photoAvailable=true;customer.photoState=customer.photoPreview?'SYNCED':'PENDING_DOWNLOAD';
+    }else if(index.complete){
+      // Absence is proven only by a completed baseline/change checkpoint.
+      if(!id||entry?.deleted||(!!id&&!entry&&!customer.photoPreview&&!customer.photoDataUrl)){
+        if(entry?.deleted){customer.photoPreviousPreview ||= customer.photoPreview;customer.photoPreview='';customer.photoDataUrl=undefined;}
+        // Keep the Sheet URL and its version intact. A later Drive index entry
+        // reactivates this photo without losing any customer or local image.
+        customer.photoAvailable=false;customer.photoState='NO_PHOTO';customer.photoIndexWaiting=false;record.photoMissingRef=`${customer.enrolId||''}|${customer.photoUrl||''}|${customer.photoVersion||''}`;record.photoRetryAt=undefined;record.photoFailures=undefined;record.photoLastError=undefined;
+      }
+    }
+  }
+}
+
+export async function photoBytesHash(dataUrl:string):Promise<string> {
+ const encoded=dataUrl.split(',')[1]||'';
+ const bytes=Uint8Array.from(atob(encoded),char=>char.charCodeAt(0));
+ return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(value=>value.toString(16).padStart(2,'0')).join('');
+}

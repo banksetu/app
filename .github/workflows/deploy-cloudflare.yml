@@ -1,6 +1,20 @@
 name: Deploy Bank Setu Cloudflare Worker
 
 on:
+  push:
+    branches:
+      - codex/spark-client-workspace-20261001
+    paths:
+      - src/core/afsmPdf.ts
+      - src/core/localData.ts
+      - apps-script/Code.gs
+      - src/core/photoState.ts
+      - scripts/generate-sw.mjs
+      - cloudflare/**
+      - firestore.rules
+      - scripts/enforce-client-licenses*
+      - scripts/verify-backend-release-gate.mjs
+      - .github/workflows/deploy-cloudflare.yml
   workflow_dispatch:
 
 permissions:
@@ -11,33 +25,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rules:
-    if: github.event_name == 'workflow_dispatch'
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
+  preflight:
+    if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: codex/spark-client-workspace-20261001
-          persist-credentials: false
-      - name: Pin production source commit
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '22'
+          node-version: '24'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Verify tenant licensing rules before deployment
+        run: npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project synthetic-banksetu-license 'node scripts/license-settings-rules.test.mjs && node scripts/support-rules.test.mjs'
+      - name: Critical licensing and data-preservation tests
+        run: npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && node --test scripts/enforce-client-licenses.test.mjs && npm run check:schema && npm run build
       - name: Prepare Firebase credential
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
         run: node scripts/firebase-credential.mjs
-      - name: Deploy additive Firestore license-read rule
-        run: npx --yes firebase-tools@15.31.0 deploy --config firebase.json --only firestore:rules --project banksetu-69e2f --non-interactive
-
   deploy:
-    needs: rules
-    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: write
+    needs: preflight
+    if: github.ref == 'refs/heads/codex/spark-client-workspace-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,21 +60,25 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-          ref: ${{ needs.rules.outputs.source_sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Test Worker request checks
         run: npm run test:worker
 
+      - name: Prepare Firebase credential before any production change
+        env:
+          FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+        run: node scripts/firebase-credential.mjs
+
       - name: Check deployment credential is configured
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSTILE_SITE_KEY || secrets.LICENSE_TURNSILE_SITE_KEY }}
-          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSTILE_SECRET || secrets.LICENSE_TURNSILE_SECRET }}
+          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSILE_SITE_KEY }}
+          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSILE_SECRET }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo '::error::Add the repository Actions secret CLOUDFLARE_API_TOKEN, then re-run this failed job.'
@@ -71,30 +90,30 @@ jobs:
             exit 1
           fi
 
+      - name: Set private Turnstile credentials on Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c67c1c38d8481b01e9b9fbca5cb0f9b5
+          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSILE_SITE_KEY }}
+          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSILE_SECRET }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$LICENSE_TURNSTILE_SITE_KEY" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SITE_KEY --config cloudflare/wrangler.toml
+          printf '%s' "$LICENSE_TURNSTILE_SECRET" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SECRET --config cloudflare/wrangler.toml
+
+      # `secret put` publishes a new Worker version without the command-line
+      # RELEASE_COMMIT override. Deploy last so health identifies live code.
       - name: Deploy banksetu-client-api
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: c67c1c38d8481b01e9b9fbca5cb0f9b5
           wranglerVersion: '4.146.0'
-          command: deploy --config cloudflare/wrangler.toml
+          command: deploy --config cloudflare/wrangler.toml --var RELEASE_COMMIT:${{ github.sha }}
         env:
           WRANGLER_SEND_METRICS: 'false'
 
-      - name: Set private Turnstile credentials on Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: c67c1c38d8481b01e9b9fbca5cb0f9b5
-          LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSTILE_SITE_KEY || secrets.LICENSE_TURNSILE_SITE_KEY }}
-          LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSTILE_SECRET || secrets.LICENSE_TURNSILE_SECRET }}
-        run: |
-          set -euo pipefail
-          printf '%s' "$LICENSE_TURNSTILE_SITE_KEY" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SITE_KEY --config cloudflare/wrangler.toml
-          printf '%s' "$LICENSE_TURNSTILE_SECRET" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SECRET --config cloudflare/wrangler.toml
-
       - name: Check live Worker health
-        env:
-          SOURCE_SHA: ${{ needs.rules.outputs.source_sha }}
         run: |
           curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 15 \
             https://banksetu-client-api.banksetu2026.workers.dev/health \
@@ -105,13 +124,15 @@ jobs:
           const health = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/banksetu-worker-health.json`, 'utf8'));
           assert.equal(health.success, true);
           assert.equal(health.protected, true);
+          assert.equal(health.licenseEnforcementVersion, 2);
+          assert.equal(health.commit, process.env.GITHUB_SHA);
           assert.equal(health.message, 'Bank Setu API is running');
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
             '## Cloudflare Worker deployment succeeded',
-            `Source commit: ${process.env.SOURCE_SHA}`,
+            `Commit: ${process.env.GITHUB_SHA}`,
             'Worker: https://banksetu-client-api.banksetu2026.workers.dev',
             'Public health check passed. Authenticated account and tenant-isolation checks are still required.',
-            'This workflow deploys the Worker only. Firebase Hosting, Firestore rules and Apps Script are separate deployments.',
+            'Firebase Hosting and Apps Script are separate deployments.',
             '',
           ].join('\n'));
           NODE
@@ -137,3 +158,16 @@ jobs:
           assert.ok(publicState.turnstileSiteKey && publicState.turnstileSiteKey.length>10);
           assert.ok(publicState.pricing && typeof publicState.pricing==='object');
           NODE
+
+      - name: Deploy validated Firestore rules after the compatible Worker
+        run: npx --yes firebase-tools@15.31.0 deploy --config firebase.json --only firestore:rules --project banksetu-69e2f --non-interactive
+
+      - name: Enforce license metadata for older client apps and verify deployed tenant bridges
+        run: node scripts/enforce-client-licenses.mjs
+
+      - name: Start the verified app release when explicitly requested by this commit
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[release-apps]')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run publish-app-release.yml --repo "$GITHUB_REPOSITORY" --ref codex/spark-client-workspace-20261001

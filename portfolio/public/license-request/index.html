@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contact Master Admin | Bank Setu</title><link rel="icon" href="/favicon.png">
+<style>body{font:16px/1.55 system-ui,sans-serif;color:#123052;background:radial-gradient(circle at 90% 10%,#c5e9ff,transparent 32%),#f4f9ff;margin:0}main{max-width:720px;margin:38px auto;padding:clamp(20px,4vw,44px);background:#fff;border:1px solid #dce9f6;border-radius:22px;box-shadow:0 18px 45px #1c599218}a{color:#1164d9}h1{font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.1}p{color:#526781}form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}label{font-size:.9rem;font-weight:650}input,select,textarea{display:block;box-sizing:border-box;width:100%;margin-top:6px;border:1px solid #c4d6ed;border-radius:9px;padding:12px;font:inherit}textarea{min-height:90px}.wide{grid-column:1/-1}button{border:0;border-radius:10px;padding:13px 20px;background:#116be4;color:#fff;font:inherit;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}#status{min-height:24px}#status.error{color:#a21531}#status.ok{color:#086d3a}@media(max-width:620px){main{margin:12px}form{grid-template-columns:1fr}}</style>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+</head><body><main><a href="/">← Bank Setu</a><h1>Contact Master Admin</h1><p>Request a Bank Setu license for your workspace. Windows and Android are included in one client license. Payment and activation require Master Admin approval.</p>
+<form id="request"><label>Full Name<input name="name" required maxlength="100" autocomplete="name"></label><label>Mobile / WhatsApp Number<input name="mobile" required maxlength="20" inputmode="tel"></label><label>Email Address (optional)<input name="email" maxlength="254" type="email" autocomplete="email"></label><label>Bank / CSP Center Name<input name="bankName" required maxlength="120"></label><label>Location (optional)<input name="location" maxlength="120"></label><label>Preferred License<select name="plan"><option value="annual">Annual</option><option value="lifetime">Lifetime</option><option value="undecided">Not Decided</option></select></label><label class="wide">Message (optional)<textarea name="message" maxlength="500"></textarea></label><div class="wide" id="challenge"></div><button class="wide" id="send" disabled>Submit Request</button></form><p role="status" id="status"></p></main>
+<script type="module">
+const endpoint='https://banksetu-client-api.banksetu2026.workers.dev';
+const form=document.querySelector('#request'),status=document.querySelector('#status'),button=document.querySelector('#send');
+const selected=new URLSearchParams(location.search).get('plan');
+if(['annual','lifetime','undecided'].includes(selected))form.elements.plan.value=selected;
+let token='',widget='',requestId=crypto.randomUUID();
+function message(value,kind){status.textContent=value;status.className=kind;}
+try{
+  const response=await fetch(endpoint+'/license-public',{method:'POST',headers:{'content-type':'application/json'},body:'{}',signal:AbortSignal.timeout(8000)});
+  if(!response.ok)throw Error('License requests are temporarily unavailable. Please retry later.');
+  const settings=await response.json();
+  if(!settings.uiEnabled||!settings.turnstileSiteKey)throw Error('License requests are not available yet. Please retry later.');
+  const wait=()=>new Promise((resolve,reject)=>{let attempts=0;const timer=setInterval(()=>{if(window.turnstile){clearInterval(timer);resolve(window.turnstile);}else if(++attempts>100){clearInterval(timer);reject(Error('Verification could not load. Retry on a working connection.'));}},100);});
+  const turnstile=await wait();
+  widget=turnstile.render('#challenge',{sitekey:settings.turnstileSiteKey,callback:value=>{token=value;button.disabled=false;},'expired-callback':()=>{token='';button.disabled=true;}});
+}catch(error){message(error.message,'error');}
+form.addEventListener('submit',async event=>{
+  event.preventDefault();if(!token||button.disabled)return;
+  button.disabled=true;message('Sending your request…','');
+  try{
+    const body=Object.fromEntries(new FormData(form));
+    const response=await fetch(endpoint+'/license-inquiry',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...body,requestId,turnstileToken:token}),signal:AbortSignal.timeout(20000)});
+    const result=await response.json();
+    if(!response.ok||!result.success)throw Error(result.error||'Request could not be delivered.');
+    message('Request received. Reference ID: '+result.referenceId,'ok');form.hidden=true;
+  }catch(error){message(error.message,'error');token='';if(widget&&window.turnstile)window.turnstile.reset(widget);}
+});
+</script></body></html>

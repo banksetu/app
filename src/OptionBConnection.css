@@ -1,0 +1,28 @@
+.option-b-setup-download {
+  padding: 18px;
+  border: 1px solid #63e2c4;
+  border-radius: 12px;
+  background: #103846;
+  color: #eef7f7;
+  text-align: left;
+}
+.option-b-setup-download > strong { font-size: 18px; color: #9af2d9; }
+.option-b-setup-download > p { margin: 8px 0 14px; line-height: 1.6; color: #eef7f7; }
+.option-b-setup-download .option-b-download-button {
+  display: block;
+  width: 100%;
+  min-height: 54px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(120deg, #16b8a6, #267be5);
+  color: white;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: normal;
+  box-shadow: 0 6px 18px #0003;
+}
+.option-b-setup-download .option-b-download-button:disabled { opacity: .65; cursor: wait; }
+.option-b-setup-download .option-b-download-button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }

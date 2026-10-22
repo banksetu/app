@@ -1,3 +1,6 @@
+import {confirmAction} from './uiDialogs';
+import { downloadAndroidUpdate, isAndroid } from './platform/android/runtime';
+import { checkAndroidUpdate } from './platform/android/updates';
 import { useEffect, useState } from "react";
 
 import type { CSSProperties } from "react";
@@ -19,8 +22,9 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
+import ClientGoogleSetup from "./ClientGoogleSetup";
+import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
 declare const __APP_VERSION__: string;
-const STORAGE_KEY = "bankSetuApiUrl";
 
 const CURRENT_APP_VERSION = __APP_VERSION__;
 const UPDATE_MANIFEST_URL = "/version.json";
@@ -31,7 +35,23 @@ type UpdateManifest = {
   notes?: string;
 };
 
-function Settings() {
+type AdvancedAdminProps = { allowConnectionSettings?: boolean; isMasterOwner?: boolean; isClientAdmin?: boolean };
+
+async function saveVerifiedBridgeUrl(uid: string, apiUrl: string) {
+  if (sessionStorage.getItem("bankSetuLicenseRequired") === "true") {
+    if (apiUrl && apiUrl === getTenantApiUrl()) return;
+    throw new Error("Use the verified Google Sheet / Drive connection setup to change this workspace bridge. The existing connection was retained.");
+  }
+  await setDoc(doc(db, ...tenantSettingsPath(uid)), {
+    apiUrl, ...tenantSettingsWriteMetadata(uid), updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+function Settings(props: AdvancedAdminProps) {
+  return <ConnectionSettings {...props} />;
+}
+
+function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = false, isClientAdmin = false }: AdvancedAdminProps) {
 
   const [apiUrl, setApiUrl] = useState("");
 
@@ -50,6 +70,7 @@ function Settings() {
   const [password, setPassword] = useState("");
 
   const [showAuthBox, setShowAuthBox] = useState(false);
+  const [authMode, setAuthMode] = useState<"unlock" | "lock">("unlock");
 
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -59,6 +80,8 @@ function Settings() {
 
   const [updateChecking, setUpdateChecking] =
     useState(false);
+  const [currentVersion, setCurrentVersion] =
+    useState(CURRENT_APP_VERSION);
   const [latestVersion, setLatestVersion] =
     useState(CURRENT_APP_VERSION);
   const [updateAvailable, setUpdateAvailable] =
@@ -69,14 +92,48 @@ function Settings() {
     useState("");
   const [updateMessage, setUpdateMessage] =
     useState("Check for a new Bank Setu version.");
+  const [downloadProgress, setDownloadProgress] =
+    useState<number | null>(null);
+
+  useEffect(() => {
+    const desktop = (window as typeof window & { bankSetuDesktop?: { onUpdateProgress?: (callback: (payload: { percent?: number }) => void) => (() => void) } }).bankSetuDesktop;
+    if (!desktop?.onUpdateProgress) return;
+    return desktop.onUpdateProgress(payload => {
+      const percent = Math.max(0, Math.min(100, Number(payload?.percent || 0)));
+      setDownloadProgress(percent);
+      if (percent >= 100) setUpdateMessage("Update downloaded. The installer is ready.");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isAndroid()) return;
+    let active = true;
+    void (async () => {
+      try {
+        const result = await Promise.race([
+          checkAndroidUpdate(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("update-timeout")), 4000)),
+        ]) as Awaited<ReturnType<typeof checkAndroidUpdate>>;
+        if (!active) return;
+        setCurrentVersion(result.currentVersion || CURRENT_APP_VERSION);
+        setLatestVersion(result.latestVersion);
+        setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl);
+        setUpdateNotes(result.notes);
+        setUpdateMessage(result.available ? `New Android version ${result.latestVersion} is available.` : "This app is already using the latest published Android build.");
+      } catch {
+        // Startup must not be blocked by update-server latency.
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadApiConnection = async () => {
       const user = auth.currentUser;
-      const localUrl =
-        localStorage.getItem(STORAGE_KEY) || "";
+      const localUrl = getTenantApiUrl();
 
       if (!user) {
         if (!cancelled) {
@@ -87,11 +144,7 @@ function Settings() {
       }
 
       try {
-        const settingsRef = doc(
-          db,
-          "appSettings",
-          user.uid
-        );
+        const settingsRef = doc(db, ...tenantSettingsPath(user.uid));
 
         const settingsSnap =
           await getDoc(settingsRef);
@@ -115,22 +168,11 @@ function Settings() {
         }
 
         if (finalUrl) {
-          localStorage.setItem(
-            STORAGE_KEY,
-            finalUrl
-          );
+          setTenantApiUrl(finalUrl);
         }
 
         if (!cloudUrl && localUrl.trim()) {
-          await setDoc(
-            settingsRef,
-            {
-              apiUrl: localUrl.trim(),
-              updatedAt:
-                serverTimestamp(),
-            },
-            { merge: true }
-          );
+          await saveVerifiedBridgeUrl(user.uid, localUrl.trim());
         }
       } catch (error) {
         console.error(
@@ -216,6 +258,12 @@ function Settings() {
 
       );
 
+      if (authMode === "lock") {
+        lockControl();
+        setShowAuthBox(false);
+        return;
+      }
+
       setUnlocked(true);
 
       setShowAuthBox(false);
@@ -265,6 +313,7 @@ function Settings() {
   };
 
   const lockControl = () => {
+    setAuthMode("unlock");
 
     setUnlocked(false);
 
@@ -309,7 +358,7 @@ function Settings() {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       "Do you want to update the Bank Setu database connection?"
     );
 
@@ -325,19 +374,9 @@ function Settings() {
     }
 
     try {
-      await setDoc(
-        doc(db, "appSettings", user.uid),
-        {
-          apiUrl: cleanUrl,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await saveVerifiedBridgeUrl(user.uid, cleanUrl);
 
-      localStorage.setItem(
-        STORAGE_KEY,
-        cleanUrl
-      );
+      setTenantApiUrl(cleanUrl);
 
       setSavedUrl(cleanUrl);
       setApiUrl(cleanUrl);
@@ -353,7 +392,9 @@ function Settings() {
       );
 
       setMessage(
-        "Database connection could not be saved to Firebase Cloud. Please try again."
+        error instanceof Error && error.message.includes("verified Google Sheet / Drive connection setup")
+          ? error.message
+          : "Database connection could not be saved to Firebase Cloud. Please try again."
       );
     }
   };
@@ -489,7 +530,7 @@ function Settings() {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       "Final confirmation: removing this connection will stop Google Sheet save and search features. Continue?"
     );
 
@@ -505,18 +546,9 @@ function Settings() {
     }
 
     try {
-      await setDoc(
-        doc(db, "appSettings", user.uid),
-        {
-          apiUrl: "",
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await saveVerifiedBridgeUrl(user.uid, "");
 
-      localStorage.removeItem(
-        STORAGE_KEY
-      );
+      removeTenantApiUrl();
 
       setSavedUrl("");
       setApiUrl("");
@@ -575,6 +607,29 @@ function Settings() {
     );
 
     try {
+      if (isAndroid()) {
+        const result = await checkAndroidUpdate();
+        setCurrentVersion(result.currentVersion || CURRENT_APP_VERSION);
+        setLatestVersion(result.latestVersion);
+        setUpdateAvailable(result.available);
+        setUpdateDownloadUrl(result.downloadUrl);
+        setUpdateNotes(result.notes);
+        setUpdateMessage(
+          result.available
+            ? 'New Android APK available. Download it and install over the existing app to retain local data.'
+            : 'This app is already using the latest published Android build.'
+        );
+        return;
+      }
+      if (window.bankSetuDesktop) {
+        const manifest = await window.bankSetuDesktop.checkUpdate() as {latestVersion: string; notes?: string};
+        const current = await window.bankSetuDesktop.version();
+        setCurrentVersion(current);
+        const available = compareVersions(manifest.latestVersion, current) > 0;
+        setLatestVersion(manifest.latestVersion);setUpdateAvailable(available);setUpdateNotes(manifest.notes || "");
+        setUpdateMessage(available ? `New Windows version ${manifest.latestVersion} is available.` : "Bank Setu is already up to date.");
+        return;
+      }
       const response = await fetch(
         `${UPDATE_MANIFEST_URL}?t=${Date.now()}`,
         { cache: "no-store" }
@@ -629,24 +684,46 @@ function Settings() {
     }
   };
 
-  const installUpdate = () => {
+  const installUpdate = async () => {
+    if (window.bankSetuDesktop) {
+      setDownloadProgress(0);
+      setUpdateMessage("Downloading and verifying the signed Windows update…");
+      void window.bankSetuDesktop.installUpdate().catch(error => { setDownloadProgress(null); setUpdateMessage(error instanceof Error ? error.message : "Windows update failed. Local database retained."); });
+      return;
+    }
     if (!updateAvailable) {
-      setUpdateMessage(
-        "No new update is available."
-      );
+      setUpdateMessage("No new update is available.");
+      return;
+    }
+
+    if (isAndroid() && updateDownloadUrl) {
+      setDownloadProgress(0);
+      setUpdateMessage("Downloading the Android update inside Bank Setu…");
+      try {
+        await downloadAndroidUpdate(updateDownloadUrl, (percent) => {
+          setDownloadProgress(percent);
+          setUpdateMessage(`Downloading Android update… ${percent}%`);
+        });
+        setDownloadProgress(100);
+        setUpdateMessage("Download complete. Android installer opened; tap Install to finish.");
+      } catch (error) {
+        setDownloadProgress(null);
+        setUpdateMessage(error instanceof Error ? error.message : "Android update download failed.");
+      }
       return;
     }
 
     if (updateDownloadUrl) {
-      window.open(
-        updateDownloadUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
+      window.open(updateDownloadUrl, "_blank", "noopener,noreferrer");
       return;
     }
 
-    window.location.reload();
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.getRegistration().then(registration=>{
+        if(registration?.waiting){navigator.serviceWorker.addEventListener("controllerchange",()=>window.location.reload(),{once:true});registration.waiting.postMessage("ACTIVATE_UPDATE");}
+        else window.location.reload();
+      });
+    } else window.location.reload();
   };
 
   const maskedUrl = savedUrl
@@ -673,11 +750,13 @@ function Settings() {
 
         </h1>
 
-        <p style={styles.subtitle}>
+      <p style={styles.subtitle}>
 
           Protected database and system connection settings
 
-        </p>
+      </p>
+
+      {isClientAdmin && <ClientGoogleSetup enabled placement="manage" connectionUnlocked={unlocked} />}
 
       </div>
 
@@ -745,11 +824,7 @@ function Settings() {
 
             style={styles.unlockButton}
 
-            onClick={() =>
-
-              setShowAuthBox(true)
-
-            }
+            onClick={() => { setAuthMode("unlock"); setPassword(""); setShowAuthBox(true); }}
 
           >
 
@@ -767,7 +842,7 @@ function Settings() {
 
             style={styles.lockButton}
 
-            onClick={lockControl}
+            onClick={() => { setAuthMode("lock"); setPassword(""); setShowAuthBox(true); }}
 
           >
 
@@ -779,7 +854,7 @@ function Settings() {
 
       </section>
 
-      {showAuthBox && !unlocked && (
+      {showAuthBox && (
 
         <section style={styles.authCard}>
 
@@ -849,7 +924,7 @@ function Settings() {
 
                 ? "Verifying..."
 
-                : "Verify & Unlock"}
+                : authMode === "lock" ? "Verify & Lock" : "Verify & Unlock"}
 
             </button>
 
@@ -879,7 +954,14 @@ function Settings() {
 
       )}
 
-      <section style={styles.card}>
+      {allowConnectionSettings && <section style={styles.card}>
+        <p style={styles.sectionLabel}>FIREBASE</p>
+        <h2 style={styles.cardTitle}>Account &amp; access connection</h2>
+        <p style={styles.securityText}>Firebase handles administrator sign-in and workspace permissions.</p>
+        <div style={styles.savedBox}><span style={styles.savedLabel}>{auth.currentUser ? "CONNECTED" : "SIGN-IN REQUIRED"}</span><span style={styles.savedUrl}>{auth.app.options.projectId}</span></div>
+      </section>}
+
+      {allowConnectionSettings && <section style={styles.card}>
 
         <div style={styles.cardHeader}>
 
@@ -902,6 +984,11 @@ function Settings() {
           <StatusBadge status={status} />
 
         </div>
+
+        {isMasterOwner && <p style={styles.securityText}>
+          Master Apps Script के existing project में updated code लगाकर उसी Web App deployment का नया version प्रकाशित करें।{" "}
+          <a href="/client-bridge/Code.gs?revision=v9-20261014" download="BankSetu-Master-Code.gs" style={{ color: "var(--app-dark-text, #8de3c8)", fontWeight: 700 }}>Download updated Master Code.gs</a>
+        </p>}
 
         {savedUrl && !unlocked && (
 
@@ -1141,7 +1228,8 @@ function Settings() {
 
         )}
 
-      </section>
+      </section>}
+
 
       <section
       style={{
@@ -1179,7 +1267,7 @@ function Settings() {
             CURRENT VERSION
           </span>
           <strong style={styles.versionValue}>
-            v{CURRENT_APP_VERSION}
+            v{currentVersion}
           </strong>
         </div>
 
@@ -1196,6 +1284,15 @@ function Settings() {
       <p style={styles.updateText}>
         {updateMessage}
       </p>
+
+      {downloadProgress !== null && (
+        <div style={{ margin: "14px 0", width: "100%" }}>
+          <div style={{ height: "10px", borderRadius: "999px", background: "var(--app-dark-surface, rgba(255,255,255,0.10))", overflow: "hidden" }}>
+            <div style={{ width: `${downloadProgress}%`, height: "100%", borderRadius: "999px", background: "linear-gradient(90deg,#35dec0,#29a8e8)", transition: "width .2s ease" }} />
+          </div>
+          <div style={{ marginTop: "6px", textAlign: "center", color: "var(--app-dark-text, #8eeede)", fontSize: "11px" }}>{downloadProgress}%</div>
+        </div>
+      )}
 
       {updateNotes && (
         <div style={styles.updateNotes}>
@@ -1358,7 +1455,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "8px",
 
@@ -1372,7 +1469,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "27px",
 
@@ -1382,7 +1479,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#91a7b3",
+    color: "var(--app-dark-text, #91a7b3)",
 
     fontSize: "10px",
 
@@ -1422,7 +1519,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "8px",
 
@@ -1436,7 +1533,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: "6px 0 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "19px",
 
@@ -1444,7 +1541,7 @@ const styles: Record<string, CSSProperties> = {
 
   securityText: {
 
-    color: "#94a8b4",
+    color: "var(--app-dark-text, #94a8b4)",
 
     fontSize: "9px",
 
@@ -1458,7 +1555,7 @@ const styles: Record<string, CSSProperties> = {
 
     borderRadius: "999px",
 
-    color: "#f0b95d",
+    color: "var(--app-dark-text, #f0b95d)",
 
     background:
 
@@ -1472,7 +1569,7 @@ const styles: Record<string, CSSProperties> = {
 
   unlockedBadge: {
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     background:
 
@@ -1494,7 +1591,7 @@ const styles: Record<string, CSSProperties> = {
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 800,
 
@@ -1516,9 +1613,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.04)",
+      "var(--app-dark-surface, rgba(255,255,255,0.04))",
 
-    color: "#d7e4e9",
+    color: "var(--app-dark-text, #d7e4e9)",
 
     cursor: "pointer",
 
@@ -1544,7 +1641,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "18px",
 
@@ -1552,7 +1649,7 @@ const styles: Record<string, CSSProperties> = {
 
   authText: {
 
-    color: "#91a6b2",
+    color: "var(--app-dark-text, #91a6b2)",
 
     fontSize: "9px",
 
@@ -1594,7 +1691,7 @@ const styles: Record<string, CSSProperties> = {
 
     marginBottom: "7px",
 
-    color: "#dce7eb",
+    color: "var(--app-dark-text, #dce7eb)",
 
     fontSize: "10px",
 
@@ -1622,7 +1719,7 @@ const styles: Record<string, CSSProperties> = {
 
     background: "#0a303c",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
   },
 
@@ -1640,13 +1737,13 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.035)",
+      "var(--app-dark-surface, rgba(255,255,255,0.035))",
 
   },
 
   savedLabel: {
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "7px",
 
@@ -1656,7 +1753,7 @@ const styles: Record<string, CSSProperties> = {
 
   savedUrl: {
 
-    color: "#a7bac4",
+    color: "var(--app-dark-text, #a7bac4)",
 
     fontSize: "9px",
 
@@ -1672,9 +1769,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.03)",
+      "var(--app-dark-surface, rgba(255,255,255,0.03))",
 
-    color: "#8fa5b2",
+    color: "var(--app-dark-text, #8fa5b2)",
 
     fontSize: "9px",
 
@@ -1706,7 +1803,7 @@ const styles: Record<string, CSSProperties> = {
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 800,
 
@@ -1728,7 +1825,7 @@ const styles: Record<string, CSSProperties> = {
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 800,
 
@@ -1752,7 +1849,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(55,220,195,0.06)",
 
-    color: "#4be1c7",
+    color: "var(--app-dark-text, #4be1c7)",
 
     cursor: "pointer",
 
@@ -1776,7 +1873,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(255,95,95,0.05)",
 
-    color: "#ff9292",
+    color: "var(--app-dark-text, #ff9292)",
 
     cursor: "pointer",
 
@@ -1798,9 +1895,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.04)",
+      "var(--app-dark-surface, rgba(255,255,255,0.04))",
 
-    color: "#c9d7de",
+    color: "var(--app-dark-text, #c9d7de)",
 
     cursor: "pointer",
 
@@ -1818,7 +1915,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(55,220,195,0.07)",
 
-    color: "#4be2c8",
+    color: "var(--app-dark-text, #4be2c8)",
 
     fontSize: "9px",
 
@@ -1830,7 +1927,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(255,90,90,0.07)",
 
-    color: "#ff9a9a",
+    color: "var(--app-dark-text, #ff9a9a)",
 
   },
 
@@ -1856,7 +1953,7 @@ const styles: Record<string, CSSProperties> = {
 
     margin: 0,
 
-    color: "#ff8e8e",
+    color: "var(--app-dark-text, #ff8e8e)",
 
     fontWeight: 800,
 
@@ -1864,7 +1961,7 @@ const styles: Record<string, CSSProperties> = {
 
   dangerText: {
 
-    color: "#b6a4a4",
+    color: "var(--app-dark-text, #b6a4a4)",
 
     fontSize: "9px",
 
@@ -1890,7 +1987,7 @@ const styles: Record<string, CSSProperties> = {
 
     background: "#26191d",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
   },
 
@@ -1906,7 +2003,7 @@ const styles: Record<string, CSSProperties> = {
 
     background: "#c83f4c",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontWeight: 800,
 
@@ -1929,17 +2026,17 @@ const styles: Record<string, CSSProperties> = {
     padding: "13px",
     borderRadius: "11px",
     background:
-      "rgba(255,255,255,0.035)",
+      "var(--app-dark-surface, rgba(255,255,255,0.035))",
   },
 
   versionValue: {
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
     fontSize: "16px",
   },
 
   updateText: {
     margin: "0",
-    color: "#a7bac4",
+    color: "var(--app-dark-text, #a7bac4)",
     fontSize: "10px",
     lineHeight: 1.6,
   },
@@ -1950,14 +2047,14 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "10px",
     background:
       "rgba(69,223,197,0.055)",
-    color: "#b9d9d3",
+    color: "var(--app-dark-text, #b9d9d3)",
     fontSize: "9px",
     lineHeight: 1.6,
   },
 
   updateHint: {
     margin: "14px 0 0",
-    color: "#718c99",
+    color: "var(--app-dark-text, #718c99)",
     fontSize: "8px",
     lineHeight: 1.6,
   },
@@ -1969,7 +2066,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800,
     background:
       "rgba(69,223,197,0.10)",
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
   },
 
   statusBadge: {
@@ -1988,9 +2085,9 @@ const styles: Record<string, CSSProperties> = {
 
     background:
 
-      "rgba(255,255,255,0.04)",
+      "var(--app-dark-surface, rgba(255,255,255,0.04))",
 
-    color: "#a9b9c1",
+    color: "var(--app-dark-text, #a9b9c1)",
 
   },
 
@@ -2000,7 +2097,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(239,186,86,0.08)",
 
-    color: "#efba56",
+    color: "var(--app-dark-text, #efba56)",
 
   },
 
@@ -2010,7 +2107,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(55,220,195,0.08)",
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
   },
 
@@ -2020,7 +2117,7 @@ const styles: Record<string, CSSProperties> = {
 
       "rgba(255,100,100,0.07)",
 
-    color: "#ff9090",
+    color: "var(--app-dark-text, #ff9090)",
 
   },
 

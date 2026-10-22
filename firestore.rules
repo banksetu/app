@@ -1,13 +1,53 @@
+// Bank Setu production rules — card theme create/update path deployed via CI.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isMasterOwner() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'master_owner'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active';
+    }
+    function isLegacyAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'admin'
+        && request.auth.token.email == 'banksetu2026@gmail.com'
+        && request.auth.token.email_verified == true
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active';
+    }
+    function isClientAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'client_admin'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active'
+        && profile().tenantId is string;
+    }
+    function isClientUser() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().role == 'client_user'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active'
+        && profile().tenantId is string;
+    }
+    function myTenantId() { return profile().tenantId; }
+    function sameTenant(tenantId) {
+      return signedIn() && (isMasterOwner() || isLegacyAdmin()
+        || ((isClientAdmin() || isClientUser()) && myTenantId() == tenantId));
+    }
     function admin() {
-      return signedIn()
+      return isLegacyAdmin() || isMasterOwner();
+    }
+    function supportAdmin() {
+      return admin() || (signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved'
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus == 'active';
+        && profile().role == 'master_admin'
+        && profile().status == 'approved'
+        && profile().subscriptionStatus == 'active');
     }
     function approvedUser() {
       return signedIn()
@@ -16,20 +56,17 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus == 'active';
     }
     match /users/{userId} {
-      allow get: if signedIn() && (request.auth.uid == userId || admin());
-      allow list: if admin();
-      allow create: if signedIn() && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['name', 'mobile', 'email', 'role', 'status', 'subscriptionStatus', 'createdAt'])
-        && request.resource.data.keys().hasAll(['name', 'mobile', 'email', 'role', 'status', 'subscriptionStatus', 'createdAt'])
-        && request.resource.data.name is string
-        && request.resource.data.mobile is string
-        && request.resource.data.createdAt is string
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role == 'user'
-        && request.resource.data.status == 'pending'
-        && request.resource.data.subscriptionStatus == 'inactive';
-      allow update: if admin() && request.auth.uid != userId
-        && resource.data.role == 'user'
+      allow get: if signedIn() && (request.auth.uid == userId || supportAdmin()
+        || (isClientAdmin() && resource.data.tenantId == myTenantId()));
+      allow list: if supportAdmin() || (isClientAdmin() && resource.data.tenantId == myTenantId());
+      // Account provisioning is performed by trusted server code. Public
+      // clients must not be able to assign themselves an application role.
+      allow create: if false;
+      allow update: if request.auth.uid != userId
+        && (admin() || (isClientAdmin()
+          && resource.data.tenantId == myTenantId()
+          && resource.data.role == 'client_user'))
+        && resource.data.role != 'master_owner'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'subscriptionStatus', 'updatedAt', 'updatedBy'])
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.updatedAt == request.time
@@ -39,14 +76,41 @@ service cloud.firestore {
     }
     match /appSettings/uiTheme {
       allow get: if approvedUser();
-      allow create, update: if admin()
-        && request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
-        && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
-        && request.resource.data.dashboardTheme is string
-        && request.resource.data.menuTheme is string
-        && request.resource.data.updatedBy is string
-        && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
-        && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool);
+      // New theme documents use a strict schema. Updates are merge writes from
+      // the dashboard and must remain compatible with older documents that may
+      // contain legacy fields; validate only the fields being changed.
+      allow create: if (isMasterOwner() || isLegacyAdmin())
+        && (
+          (request.resource.data.keys().hasOnly(['cardTheme', 'updatedBy'])
+            && request.resource.data.cardTheme is string
+            && request.resource.data.updatedBy is string)
+          ||
+          (request.resource.data.keys().hasOnly(['dashboardTheme', 'menuTheme', 'cardTheme', 'customDashboardColor', 'useCustomDashboardColor', 'updatedBy'])
+            && request.resource.data.keys().hasAll(['dashboardTheme', 'menuTheme', 'updatedBy'])
+            && request.resource.data.dashboardTheme is string
+            && request.resource.data.menuTheme is string
+            && (!('cardTheme' in request.resource.data) || request.resource.data.cardTheme is string)
+            && request.resource.data.updatedBy is string
+            && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+            && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
+        );
+      allow update: if (isMasterOwner() || isLegacyAdmin())
+        && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cardTheme', 'updatedBy'])
+            && request.resource.data.cardTheme is string
+            && request.resource.data.updatedBy is string)
+          ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'dashboardTheme', 'menuTheme', 'cardTheme', 'customDashboardColor',
+            'useCustomDashboardColor', 'updatedBy'
+          ])
+            && request.resource.data.dashboardTheme is string
+            && request.resource.data.menuTheme is string
+            && (!('cardTheme' in request.resource.data) || request.resource.data.cardTheme is string)
+            && request.resource.data.updatedBy is string
+            && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+            && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
+        );
       allow delete: if false;
     }
     match /appSettings/{userId} {
@@ -55,6 +119,182 @@ service cloud.firestore {
         && (admin() || (exists(/databases/$(database)/documents/users/$(userId))
           && get(/databases/$(database)/documents/users/$(userId)).data.status == 'approved'
           && get(/databases/$(database)/documents/users/$(userId)).data.subscriptionStatus == 'active'));
+    }
+
+    match /tenants/{tenantId} {
+      allow get: if sameTenant(tenantId);
+      allow list: if isMasterOwner() || isLegacyAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Server-managed licensing metadata. Apps Script may read the signed-in
+    // tenant's state; no client may create or modify a license or pricing.
+    match /tenantLicenses/{tenantId} {
+      allow get: if sameTenant(tenantId);
+      allow list, create, update, delete: if false;
+    }
+
+    match /tenantSettings/{tenantId} {
+      allow get: if sameTenant(tenantId);
+      allow list: if false;
+      allow create: if isClientAdmin()
+        && false // Client business settings are written only through the licensed Worker.
+        && request.resource.data.tenantId == tenantId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly(['tenantId', 'cardTheme', 'updatedAt', 'updatedBy'])
+        && request.resource.data.cardTheme is string;
+      allow update: if (isMasterOwner()
+        && sameTenant(tenantId)
+        && request.resource.data.tenantId == tenantId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'tenantId', 'bankName', 'apiUrl', 'spreadsheetId', 'googleEmail', 'bankInfo',
+          'photoFolderId', 'bankLogo', 'bankFormats', 'passbookBank', 'branchName', 'cspCode', 'operatorName',
+          'address', 'dashboardTheme', 'menuTheme', 'cardTheme', 'customDashboardColor',
+          'useCustomDashboardColor', 'updatedAt', 'updatedBy'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.bankName is string
+        && request.resource.data.apiUrl is string
+        && request.resource.data.spreadsheetId is string
+        && (!('googleEmail' in request.resource.data) || request.resource.data.googleEmail is string)
+        && request.resource.data.photoFolderId is string
+        && request.resource.data.bankInfo is map
+        && request.resource.data.bankLogo is string
+        && (!('bankName' in request.resource.data) || request.resource.data.bankName is string)
+        && (!('passbookBank' in request.resource.data) || request.resource.data.passbookBank is string)
+        && (!('branchName' in request.resource.data) || request.resource.data.branchName is string)
+        && (!('cspCode' in request.resource.data) || request.resource.data.cspCode is string)
+        && (!('operatorName' in request.resource.data) || request.resource.data.operatorName is string)
+        && (!('address' in request.resource.data) || request.resource.data.address is string)
+        && (!('dashboardTheme' in request.resource.data) || request.resource.data.dashboardTheme is string)
+        && (!('menuTheme' in request.resource.data) || request.resource.data.menuTheme is string)
+        && (!('cardTheme' in request.resource.data) || request.resource.data.cardTheme is string)
+        && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+        && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool))
+        || (isClientAdmin()
+          && false // Client business settings are written only through the licensed Worker.
+          && resource.data.tenantId == tenantId
+          && request.resource.data.tenantId == tenantId
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'bankName', 'bankInfo', 'bankLogo', 'passbookBank', 'branchName',
+            'cspCode', 'operatorName', 'address', 'dashboardTheme', 'menuTheme', 'cardTheme',
+            'customDashboardColor', 'useCustomDashboardColor', 'updatedAt', 'updatedBy'
+          ])
+          && request.resource.data.bankInfo is map
+          && request.resource.data.bankLogo is string
+          && (!('dashboardTheme' in request.resource.data) || request.resource.data.dashboardTheme is string)
+          && (!('menuTheme' in request.resource.data) || request.resource.data.menuTheme is string)
+          && (!('customDashboardColor' in request.resource.data) || request.resource.data.customDashboardColor is string)
+          && (!('useCustomDashboardColor' in request.resource.data) || request.resource.data.useCustomDashboardColor is bool));
+      allow delete: if false;
+    }
+
+    // Support conversations use the client UID as the document ID. A client
+    // can access only its own thread; approved Master Admins can access all.
+    // Files/chunks are served only by the authenticated Worker and expire at 24h.
+    match /supportMedia/{mediaId} {
+      allow read, write: if false;
+      match /chunks/{chunkId} { allow read, write: if false; }
+    }
+    function supportOwnerActive(clientUid,tenantId) {
+      let owner=get(/databases/$(database)/documents/users/$(clientUid)).data;
+      return owner.status == 'approved' && owner.subscriptionStatus == 'active'
+        && owner.tenantId == tenantId
+        && get(/databases/$(database)/documents/tenants/$(tenantId)).data.status == 'active';
+    }
+    match /supportConversations/{clientUid} {
+      allow get, list: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
+      allow create: if approvedUser()
+        && request.resource.data.clientUid == clientUid
+        && supportOwnerActive(clientUid,request.resource.data.tenantId)
+        && request.resource.data.keys().hasOnly([
+          'clientUid', 'clientName', 'clientEmail', 'tenantId', 'lastMessage',
+          'updatedAt', 'unreadForMaster', 'unreadForClient'
+        ])
+        && request.resource.data.clientName is string
+        && request.resource.data.clientEmail is string
+        && request.resource.data.tenantId is string
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 2000
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.unreadForMaster is bool
+        && request.resource.data.unreadForClient is bool
+        && (supportAdmin() || (request.auth.uid == clientUid && request.resource.data.tenantId == myTenantId()));
+      allow update: if approvedUser()
+        && resource.data.clientUid == clientUid
+        && supportOwnerActive(clientUid,resource.data.tenantId)
+        && request.resource.data.clientUid == clientUid
+        && request.resource.data.tenantId == resource.data.tenantId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'clientName', 'clientEmail', 'lastMessage', 'updatedAt',
+          'unreadForMaster', 'unreadForClient'
+        ])
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 2000
+        && request.resource.data.unreadForMaster is bool
+        && request.resource.data.unreadForClient is bool
+        && (supportAdmin() || request.auth.uid == clientUid);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
+        allow create: if approvedUser()
+          && supportOwnerActive(clientUid,request.resource.data.tenantId)
+          && request.resource.data.keys().hasOnly([
+            'text', 'senderUid', 'senderRole', 'clientUid', 'tenantId', 'createdAt'
+          ])
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.clientUid == clientUid
+          && request.resource.data.tenantId == get(/databases/$(database)/documents/supportConversations/$(clientUid)).data.tenantId
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time
+          && (supportAdmin() || request.auth.uid == clientUid);
+        allow update, delete: if false;
+      }
+    }
+
+    match /supportAnnouncements/{announcementId} {
+      allow get, list: if supportAdmin() || (approvedUser()
+        && (resource.data.global == true
+          || request.auth.uid in resource.data.recipientUids
+          || myTenantId() in resource.data.tenantIds));
+      allow create: if supportAdmin()
+        && request.resource.data.keys().hasOnly([
+          'title', 'body', 'global', 'recipientUids', 'tenantIds', 'createdAt', 'createdBy'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 3000
+        && request.resource.data.global is bool
+        && request.resource.data.recipientUids is list
+        && request.resource.data.recipientUids.size() <= 50
+        && request.resource.data.tenantIds is list
+        && request.resource.data.tenantIds.size() <= 50
+        && (request.resource.data.global == true
+          || request.resource.data.recipientUids.size() > 0
+          || request.resource.data.tenantIds.size() > 0)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /supportAnnouncementReads/{receiptId} {
+      allow get, list: if approvedUser() && resource.data.userId == request.auth.uid;
+      allow create: if approvedUser()
+        && request.resource.data.keys().hasOnly(['userId', 'announcementId', 'readAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.announcementId is string
+        && request.resource.data.readAt == request.time;
+      allow update, delete: if false;
     }
   }
 }

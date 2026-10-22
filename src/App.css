@@ -3560,10 +3560,11 @@ body{overflow-x:hidden!important}
 .banksetu-sidebar nav button:hover{background:rgba(255,255,255,.10)!important;color:#fff!important;transform:translateX(2px)}
 .banksetu-sidebar nav button[style*="linear-gradient"]{background:#fff!important;color:#6e5ae2!important;box-shadow:0 8px 20px rgba(50,36,135,.18)!important;font-weight:800!important}
 .banksetu-main-workspace{flex:1!important;width:calc(100% - 220px)!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--ui-bg)!important;color:var(--ui-text)!important;box-shadow:none!important;overflow:visible!important}
-.dashboard-top-bar{min-height:76px!important;margin:0 0 18px!important;padding:10px 16px!important;border:1px solid #ecebf3!important;border-radius:13px!important;background:#fff!important;color:var(--ui-text)!important;box-shadow:0 6px 20px rgba(66,58,110,.06)!important}
+.dashboard-top-bar{position:relative!important;z-index:1!important;min-height:76px!important;margin:0 0 18px!important;padding:10px 16px!important;border:1px solid #ecebf3!important;border-radius:13px!important;background:#fff!important;color:var(--ui-text)!important;box-shadow:0 6px 20px rgba(66,58,110,.06)!important}
 .dashboard-top-bar *{text-shadow:none!important}.dashboard-top-bar h1,.dashboard-top-bar h2,.dashboard-top-bar h3,.dashboard-top-bar strong{color:var(--ui-text)!important}.dashboard-top-bar p,.dashboard-top-bar span,.dashboard-top-bar small{color:#696a7d!important}
 .persistent-bank-header{background:#fff!important;border-color:#ecebf3!important;color:var(--ui-text)!important}
-.dashboard-stats-grid{gap:14px!important;margin:0 0 18px!important}.dashboard-stat-card{min-height:126px!important;border:0!important;border-radius:10px!important;box-shadow:var(--ui-shadow)!important;color:#fff!important}.dashboard-stat-card:nth-child(1){background:linear-gradient(135deg,#ff7ca5,#f45f92)!important}.dashboard-stat-card:nth-child(2){background:linear-gradient(135deg,#ad8df8,#8469e7)!important}.dashboard-stat-card:nth-child(3){background:linear-gradient(135deg,#68dca9,#44c58e)!important}.dashboard-stat-card:nth-child(4){background:linear-gradient(135deg,#ffd970,#f4bb43)!important}.dashboard-stat-card *{color:#fff!important}.dashboard-quick-panel{padding:18px!important;border:1px solid #ecebf3!important;border-radius:12px!important;background:#fff!important;color:var(--ui-text)!important;box-shadow:var(--ui-shadow)!important}.dashboard-quick-panel h1,.dashboard-quick-panel h2,.dashboard-quick-panel h3,.dashboard-quick-panel strong{color:var(--ui-text)!important}.dashboard-quick-panel p,.dashboard-quick-panel span{color:var(--ui-muted)!important}
+.dashboard-stats-grid{gap:14px!important;margin:0 0 18px!important}.dashboard-stat-card{min-height:126px!important;border:0!important;border-radius:10px!important;box-shadow:var(--ui-shadow)!important;color:#fff!important}.dashboard-stat-card:nth-child(1){background:var(--card-gradient-1,linear-gradient(135deg,#ff7ca5,#f45f92))!important}.dashboard-stat-card:nth-child(2){background:var(--card-gradient-2,linear-gradient(135deg,#ad8df8,#8469e7))!important}.dashboard-stat-card:nth-child(3){background:var(--card-gradient-3,linear-gradient(135deg,#68dca9,#44c58e))!important}.dashboard-stat-card:nth-child(4){background:var(--card-gradient-4,linear-gradient(135deg,#ffd970,#f4bb43))!important}.dashboard-stat-card *{color:#fff!important}.dashboard-quick-panel{padding:18px!important;border:1px solid #ecebf3!important;border-radius:12px!important;background:#fff!important;color:var(--ui-text)!important;box-shadow:var(--ui-shadow)!important}.dashboard-quick-panel h1,.dashboard-quick-panel h2,.dashboard-quick-panel h3,.dashboard-quick-panel strong{color:var(--ui-text)!important}.dashboard-quick-panel p,.dashboard-quick-panel span{color:var(--ui-muted)!important}
+.dashboard-stat-card{cursor:pointer;text-align:left;font:inherit;width:100%}.dashboard-stat-card:focus-visible{outline:3px solid #172554;outline-offset:3px}.dashboard-status-overlay{position:fixed;inset:0;z-index:10000;background:#101a31a8;display:grid;place-items:center;padding:16px}.dashboard-status-panel{width:min(750px,100%);max-height:min(720px,90dvh);display:flex;flex-direction:column;background:#fff;color:#17243a;border-radius:15px;box-shadow:0 22px 75px #0005;overflow:hidden}.dashboard-status-panel header,.dashboard-status-panel footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px}.dashboard-status-panel header{border-bottom:1px solid #e5e7eb}.dashboard-status-panel h2{margin:0;color:#142a44;font-size:1.25rem}.dashboard-status-panel p{margin:5px 0;color:#475569}.dashboard-status-panel header button{border:0;background:transparent;font-size:1.7rem;cursor:pointer}.dashboard-status-panel>input{margin:14px 20px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font:inherit}.dashboard-status-list{overflow:auto;min-height:90px;padding:0 20px 14px}.dashboard-status-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(130px,.8fr);align-items:center;gap:12px;padding:10px;border-bottom:1px solid #e5e7eb}.dashboard-status-account{display:flex;align-items:center;gap:6px;overflow-wrap:anywhere}.dashboard-status-account button{border:0;background:#e8f1ff;border-radius:6px;color:#075bc2;cursor:pointer;padding:5px 9px}.dashboard-status-row select{min-width:0;padding:8px;border-radius:7px;border:1px solid #cbd5e1;background:#fff}.dashboard-status-panel footer{border-top:1px solid #e5e7eb;color:#64748b;font-size:.9rem}.dashboard-status-panel footer button{border:0;border-radius:7px;background:#0865cf;color:white;padding:9px 16px;cursor:pointer}.dashboard-status-panel .dashboard-status-error,.dashboard-status-panel .dashboard-status-notice{margin:0 20px 10px}.dashboard-status-error{color:#b91c1c!important}.dashboard-status-notice{color:#067647!important}@media(max-width:560px){.dashboard-status-row{grid-template-columns:1fr 1fr;gap:8px}.dashboard-status-row select{grid-column:1/-1}.dashboard-status-panel header,.dashboard-status-panel footer{padding:13px}}
 
 /* Every feature page gets one coherent light canvas */
 .customer-entry-wrapper,.customers-page,.passbook-page,.aof-module,.reports-page,.settings-page,.admin-users-panel{color:var(--ui-text)!important}
@@ -3622,6 +3623,7 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 .banksetu-app-shell{display:flex!important;align-items:stretch!important;width:100%!important;min-height:100vh!important;background:var(--bs-bg)!important;padding:0!important;gap:0!important;overflow:visible!important}
 /* Desktop sidebar belongs to the same document scroll — no disconnected second scrollbar. */
 .banksetu-sidebar{position:sticky!important;top:0!important;align-self:flex-start!important;width:220px!important;height:auto!important;min-height:100vh!important;max-height:none!important;overflow:visible!important;border-radius:0!important;padding:22px 15px!important;box-sizing:border-box!important;box-shadow:8px 0 28px rgba(71,58,145,.10)!important}
+.banksetu-sidebar{display:flex!important;flex-direction:column!important}
 .banksetu-sidebar nav{gap:5px!important}
 .banksetu-sidebar .banksetu-nav-item{position:relative!important;width:100%!important;min-height:42px!important;padding:10px 12px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:rgba(255,255,255,.88)!important;box-shadow:none!important;font-size:12px!important;font-weight:650!important;transition:background .18s ease,color .18s ease,transform .18s ease!important}
 .banksetu-sidebar .banksetu-nav-item span{color:inherit!important}
@@ -3629,6 +3631,15 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 /* Reference image: active item is a small white rounded selection, not a teal full-width glow. */
 .banksetu-sidebar .banksetu-nav-item.active{background:#fff!important;color:#6955df!important;box-shadow:0 8px 20px rgba(48,34,130,.18)!important;font-weight:800!important}
 .banksetu-sidebar .banksetu-nav-item.active::before{content:"";position:absolute;left:-15px;top:11px;width:3px;height:20px;border-radius:0 4px 4px 0;background:#fff;opacity:.9}
+.banksetu-support-button{margin-top:auto!important;display:flex!important;align-items:center!important;gap:10px!important;text-align:left!important;position:sticky!important;bottom:10px!important;background:rgba(20,18,86,.28)!important;border:1px solid rgba(255,255,255,.22)!important;backdrop-filter:blur(10px)!important}
+.banksetu-support-button.active{background:#fff!important;color:#6955df!important}
+.banksetu-support-badge{margin-left:auto;background:#ef334e;color:#fff;border:2px solid rgba(255,255,255,.85);border-radius:99px;min-width:23px;height:23px;display:grid;place-items:center;padding:0 5px;font-size:10px;line-height:1}
+.banksetu-floating-support{position:fixed;right:18px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:35;width:54px;height:54px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.45);border-radius:50%;background:linear-gradient(145deg,#087da3,#034d7c);box-shadow:0 10px 28px rgba(4,69,106,.28);color:white;font-size:25px;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}
+.banksetu-floating-support:hover,.banksetu-floating-support:focus-visible{transform:translateY(-2px);box-shadow:0 13px 30px rgba(4,69,106,.35)}
+.banksetu-floating-support .banksetu-support-badge{position:absolute;top:-5px;right:-4px;margin:0}
+body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dialog[open]) .banksetu-floating-support{display:none}
+@media(max-width:700px){.banksetu-floating-support{right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:48px;height:48px}}
+@media(prefers-reduced-motion:reduce){.banksetu-floating-support{transition:none}.banksetu-floating-support:hover{transform:none}}
 .banksetu-main-workspace{flex:1!important;width:auto!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--bs-bg)!important;color:var(--bs-text)!important;box-sizing:border-box!important;overflow:visible!important}
 /* No purple footer/strip can show below the dashboard. */
 .banksetu-main-workspace::after{display:none!important}
@@ -3669,7 +3680,7 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
   .mobile-menu-button{display:inline-flex!important;background:linear-gradient(135deg,#735ee8,#927bf5)!important;color:#fff!important;border:1px solid rgba(92,70,200,.28)!important;box-shadow:0 7px 18px rgba(94,72,205,.24)!important;font-weight:900!important;opacity:1!important;visibility:visible!important}
   .mobile-menu-button:hover,.mobile-menu-button:focus{background:linear-gradient(135deg,#6752dd,#856dec)!important;color:#fff!important;outline:none!important}
   .mobile-close-button{display:inline-flex!important;background:rgba(255,255,255,.16)!important;color:#fff!important;border:1px solid rgba(255,255,255,.25)!important}
-  .dashboard-top-bar{grid-template-columns:42px minmax(0,1fr) 42px!important;background:#fff!important}
+  .dashboard-top-bar{grid-template-columns:42px minmax(0,1fr) max-content!important;background:#fff!important}
   .customer-entry-wrapper,.customers-page,.passbook-page,.aof-module{padding:12px!important;border-radius:12px!important}
 }
 @media(max-width:560px){
@@ -3683,10 +3694,10 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 /* V9 polish: reference-gradient actions, reports/settings contrast, live theme controls */
 .banksetu-main-workspace{background:var(--dashboard-bg,var(--ui-bg))!important}
 .dashboard-quick-grid>.dashboard-quick-card{border:0!important;color:#fff!important;box-shadow:0 9px 22px rgba(76,60,150,.16)!important;transition:transform .18s ease,box-shadow .18s ease!important;overflow:hidden!important;position:relative!important}
-.dashboard-quick-grid>.dashboard-quick-card:nth-child(1){background:linear-gradient(135deg,#ff6f9f,#f24f88)!important}
-.dashboard-quick-grid>.dashboard-quick-card:nth-child(2){background:linear-gradient(135deg,#a985f7,#755fe8)!important}
-.dashboard-quick-grid>.dashboard-quick-card:nth-child(3){background:linear-gradient(135deg,#53d7ae,#28b98d)!important}
-.dashboard-quick-grid>.dashboard-quick-card:nth-child(4){background:linear-gradient(135deg,#ffca5b,#f19d38)!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(1){background:var(--card-gradient-1,linear-gradient(135deg,#ff6f9f,#f24f88))!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(2){background:var(--card-gradient-2,linear-gradient(135deg,#a985f7,#755fe8))!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(3){background:var(--card-gradient-3,linear-gradient(135deg,#53d7ae,#28b98d))!important}
+.dashboard-quick-grid>.dashboard-quick-card:nth-child(4){background:var(--card-gradient-4,linear-gradient(135deg,#ffca5b,#f19d38))!important}
 .dashboard-quick-grid>.dashboard-quick-card:hover{transform:translateY(-2px)!important;box-shadow:0 13px 28px rgba(76,60,150,.22)!important}
 .dashboard-quick-grid>.dashboard-quick-card *{color:#fff!important}.dashboard-quick-grid>.dashboard-quick-card>div:first-child{background:rgba(255,255,255,.18)!important}
 .settings-admin-hero{border:0!important;background:linear-gradient(125deg,#6d5dfc 0%,#a74cf0 48%,#f24f88 100%)!important;box-shadow:0 14px 34px rgba(114,72,215,.22)!important;color:#fff!important}
@@ -3711,3 +3722,316 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 @media (max-width: 900px){
   .mobile-menu-button{background:var(--menu-gradient,linear-gradient(135deg,#735ee8,#927bf5))!important;color:#fff!important;border:1px solid rgba(255,255,255,.34)!important;}
 }
+
+@keyframes banksetu-sync-rotate{to{transform:rotate(360deg)}}
+.banksetu-sync-spinning{display:inline-block;animation:banksetu-sync-rotate 1s linear infinite}
+.customer-camera-overlay{position:fixed;inset:0;z-index:11000;display:grid;place-items:center;padding:12px;background:rgba(3,18,27,.78)}
+.customer-camera-dialog{width:min(470px,100%);max-height:calc(100dvh - 24px);overflow-y:auto;box-sizing:border-box;border:1px solid rgba(55,220,195,.4);border-radius:16px;background:#0c2934;color:#eefafa;box-shadow:0 16px 45px #0008}
+.customer-camera-dialog header,.customer-camera-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px}
+.customer-camera-dialog header button{border:0;background:transparent;color:#eefafa;font-size:24px;cursor:pointer}
+.customer-camera-preview{position:relative;margin:0 12px;display:grid;place-items:center;max-height:56dvh;min-height:180px;overflow:hidden;background:#071d27;border-radius:10px}
+.customer-camera-preview video,.customer-camera-preview img{display:block;width:100%;height:auto;max-height:56dvh;object-fit:contain}
+.customer-camera-preview span{position:absolute;bottom:12px;background:#102d3cee;padding:6px;border-radius:6px}
+.customer-camera-dialog footer{flex-wrap:wrap;justify-content:flex-end}
+.customer-camera-dialog footer button,.customer-camera-devices button{min-height:40px;padding:8px 12px;border:1px solid #37646c;border-radius:8px;background:#14505b;color:#f0ffff;cursor:pointer}
+.customer-camera-dialog footer button:last-child{background:#34cdb4;color:#07272a;font-weight:800}
+.customer-camera-dialog button:disabled{opacity:.55;cursor:wait}
+.customer-camera-devices{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px}
+.customer-camera-devices select{max-width:180px;margin-left:8px;padding:7px;border-radius:7px;background:#173c48;color:#fff}
+.customer-camera-error{margin:10px 14px;color:#ffb7b7}
+.customer-photo-review{margin-top:10px;font-size:12px}.customer-photo-review button{margin:4px;padding:7px 9px;border:1px solid #2a7a79;border-radius:7px;background:#e7f7f2;color:#104b49;cursor:pointer}
+@media(max-width:480px){.customer-camera-overlay{padding:6px}.customer-camera-dialog{max-height:calc(100dvh - 12px)}.customer-camera-preview{max-height:48dvh}.customer-camera-preview video,.customer-camera-preview img{max-height:48dvh}.customer-camera-dialog footer button{flex:1 1 auto}}
+
+/* Native sign-in surface. Business pages retain their existing theme. */
+.login-page{background:radial-gradient(circle at 18% 8%,rgba(14,143,155,.19),transparent 30%),radial-gradient(circle at 88% 82%,rgba(22,87,157,.16),transparent 34%),#080c12!important;color:#eaf5f7!important;isolation:isolate}
+.login-page:before,.login-page:after{background:rgba(43,216,209,.045)!important;filter:blur(34px);animation:login-ambient 12s ease-in-out infinite alternate}
+.login-page:after{animation-delay:-6s}
+.login-shell{max-width:440px!important;width:100%}
+.login-card{position:relative;padding:34px 38px 28px!important;background:linear-gradient(145deg,rgba(36,45,54,.83),rgba(14,19,28,.96))!important;color:#eaf5f7!important;border:1px solid rgba(142,210,219,.2)!important;border-radius:22px!important;box-shadow:0 28px 80px #0009,inset 0 1px 0 #ffffff19!important;backdrop-filter:blur(18px)!important;animation:login-enter .3s ease-out both}
+.login-card:before{content:"";position:absolute;inset:0 auto auto 0;width:48%;height:2px;background:linear-gradient(90deg,#40e4d5,transparent);border-radius:22px}
+.login-page .banksetu-logo{box-shadow:0 10px 32px rgba(38,202,202,.24)!important;animation:login-enter .35s ease-out .08s both}
+.login-page .brand h1,.login-page .welcome h2{color:#f5fbfd!important}
+.login-page .brand h1 span{background:linear-gradient(90deg,#45e3d4,#69acff)!important;-webkit-background-clip:text!important}
+.login-page .field label{color:#c8d5df!important}
+.login-page .input-box{background:rgba(5,11,19,.62)!important;border:1px solid #41515d!important;box-shadow:none!important;transition:border-color .18s ease,box-shadow .18s ease!important}
+.login-page .input-box:focus-within{border-color:#4bdfd1!important;box-shadow:0 0 0 3px rgba(75,223,209,.15)!important}
+.login-page .input-box input{color:#f4fafc!important}
+.login-page .input-box input::placeholder{color:#8d9da8!important}
+.login-page .field-icon,.login-page .forgot-link{color:#66ddd4!important}
+.login-page .remember,.login-page .approval-note,.login-page .login-footer{color:#b5c3cd!important}
+.login-page .encrypted{color:#68d7b7!important}
+.login-page .sign-in{background:linear-gradient(110deg,#33dbcc,#52a9ed)!important;color:#071b25!important;box-shadow:0 10px 24px rgba(31,173,184,.19)!important;transition:transform .17s ease,filter .17s ease!important}
+.login-page .sign-in:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.login-page .sign-in:active{transform:translateY(0)}
+.login-page .sign-in:disabled{opacity:.7;cursor:wait}
+.login-page .error-message{animation:login-enter .18s ease-out}
+@keyframes login-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes login-ambient{from{transform:translate3d(0,0,0)}to{transform:translate3d(22px,-14px,0)}}
+@media(max-width:560px){.login-page{padding:18px!important}.login-card{padding:27px 22px!important}}
+
+/* Small paint-only motion, with a system reduced-motion override. */
+.banksetu-sidebar,.mobile-menu-button{transition:transform .2s ease,opacity .2s ease,box-shadow .2s ease!important}
+.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card{animation:login-enter .2s ease-out both}
+.banksetu-main-workspace button,.banksetu-sidebar button{transition:transform .16s ease,opacity .16s ease,background-color .16s ease,box-shadow .16s ease}
+.banksetu-main-workspace button:active,.banksetu-sidebar button:active{transform:scale(.98)}
+.match-modal,.dashboard-status-panel,.customer-camera-dialog{animation:login-enter .18s ease-out both}
+.match-card,.dashboard-status-row{transition:background-color .17s ease,transform .17s ease}
+@media(prefers-reduced-motion:reduce){.login-page:before,.login-page:after,.login-card,.login-page .banksetu-logo,.login-page .error-message,.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel,.customer-camera-dialog{animation:none!important}.login-page .sign-in,.banksetu-main-workspace button,.banksetu-sidebar button,.banksetu-sidebar,.mobile-menu-button,.match-card,.dashboard-status-row{transition:none!important}}
+@media print{.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel{animation:none!important}}
+
+/* Expired/suspended business documents must not reach browser print output. */
+@media print {
+  body[data-banksetu-license-write="false"] * { visibility: hidden !important; }
+}
+.banksetu-floating-support{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(140deg,#00bdea,#2265ed 53%,#7a3be6);box-shadow:0 12px 26px #123d9a66;touch-action:none;user-select:none}.banksetu-floating-support:hover,.banksetu-floating-support:focus-visible{box-shadow:0 15px 31px #1833a879}.banksetu-floating-support svg{pointer-events:none}@media(max-width:700px){.banksetu-floating-support{right:9px;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
+.login-page .banksetu-logo{width:160px!important;height:160px!important;border-radius:0!important;background-size:contain!important;box-shadow:none!important;overflow:visible!important}.login-page .banksetu-logo::after{display:none}
+/* Improve menu legibility uniformly without changing the configured menu colors. */
+.banksetu-sidebar .banksetu-nav-item{min-height:48px!important;font-size:13px!important;font-weight:650!important;display:flex!important;align-items:center!important;gap:10px!important;line-height:1.25!important}
+.banksetu-sidebar .banksetu-nav-item span:first-child{flex:0 0 27px;font-size:25px!important;line-height:1!important;text-align:center}
+.banksetu-sidebar .banksetu-nav-item span:last-child{min-width:0;text-align:left;overflow-wrap:break-word}
+@media(max-width:350px){.banksetu-sidebar .banksetu-nav-item{font-size:12px!important}}
+.login-pricing-link{display:block;margin:0 auto 16px;border:0;background:transparent;color:#195cac;text-decoration:underline;font:inherit;font-weight:650;cursor:pointer}
+
+/* Personal appearance is paint only; global Master Admin gradients stay intact. */
+.banksetu-sidebar .banksetu-appearance{position:sticky;bottom:2px;flex:none;display:flex;align-self:center;gap:2px;width:max-content;padding:3px;border-radius:12px;background:rgba(5,13,30,.34);border:1px solid #ffffff44;z-index:2;margin-top:auto}
+.banksetu-sidebar .banksetu-appearance button{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px 10px;border:0;border-radius:9px;background:transparent;color:#fff;font-size:12px;cursor:pointer;min-height:34px}
+.banksetu-sidebar .banksetu-appearance button.selected{background:#fff;color:#263047;box-shadow:0 2px 8px #09152a44}
+.banksetu-sidebar .banksetu-appearance button:focus-visible{outline:2px solid #67e8f9;outline-offset:2px}
+.banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;padding-bottom:2px!important}
+.banksetu-sidebar nav{min-height:0;overflow-y:auto;overflow-x:hidden;flex:1}
+/* Keep wheel, touch and keyboard scrolling without sidebar scrollbar chrome. */
+.banksetu-sidebar,.banksetu-sidebar nav{scrollbar-width:none;-ms-overflow-style:none}
+.banksetu-sidebar::-webkit-scrollbar,.banksetu-sidebar nav::-webkit-scrollbar{display:none;width:0;height:0}
+@media(max-width:760px){.banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;padding-bottom:calc(2px + env(safe-area-inset-bottom,0px))!important}.banksetu-sidebar .banksetu-appearance{bottom:0}}
+
+.dashboard-analytics{margin-top:18px;color:var(--bs-text)}
+.dashboard-analytics>h2{font-size:20px;margin:0 0 12px}
+.dashboard-analytics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.dashboard-analytics-card{min-width:0;padding:18px;border-radius:12px;border:1px solid var(--bs-border);background:var(--bs-surface);box-shadow:var(--bs-shadow);color:var(--bs-text)}
+.dashboard-analytics-card:last-child{grid-column:1/-1}
+.dashboard-analytics-card h3{margin:0 0 5px;font-size:16px;color:inherit}.dashboard-analytics-card p,.dashboard-analytics-card small{color:var(--bs-muted);font-size:12px}
+.dashboard-analytics-card p{min-height:18px;margin:0 0 10px}
+.dashboard-analytics-bars{height:154px;display:flex;align-items:flex-end;gap:4px;padding:12px 0 21px;box-sizing:border-box;border-bottom:1px solid var(--bs-border)}
+.dashboard-analytics-column{position:relative;flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center}
+.dashboard-analytics-column small{position:absolute;top:calc(100% + 4px);font-size:10px!important;white-space:nowrap}
+.dashboard-analytics-bar{width:min(70%,24px);border-radius:5px 5px 0 0;min-height:2px}.dashboard-analytics-bar.growth{background:#22b8cc}.dashboard-analytics-bar.entries{background:#9070e9}
+.dashboard-analytics-status{display:grid;grid-template-columns:1fr auto;gap:5px 12px;margin-top:10px;font-size:13px}
+.dashboard-analytics-track{grid-column:1/-1;height:7px;border-radius:99px;background:var(--bs-border);overflow:hidden}.dashboard-analytics-track span{display:block;height:100%;border-radius:99px}
+@media(max-width:700px){.dashboard-analytics-grid{grid-template-columns:1fr}.dashboard-analytics-card:last-child{grid-column:auto}.dashboard-analytics-card{padding:14px}}
+
+@media screen {
+  .banksetu-app-shell[data-appearance="dark"]{
+    --bs-bg:#0b1220;--bs-surface:#172338;--bs-surface-soft:#233249;--bs-text:#f8fafc;--bs-muted:#cbd5e1;--bs-border:#29374d;--bs-shadow:0 8px 24px #03091566;
+    --ui-bg:#0b1220;--ui-text:#f8fafc;--ui-muted:#cbd5e1;--ui-shadow:0 8px 24px #03091566;color-scheme:dark;
+  }
+  body:has(.banksetu-app-shell[data-appearance="dark"]),html:has(.banksetu-app-shell[data-appearance="dark"]){background:#0b1220!important;color-scheme:dark}
+  .banksetu-app-shell[data-appearance="dark"] .banksetu-sidebar{background:#111c30!important}
+  .banksetu-app-shell[data-appearance="dark"] .banksetu-main-workspace{background:#0b1220!important;color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .dashboard-top-bar,
+  .banksetu-app-shell[data-appearance="dark"] .dashboard-quick-panel,
+  .banksetu-app-shell[data-appearance="dark"] :is(.customer-form-card,.customer-top-grid>div,.customer-photo-card,.customer-search-card,.passbook-search-card,.search-panel,.preview-wrapper,.customer-preview,.edit-panel,.customer-empty,.passbook-empty,.match-card,.passbook-shell,.reports-page,.settings-page,.admin-users-panel,.afsm-panel,.license-panel,.license-card,.request-card,.support-page,.chat-panel,.dashboard-analytics-card,.customer-preview-card){background:#172338!important;color:#f8fafc!important;border-color:#29374d!important;box-shadow:0 8px 24px #03091555!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(.customer-entry-wrapper,.customers-page,.passbook-page,.aof-module){background:#111c30!important;color:#f8fafc!important;border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(.banksetu-notice,.dashboard-status-row,.customer-preview-content,.customer-preview-section,.customer-preview-bottom,.settings-page .admin-user-card,.settings-page .admin-users-panel.admin-users-embedded,.announcement,.announcement-editor,.conversation-list,.message-list,.chat-compose,.support-content-grid article,.sync-card-grid>div,.afsm-panels>div){background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(.support-hero,.chat-title,.customer-preview-heading,.customer-status-strip,.settings-page .admin-user-meta>span){background:#233249!important;color:#f8fafc!important;border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(h1,h2,h3,h4,label,strong,td,th,.dashboard-top-bar h1,.dashboard-top-bar h2,.dashboard-top-bar strong,.dashboard-quick-panel h2,.customer-entry-wrapper h1,.customer-entry-wrapper h2,.customer-entry-wrapper h3,.customers-page h1,.customers-page h2,.passbook-page h1,.aof-module h1,.settings-page .admin-user-info strong){color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(p,small,.dashboard-top-bar span,.dashboard-top-bar small,.dashboard-quick-panel p,.customer-entry-wrapper p,.customers-page p,.passbook-page p,.aof-module p,.settings-page .admin-user-info span){color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(input,select,textarea,.search-input,.passbook-search-input,.settings-page .admin-users-toolbar input){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(input,textarea)::placeholder{color:#aabbd0!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(table,thead,tbody,tr,td,th){border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(button:disabled,input:disabled,select:disabled){opacity:.65}
+  .banksetu-app-shell[data-appearance="dark"] :is(button,a,input,select,textarea):focus-visible{outline:2px solid #67e8f9!important;outline-offset:2px}
+  .banksetu-app-shell[data-appearance="dark"] .dashboard-stats-grid>.dashboard-stat-card{background:#172338!important;border:1px solid #29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] .dashboard-quick-grid>.dashboard-quick-card{background:#233249!important;border:1px solid #354661!important}
+  /* Uploaded bank images keep their own pixels; the surrounding bank details use the dark surface. */
+  .banksetu-app-shell[data-appearance="dark"] .persistent-bank-header{background:#172338!important;border-color:#29374d!important;color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .bank-info-strip{background:transparent!important}
+  .banksetu-app-shell[data-appearance="dark"] .bank-info-strip h2{color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .bank-info-strip :is(span,p){color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .all-customer-data{background:#172338!important;color:#f8fafc!important;border:1px solid #29374d}
+  .banksetu-app-shell[data-appearance="dark"] .all-customer-data thead th{background:#233249!important;color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .all-customer-data tbody tr{background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] .all-customer-data tbody tr:nth-child(even){background:#1c2a40!important}
+  .banksetu-app-shell[data-appearance="dark"] .all-customer-data tbody tr:is(:hover,:focus-visible){background:#2a3c57!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel{background:#0b1220!important;color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-summary{background:#111c30!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-tile{background:#172338!important;color:#f8fafc!important;border:1px solid #29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-tile :is(strong,span){color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-tile small{color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-tabs button:not(.selected){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-history :is(th,td){background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-history th{background:#233249!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-history tr:nth-child(even) td{background:#1c2a40!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-history .license-selected-row td{background:#294166!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-client-table tr{background:#172338!important;border-color:#29374d!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-client-table td:before{color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-history small{color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel .license-filters .license-clear{background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel :is(.license-plan-options,.license-configuration,.license-features,.license-important,.license-plan-options label,.license-preview){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  .banksetu-app-shell[data-appearance="dark"] .license-panel :is(.license-banner p,.license-details dt,.license-client-actions>p){color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(.passbook-print-area,.pb-block){background:#fff!important;color:#111827!important}
+  .banksetu-app-shell[data-appearance="dark"] :is(.passbook-print-area,.pb-block) *{color:#111827!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.match-modal,.dashboard-status-panel,.customer-preview-overlay .customer-preview-card,.license-modal,.pdf-dialog){background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .dashboard-status-row{background:#233249!important;color:#f8fafc!important;border-color:#29374d!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .dashboard-status-panel :is(p,span,small){color:#cbd5e1!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.match-modal,.dashboard-status-panel,.license-modal,.pdf-dialog) :is(h1,h2,h3,strong,label){color:#f8fafc!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.match-modal,.dashboard-status-panel,.license-modal,.pdf-dialog) :is(input,select,textarea){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .pdf-dialog :is(.pdf-mode,.pdf-detail,.pdf-results){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .pdf-dialog .pdf-mode:has(input:checked){background:#294166!important;border-color:#58a6ff!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .pdf-dialog :is(p,small){color:#cbd5e1!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .pdf-dialog .pdf-actions button:first-child{background:#33455f!important;color:#f8fafc!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .pdf-dialog .pdf-results label{border-color:#42536b!important}
+  /* Only alignment controls change appearance; its actual passbook page stays white. */
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .print-alignment-overlay{color:#f8fafc!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.print-alignment-window,.print-alignment-settings,.print-alignment-panel,.print-alignment-saved,.print-alignment-zoom,.print-alignment-tip,.print-alignment-duplex,.print-alignment-width){background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.print-alignment-settings h2,.print-alignment-panel h3,.print-alignment-saved strong,.print-alignment-saved>div,.print-alignment-control-row legend,.print-alignment-duplex small){color:#f8fafc!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.print-alignment-arrows output,.print-alignment-inputs span,.print-alignment-inputs input,.print-alignment-zoom button){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .print-alignment-final button:first-child{background:#33455f!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .print-alignment-control-row fieldset{border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .print-alignment-paper{background:#233249!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .print-alignment-frame{background:white!important;color:#111827!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.license-drawer,.admin-users-overlay .admin-users-panel){background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.license-drawer .license-card,.license-drawer .license-plan-options label,.admin-users-overlay .admin-user-card){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-section h3{background:#233249!important;color:#f8fafc!important}
+}
+@media print{.banksetu-app-shell[data-appearance="dark"]{color-scheme:light!important}.banksetu-app-shell[data-appearance="dark"] :is(.passbook-print-area,.pb-block){background:#fff!important;color:#111827!important}}
+
+/* These feature surfaces also contain inline/light styles. Keep appearance
+   scoped to screen UI; printable passbook artwork is deliberately untouched. */
+@media screen {
+  .banksetu-app-shell[data-appearance="dark"] .sync-center,
+  .banksetu-app-shell[data-appearance="dark"] .sync-body {
+    background:#111c30!important;color:#f8fafc!important;border-color:#29374d!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] :is(.sync-header,.sync-protection) {
+    background:linear-gradient(125deg,#172338,#233249)!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] :is(.sync-card,.sync-card-icon,.sync-storage-details,.sync-health) {
+    background:#172338!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .sync-health {margin-top:14px;padding:14px;border:1px solid #354661;border-radius:12px;overflow-wrap:anywhere}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(span,p,small,summary,li) {color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(h2,strong,.sync-card-copy>span,.sync-summary span) {color:#f8fafc!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(.sync-header-actions a,.sync-health button,.sync-card>button,.sync-maintenance button) {
+    background:#233249!important;color:#c7dcff!important;border:1px solid #42536b!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .sync-center :is(.backup-action,.excel-action,.restore-action) {
+    background:#1c3046!important;color:#e2e8f0!important;border-color:#42536b!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .sync-center .backup-action {color:#99f6cf!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center .excel-action {color:#a9ceff!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-center .restore-action {color:#ffe0a3!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-maintenance button:first-child {background:#3b2136!important;color:#ffc4d9!important;border-color:#77445e!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-summary em {background:#123e34!important;color:#a7f3d0!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-summary em.pending {background:#493816!important;color:#fde68a!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-summary em.error,
+  .banksetu-app-shell[data-appearance="dark"] .sync-error-card {background:#4a2636!important;color:#fecdd3!important;border-color:#a5576d!important}
+  .banksetu-app-shell[data-appearance="dark"] .sync-error-card :is(p,strong) {color:#fecdd3!important}
+
+  .banksetu-app-shell[data-appearance="dark"] .reports-panel,
+  .banksetu-app-shell[data-appearance="dark"] .reports-mobile article {background:#172338!important;color:#f8fafc!important;border-color:#354661!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-panel-header {border-color:#354661!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page th {background:#233249!important;color:#e2e8f0!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page tbody tr {background:#172338!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page tbody tr:nth-child(even) {background:#1c2a40!important}
+  .banksetu-app-shell[data-appearance="dark"] .reports-page :is(td,td div,.reports-mobile span) {color:#cbd5e1!important;border-color:#354661!important}
+
+  .banksetu-app-shell[data-appearance="dark"] :is(.settings-admin-hero,.master-client-intro,.admin-owner-summary,.admin-client-workspace,.admin-client-workspace-header,.admin-client-children,.admin-client-children-heading,.admin-user-group-heading) {
+    background:#172338!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-stats>div {background:#233249!important;border:1px solid #354661!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page :is(.admin-users-toolbar button,.admin-user-meta>span,.admin-client-seat-count) {background:#233249!important;color:#dbeafe!important;border-color:#42536b!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page :is(.admin-users-kicker,.admin-owner-label,.admin-user-info span,.admin-user-info small,.admin-client-empty,.admin-client-children-heading span,.master-client-create) {color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-actions :is(.approve,.unblock) {background:#153e34!important;color:#a7f3d0!important;border-color:#326954!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-actions .block {background:#493816!important;color:#fde68a!important;border-color:#796130!important}
+  .banksetu-app-shell[data-appearance="dark"] .settings-page .admin-user-actions :is(.delete,.deny) {background:#4a2636!important;color:#fecdd3!important;border-color:#a5576d!important}
+
+  /* Dialogs can be mounted outside the shell as well as within the page. */
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay .admin-users-panel) {
+    background:#172338!important;color:#f8fafc!important;border-color:#354661!important;
+  }
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay) :is(h2,h3,label,strong,button) {color:#f8fafc!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay) :is(p,small,span,pre) {color:#cbd5e1!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-panel,.sync-dialog-panel,.admin-users-overlay) :is(input,select,textarea) {background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) :is(.excel-export-choice,.excel-export-options,.excel-export-estimate) {background:#233249!important;color:#f8fafc!important;border-color:#42536b!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-choice:has(input:checked) {background:#1e453e!important;border-color:#59d7ad!important}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-footer button:first-child {background:#33455f!important;color:#f8fafc!important;border:1px solid #52657e;border-radius:8px;padding:10px 16px}
+  body:has(.banksetu-app-shell[data-appearance="dark"]) .excel-export-panel [role="alert"] {color:#fecaca!important}
+}
+
+/* One document appearance also reaches body portals and app-owned dialogs.
+   Only screen paint changes; bank artwork, PDFs and printed pages retain ink. */
+@media screen {
+  html,body,#root{width:100%;max-width:none;margin:0;border:0;padding:0;min-height:100dvh;box-sizing:border-box}
+  #root{border-inline:0!important}
+  html[data-appearance="dark"]:root{
+    --app-dark-surface:#172338;--app-dark-text:#f8fafc;--app-dark-border-color:#42536b;
+    --bs-bg:#0b1220;--bs-surface:#172338;--bs-surface-soft:#233249;--bs-text:#f8fafc;--bs-muted:#cbd5e1;--bs-border:#354661;
+    --text:#cbd5e1;--text-h:#f8fafc;--bg:#0b1220;--border:#354661;--code-bg:#233249;
+    background:#0b1220;color:#f8fafc;color-scheme:dark;
+  }
+  html[data-appearance="light"]{color-scheme:light}
+  html[data-appearance="dark"]:root body,html[data-appearance="dark"]:root #root{background:#0b1220;color:#f8fafc}
+  html[data-appearance="dark"]:root :is(
+    [role="dialog"],[role="alertdialog"],dialog,.app-message-dialog,.customer-delete-dialog,
+    .admin-users-toolbar,.admin-users-list,.admin-users-header,.admin-user-group-heading,
+    .admin-owner-summary,.admin-client-workspace,.admin-client-children,.admin-user-card,
+    .bank-selection-required,.custom-bank-document,.client-document-search,.bank-format-print-wrap,
+    .license-welcome,.license-contact,.license-choices article,.banksetu-notice,
+    .settings-page,.master-client-intro,.support-page,.conversation-list,.chat-panel,.message-list,.chat-compose,
+    .announcement-editor,.announcement,.request-card,.faq-list details,.support-content-grid article,
+    .afsm-panel,.afsm-actions,.update-dialog,.update-notes,.update-progress,.update-versions,
+    .pdf-dialog,.pdf-detail,.pdf-results,.pdf-mode,.customer-pdf-preview,.license-drawer,
+    .license-card,.license-plan-options,.license-configuration,.license-features,.license-important,
+    .license-reference-panel,.license-analytics-card,.license-detail-panel,.license-note,
+    .print-alignment-settings,.print-alignment-window,.print-alignment-panel,.print-alignment-measures span
+  ){background:#172338!important;color:#f8fafc!important;border-color:#354661!important}
+  html[data-appearance="dark"]:root :is(.customer-preview-actions button,.admin-users-toolbar button,
+    .update-versions>div,.update-close,.support-reply-reference,.support-delete-status,
+    .support-message-actions>div,.support-selected-file,.message:not(.mine)){
+    background:#233249!important;color:#f8fafc!important;border-color:#42536b!important
+  }
+  /* Exclude document/paper descendants from all global UI paint. */
+  html[data-appearance="dark"]:root body :is(button,input,select,textarea,option,optgroup):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *,
+    [data-print-paper],[data-print-paper] *
+  )){background:#233249!important;color:#f8fafc!important;border-color:#42536b!important;color-scheme:dark}
+  html[data-appearance="dark"]:root body :is(input,textarea)::placeholder{color:#adbed3!important;opacity:1}
+  html[data-appearance="dark"]:root body :is(h1,h2,h3,h4,h5,h6,label,legend,dt,dd,strong,summary,code,pre):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *,
+    [data-print-paper],[data-print-paper] *
+  )){color:#f8fafc!important}
+  html[data-appearance="dark"]:root body :is(p,small,time,figcaption):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *,
+    [data-print-paper],[data-print-paper] *
+  )){color:#cbd5e1!important}
+  html[data-appearance="dark"]:root body :is(table,thead,tbody,tr,th,td):not(:is(
+    .paper,.paper *,.bank-format-print,.bank-format-print *,
+    .passbook-print-area,.passbook-print-area *,.pb-block,.pb-block *,
+    .union-preview,.union-preview *,.assam-quick-preview,.assam-quick-preview *,
+    .union-aof-page,.union-aof-page *,.print-alignment-frame,.print-alignment-frame *
+  )){background:#172338!important;color:#f8fafc!important;border-color:#354661!important}
+  html[data-appearance="dark"]:root body thead th:not(:is(.paper *,.bank-format-print *,.passbook-print-area *,.pb-block *,.union-preview *,.assam-quick-preview *,.union-aof-page *,.print-alignment-frame *)){background:#233249!important}
+  html[data-appearance="dark"]:root :is(.app-dialog-confirm,.update-install,.license-primary){background:#2358aa!important;color:white!important;border-color:#5285d5!important}
+  html[data-appearance="dark"]:root :is(.delete,.license-danger,.customer-delete-dialog button:first-child){background:#58273a!important;color:#ffe1e7!important;border-color:#a75b73!important}
+  html[data-appearance="dark"]:root :is(.admin-user-actions .block,.sync-summary .pending){background:#493816!important;color:#fde68a!important}
+  html[data-appearance="dark"]:root :is(.admin-owner-active,.admin-user-status.status-approved){background:#123e34!important;color:#a7f3d0!important}
+  html[data-appearance="dark"]:root .support-reply-reference{border-left-color:#9ba7ff!important}
+  html[data-appearance="dark"]:root :is(.support-tabs .active,.license-tabs .selected,.banksetu-nav-item.active,.banksetu-appearance .selected,.conversation-list .selected){background:#294166!important;color:#f8fafc!important;border-color:#76b0ff!important}
+  html[data-appearance="dark"]:root :is(.paper,.bank-format-print){background:white!important;color:#111827!important}
+  html[data-appearance="dark"]:root :is(.paper,.bank-format-print) :is(h1,h2,h3,label,strong,p,small,td,th){color:#111827!important}
+  html[data-appearance="dark"]:root :is(.customer-delete-overlay,.admin-users-overlay,.license-modal-backdrop,.update-backdrop,.customer-preview-overlay){background:#030812bf!important}
+  html[data-appearance="dark"]:root :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid #67e8f9!important;outline-offset:3px}
+}
+.app-message-dialog{width:min(520px,calc(100vw - 28px));max-height:85dvh;overflow:auto;margin:auto;padding:24px;border:1px solid #c7d2e2;border-radius:16px;background:#fff;color:#172338;box-shadow:0 20px 70px #0007;text-align:left}
+.app-message-dialog::backdrop{background:#030812b8}
+.app-message-dialog h2{font-size:21px;margin:0 0 14px;color:inherit}.app-message-dialog p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;line-height:1.55}
+.app-dialog-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:22px}.app-dialog-actions button{padding:10px 18px;border-radius:9px;border:1px solid #aebbd0;background:#eef2f8;color:#20324c;cursor:pointer;font:inherit}.app-dialog-actions .app-dialog-confirm{background:#2358aa;color:white;border-color:#2358aa}

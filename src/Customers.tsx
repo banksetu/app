@@ -1,12 +1,31 @@
+import AfsmConfirmation, { type AfsmBatch } from "./AfsmConfirmation";
+import { afsmDisplay } from "./core/afsm";
+import { identity } from "./core/localData";
+import { snapshot } from "./AllCustomerData";
+import { isAndroid, printAndroidPdf } from "./platform/android/runtime";
+import { customerPdfBuilder, customersPerPdfPage } from "./core/customerPdf";
+import PdfDocumentPreview from "./PdfDocumentPreview";
+import { classifyRecovery } from "./core/recovery";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getActiveLocalCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
 
+  useEffect,
   useState,
+  useRef,
 
   type FormEvent,
 
 } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getCustomerSearchApiUrl } from "./tenantApi";
+import { requireLicensedWrite } from "./core/licenseAccess";
+import { loadPdfCustomers, selectCustomerPdfRecords } from "./core/pdfSelection";
+
+const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>;saveCustomerPdf?: (base64:string)=>Promise<{saved?:boolean;cancelled?:boolean}>;openCustomerPdf?: (base64:string)=>Promise<{opened?:boolean}>}}).bankSetuDesktop;
 
 /* =========================================================
 
@@ -15,6 +34,9 @@ import { getAuth } from "firebase/auth";
 ========================================================= */
 
 type Customer = {
+  recordId?: string;
+  afsmStatus?: string;
+  afsmSentAt?: string;
 
   enrolId: string;
 
@@ -171,6 +193,13 @@ export default function Customers() {
 
     useState<Customer | null>(null);
 
+  useEffect(()=>{
+    if(!customer?.recordId || !localModeEnabled())return;
+    let active=true;const scope=identity();
+    const refresh=()=>{void getActiveLocalCustomers().then(records=>{if(!active||identity()!==scope)return;const found=records.find(record=>record.recordId===customer.recordId);if(found)setCustomer(current=>current?.recordId===found.recordId?{...current,afsmStatus:String((found as Record<string,unknown>).afsmStatus||""),afsmSentAt:String((found as Record<string,unknown>).afsmSentAt||"")}:current);}).catch(()=>{});};
+    window.addEventListener("banksetu-sync-change",refresh);return()=>{active=false;window.removeEventListener("banksetu-sync-change",refresh);};
+  },[customer?.recordId]);
+
   const [loading, setLoading] =
 
     useState(false);
@@ -192,6 +221,52 @@ export default function Customers() {
   const [selectedMatchLoading, setSelectedMatchLoading] =
     useState<number | null>(null);
 
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfRecords, setPdfRecords] = useState<Record<string, unknown>[]>([]);
+  const [pdfMode, setPdfMode] = useState<"all" | "date" | "account" | "search">("all");
+  const [pdfFrom, setPdfFrom] = useState("");
+  const [pdfTo, setPdfTo] = useState("");
+  const [pdfSearch, setPdfSearch] = useState("");
+  const [pdfSelected, setPdfSelected] = useState<Set<string>>(new Set());
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfIncomplete, setPdfIncomplete] = useState(false);
+  const pdfGenerating = useRef(false);
+  const pdfCancelled = useRef(false);
+  const [pdfBlob,setPdfBlob]=useState<Blob|null>(null);
+  const [afsmBatch,setAfsmBatch]=useState<AfsmBatch|null>(null);
+  const [pdfCount,setPdfCount]=useState(0);
+  const [pdfProgress,setPdfProgress]=useState(0);
+  const [pdfBusy,setPdfBusy]=useState(false);
+
+  const pdfKey = (record: Record<string, unknown>) => String(record.recordId || record.rowNumber);
+  const pdfMatches = selectCustomerPdfRecords(pdfRecords,pdfMode,pdfFrom,pdfTo,pdfSearch);
+  const pdfValid = !pdfLoading && (pdfMode === "all" || (pdfMode === "date" && !!pdfFrom && !!pdfTo && pdfFrom <= pdfTo) || (pdfMode === "account" && !!pdfFrom.trim() && (!pdfTo.trim() || pdfFrom.trim() <= pdfTo.trim())) || (pdfMode === "search" && !!pdfSearch.trim()));
+  const pdfChosen = pdfMode === "search" ? pdfMatches.filter(record => pdfSelected.has(pdfKey(record))) : pdfMatches;
+
+  const openPdfSelection = async () => {
+    if (pdfLoading || pdfGenerating.current) return;
+    setError(""); setPdfBlob(null); setPdfOpen(true); setPdfLoading(true); setPdfSelected(new Set());
+    try {
+      await requireLicensedWrite();
+      const [records, status] = localModeEnabled()
+        ? await Promise.all([getLocalExportCustomers(), getLocalStatus()])
+        : [[], {downloading:false,cacheLimited:false}];
+      // A preview can load from Google before local reconciliation completes.
+      // Only the bound, verified tenant bridge may supply missing pages.
+      const requestPage=navigator.onLine && getCustomerSearchApiUrl(localModeEnabled())
+        ? async (page:number,pageSize:number) => apiRequest({action:"getAllCustomers",page,pageSize}) : undefined;
+      try {
+        const selection=await loadPdfCustomers(records,status.downloading || status.cacheLimited,navigator.onLine,requestPage);
+        setPdfRecords(selection.records);setPdfIncomplete(selection.incomplete);
+      } catch (reason) {
+        if (!records.length) throw reason;
+        setPdfRecords(records);setPdfIncomplete(true);
+        setError("Google customer pages are unavailable. Only this device's cached customers are selected; review the partial count before generating.");
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read customers for PDF preview."); }
+    finally { setPdfLoading(false); }
+  };
+
   /* =======================================================
 
      API REQUEST
@@ -204,13 +279,7 @@ export default function Customers() {
 
   ) => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem("bankSetuApiUrl")
-
-        ?.trim() || "";
+      const apiUrl = getCustomerSearchApiUrl(localModeEnabled());
 
     if (!apiUrl) {
 
@@ -238,11 +307,11 @@ export default function Customers() {
 
     const idToken =
 
-      await user.getIdToken();
+      await getDataIdToken();
 
     const response =
 
-      await fetch(apiUrl, {
+      await localDataFetch(apiUrl, {
 
         method: "POST",
 
@@ -428,7 +497,7 @@ export default function Customers() {
 
   ======================================================= */
 
-  const printCustomer = () => {
+  const printCustomer = async () => {
 
     if (!customer) {
 
@@ -444,7 +513,8 @@ export default function Customers() {
 
     setError("");
 
-    window.print();
+    try { await requireLicensedWrite(); window.print(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "License verification is required to print."); }
 
   };
 
@@ -482,265 +552,99 @@ export default function Customers() {
 
   };
 
-  /* =======================================================
-
-     MAKE ALL CUSTOMERS PDF
-
-     UI button is ready.
-
-     Backend bulk-customer API will be connected
-
-     in the next step.
-
-  ======================================================= */
-
-  const makeAllCustomersPdf = async () => {
-
-    setError("");
-
-    setMessage("");
-
-    setLoading(true);
-
+  const shareCustomer = async () => {
+    if (!customer) return;
     try {
-
-      const allCustomers: Customer[] = [];
-
-      let page = 1;
-
-      let hasNextPage = true;
-
-      while (hasNextPage) {
-
-        const result = await apiRequest({
-
-          action: "getAllCustomers",
-
-          page,
-
-          pageSize: 50,
-
-        });
-
-        const batch = Array.isArray(result.customers)
-
-          ? (result.customers as Customer[])
-
-          : [];
-
-        allCustomers.push(...batch);
-
-        hasNextPage = Boolean(result.hasNextPage);
-
-        page += 1;
-
-        if (page > 1000) {
-
-          throw new Error("Too many customer pages returned by the API.");
-
-        }
-
+      await requireLicensedWrite();
+      const blob = await snapshot(customer as unknown as Record<string, unknown>);
+      const name = "BankSetu-customer-preview.png";
+      if (isAndroid()) {
+        const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",")[1]);reader.onerror=reject;reader.readAsDataURL(blob);});
+        const file = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
+        await Promise.race([Share.share({title:"Bank Setu Customer Preview",files:[file.uri],dialogTitle:"Share customer preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Android sharing did not open. Please try again.")),20000))]);
+      } else if (desktopBridge()?.shareImage) {
+        const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+        await desktopBridge()!.shareImage!(data);
+        setMessage("Preview image copied. Paste it into the WhatsApp chat.");
+      } else if (navigator.share && navigator.canShare?.({files:[new File([blob],name,{type:"image/png"})]})) {
+        await navigator.share({files:[new File([blob],name,{type:"image/png"})],title:"Bank Setu Customer Preview"});
+      } else {
+        const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setMessage("Preview image downloaded for sharing.");
       }
-
-      if (allCustomers.length === 0) {
-
-        throw new Error("No customer data found.");
-
-      }
-
-      const popup = window.open("", "_blank", "width=1000,height=800");
-
-      if (!popup) {
-
-        throw new Error("Popup was blocked. Please allow popups and try again.");
-
-      }
-
-      const esc = (value?: string | null) =>
-
-        String(value ?? "")
-
-          .replace(/&/g, "&amp;")
-
-          .replace(/</g, "&lt;")
-
-          .replace(/>/g, "&gt;")
-
-          .replace(/"/g, "&quot;")
-
-          .replace(/'/g, "&#039;");
-
-      const customerCard = (item: Customer) => {
-
-        const address = makeAddress(item);
-
-        const photo = item.photoPreview || item.photoUrl || "";
-
-        return `
-
-          <section class="customer-card">
-
-            <div class="details">
-
-              <div><b>AOF NO.</b><span>${esc(item.aofNo)}</span></div>
-
-              <div><b>CIF / CUSTOMER ID</b><span>${esc(item.enrolId)}</span></div>
-
-              <div><b>ACCOUNT NO.</b><span>${esc(item.accountNo)}</span></div>
-
-              <div><b>A/C OPENING DATE</b><span>${esc(item.accountOpeningDate)}</span></div>
-
-              <div><b>MOBILE</b><span>${esc(item.contact)}</span></div>
-
-              <div><b>AADHAAR NO.</b><span>${esc(item.uidaiNo)}</span></div>
-
-            </div>
-
-            <div class="details">
-
-              <div><b>NAME</b><span>${esc(item.name).toUpperCase()}</span></div>
-
-              <div><b>C/O NAME</b><span>${esc(item.coName).toUpperCase()}</span></div>
-
-              <div><b>ADDRESS</b><span>${esc(address).toUpperCase()}</span></div>
-
-              <div><b>PIN CODE</b><span>${esc(item.pinCode)}</span></div>
-
-              <div><b>PAN</b><span>${esc(item.pan).toUpperCase()}</span></div>
-
-              <div><b>NOMINEE</b><span>${esc(item.nominee).toUpperCase()}</span></div>
-
-            </div>
-
-            <div class="details status-col">
-
-              <div><b>ACCOUNT STATUS</b><span>${esc(item.status)}</span></div>
-
-              <div><b>DBT STATUS</b><span>${esc(item.dbtStatus)}</span></div>
-
-              <div><b>PASSBOOK STATUS</b><span>${esc(item.passbookStatus)}</span></div>
-
-            </div>
-
-            <div class="photo-wrap">
-
-              ${photo ? `<img src="${esc(photo)}" alt="Customer photo" />` : `<div class="no-photo">NO PHOTO</div>`}
-
-            </div>
-
-          </section>`;
-
-      };
-
-      const pages: string[] = [];
-
-      for (let i = 0; i < allCustomers.length; i += 3) {
-
-        pages.push(
-
-          `<main class="pdf-page">${allCustomers
-
-            .slice(i, i + 3)
-
-            .map(customerCard)
-
-            .join("")}</main>`
-
-        );
-
-      }
-
-      popup.document.open();
-
-      popup.document.write(`<!doctype html>
-
-<html>
-
-<head>
-
-<meta charset="utf-8" />
-
-<title>Bank Setu - All Customers</title>
-
-<style>
-
-  @page { size: A4; margin: 8mm; }
-
-  * { box-sizing: border-box; }
-
-  body { margin: 0; font-family: Arial, sans-serif; color: #111; background: #fff; }
-
-  .pdf-page { width: 100%; min-height: 281mm; page-break-after: always; display: flex; flex-direction: column; gap: 4mm; }
-
-  .pdf-page:last-child { page-break-after: auto; }
-
-  .customer-card { height: 88mm; border: 1px solid #777; padding: 4mm; display: grid; grid-template-columns: 1.05fr 1.35fr .9fr 27mm; gap: 3mm; overflow: hidden; }
-
-  .details { min-width: 0; }
-
-  .details > div { display: grid; grid-template-columns: 42% 58%; gap: 2mm; margin-bottom: 2.2mm; align-items: start; font-size: 8.5pt; text-align: left; }
-
-  .details b { font-size: 7.6pt; }
-
-  .details span { overflow-wrap: anywhere; text-align: left; }
-
-  .status-col > div { grid-template-columns: 52% 48%; }
-
-  .photo-wrap { text-align: left; }
-
-  .photo-wrap img, .no-photo { width: 25mm; height: 31mm; object-fit: cover; border: 1px solid #777; }
-
-  .no-photo { display: flex; align-items: center; justify-content: center; font-size: 7pt; }
-
-  @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
-
-</style>
-
-</head>
-
-<body>${pages.join("")}</body>
-
-</html>`);
-
-      popup.document.close();
-
-      window.setTimeout(() => {
-
-        popup.focus();
-
-        popup.print();
-
-      }, 500);
-
-      setMessage(`${allCustomers.length} customers loaded. Print dialog opened for PDF.`);
-
-    } catch (err) {
-
-      setError(
-
-        err instanceof Error
-
-          ? err.message
-
-          : "All customers could not be loaded."
-
-      );
-
-    } finally {
-
-      setLoading(false);
-
-    }
-
+    } catch (cause) {setError(cause instanceof Error?cause.message:"Could not share preview image.");}
   };
 
-  const photo =
-
-    customer?.photoPreview ||
-
-    customer?.photoUrl ||
-
-    "";
+  const pdfBase64 = (blob:Blob) => new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('PDF data could not be read.'));reader.readAsDataURL(blob);});
+  const saveCustomersPdf = async () => {
+    if(!pdfBlob || pdfBusy)return;
+    setPdfBusy(true);setError('');
+    try{
+      await requireLicensedWrite();
+      const name='BankSetu-customers.pdf';
+      if(isAndroid()){
+        const file=await Filesystem.writeFile({path:name,data:await pdfBase64(pdfBlob),directory:Directory.Cache});
+        try{await Share.share({title:'Bank Setu Customers PDF',files:[file.uri],dialogTitle:'Save or share PDF'});}
+        finally{setTimeout(()=>void Filesystem.deleteFile({path:name,directory:Directory.Cache}).catch(()=>undefined),300000);}
+      }else if(desktopBridge()?.saveCustomerPdf){
+        const result=await desktopBridge()!.saveCustomerPdf!(await pdfBase64(pdfBlob));
+        if(result.saved)setMessage('PDF saved.');
+      }else{
+        const url=URL.createObjectURL(pdfBlob);const link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      }
+    }catch(reason){setError(reason instanceof Error?reason.message:'PDF could not be saved.');}
+    finally{setPdfBusy(false);}
+  };
+  const printCustomersPdf = async () => {
+    if(!pdfBlob||pdfBusy)return;
+    setPdfBusy(true);setError('');
+    try{
+      await requireLicensedWrite();
+      if(isAndroid()){await printAndroidPdf(await pdfBase64(pdfBlob));setMessage('Android print dialog opened. Printing or cancellation is controlled there.');}
+      else if(desktopBridge()?.openCustomerPdf){await desktopBridge()!.openCustomerPdf!(await pdfBase64(pdfBlob));setMessage('PDF opened in the system viewer. Choose Print there.');}
+      else {setError('Download this PDF and use your device PDF viewer to print it.');}
+    }catch(reason){setError(reason instanceof Error?reason.message:'Print dialog could not be opened.');}
+    finally{setPdfBusy(false);}
+  };
+  const makeAllCustomersPdf = async (records: Record<string, unknown>[]) => {
+    if(!pdfValid||!records.length||pdfGenerating.current)return;
+    pdfGenerating.current=true;pdfCancelled.current=false;setPdfLoading(true);setPdfBlob(null);setAfsmBatch(null);setError('');setPdfProgress(0);
+    try{
+      await requireLicensedWrite();
+      const batchScope=localModeEnabled()?identity():null;
+      const batchIds=records.map(record=>String(record.recordId||""));
+      const builder=customerPdfBuilder();
+      for(let index=0;index<records.length;index++){
+        if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
+        const item=previewCustomer(records[index]);
+        const host=document.createElement('div');host.style.cssText='position:fixed;top:0;left:0;width:1100px;z-index:-1;pointer-events:none';
+        host.innerHTML=renderToStaticMarkup(<CustomerPreviewCard customer={item}/>);
+        document.body.appendChild(host);
+        try{
+          const card=host.querySelector<HTMLElement>('.customer-preview');
+          if(!card)throw Error('Customer preview layout is unavailable.');
+          card.classList.add('pdf-capture');
+          card.style.cssText+=';width:1100px!important;max-height:none!important;overflow:visible!important';
+          const image=await snapshot(item as unknown as Record<string,unknown>,card,true);
+          const size=card.getBoundingClientRect();
+          const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Customer PDF image could not be read.'));reader.readAsDataURL(image);});
+          builder.add({dataUrl,width:size.width,height:card.scrollHeight});
+        }finally{host.remove();}
+        setPdfProgress(index+1);
+        if(index%customersPerPdfPage===customersPerPdfPage-1)await new Promise(resolve=>setTimeout(resolve,0));
+      }
+      if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
+      const file=builder.finish();if(file.size<1000)throw Error('PDF output is empty. Retry generation.');
+      await requireLicensedWrite();
+      if(batchScope&&identity()!==batchScope)throw Error("Workspace changed. Generate the PDF again.");
+      setPdfBlob(file);setPdfCount(builder.count);
+      if(batchScope&&batchIds.every(Boolean))setAfsmBatch({scope:batchScope,ids:batchIds,operationId:crypto.randomUUID()});
+      setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/customersPerPdfPage)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
+      recordSafeRecovery('pdf','generate','verified');
+    }catch(reason){
+      recordSafeRecovery(classifyRecovery(reason),'generate','attention');
+      setError(reason instanceof Error?reason.message:'PDF generation failed. You can retry without changing customer data.');
+    }finally{pdfGenerating.current=false;setPdfLoading(false);}
+  };
 
   /* =======================================================
 
@@ -1544,6 +1448,16 @@ export default function Customers() {
 
         }
 
+        /* Only the All PDF capture is compacted; normal preview and print stay intact. */
+        .customer-preview.pdf-capture { min-height: 0; padding: 8px 12px; border-radius: 4px; box-shadow: none; }
+        .pdf-capture .customer-preview-heading { margin-bottom: 6px; padding-bottom: 4px; border-bottom-width: 1px; }
+        .pdf-capture .customer-preview-heading h2 { font-size: 18px; }
+        .pdf-capture .customer-grid { grid-template-columns: 1fr 1.2fr 100px; gap: 12px; }
+        .pdf-capture .info-row { margin-bottom: 3px; line-height: 1.18; font-size: 15px; }
+        .pdf-capture .photo-box { width: 90px; height: 108px; border-width: 1px; }
+        .pdf-capture .photo-label { margin-top: 3px; font-size: 10px; }
+        .pdf-capture .customer-status-strip { margin-top: 5px; padding-top: 5px; }
+
         /* =============================================
 
            BUTTONS
@@ -1984,6 +1898,14 @@ export default function Customers() {
 
         }
 
+        .pdf-dialog{width:min(960px,96vw);max-height:90vh;overflow:auto;background:#fff;color:#15283a;border-radius:16px;box-shadow:0 20px 70px #102d3855;padding:24px}
+        .customer-pdf-preview{height:min(65vh,720px);overflow:auto;background:#dce5f2;border-radius:12px;padding:12px}.customer-pdf-page{display:grid;justify-items:center;gap:5px;margin:0 auto 14px;max-width:720px}.customer-pdf-page canvas{width:100%;background:#fff;box-shadow:0 4px 15px #34446b33}.pdf-dialog h2{margin:0;font-size:26px}.pdf-dialog p{margin:5px 0 20px;color:#64748b}
+        .pdf-layout{display:grid;grid-template-columns:minmax(210px,38%) 1fr;gap:20px}
+        .pdf-modes{display:grid;gap:10px}.pdf-mode{display:flex;align-items:center;gap:14px;border:1px solid #d9e2ed;border-radius:10px;padding:16px;cursor:pointer}.pdf-mode:has(input:checked){border-color:#2476f2;background:#eaf3ff}.pdf-mode input{accent-color:#1769dc}.pdf-detail{background:#f6f9fd;border:1px solid #dce8f5;border-radius:10px;padding:20px;min-height:220px}
+        .pdf-fields{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.pdf-fields label{display:grid;gap:5px;flex:1;min-width:150px}.pdf-fields input{width:100%;padding:10px;border:1px solid #b9c8d9;border-radius:7px}
+        .pdf-results{max-height:210px;overflow:auto;background:#fff;border:1px solid #dce8f5;border-radius:8px}.pdf-results label{display:block;padding:9px;border-bottom:1px solid #e8eef5}.pdf-results input{margin-right:8px}
+        .pdf-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}.pdf-actions button{border:0;border-radius:8px;padding:12px 18px;cursor:pointer}.pdf-actions button:last-child{background:#1469e7;color:white}.pdf-actions button:disabled{opacity:.5;cursor:not-allowed}
+        @media(max-width:650px){.pdf-dialog{padding:16px}.pdf-layout{grid-template-columns:1fr}.pdf-modes{grid-template-columns:1fr 1fr}.pdf-mode{padding:10px;font-size:13px}}
       `}</style>
 
       {/* =============================================
@@ -2073,6 +1995,27 @@ export default function Customers() {
         </div>
 
       </form>
+
+      {pdfOpen && <div className="match-modal-backdrop" role="presentation" onMouseDown={event => { if(event.target === event.currentTarget && !pdfLoading) setPdfOpen(false); }}>
+        <div className="pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
+          <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
+          {error && <p role="alert">{error}</p>}
+          <p>Select which customers' preview PDFs you want to generate and download.</p>
+          {pdfBlob ? <><p>{pdfCount} customers · {Math.ceil(pdfCount/customersPerPdfPage)} A4 pages{pdfIncomplete?' · Partial local/cloud data':''}</p><PdfDocumentPreview file={pdfBlob}/>{afsmBatch ? <AfsmConfirmation key={afsmBatch.operationId} batch={afsmBatch}/> : <p>AFSM confirmation requires this workspace’s verified local database and stable customer IDs. Connect it in Sync &amp; Backup, then generate the PDF again.</p>}<div className="pdf-actions"><button type="button" onClick={()=>{setPdfBlob(null);setPdfOpen(false)}}>Close</button><button type="button" disabled={pdfBusy} onClick={()=>void saveCustomersPdf()}>Download / Save</button><button type="button" disabled={pdfBusy} onClick={()=>void printCustomersPdf()}>Print</button></div></> : <><div className="pdf-layout">
+            <div className="pdf-modes">{([['all','All Customers'],['date','Date Wise'],['account','Account Number Range'],['search','Search Customer']] as const).map(([mode,label]) => <label className="pdf-mode" key={mode}><input type="radio" name="pdf-mode" checked={pdfMode === mode} onChange={() => {setPdfMode(mode);setPdfFrom('');setPdfTo('');setPdfSelected(new Set());}}/><strong>{label}</strong></label>)}</div>
+            <div className="pdf-detail">
+              <strong>{pdfMode === 'all' ? 'All Customers' : pdfMode === 'date' ? 'Account Opening Date' : pdfMode === 'account' ? 'Account Number Range' : 'Search Customer'}</strong>
+              {pdfMode === 'date' && <div className="pdf-fields"><label>From opening date<input type="date" value={pdfFrom} onChange={event=>setPdfFrom(event.target.value)}/></label><label>To opening date<input type="date" value={pdfTo} onChange={event=>setPdfTo(event.target.value)}/></label></div>}
+              {pdfMode === 'account' && <div className="pdf-fields"><label>From account number<input type="text" value={pdfFrom} onChange={event=>setPdfFrom(event.target.value)}/></label><label>To account number (optional for exact match)<input type="text" value={pdfTo} onChange={event=>setPdfTo(event.target.value)}/></label></div>}
+              {pdfMode === 'search' && <><div className="pdf-fields"><label>Name, account number or customer ID<input type="search" value={pdfSearch} onChange={event=>setPdfSearch(event.target.value)}/></label></div><label><input type="checkbox" checked={pdfMatches.length>0 && pdfMatches.every(record=>pdfSelected.has(pdfKey(record)))} onChange={event=>setPdfSelected(current=>{const next=new Set(current);pdfMatches.forEach(record=>{if(event.target.checked) next.add(pdfKey(record));else next.delete(pdfKey(record));});return next;})}/> Select all filtered results ({pdfMatches.length})</label><div className="pdf-results">{pdfMatches.map(record=><label key={pdfKey(record)}><input type="checkbox" checked={pdfSelected.has(pdfKey(record))} onChange={event=>setPdfSelected(current=>{const next=new Set(current);if(event.target.checked) next.add(pdfKey(record));else next.delete(pdfKey(record));return next;})}/>{String(record.name||'Unnamed')} · {String(record.accountNo||'No account')} · {String(record.enrolId||'No ID')}</label>)}</div></>}
+              <p>{pdfLoading ? 'Loading local customers…' : `${pdfChosen.length} selected of ${pdfRecords.length} local customers`}</p>
+              {pdfIncomplete && <p>Local download is incomplete. This export may be partial.</p>}
+              <small>Output: one A4 PDF preview with the existing customer layout. The PDF has five customer sections per A4 page. Preview, save and print controls appear after generation.</small>
+            </div>
+          </div>
+          <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfGenerating.current)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfGenerating.current?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
+        </div>
+      </div>}
 
       {showMatchModal && customerMatches.length > 1 && (
         <div
@@ -2228,6 +2171,124 @@ export default function Customers() {
 
           </div>
 
+          <div style={{padding:"12px",background:"var(--app-dark-surface, white)",color:"var(--app-dark-text, #18354d)",borderRadius:8}}><strong>Form Send to Branch</strong>: {afsmDisplay(customer as unknown as Record<string,unknown>)}</div>
+          <CustomerPreviewCard customer={customer} />
+
+          {/* =========================================
+
+              BUTTONS
+
+          ========================================== */}
+
+          <div className="customer-actions">
+
+            <button
+
+              type="button"
+
+              className="
+
+                action-button
+
+                print-customer-button
+
+              "
+
+              onClick={printCustomer}
+
+            >
+
+              🖨 Print
+
+            </button>
+            <button type="button" className="action-button whatsapp-button" onClick={() => void shareCustomer()}>↗ Share Image</button>
+
+            <button
+
+              type="button"
+
+              className="
+
+                action-button
+
+                search-again-button
+
+              "
+
+              onClick={searchAgain}
+
+            >
+
+              🔎 Search Again
+
+            </button>
+
+            <button
+
+              type="button"
+
+              className="action-button whatsapp-button"
+
+              onClick={openWhatsApp}
+
+            >
+
+              💬 WhatsApp
+
+            </button>
+
+            <button
+
+              type="button"
+
+              className="
+
+                action-button
+
+                all-pdf-button
+
+              "
+
+              onClick={
+
+                openPdfSelection
+
+              }
+
+            >
+
+              📄 All PDF
+
+            </button>
+
+          </div>
+
+        </div>
+
+      )}
+
+    </div>
+
+  );
+
+}
+
+function previewCustomer(value: Record<string, unknown>): Customer {
+  const field = (key: string) => String(value[key] ?? "");
+  return {
+    ...emptyCustomer, afsmStatus:field("afsmStatus"),afsmSentAt:field("afsmSentAt"), enrolId:field("enrolId"), accountNo:field("accountNo"), name:field("name"),
+    coName:field("coName") || field("fatherName"), status:field("status"), gender:field("gender"),
+    contact:field("contact") || field("mobile"), accountOpeningDate:field("accountOpeningDate"),
+    address:field("address"), nominee:field("nominee"), postOffice:field("postOffice"),
+    passbookStatus:field("passbookStatus"), uidaiNo:field("uidaiNo"), dbtStatus:field("dbtStatus"),
+    purposeOfAdvance:field("purposeOfAdvance"), fullAddress:field("fullAddress"),
+    pinCode:field("pinCode"), pan:field("pan"), aofNo:field("aofNo"),
+    photoPreview:field("photoPreview") || field("photoDataUrl"),
+  };
+}
+
+function CustomerPreviewCard({customer}:{customer:Customer}) {
+  return (
           <div className="customer-preview">
 
             <div className="customer-preview-heading">
@@ -2278,9 +2339,9 @@ export default function Customers() {
 
                 <div className="photo-box">
 
-                  {photo ? (
+                  {customer.photoPreview || customer.photoUrl ? (
 
-                    <img src={photo} alt="Customer" />
+                    <img src={customer.photoPreview || customer.photoUrl} alt="Customer" />
 
                   ) : (
 
@@ -2326,102 +2387,7 @@ export default function Customers() {
 
           </div>
 
-          {/* =========================================
-
-              BUTTONS
-
-          ========================================== */}
-
-          <div className="customer-actions">
-
-            <button
-
-              type="button"
-
-              className="
-
-                action-button
-
-                print-customer-button
-
-              "
-
-              onClick={printCustomer}
-
-            >
-
-              🖨 Print
-
-            </button>
-
-            <button
-
-              type="button"
-
-              className="
-
-                action-button
-
-                search-again-button
-
-              "
-
-              onClick={searchAgain}
-
-            >
-
-              🔎 Search Again
-
-            </button>
-
-            <button
-
-              type="button"
-
-              className="action-button whatsapp-button"
-
-              onClick={openWhatsApp}
-
-            >
-
-              💬 WhatsApp
-
-            </button>
-
-            <button
-
-              type="button"
-
-              className="
-
-                action-button
-
-                all-pdf-button
-
-              "
-
-              onClick={
-
-                makeAllCustomersPdf
-
-              }
-
-            >
-
-              📄 Make All Customers PDF
-
-            </button>
-
-          </div>
-
-        </div>
-
-      )}
-
-    </div>
-
   );
-
 }
 
 /* =========================================================

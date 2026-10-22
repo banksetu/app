@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+const read = path => readFileSync(path, 'utf8');
+test('public build is separate and contains no authenticated app bundle', () => {
+  const html = read('portfolio-dist/index.html');
+  const js = readdirSync('portfolio-dist/assets').filter(x => x.endsWith('.js')).map(x => read(`portfolio-dist/assets/${x}`)).join('');
+  assert.match(html, /Bank Setu — Windows/);
+  assert.doesNotMatch(html + js, /createUserWithEmailAndPassword|signInWithEmailAndPassword|CustomerEntry|FirebaseAuth/);
+  assert.match(js, /Windows EXE/);
+  assert.match(js, /Android APK/);
+  assert.match(read('capacitor.config.ts'), /webDir: 'dist'/);
+  assert.match(read('desktop/main.cjs'), /dist/);
+  assert.equal(JSON.parse(read('package.json')).build.files[0], 'dist/**');
+});
+test('manifest, legal pages, and tenant-free static content are packaged', () => {
+  const source = JSON.parse(read('public/version.json'));
+  const deployed = JSON.parse(read('portfolio-dist/version.json'));
+  assert.deepEqual(deployed, source);
+  for (const path of ['privacy-policy/index.html','terms/index.html','license-request/index.html','client-bridge/Code.gs']) assert.ok(read(`portfolio-dist/${path}`).length > 200);
+  const requestPage=read('portfolio-dist/license-request/index.html');
+  assert.match(requestPage,/Contact Master Admin/);
+  assert.doesNotMatch(requestPage,/CustomerEntry|signInWithEmailAndPassword/);
+  const json = read('portfolio/content/site.json');
+  const screenshots=JSON.parse(json).screenshots;
+  assert.equal(screenshots.length,3);
+  for(const item of screenshots) assert.ok(readFileSync(`portfolio-dist${item.src}`).length > 10000);
+  assert.doesNotMatch(json, /@gmail\.com|\b\d{12}\b/);
+  assert.match(read('firebase.portfolio.json'), /portfolio-dist/);
+});

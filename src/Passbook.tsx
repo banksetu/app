@@ -1,6 +1,12 @@
+import Pr2PrinterDialog from "./Pr2PrinterDialog";
+import { windowsPr2, WINDOWS_PR2_MESSAGE } from "./platform/pr2";
+import { showMessage } from "./uiDialogs";
+import { localDataFetch, getDataIdToken } from "./core/localData";
+import { requireLicensedWrite } from "./core/licenseAccess";
 import {
 
   useState,
+  useEffect,
 
 
   type FormEvent,
@@ -8,6 +14,18 @@ import {
 } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
+
+import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
+import UnionPassbook from "./UnionPassbook";
+import WordPassbookInfo, { wordPassbookProblems, wordPassbookValues } from "./WordPassbookInfo";
+import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
+import { printCurrentDocument, type PrintOutcome } from "./platform/print";
+import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
+  RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
+  RIGHT_HOLDER_VALUE_X_MM, RIGHT_JOINT_COLON_X_MM, RIGHT_JOINT_VALUE_X_MM, RIGHT_ADDRESS_X_MM,
+  RIGHT_BRANCH_CODE_X_MM, PASSBOOK_ROW_MM, leftRows, targetWidthsMm, fitTextScale,
+  addressPrintLines, passbookBranchAddress, passbookBranchForTenant, missingPassbookBranchFields } from "./passbookInfoLayout";
 
 
 
@@ -74,6 +92,8 @@ type Customer = {
   photoUrl?: string;
 
   photoPreview?: string;
+  jointHolder?: string;
+  issueDate?: string;
 
 };
 
@@ -160,40 +180,6 @@ const emptyCustomer: Customer = {
   pan: "",
 
   aofNo: "",
-
-};
-
-
-
-/* =========================================================
-
-   FIXED BRANCH INFORMATION
-
-========================================================= */
-
-
-
-const BRANCH = {
-
-  name: "BADARPUR",
-
-  addressLine1: "PO:-BADARPUR",
-
-  addressLine2: "DIST:-KARIMGANJ",
-
-  pin: "788806",
-
-
-
-  ifsc: "PUNB0RRBAGB",
-
-  branchCode: "7345",
-
-  micr: "788116106",
-
-
-
-  email: "",
 
 };
 
@@ -321,6 +307,36 @@ function makePrintAddress(customer: Customer) {
 
 }
 
+function PassbookInfoFields({customer,bank}: {customer:Customer; bank:{name:string;addressLine1:string;postOffice:string;district:string;pin:string;email:string;ifsc:string;micr:string;branchCode:string}}) {
+  const values:Record<string,string>={
+    branchName:bank.name,branchAddress:passbookBranchAddress(bank.addressLine1,bank.postOffice),
+    branchDistrict:bank.district?`DIST:-${bank.district}`:'',branchPinCode:bank.pin,branchEmail:bank.email,
+    enrolId:printText(customer.enrolId),accountNo:printText(customer.accountNo),pan:printText(customer.pan),
+    contact:printText(customer.contact),accountOpeningDate:formatDate(customer.accountOpeningDate),
+    issueDate:formatDate(customer.issueDate||''),operatedBy:'SELF',
+    nominee:printText(customer.nominee),
+  };
+  const text=(value:string,x:number,y:number,width:number,font=3)=><span style={{position:'absolute',left:`${x}mm`,top:`${y}mm`,width:`${width}mm`,fontSize:`${font}mm`,lineHeight:`${PASSBOOK_ROW_MM}mm`,whiteSpace:'nowrap',overflow:'visible',transform:`scaleX(${fitTextScale(value,width,font)})`,transformOrigin:'left top'}}>{value}</span>;
+  const label=(value:string,x:number,y:number,colonX:number,gap=1)=><>{text(value,x,y,colonX-x-gap)}{text(':',colonX,y,1)}</>;
+  const right=(name:string,value:string,y:number,colonX:number,valueX:number,gap=1)=><div key={name} className="pb-info-row">{label(name,RIGHT_LABEL_X_MM,y,colonX,gap)}{text(value,valueX,y,PASSBOOK_CONTENT_END_MM-valueX)}</div>;
+  const address=addressPrintLines(makePrintAddress(customer).toUpperCase(),29);
+  return <div className="pb-info-layout" aria-label="Customer information printed on passbook">
+    {leftRows.map(([name,y,key])=><div key={key} className="pb-info-row">
+      {name && label(name,LEFT_LABEL_X_MM,y,LEFT_COLON_X_MM)}
+      {text(values[key]||'',LEFT_VALUE_X_MM,y,targetWidthsMm[key]||RIGHT_LABEL_X_MM-LEFT_VALUE_X_MM)}
+    </div>)}
+    {right('IFSC CODE',printText(bank.ifsc),21.9,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
+    {bank.branchCode && text(`(${printText(bank.branchCode)})`,RIGHT_BRANCH_CODE_X_MM,21.9,PASSBOOK_CONTENT_END_MM-RIGHT_BRANCH_CODE_X_MM)}
+    {right('MICR CODE',printText(bank.micr),34.35,RIGHT_CODE_COLON_X_MM,RIGHT_CODE_VALUE_X_MM)}
+    {right('ACC. HOLDER',printText(customer.name),42.65,RIGHT_HOLDER_COLON_X_MM,RIGHT_HOLDER_VALUE_X_MM,2)}
+    {right('JOINT HOLDER',printText(customer.jointHolder),46.8,RIGHT_JOINT_COLON_X_MM,RIGHT_JOINT_VALUE_X_MM)}
+    {text('CUST ADD.',RIGHT_LABEL_X_MM,50.95,RIGHT_ADDRESS_X_MM-RIGHT_LABEL_X_MM-1)}
+    {address.map((line,index)=><div key={index} className="pb-info-address-line">
+      {text(line,RIGHT_ADDRESS_X_MM,50.95+index*PASSBOOK_ROW_MM,PASSBOOK_CONTENT_END_MM-RIGHT_ADDRESS_X_MM)}
+    </div>)}
+  </div>;
+}
+
 
 
 /* =========================================================
@@ -331,23 +347,15 @@ function makePrintAddress(customer: Customer) {
 
 
 
-function PassbookPrintLine({
-  label,
-  value = "",
-}: {
-  label: string;
-  value?: string;
-}) {
-  return (
-    <div className="pb-line pb-fixed-line">
-      <span className="pb-fixed-label">{label}</span>
-      <span className="pb-fixed-colon">:</span>
-      <span className="pb-fixed-value">{value}</span>
-    </div>
-  );
-}
+export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, onOpenBankInformation }: { formatType?: "passbook" | "quickPassbook"; bankInfo?: PassbookBankInfo; bankLogo?: string; onOpenBankInformation?:()=>void }) {
+  const BRANCH = passbookBranchForTenant(bankInfo);
+  const missingBranch = missingPassbookBranchFields(BRANCH);
+  const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isApprovedAssamPrint = formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
+  const alignmentEnabled = isUnion || isAssamBank(alignmentBank);
 
-export default function Passbook() {
 
   const [query, setQuery] = useState("");
 
@@ -372,6 +380,7 @@ export default function Passbook() {
   const [loading, setLoading] = useState(false);
 
   const [printing, setPrinting] = useState(false);
+  const [alignmentOpen, setAlignmentOpen] = useState(false);
   const [directPrinting, setDirectPrinting] = useState(false);
 
 
@@ -379,6 +388,13 @@ export default function Passbook() {
   const [message, setMessage] = useState("");
 
   const [error, setError] = useState("");
+  useEffect(() => {
+    const text=error || message;
+    if (!text || !/print|printer|passbook/i.test(text)) return;
+    const event = new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};
+    event.detail={type:error?"error":"warning",title:error?"Print unavailable":"Print status",message:text};
+    window.dispatchEvent(event);
+  },[message,error]);
 
 
 
@@ -404,13 +420,7 @@ export default function Passbook() {
 
   ) => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem("bankSetuApiUrl")
-
-        ?.trim() || "";
+      const apiUrl = getTenantApiUrl();
 
 
 
@@ -444,11 +454,11 @@ export default function Passbook() {
 
 
 
-    const idToken = await user.getIdToken();
+    const idToken = await getDataIdToken();
 
 
 
-    const response = await fetch(apiUrl, {
+    const response = await localDataFetch(apiUrl, {
 
       method: "POST",
 
@@ -529,7 +539,7 @@ export default function Passbook() {
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: false,
+        includePhoto: isAssamQuick || isUnion,
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -549,6 +559,8 @@ export default function Passbook() {
       const loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
+        ...((isApprovedAssamPrint || isAssamQuick) ? {nominee:'1'} : {}),
+        photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
 
       setCustomer(loaded);
@@ -578,12 +590,14 @@ export default function Passbook() {
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: false,
+        includePhoto: isAssamQuick || isUnion,
       });
 
       const loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
+        ...((isApprovedAssamPrint || isAssamQuick) ? {nominee:'1'} : {}),
+        photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
 
       setCustomer(loaded);
@@ -695,6 +709,7 @@ export default function Passbook() {
 
   const clearPassbook = () => {
 
+
     setQuery("");
 
     setCustomer(null);
@@ -721,7 +736,10 @@ export default function Passbook() {
 
 
 
-  const printPassbook = async () => {
+  const printPassbook = async (offset?: PrintOffset, test = false, duplex = false): Promise<PrintOutcome | void> => {
+    if (formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) {
+      setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
+    }
 
     if (!previewCustomer) {
 
@@ -760,6 +778,12 @@ export default function Passbook() {
 
 
     try {
+      await requireLicensedWrite();
+
+      if (isApprovedAssamPrint || isAssamQuick) {
+        const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
+        if (problems.length) throw new Error(`Passbook data cannot fit the approved format: ${problems.join('; ')}. The font and compression have not been changed.`);
+      }
 
       /*
 
@@ -777,7 +801,18 @@ export default function Passbook() {
 
       // A previous "Printed/Delivered" status must never block re-printing.
 
-      window.print();
+      if (offset) {
+        const page = document.querySelector<HTMLElement>(".passbook-page");
+        if (!page) throw new Error("Passbook print layout is unavailable.");
+        page.style.setProperty("--alignment-x", `${offset.x}mm`);
+        page.style.setProperty("--alignment-y", `${offset.y}mm`);
+        page.classList.add("alignment-print-active");
+      }
+      const printOutcome=await printCurrentDocument(duplex);
+      if (test) {
+        setMessage(printOutcome.accepted?"Test print accepted by the printer.":"Test print dialog opened; confirm the result in the system dialog.");
+        return printOutcome;
+      }
 
 
 
@@ -787,7 +822,7 @@ export default function Passbook() {
 
       // already been shown and re-print remains available.
 
-      try {
+      if (printOutcome.accepted) try {
 
         await apiRequest({
 
@@ -835,7 +870,8 @@ export default function Passbook() {
 
 
 
-      setMessage("Print dialog opened.");
+      setMessage(printOutcome.accepted?"Print job accepted by the printer.":printOutcome.cancelled?"Print cancelled. Preview remains available for retry.":"Print dialog opened. Bank Setu cannot verify completion on this platform.");
+      return printOutcome;
 
     } catch (err) {
 
@@ -848,6 +884,7 @@ export default function Passbook() {
           : "Passbook could not be printed."
 
       );
+      if (offset) throw err instanceof Error ? err : new Error("Passbook could not be printed.");
 
     } finally {
 
@@ -859,92 +896,29 @@ export default function Passbook() {
 
 
 
-  /* =======================================================
-     DIRECT PR2 / OLIVETTI RAW PRINT
-
-     Browsers cannot open a USB/parallel printer and write RAW
-     bytes to it directly. This button therefore talks to a
-     small local printer bridge running on the operator PC.
-
-     The printer itself must already be configured in OLIVETTI
-     PR2/PR2E mode with PASSBOOK = Y. The local bridge receives
-     the passbook data and sends it as RAW data to the printer.
-  ======================================================= */
-
+  // The existing button uses only the Bank Setu Windows IPC bridge.
   const directPrinterSend = async () => {
-    if (!previewCustomer) {
-      setError("Search and load a customer first.");
-      return;
+    if (!windowsPr2()) { await showMessage(WINDOWS_PR2_MESSAGE); return; }
+    if (directPrinting || printing) return;
+    if (!previewCustomer || !rowNumber) { setError("Search and load a customer first."); return; }
+    if ((isApprovedAssamPrint || isAssamQuick) && missingBranch.length) {
+      setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
     }
-
-    if (!rowNumber) {
-      setError("Customer row number is missing.");
-      return;
+    if (isApprovedAssamPrint || isAssamQuick) {
+      const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
+      if (problems.length) { setError(problems.join(' ')); return; }
     }
+    try { await requireLicensedWrite(); setError(""); setMessage(""); setDirectPrinting(true); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Printing is unavailable.'); }
+  };
 
-    setDirectPrinting(true);
-    setError("");
-    setMessage("");
-
+  const directPrintCompleted = async () => {
+    setMessage("PR2 printer acknowledged processing and paper release. Check the physical print.");
     try {
-      const response = await fetch("http://127.0.0.1:18181/print-pr2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "OLIVETTI_PR2",
-          passbook: {
-            branch: {
-              name: BRANCH.name,
-              addressLine1: BRANCH.addressLine1,
-              addressLine2: BRANCH.addressLine2,
-              pin: BRANCH.pin,
-              ifsc: BRANCH.ifsc,
-              branchCode: BRANCH.branchCode,
-              micr: BRANCH.micr,
-              email: BRANCH.email,
-            },
-            customer: {
-              enrolId: printText(previewCustomer.enrolId),
-              accountNo: printText(previewCustomer.accountNo),
-              pan: printText(previewCustomer.pan),
-              contact: printText(previewCustomer.contact),
-              accountOpeningDate: formatDate(previewCustomer.accountOpeningDate),
-              nominee: printText(previewCustomer.nominee),
-              name: printText(previewCustomer.name),
-              coName: printText(previewCustomer.coName),
-              address: makePrintAddress(previewCustomer),
-            },
-          },
-        }),
-      });
-
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || result?.success === false) {
-        throw new Error(result?.message || "Direct printer bridge rejected the print job.");
-      }
-
-      try {
-        await apiRequest({ action: "markPassbookPrinted", rowNumber });
-        setCustomer((previous) =>
-          previous ? { ...previous, passbookStatus: "Printed" } : previous
-        );
-        setPreviewCustomer((previous) =>
-          previous ? { ...previous, passbookStatus: "Printed" } : previous
-        );
-      } catch (statusError) {
-        console.warn("Direct print succeeded, but status update failed:", statusError);
-      }
-
-      setMessage("Passbook sent directly to Olivetti PR2 printer.");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message} Make sure the BANK SETU PR2 Bridge is running on this computer.`
-          : "Direct PR2 printing failed."
-      );
-    } finally {
-      setDirectPrinting(false);
-    }
+      await apiRequest({ action: "markPassbookPrinted", rowNumber });
+      setCustomer(previous => previous ? { ...previous, passbookStatus: "Printed" } : previous);
+      setPreviewCustomer(previous => previous ? { ...previous, passbookStatus: "Printed" } : previous);
+    } catch { setError("Printer acknowledged the job, but its status could not be saved. Do not print again just to update the status."); }
   };
 
   const p = previewCustomer;
@@ -962,6 +936,7 @@ export default function Passbook() {
   return (
 
     <div className="passbook-page">
+      {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
 
       <style>{`
 
@@ -982,6 +957,8 @@ export default function Passbook() {
           color: #eaffff;
 
         }
+
+        .passbook-page.bank-format-active .passbook-shell { display: none !important; }
 
 
 
@@ -1522,6 +1499,9 @@ export default function Passbook() {
           padding: 0;
 
         }
+        @font-face{font-family:"Bank Setu Passbook Mono";src:url("${import.meta.env.BASE_URL}fonts/BankSetuPassbookMono-Bold.ttf") format("truetype");font-style:normal;font-weight:700;font-display:block}
+        .pb-info-layout{position:absolute;inset:0;color:#161616!important;font-family:"Bank Setu Passbook Mono","Courier New",monospace;font-weight:700;letter-spacing:0;text-transform:uppercase}
+        .pb-info-layout *{color:#111!important;box-sizing:border-box;text-align:left!important}
 
 
 
@@ -1605,87 +1585,63 @@ export default function Passbook() {
 
 
 
-        /* Assam Gramin Bank ruled-field alignment.  Text is condensed only;
-           the passbook page, vertical rhythm and absolute field anchors stay unchanged. */
         .pb-line {
+
           text-align: left;
+
           height: .40cm;
+
           line-height: .40cm;
+
+          white-space: pre-wrap;
+
         }
 
-        .pb-fixed-line {
-          --pb-label-width: 2.55cm;
-          --pb-value-left: 2.90cm;
-          position: relative;
-          white-space: nowrap;
-        }
 
-        .pb-fixed-label,
-        .pb-fixed-colon,
-        .pb-fixed-value,
-        .pb-address-label,
-        .pb-address-colon,
-        .pb-address-value {
-          display: block;
-          transform: scaleX(.70);
-          transform-origin: left center;
-          letter-spacing: 0;
-        }
 
-        .pb-fixed-label {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: var(--pb-label-width);
-          white-space: nowrap;
-        }
+        .pb-address-line {
 
-        .pb-fixed-colon {
-          position: absolute;
-          left: var(--pb-label-width);
-          top: 0;
-          width: .22cm;
-        }
-
-        .pb-fixed-value {
-          position: absolute;
-          left: var(--pb-value-left);
-          top: 0;
-          width: calc((100% - var(--pb-value-left)) / .70);
-          white-space: nowrap;
-        }
-
-        .pb-fixed-address {
-          --pb-label-width: 2.55cm;
-          --pb-value-left: 2.90cm;
-          position: relative;
-          min-height: .40cm;
-          padding-left: var(--pb-value-left);
           text-align: left;
+
+          display: flex;
+
+          align-items: flex-start;
+
+          min-height: .40cm;
+
         }
+
+
 
         .pb-address-label {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: var(--pb-label-width);
+
+          flex: 0 0 auto;
+
           white-space: nowrap;
+
         }
 
-        .pb-address-colon {
-          position: absolute;
-          left: var(--pb-label-width);
-          top: 0;
-          width: .22cm;
-        }
+
 
         .pb-address-value {
-          width: calc(100% / .70);
+
+          display: inline-block;
+
+          padding-left: .10cm;
+
+          width: 5.95cm;
+
           white-space: pre-wrap;
+
           overflow-wrap: break-word;
+
           word-break: normal;
+
           line-height: 1.28;
+
         }
+
+
 
         /* ===============================================
 
@@ -2030,6 +1986,28 @@ export default function Passbook() {
 
           }
 
+          /* Union's separate renderer must also remain visible when the
+             browser print stylesheet hides the application shell. */
+          .union-document,
+
+          .union-document * {
+
+            visibility: visible !important;
+
+          }
+
+          .union-document {
+
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 203.2mm !important;
+            height: 213.36mm !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+
+          }
+
 
 
           .passbook-shell {
@@ -2181,6 +2159,31 @@ export default function Passbook() {
 
         }
 
+        ${isAssamBank(bankInfo?.passbookBank) ? `
+          @page { size: 210mm 297mm; margin: 0; }
+          @media print {
+            html, body { width:210mm!important; height:297mm!important; }
+            .passbook-shell { width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:175mm!important; overflow:visible!important; }
+            .passbook-cover-space { height:85mm!important; }
+            .passbook-print-area { top:85mm!important; width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:85mm!important; }
+          }
+        ` : ""}
+        ${isUnion ? `
+          @page { size: 210mm 297mm; margin: 0; }
+          @media print {
+            html, body { width:210mm!important; height:297mm!important; }
+            .union-document { width:210mm!important; height:170mm!important; overflow:visible!important; }
+            .union-lower { top:85mm!important; height:85mm!important; }
+            .union-fold { top:85mm!important; }
+          }
+        ` : ""}
+        @media print {
+          .passbook-page.alignment-print-active .union-document,
+          .passbook-page.alignment-print-active .assam-quick-document,
+          .passbook-page.alignment-print-active .passbook-shell {
+            transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) !important;
+          }
+        }
       `}</style>
 
 
@@ -2189,7 +2192,7 @@ export default function Passbook() {
 
       <div className="passbook-heading">
 
-        <h1>Passbook Print</h1>
+        <h1>{formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print"}</h1>
 
         <p>
 
@@ -2198,6 +2201,8 @@ export default function Passbook() {
         </p>
 
       </div>
+
+
 
 
 
@@ -2327,50 +2332,125 @@ export default function Passbook() {
           </div>
         </div>
       )}
-              {/* FIXED LEFT */}
-              <div className="pb-block pb-branch">
-                <PassbookPrintLine label="BRANCH NAME" value={BRANCH.name} />
-                <PassbookPrintLine label="BR. ADDRESS" value={BRANCH.addressLine1} />
-                <PassbookPrintLine label="" value={BRANCH.addressLine2} />
-                <PassbookPrintLine label="" value={BRANCH.pin} />
+
+
+      {error && (
+
+        <div className="passbook-error">
+
+          {error}
+
+        </div>
+
+      )}
+
+
+
+      {message && (
+
+        <div className="passbook-message">
+
+          {message}
+
+        </div>
+
+      )}
+
+
+
+      {/* EMPTY STATE */}
+
+      {!p && (
+
+        <div className="passbook-empty">
+
+          Search a customer to load the
+
+          passbook preview.
+
+        </div>
+
+      )}
+
+
+
+      {/* PASSBOOK */}
+
+      {p && (
+
+        <>
+
+          <div className="preview-heading">
+
+            <span>PASSBOOK PREVIEW</span>
+
+
+
+            <span className="status-chip">
+
+              {safe(p.passbookStatus) ||
+
+                "Pending"}
+
+            </span>
+
+          </div>
+
+
+
+          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
+<div className="passbook-shell" style={isApprovedAssamPrint?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
+
+            {/* HOVER EDIT */}
+
+            <button
+
+              type="button"
+
+              className="preview-edit-button"
+
+              title="Temporarily edit passbook"
+
+              onClick={() =>
+
+                setEditMode(true)
+
+              }
+
+            >
+
+              ✎
+
+            </button>
+
+
+
+            {/* TOP COVER AREA */}
+
+            <div className="passbook-cover-space">
+
+              <div className="cover-note">
+
+                PASSBOOK COVER — NO PRINT
+
               </div>
 
-              {/* FIXED RIGHT */}
-              <div className="pb-block pb-ifsc">
-                <PassbookPrintLine label="IFSC CODE" value={BRANCH.ifsc} />
-              </div>
+            </div>
 
-              <div className="pb-block pb-branch-code">
-                <span className="pb-fixed-value">({BRANCH.branchCode})</span>
-              </div>
 
-              <div className="pb-block pb-micr">
-                <PassbookPrintLine label="MICR CODE" value={BRANCH.micr} />
-              </div>
 
-              {/* LEFT CUSTOMER */}
-              <div className="pb-block pb-left-customer">
-                <PassbookPrintLine label="BR. EMAIL" value={BRANCH.email} />
-                <PassbookPrintLine label="CUSTOMER ID" value={printText(p.enrolId)} />
-                <PassbookPrintLine label="ACCOUNT NO." value={printText(p.accountNo)} />
-                <PassbookPrintLine label="PAN NUMBER" value={printText(p.pan)} />
-                <PassbookPrintLine label="MOBILE NO." value={printText(p.contact)} />
-                <PassbookPrintLine label="OPENED ON" value={formatDate(p.accountOpeningDate)} />
-                <PassbookPrintLine label="ISSUE DATE" value={formatDate(p.accountOpeningDate)} />
-                <PassbookPrintLine label="OPERATED BY" value="SELF" />
-                <PassbookPrintLine label="NOMINEE" value={safe(p.nominee) ? "1" : ""} />
-              </div>
+            {/* BOTTOM PRINT PAGE */}
 
-              {/* RIGHT CUSTOMER */}
-              <div className="pb-block pb-right-customer">
-                <PassbookPrintLine label="ACC. HOLDER" value={printText(p.name)} />
-                <PassbookPrintLine label="JOINT HOLDER" value="" />
-                <div className="pb-fixed-address">
-                  <span className="pb-address-label">CUST ADD.</span>
-                  <span className="pb-address-colon">:</span>
-                  <span className="pb-address-value">{makePrintAddress(p).toUpperCase()}</span>
-                </div>
-              </div>
+            <div className="passbook-print-area" style={isApprovedAssamPrint?{top:'85mm',width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
+
+
+
+              {isApprovedAssamPrint ? <WordPassbookInfo customer={p} bank={BRANCH} /> : <PassbookInfoFields customer={p} bank={BRANCH} />}
+
+            </div>
+
+          </div>
+)}
 
           {/* TEMP EDIT */}
 
@@ -2653,6 +2733,7 @@ export default function Passbook() {
 
 
           {/* BUTTONS */}
+          {formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length>0 && <p role="alert" className="passbook-bank-warning">Complete Bank Information before printing: {missingBranch.join(', ')}. {onOpenBankInformation && <button type="button" onClick={onOpenBankInformation}>Open Bank Information</button>}</p>}
 
           <div className="passbook-actions">
 
@@ -2662,7 +2743,7 @@ export default function Passbook() {
 
               className="passbook-button print-button"
 
-              onClick={printPassbook}
+              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) setAlignmentOpen(true); else void printPassbook(); }}
 
               disabled={printing}
 
@@ -2678,7 +2759,7 @@ export default function Passbook() {
 
 
 
-            <button
+            {!isAssamQuick && (<button
 
               type="button"
 
@@ -2688,7 +2769,7 @@ export default function Passbook() {
 
               disabled={directPrinting || printing}
 
-              title="Send RAW passbook job through local Olivetti PR2 bridge"
+              title="Send the active passbook through the Bank Setu Windows PR2 Bridge"
 
             >
 
@@ -2698,7 +2779,7 @@ export default function Passbook() {
 
                 : "Direct Printer Send"}
 
-            </button>
+            </button>)}
 
 
 
@@ -2722,6 +2803,12 @@ export default function Passbook() {
 
       )}
 
+      {alignmentOpen && alignmentEnabled && <PrintAlignmentPreview
+        bankName={alignmentBank}
+        sourceSelector={isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
+        onClose={() => setAlignmentOpen(false)}
+        onPrint={(offset, test, duplex) => printPassbook(offset, test, duplex)}
+      />}
     </div>
 
   );

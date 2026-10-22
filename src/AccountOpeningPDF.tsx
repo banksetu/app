@@ -1,6 +1,10 @@
+import { localDataFetch, getDataIdToken } from "./core/localData";
+import { requireLicensedWrite } from "./core/licenseAccess";
 import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
+
 
 
 
@@ -304,6 +308,7 @@ function EditableField({
 
 export default function AccountOpeningPDF() {
 
+
   const [query, setQuery] = useState("");
 
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -326,7 +331,7 @@ export default function AccountOpeningPDF() {
 
   const apiRequest = async (body: Record<string, unknown>) => {
 
-    const apiUrl = localStorage.getItem("bankSetuApiUrl")?.trim() || "";
+    const apiUrl = getTenantApiUrl();
 
     if (!apiUrl) throw new Error("Google Sheet API URL is not configured.");
 
@@ -348,11 +353,11 @@ export default function AccountOpeningPDF() {
 
 
 
-    const idToken = await user.getIdToken();
+    const idToken = await getDataIdToken();
 
 
 
-    const response = await fetch(apiUrl, {
+    const response = await localDataFetch(apiUrl, {
 
       method: "POST",
 
@@ -492,7 +497,10 @@ export default function AccountOpeningPDF() {
   };
 
 
-  const printForm = () => window.print();
+  const printForm = async () => {
+    try { await requireLicensedWrite(); window.print(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "License verification is required to print."); }
+  };
 
 
 
@@ -525,6 +533,8 @@ export default function AccountOpeningPDF() {
           color: #eaffff;
 
         }
+
+        .aof-module.bank-format-active .print-area { display: none !important; }
 
 
 
@@ -1786,6 +1796,8 @@ export default function AccountOpeningPDF() {
       {customer ? (
 
         <>
+
+
 
           <div className="preview-wrap">
 

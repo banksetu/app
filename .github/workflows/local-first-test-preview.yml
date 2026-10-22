@@ -1,0 +1,60 @@
+name: Deploy local-first testing frontend and compatible backend
+on:
+  push:
+    branches: [codex/local-first-option-b]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: banksetu-local-first-preview
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test cloudflare/worker.test.js scripts/workspace-regression.test.mjs scripts/local-first.test.mjs scripts/bridge.test.mjs scripts/offline-backup.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs
+      - run: npm run check:schema
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Add testing build identification
+        run: node --input-type=module -e "import {writeFileSync,readFileSync} from 'node:fs';writeFileSync('dist/deployment.json',JSON.stringify({commit:process.env.GITHUB_SHA,version:JSON.parse(readFileSync('package.json','utf8')).version,channel:'local-first-test'}));"
+      - name: Deploy compatible backend additions
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: c67c1c38d8481b01e9b9fbca5cb0f9b5
+          wranglerVersion: '4.146.0'
+          command: |
+            deploy --config cloudflare/wrangler.toml
+            secret list --config cloudflare/wrangler.toml
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+      - name: Google credential setup status
+        env:
+          SYNC_ACCOUNT: ${{ secrets.BANKSETU_GOOGLE_DRIVE_SERVICE_ACCOUNT }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c67c1c38d8481b01e9b9fbca5cb0f9b5
+        run: |
+          if [ -n "$SYNC_ACCOUNT" ]; then
+            printf '%s' "$SYNC_ACCOUNT" | npx wrangler@4.146.0 secret put GOOGLE_DRIVE_SERVICE_ACCOUNT --config cloudflare/wrangler.toml
+          else
+            echo 'If the Worker secret GOOGLE_DRIVE_SERVICE_ACCOUNT is not already configured, the master must configure the dedicated Google sync account before client connection testing.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Publish testing link
+        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}
+          projectId: banksetu-69e2f
+          target: banksetu-app
+          channelId: local-first-test
+          expires: 30d
+          firebaseToolsVersion: '15.31.0'
+          disableComment: true

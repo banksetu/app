@@ -1,4 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import {showMessage} from './uiDialogs';
+import { canOpenLicensePage, type LicensePermission } from "./core/licensePolicy";
+import { useSyncStatus } from "./core/useSyncStatus";
+import {startPresence} from "./core/presence";
+import LocalSyncStatus from "./LocalSyncStatus";
+import SlideNotifications from "./SlideNotifications";
+import SupportCenter, { useSupportUnread } from "./SupportCenter";
+import FloatingSupportButton from "./FloatingSupportButton";
+import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
+import { customerAnalytics } from "./core/dashboardAnalytics";
+import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   EmailAuthProvider,
@@ -11,15 +23,18 @@ import {
 
   doc,
 
-  getDoc,
 
-  serverTimestamp,
+  onSnapshot,
+
 
   setDoc,
 
 } from "firebase/firestore";
 
 import { db } from "./firebase";
+import { callBankSetuWorker } from "./workerApi";
+import { prepareBankLogo, restoreWorkspaceBankSettings } from "./workspaceBankSettings";
+import { getTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantStorageKey } from "./tenantApi";
 
 import type {
 
@@ -33,22 +48,35 @@ import CustomerEntry from "./CustomerEntry";
 
 import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
+import MasterClients from "./MasterClients";
+import LicenseManagement from "./LicenseManagement";
+import LicenseNotice from "./LicenseNotice";
+import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
+import ClientGoogleSetup from "./ClientGoogleSetup";
+import BankFormats from "./BankFormats";
 
 
-import Passbook from "./Passbook";
+import SelectedBankDocument from "./SelectedBankDocument";
 
 import Customers from "./Customers";
+import FormsSendToBranch from "./FormsSendToBranch";
+import AllCustomerData from "./AllCustomerData";
 
 import Reports from "./Reports";
 
-import AccountOpeningPDF from "./AccountOpeningPDF";
 
-import bankSetuLogo from "./assets/bank-setu-logo.png";
+
+const bankSetuLogo = "/banksetu-icon.png";
 
 type DashboardProps = {
 
   onLogout: () => void;
   userRole: "admin" | "user";
+  accountRole: string;
+  licenseReadOnly?: boolean;
+  licenseWarning?: string;
+  licensePermission: LicensePermission;
+  demoExpired?: boolean;
 
 };
 
@@ -65,6 +93,8 @@ type BankInfo = {
   operatorName: string;
 
   address: string;
+  branchAddress: string; branchPostOffice: string; branchDistrict: string; branchPinCode: string;
+  branchEmail: string; ifsc: string; micr: string; branchCode: string;
 
 };
 
@@ -81,6 +111,8 @@ const emptyBankInfo: BankInfo = {
   operatorName: "",
 
   address: "",
+  branchAddress:"", branchPostOffice:"", branchDistrict:"", branchPinCode:"",
+  branchEmail:"", ifsc:"", micr:"", branchCode:"",
 
 };
 
@@ -212,6 +244,13 @@ type MenuThemeId = string;
 
 const isMenuThemeId = (value: unknown): value is MenuThemeId => MENU_THEMES.some((theme) => theme.id === value);
 
+const CARD_GRADIENTS = [
+  "linear-gradient(135deg,#ef4444 0%,#fb7185 55%,#f97316 100%)",
+  "linear-gradient(135deg,#7c3aed 0%,#c084fc 55%,#2563eb 100%)",
+  "linear-gradient(135deg,#059669 0%,#34d399 55%,#0ea5e9 100%)",
+  "linear-gradient(135deg,#d97706 0%,#fbbf24 55%,#f97316 100%)",
+];
+
 const isDashboardThemeId = (value: unknown): value is DashboardThemeId =>
 
   DASHBOARD_THEMES.some((theme) => theme.id === value);
@@ -223,22 +262,52 @@ type PageName =
   | "customer-entry"
 
   | "customers"
+  | "all-customer-data"
 
   | "passbook"
 
   | "quick-passbook"
+  | "bank-formats"
 
+  | "forms-send-to-branch"
   | "search"
 
   | "reports"
 
-  | "settings";
+  | "settings"
+  | "sync-backup"
+  | "license-management"
+  | "support";
 
-function Dashboard({ onLogout, userRole }: DashboardProps) {
+function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, licenseWarning = "", licensePermission, demoExpired = false }: DashboardProps) {
+  useEffect(()=>startPresence(),[]);
 
+  // The verified legacy Master Admin is represented as `admin` for backward
+  // compatibility. It has the same global appearance permissions as the
+  // newer `master_owner` role; client roles remain excluded.
+  const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
+  const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
+  const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
+  useLayoutEffect(()=>{
+    document.documentElement.dataset.appearance=appearance;
+    void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
+    return()=>{delete document.documentElement.dataset.appearance;};
+  },[appearance]);
+  useEffect(() => {
+    const restore = () => {const {uid,tenantId}=appearanceIdentity();setAppearance(storedAppearance(localStorage,uid,tenantId));};
+    window.addEventListener('banksetu-workspace-change', restore);
+    return () => window.removeEventListener('banksetu-workspace-change', restore);
+  }, []);
+  const changeAppearance = (mode: Appearance) => { const {uid,tenantId}=appearanceIdentity();if(!uid)return;localStorage.setItem(appearanceStorageKey(uid,tenantId), mode);setAppearance(mode); };
+
+  const syncStatus=useSyncStatus();
+  const supportUnread=useSupportUnread(accountRole);
+  const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
     useState<PageName>("dashboard");
+
+  useEffect(() => { if (!licenseReadOnly)return;let active=true;queueMicrotask(()=>{if(active)setActivePage("license-management");});return()=>{active=false;}; }, [licenseReadOnly]);
 
   const [mobileMenuOpen, setMobileMenuOpen] =
 
@@ -247,6 +316,24 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
   const [adminMenuOpen, setAdminMenuOpen] =
 
     useState(false);
+  const adminTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [adminMenuPosition, setAdminMenuPosition] = useState({ top: 0, right: 0 });
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+    const positionMenu = () => {
+      const rect = adminTriggerRef.current?.getBoundingClientRect();
+      if (rect) setAdminMenuPosition({
+        top: rect.bottom + 8,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    };
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [adminMenuOpen]);
 
   const [systemStatusOpen, setSystemStatusOpen] =
 
@@ -283,30 +370,26 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const [menuThemeModalOpen, setMenuThemeModalOpen] = useState(false);
   const [menuTheme, setMenuTheme] = useState<MenuThemeId>(() => {
-    const saved = localStorage.getItem("bankSetuMenuTheme");
+    const saved = localStorage.getItem(tenantStorageKey("bankSetuMenuTheme"));
     return isMenuThemeId(saved) ? saved : "violet";
   });
   const selectedMenuTheme = MENU_THEMES.find((theme) => theme.id === menuTheme) || MENU_THEMES[0];
-
   const [advancedAdminOpen, setAdvancedAdminOpen] = useState(false);
+  const [clientCreateOpen, setClientCreateOpen] = useState(false);
 
   const [customDashboardColor, setCustomDashboardColor] = useState(() =>
-    localStorage.getItem("bankSetuCustomDashboardColor") || "#123b4a"
+    localStorage.getItem(tenantStorageKey("bankSetuCustomDashboardColor")) || "#123b4a"
   );
 
   const [useCustomDashboardColor, setUseCustomDashboardColor] = useState(() =>
-    localStorage.getItem("bankSetuUseCustomDashboardColor") === "true"
+    localStorage.getItem(tenantStorageKey("bankSetuUseCustomDashboardColor")) === "true"
   );
 
   const [dashboardTheme, setDashboardTheme] =
 
     useState<DashboardThemeId>(() => {
 
-      const savedTheme = localStorage.getItem(
-
-        "bankSetuDashboardTheme"
-
-      );
+      const savedTheme = localStorage.getItem(tenantStorageKey("bankSetuDashboardTheme"));
 
       return savedTheme === "soft-mist"
 
@@ -332,59 +415,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     useRef<HTMLInputElement | null>(null);
 
-  const [bankLogo, setBankLogo] =
-
-    useState<string>(() => {
-
-      return (
-
-        localStorage.getItem(
-
-          "bankSetuBankLogo"
-
-        ) || ""
-
-      );
-
-    });
-
-  const [bankInfo, setBankInfo] =
-
-    useState<BankInfo>(() => {
-
-      try {
-
-        const saved = localStorage.getItem(
-
-          "bankSetuBankInfo"
-
-        );
-
-        if (!saved) return emptyBankInfo;
-
-        return {
-
-          ...emptyBankInfo,
-
-          ...JSON.parse(saved),
-
-        };
-
-      } catch (error) {
-
-        console.error(
-
-          "Bank information load failed:",
-
-          error
-
-        );
-
-        return emptyBankInfo;
-
-      }
-
-    });
+  const [bankLogo, setBankLogo] = useState("");
+  const [bankInfo, setBankInfo] = useState<BankInfo>(emptyBankInfo);
+  const [bankSettingsReady, setBankSettingsReady] = useState(false);
+  const [bankSettingsError, setBankSettingsError] = useState("");
+  const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
+  const canManageBankSettings = (!licenseReadOnly || accountRole === "client_admin" && licensePermission.state === "pending") && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
 
   const [bankInfoDraft, setBankInfoDraft] =
 
@@ -394,439 +430,46 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     useState(false);
 
-  const saveCloudSettings = async (
-
-    patch: Record<string, unknown>
-
-  ) => {
-
-    const user = getAuth().currentUser;
-
-    if (!user) {
-
-      throw new Error(
-
-        "Firebase login session is not available. Please login again."
-
-      );
-
-    }
-
-    await setDoc(
-
-      doc(db, "appSettings", user.uid),
-
-      {
-
-        ...patch,
-
-        updatedAt: serverTimestamp(),
-
-      },
-
-      { merge: true }
-
-    );
-
-  };
-
   useEffect(() => {
-
-    let cancelled = false;
-
-    const loadCloudSettings = async () => {
-
-      const user = getAuth().currentUser;
-
-      if (!user) {
-
-        return;
-
-      }
-
-      let localInfo: BankInfo = {
-
-        ...emptyBankInfo,
-
-      };
-
+    const user = getAuth().currentUser;
+    if (!user) return;
+    if(sessionStorage.getItem("bankSetuConnectionMode")==="demo"){
+      // Use an existing built-in document renderer with sample branding only;
+      // the demo never reads tenant bank settings or production PDF templates.
+      let active=true;
+      queueMicrotask(()=>{if(active){setBankInfo({...emptyBankInfo,bankName:"Bank Setu Demo",passbookBank:"Assam Gramin Bank"});setBankLogo("");setBankSettingsReady(true);setBankSettingsError("");}});
+      return()=>{active=false;};
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (active) { setBankSettingsReady(false); setBankSettingsError(""); }
+    });
+    let receivedServer = false;
+    const timeout = window.setTimeout(() => {
+      if (!receivedServer) setBankSettingsError("Saved bank settings could not be confirmed from Firebase. Check your connection and retry.");
+    }, 12000);
+    const unsubscribe = onSnapshot(doc(db, ...tenantSettingsPath(user.uid)), { includeMetadataChanges:true }, snapshot => {
+      if (snapshot.metadata.fromCache && !receivedServer && navigator.onLine) return;
+      if(snapshot.metadata.fromCache && !snapshot.exists()) return;
+      receivedServer = true; window.clearTimeout(timeout);
+      const cloudData = snapshot.exists() ? snapshot.data() : {};
+      const saved = restoreWorkspaceBankSettings(cloudData);
+      if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
+      setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
+      setBankSettingsReady(true); setBankSettingsError("");
+      // This is only a workspace-scoped cache. It never overrides Firebase.
       try {
-
-        const savedInfo = localStorage.getItem(
-
-          "bankSetuBankInfo"
-
-        );
-
-        if (savedInfo) {
-
-          localInfo = {
-
-            ...emptyBankInfo,
-
-            ...JSON.parse(savedInfo),
-
-          };
-
-        }
-
-      } catch (error) {
-
-        console.error(
-
-          "Local bank information migration read failed:",
-
-          error
-
-        );
-
-      }
-
-      const localLogo =
-
-        localStorage.getItem(
-
-          "bankSetuBankLogo"
-
-        ) || "";
-
-      try {
-
-        const settingsRef = doc(
-
-          db,
-
-          "appSettings",
-
-          user.uid
-
-        );
-
-        const settingsSnap =
-
-          await getDoc(settingsRef);
-
-        const cloudData =
-
-          settingsSnap.exists()
-
-            ? settingsSnap.data()
-
-            : {};
-
-        const cloudInfo: BankInfo = {
-
-          bankName:
-
-            typeof cloudData.bankName === "string"
-
-              ? cloudData.bankName
-
-              : localInfo.bankName,
-
-          passbookBank:
-
-            typeof cloudData.passbookBank === "string"
-
-              ? cloudData.passbookBank
-
-              : localInfo.passbookBank,
-
-          branchName:
-
-            typeof cloudData.branchName === "string"
-
-              ? cloudData.branchName
-
-              : localInfo.branchName,
-
-          cspCode:
-
-            typeof cloudData.cspCode === "string"
-
-              ? cloudData.cspCode
-
-              : localInfo.cspCode,
-
-          operatorName:
-
-            typeof cloudData.operatorName === "string"
-
-              ? cloudData.operatorName
-
-              : localInfo.operatorName,
-
-          address:
-
-            typeof cloudData.address === "string"
-
-              ? cloudData.address
-
-              : localInfo.address,
-
-        };
-
-        const cloudLogo =
-
-          typeof cloudData.bankLogo === "string"
-
-            ? cloudData.bankLogo
-
-            : localLogo;
-
-        const cloudApiUrl =
-
-          typeof cloudData.apiUrl === "string"
-
-            ? cloudData.apiUrl.trim()
-
-            : "";
-
-        if (cloudApiUrl) {
-
-          localStorage.setItem(
-
-            "bankSetuApiUrl",
-
-            cloudApiUrl
-
-          );
-
-        }
-
-
-        const cloudTheme =
-
-          cloudData.dashboardTheme === "soft-mist"
-
-            ? "dark-original"
-
-            : isDashboardThemeId(cloudData.dashboardTheme)
-
-              ? cloudData.dashboardTheme
-
-              : dashboardTheme;
-
-        const cloudMenuTheme = isMenuThemeId(cloudData.menuTheme) ? cloudData.menuTheme : menuTheme;
-
-        localStorage.setItem("bankSetuMenuTheme", cloudMenuTheme);
-
-        localStorage.setItem(
-
-          "bankSetuDashboardTheme",
-
-          cloudTheme
-
-        );
-
-        if (!cancelled) {
-
-          setBankInfo(cloudInfo);
-
-          if (cloudLogo) {
-
-            setBankLogo(cloudLogo);
-
-          }
-
-          setDashboardTheme(cloudTheme);
-          setMenuTheme(cloudMenuTheme);
-
-        }
-
-        try {
-
-          localStorage.setItem(
-
-            "bankSetuBankInfo",
-
-            JSON.stringify(cloudInfo)
-
-          );
-
-          if (cloudLogo) {
-
-            localStorage.setItem(
-
-              "bankSetuBankLogo",
-
-              cloudLogo
-
-            );
-
-          }
-
-        } catch (error) {
-
-          console.error(
-
-            "Cloud settings local cache failed:",
-
-            error
-
-          );
-
-        }
-
-        const migrationPatch: Record<
-
-          string,
-
-          unknown
-
-        > = {};
-
-        if (
-
-          typeof cloudData.bankName !== "string" &&
-
-          localInfo.bankName
-
-        ) {
-
-          migrationPatch.bankName =
-
-            localInfo.bankName;
-
-        }
-
-        if (
-
-          typeof cloudData.passbookBank !== "string" &&
-
-          localInfo.passbookBank
-
-        ) {
-
-          migrationPatch.passbookBank =
-
-            localInfo.passbookBank;
-
-        }
-
-        if (
-
-          typeof cloudData.branchName !== "string" &&
-
-          localInfo.branchName
-
-        ) {
-
-          migrationPatch.branchName =
-
-            localInfo.branchName;
-
-        }
-
-        if (
-
-          typeof cloudData.cspCode !== "string" &&
-
-          localInfo.cspCode
-
-        ) {
-
-          migrationPatch.cspCode =
-
-            localInfo.cspCode;
-
-        }
-
-        if (
-
-          typeof cloudData.operatorName !== "string" &&
-
-          localInfo.operatorName
-
-        ) {
-
-          migrationPatch.operatorName =
-
-            localInfo.operatorName;
-
-        }
-
-        if (
-
-          typeof cloudData.address !== "string" &&
-
-          localInfo.address
-
-        ) {
-
-          migrationPatch.address =
-
-            localInfo.address;
-
-        }
-
-        if (
-
-          typeof cloudData.bankLogo !== "string" &&
-
-          localLogo
-
-        ) {
-
-          migrationPatch.bankLogo =
-
-            localLogo;
-
-        }
-
-        if (
-
-          Object.keys(
-
-            migrationPatch
-
-          ).length > 0
-
-        ) {
-
-          await setDoc(
-
-            settingsRef,
-
-            {
-
-              ...migrationPatch,
-
-              updatedAt:
-
-                serverTimestamp(),
-
-            },
-
-            { merge: true }
-
-          );
-
-        }
-
-      } catch (error) {
-
-        console.error(
-
-          "Bank cloud settings load failed:",
-
-          error
-
-        );
-
-      }
-
-    };
-
-    void loadCloudSettings();
-
-    return () => {
-
-      cancelled = true;
-
-    };
-
-  }, []);
+        localStorage.setItem(tenantStorageKey("bankSetuBankInfo"),JSON.stringify(saved.bankInfo));
+        if(saved.bankLogo) localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),saved.bankLogo);
+        else localStorage.removeItem(tenantStorageKey("bankSetuBankLogo"));
+      } catch { /* Saving Firebase settings does not depend on browser storage. */ }
+    }, error => {
+      window.clearTimeout(timeout); setBankSettingsReady(false);
+      setBankSettingsError("Saved bank settings could not be loaded from Firebase. Please retry.");
+      console.error("Workspace bank settings listener failed:", error);
+    });
+    return () => { active = false; window.clearTimeout(timeout); unsubscribe(); };
+  }, [bankSettingsRetry, accountRole]);
 
   const hasBankInfo =
 
@@ -837,6 +480,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
     );
 
   const openBankInfoEditor = () => {
+    if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     setBankInfoDraft({ ...bankInfo });
 
@@ -877,12 +521,16 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
       operatorName: bankInfoDraft.operatorName.trim(),
 
       address: bankInfoDraft.address.trim(),
+      branchAddress:bankInfoDraft.branchAddress.trim(), branchPostOffice:bankInfoDraft.branchPostOffice.trim(),
+      branchDistrict:bankInfoDraft.branchDistrict.trim(), branchPinCode:bankInfoDraft.branchPinCode.trim(),
+      branchEmail:bankInfoDraft.branchEmail.trim(), ifsc:bankInfoDraft.ifsc.trim(),
+      micr:bankInfoDraft.micr.trim(), branchCode:bankInfoDraft.branchCode.trim(),
 
     };
 
     if (!cleaned.bankName) {
 
-      alert("Please enter Bank / CSP Name.");
+      showMessage("Please enter Bank / CSP Name.");
 
       return;
 
@@ -890,29 +538,23 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
     if (!cleaned.passbookBank) {
 
-      alert("Please select the bank for passbook printing.");
+      showMessage("Please select the bank for passbook printing.");
 
       return;
 
     }
+    if (cleaned.branchPinCode && !/^\d{6}$/.test(cleaned.branchPinCode)) { showMessage("Enter a six-digit Branch PIN Code."); return; }
+    if (cleaned.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(cleaned.ifsc)) { showMessage("Enter a valid 11-character IFSC Code."); return; }
+    if (cleaned.micr && !/^\d{9}$/.test(cleaned.micr)) { showMessage("Enter a nine-digit MICR Code."); return; }
+    if (cleaned.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.branchEmail)) { showMessage("Enter a valid Branch Email."); return; }
 
     try {
 
-      await saveCloudSettings({
-
-        ...cleaned,
-
-      });
+      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned });
 
       setBankInfo(cleaned);
 
-      localStorage.setItem(
-
-        "bankSetuBankInfo",
-
-        JSON.stringify(cleaned)
-
-      );
+      try { localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned)); } catch { /* Firebase save already succeeded. */ }
 
       setBankInfoEditOpen(false);
 
@@ -926,7 +568,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       );
 
-      alert(
+      showMessage(
 
         "Bank information could not be saved to Firebase Cloud. Please check your internet connection and try again."
 
@@ -936,11 +578,10 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   };
 
-  // Global UI theme is shared by every approved Bank Setu account.
-  // Firestore path: appSettings/uiTheme
+  // Master-controlled appearance is stored once and read by every tenant.
   const saveGlobalUiTheme = async (patch: Record<string, unknown>) => {
     const user = getAuth().currentUser;
-    if (!user || userRole !== "admin") return;
+    if (!user || !canControlGlobalDashboard) return;
 
     await setDoc(
       doc(db, "appSettings", "uiTheme"),
@@ -955,50 +596,33 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadGlobalUiTheme = async () => {
-      try {
-        const snap = await getDoc(doc(db, "appSettings", "uiTheme"));
-        if (!snap.exists() || cancelled) return;
-
-        const data = snap.data();
-
-        if (
-          typeof data.customDashboardColor === "string" &&
-          data.useCustomDashboardColor === true
-        ) {
-          setCustomDashboardColor(data.customDashboardColor);
-          setUseCustomDashboardColor(true);
-          localStorage.setItem("bankSetuCustomDashboardColor", data.customDashboardColor);
-          localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
-        } else if (isDashboardThemeId(data.dashboardTheme)) {
-          setDashboardTheme(data.dashboardTheme);
-          setUseCustomDashboardColor(false);
-          localStorage.setItem("bankSetuDashboardTheme", data.dashboardTheme);
-          localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
-        }
-
-        if (isMenuThemeId(data.menuTheme)) {
-          setMenuTheme(data.menuTheme);
-          localStorage.setItem("bankSetuMenuTheme", data.menuTheme);
-        }
-      } catch (error) {
-        console.error("Global UI theme load failed:", error);
+    if (!getAuth().currentUser) return;
+    return onSnapshot(doc(db, "appSettings", "uiTheme"), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (typeof data.customDashboardColor === "string" && data.useCustomDashboardColor === true) {
+        setCustomDashboardColor(data.customDashboardColor);
+        setUseCustomDashboardColor(true);
+        localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), data.customDashboardColor);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
+      } else if (isDashboardThemeId(data.dashboardTheme)) {
+        setDashboardTheme(data.dashboardTheme);
+        setUseCustomDashboardColor(false);
+        localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), data.dashboardTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
       }
-    };
-
-    void loadGlobalUiTheme();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      if (isMenuThemeId(data.menuTheme)) {
+        setMenuTheme(data.menuTheme);
+        localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), data.menuTheme);
+      }
+    }, (error) => console.error("Global UI theme listener failed:", error));
+  }, [canControlGlobalDashboard]);
 
   const changeDashboardTheme = async (themeId: DashboardThemeId) => {
     setDashboardTheme(themeId);
     setUseCustomDashboardColor(false);
-    localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
-    localStorage.setItem("bankSetuDashboardTheme", themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
+    localStorage.setItem(tenantStorageKey("bankSetuDashboardTheme"), themeId);
 
     try {
       await saveGlobalUiTheme({
@@ -1007,7 +631,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
       });
     } catch (error) {
       console.error("Dashboard theme cloud save failed:", error);
-      alert("Dashboard theme could not be saved globally. Please try again.");
+      showMessage("Dashboard theme could not be saved globally. Please try again.");
     }
 
     setThemeModalOpen(false);
@@ -1015,13 +639,13 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const changeMenuTheme = async (themeId: MenuThemeId) => {
     setMenuTheme(themeId);
-    localStorage.setItem("bankSetuMenuTheme", themeId);
+    localStorage.setItem(tenantStorageKey("bankSetuMenuTheme"), themeId);
 
     try {
       await saveGlobalUiTheme({ menuTheme: themeId });
     } catch (error) {
       console.error("Menu theme cloud save failed:", error);
-      alert("Menu theme could not be saved globally. Please try again.");
+      showMessage("Menu theme could not be saved globally. Please try again.");
     }
 
     setMenuThemeModalOpen(false);
@@ -1151,7 +775,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       setConfirmPassword("");
 
-      alert("Admin password changed successfully.");
+      showMessage("Admin password changed successfully.");
 
     } catch (error) {
 
@@ -1222,7 +846,14 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
   };
 
   const openPage = (page: PageName) => {
-
+    if(demoExpired && !canOpenLicensePage(page,licenseReadOnly,true)){
+      window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type:"warning",title:"Demo expired",message:"Your five-day Demo has ended. Request a paid license to continue using protected features."}}));
+      return;
+    }
+    if (!canOpenLicensePage(page,licenseReadOnly,demoExpired)) {
+      window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
+      return;
+    }
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -1230,88 +861,23 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
     setAdminMenuOpen(false);
 
   };
+  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(page);}};window.addEventListener('banksetu-open-page',open);const timer=window.setTimeout(()=>{const pending=sessionStorage.getItem('bankSetuPendingNotificationPage');if(['dashboard','sync-backup','license-management'].includes(pending||'')){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(pending as PageName);}},0);return()=>{window.clearTimeout(timer);window.removeEventListener('banksetu-open-page',open);};});
 
-  const handleLogoUpload = (
-
-    event: ChangeEvent<HTMLInputElement>
-
-  ) => {
-
-    const file =
-
-      event.target.files?.[0];
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-
-      alert(
-
-        "Please select an image file."
-
-      );
-
-      return;
-
+  const handleLogoUpload = async (event:ChangeEvent<HTMLInputElement>) => {
+    const file=event.target.files?.[0]; event.target.value="";
+    if(!file || !canManageBankSettings || !bankSettingsReady) return;
+    try {
+      const bankLogo=await prepareBankLogo(file);
+      await callBankSetuWorker("/save-workspace-bank-settings", {bankLogo});
+      setBankLogo(bankLogo);
+      try { localStorage.setItem(tenantStorageKey("bankSetuBankLogo"),bankLogo); } catch { /* Firebase save already succeeded. */ }
+    } catch(error) {
+      showMessage(error instanceof Error ? error.message : "The bank logo could not be saved to Firebase.");
     }
-
-    const reader = new FileReader();
-
-    reader.onload = async () => {
-
-      const result = reader.result;
-
-      if (typeof result !== "string") {
-
-        return;
-
-      }
-
-      try {
-
-        await saveCloudSettings({
-
-          bankLogo: result,
-
-        });
-
-        setBankLogo(result);
-
-        localStorage.setItem(
-
-          "bankSetuBankLogo",
-
-          result
-
-        );
-
-      } catch (error) {
-
-        console.error(
-
-          "Logo cloud save failed:",
-
-          error
-
-        );
-
-        alert(
-
-          "Bank logo could not be saved to Firebase Cloud. Please try again."
-
-        );
-
-      }
-
-    };
-
-    reader.readAsDataURL(file);
-
-    event.target.value = "";
-
   };
 
   const openLogoPicker = () => {
+    if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     logoInputRef.current?.click();
 
@@ -1319,15 +885,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
   const apiConfigured =
 
-    !!localStorage.getItem(
-
-      "bankSetuApiUrl"
-
-    );
+    !!getTenantApiUrl();
 
   return (
 
-    <main className="banksetu-app-shell" style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background } as CSSProperties}>
+    <main className="banksetu-app-shell" data-appearance={appearance} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
+      <SlideNotifications />
 
       {mobileMenuOpen && (
 
@@ -1412,159 +975,27 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
         </div>
 
         <nav style={styles.nav}>
-
-          <NavButton
-
-            icon="🏠"
-
-            label="Dashboard"
-
-            active={
-
-              activePage === "dashboard"
-
-            }
-
-            onClick={() =>
-
-              openPage("dashboard")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="👤"
-
-            label="Customer Entry"
-
-            active={
-
-              activePage ===
-
-              "customer-entry"
-
-            }
-
-            onClick={() =>
-
-              openPage("customer-entry")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="📋"
-
-            label="Customers"
-
-            active={
-
-              activePage === "customers"
-
-            }
-
-            onClick={() =>
-
-              openPage("customers")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="🖨"
-
-            label="Passbook Print"
-
-            active={
-
-              activePage === "passbook"
-
-            }
-
-            onClick={() =>
-
-              openPage("passbook")
-
-            }
-
-          />
-
-          <NavButton
-            icon="⚡"
-            label="Quick Passbook"
-            active={activePage === "quick-passbook"}
-            onClick={() => openPage("quick-passbook")}
-          />
-
-          <NavButton
-
-            icon="🔎"
-
-            label="Account Opening PDF Sample"
-
-            active={
-
-              activePage === "search"
-
-            }
-
-            onClick={() =>
-
-              openPage("search")
-
-            }
-
-          />
-
-          <NavButton
-
-            icon="📊"
-
-            label="Reports"
-
-            active={
-
-              activePage === "reports"
-
-            }
-
-            onClick={() =>
-
-              openPage("reports")
-
-            }
-
-          />
-
-          {userRole === "admin" && <NavButton
-
-            icon="⚙️"
-
-            label="Settings"
-
-            active={
-
-              activePage === "settings"
-
-            }
-
-            onClick={() =>
-
-              openPage("settings")
-
-            }
-
-          />}
-
+          <NavButton icon="🏠" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
+{!licenseReadOnly && <NavButton icon="👤" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
+{!licenseReadOnly && <NavButton icon="⚡" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
+{!licenseReadOnly && <NavButton icon="🖨" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
+          <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
+          <NavButton icon="📋" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+{!licenseReadOnly && <NavButton icon="🔎" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="📤" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
+          {(licenseReadOnly || userRole === "admin") && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
+{!licenseReadOnly && <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
+          {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
+          {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
+        <div className="banksetu-appearance" role="group" aria-label="Appearance">
+          <button type="button" aria-pressed={appearance === 'light'} className={appearance === 'light' ? 'selected' : ''} onClick={() => changeAppearance('light')}><span aria-hidden="true">☀</span> Light</button>
+          <button type="button" aria-pressed={appearance === 'dark'} className={appearance === 'dark' ? 'selected' : ''} onClick={() => changeAppearance('dark')}><span aria-hidden="true">☾</span> Dark</button>
+        </div>
 
       </aside>
+
+      <FloatingSupportButton unread={supportUnread} open={() => openPage("support")} />
 
       {/* MAIN AREA */}
 
@@ -1789,22 +1220,38 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
           <div className="admin-wrapper" style={styles.adminWrapper}>
 
             <button
+              type="button"
+              style={{ ...styles.dashboardSyncButton, opacity: syncStatus.syncing ? 0.65 : 1 }}
+              onClick={syncDashboard}
+              disabled={syncStatus.syncing}
+              aria-busy={syncStatus.syncing}
+              title={syncStatus.error || (!syncStatus.online ? "Offline — changes pending" : syncStatus.syncing ? "Syncing Google customer data…" : syncStatus.pending ? `${syncStatus.pending} changes pending` : "Sync customer data")}
+              aria-label="Sync dashboard data"
+            >
+              <span className={syncStatus.syncing ? "banksetu-sync-spinning" : undefined}>{!syncStatus.online || syncStatus.error ? "!" : "↻"}</span>
+            </button>
+
+
+            <button
 
               type="button"
 
               className="admin-trigger"
 
+              ref={adminTriggerRef}
+
               style={styles.adminBox}
 
-              onClick={() =>
-
-                setAdminMenuOpen(
-
-                  !adminMenuOpen
-
-                )
-
-              }
+              onClick={() => {
+                if (!adminMenuOpen) {
+                  const rect = adminTriggerRef.current?.getBoundingClientRect();
+                  if (rect) setAdminMenuPosition({
+                    top: rect.bottom + 8,
+                    right: Math.max(8, window.innerWidth - rect.right),
+                  });
+                }
+                setAdminMenuOpen(!adminMenuOpen);
+              }}
 
             >
 
@@ -1844,9 +1291,9 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
             </button>
 
-            {adminMenuOpen && (
+            {adminMenuOpen && createPortal(
 
-              <div style={styles.adminMenu}>
+              <div style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
 
                 <button
 
@@ -1863,12 +1310,12 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                 </button>
 
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setThemeModalOpen(true); }}
                 >🎨 Dashboard Color</button>}
 
-                {userRole === "admin" && <button
+                {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
@@ -1895,7 +1342,13 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
 
 
-                {userRole === "admin" && (
+                {userRole === "admin" && accountRole !== "client_admin" && (
+                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientCreateOpen(true); }}>
+                    ＋ Create Client Admin
+                  </button>
+                )}
+
+                {userRole === "admin" && !licenseReadOnly && (
                   <button
                     type="button"
                     style={styles.adminMenuItem}
@@ -1904,7 +1357,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                       setAdvancedAdminOpen(true);
                     }}
                   >
-                    🛡️ Advanced Administrator Control
+                    {accountRole === "client_admin" ? "⚙️ Workspace Settings" : "🛡️ Advanced Administrator Control"}
                   </button>
                 )}
 
@@ -1928,7 +1381,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
               </div>
 
-            )}
+            , document.body)}
 
           </div>
 
@@ -1936,15 +1389,28 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
         <div className="dashboard-top-divider" style={styles.topDivider} />
 
+        <ClientGoogleSetup enabled={accountRole === "client_admin" && !licenseReadOnly} />
+
+        {["client_admin","client_user"].includes(accountRole) && <LicenseNotice permission={licensePermission} open={() => openPage("license-management")} />}
+
         {/* PAGE CONTENT */}
 
         <div style={styles.pageContent}>
+          <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
+          {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
+          {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
+          {activePage === "support" && <SupportCenter accountRole={accountRole} />}
+          {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
+          {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
-          {activePage === "dashboard" && (
+          {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
+          {activePage === "dashboard" && !licenseReadOnly && (
 
             <DashboardHome
 
               openPage={openPage}
+              bankSettingsReady={bankSettingsReady}
+              accountRole={accountRole}
 
             />
 
@@ -1952,55 +1418,46 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
           {activePage ===
 
-            "customer-entry" && (
+            "customer-entry" && !licenseReadOnly && (
 
-            <CustomerEntry />
-
-          )}
-
-          {activePage === "settings" && userRole === "admin" && (
-
-            <Settings userRole={userRole} />
+            bankSettingsReady ? <CustomerEntry bankName={bankInfo.passbookBank} /> : null
 
           )}
 
-          {activePage === "customers" && (
+          {activePage === "settings" && (licenseReadOnly || userRole === "admin") && (
+
+            licenseReadOnly ? <section style={{background:"var(--app-dark-surface, white)",color:"var(--app-dark-text, #10204b)",padding:20,borderRadius:12}}><h2>Account Settings</h2><p>Business settings are available after license activation. Your account and local backup remain accessible.</p><button type="button" onClick={openPasswordModal}>Change Password</button><button type="button" onClick={()=>openPage("license-management")}>License Status</button></section> : <Settings userRole={userRole} />
+
+          )}
+
+          {activePage === "customers" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
+          {activePage === "forms-send-to-branch" && !licenseReadOnly && bankSettingsReady && <FormsSendToBranch bankName={bankInfo.passbookBank} cspCode={bankInfo.cspCode} />}
+          {activePage === "customers" && !licenseReadOnly && (
 
             <Customers />
 
           )}
 
-          {activePage === "passbook" && (
+          {activePage === "all-customer-data" && !demoExpired && (licenseReadOnly ? <LicenseReadOnlyCustomers /> : <AllCustomerData />)}
 
-            <Passbook />
+          {bankSettingsReady && activePage === "passbook" && !licenseReadOnly && (
+
+            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} onOpenBankInformation={canManageBankSettings?openBankInfoEditor:undefined} />
 
           )}
 
-          {activePage === "quick-passbook" && (
-            <Passbook />
+          {bankSettingsReady && activePage === "quick-passbook" && !licenseReadOnly && (
+            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
           )}
 
-          {activePage === "search" && (
+          {bankSettingsReady && activePage === "bank-formats" && !licenseReadOnly && accountRole === "client_admin" && (
+            <BankFormats enabled canManage bankName={bankInfo.passbookBank} />
+          )}
 
-          bankInfo.passbookBank === "Assam Gramin Bank" ? (
+          {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
+          {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
 
-            <AccountOpeningPDF />
-
-          ) : (
-
-            <ComingSoon
-
-              title="Account Opening PDF Sample"
-
-              text="This PDF template is currently available only for Assam Gramin Bank. Please select Assam Gramin Bank in Bank Information."
-
-            />
-
-          )
-
-        )}
-
-          {activePage === "reports" && (
+          {activePage === "reports" && !licenseReadOnly && (
 
             <Reports />
 
@@ -2010,7 +1467,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       </section>
 
-      {bankInfoEditOpen && (
+      {bankInfoEditOpen && !licenseReadOnly && (
 
         <div
 
@@ -2288,6 +1745,11 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
               </label>
 
+              {([['branchAddress','Branch Address'],['branchPostOffice','Branch Post Office'],['branchDistrict','Branch District'],['branchPinCode','Branch PIN Code'],['branchEmail','Branch Email'],['ifsc','IFSC Code'],['micr','MICR Code'],['branchCode','Branch Code']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
+                <span style={styles.bankInfoFieldLabel}>{label}</span>
+                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='branchPinCode'||field==='micr'?'numeric':'text'} maxLength={field==='branchPinCode'?6:field==='micr'?9:field==='ifsc'?11:field==='branchEmail'?254:field==='branchCode'?20:120}/>
+              </label>)}
+
             </div>
 
             <div style={styles.bankInfoModalActions}>
@@ -2334,7 +1796,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       {/* DASHBOARD COLOR */}
 
-      {themeModalOpen && userRole === "admin" && (
+      {themeModalOpen && canControlGlobalDashboard && (
 
         <div
 
@@ -2471,15 +1933,15 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
                   type="button"
                   style={styles.themeChoice}
                   onClick={() => {
-                    localStorage.setItem("bankSetuCustomDashboardColor", customDashboardColor);
-                    localStorage.setItem("bankSetuUseCustomDashboardColor", "true");
+                    localStorage.setItem(tenantStorageKey("bankSetuCustomDashboardColor"), customDashboardColor);
+                    localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "true");
                     setUseCustomDashboardColor(true);
                     void saveGlobalUiTheme({ customDashboardColor, useCustomDashboardColor: true });
                     setThemeModalOpen(false);
                   }}
                 >Apply RGB / Custom</button>
                 {useCustomDashboardColor && <button type="button" style={styles.themeChoice} onClick={() => {
-                  localStorage.setItem("bankSetuUseCustomDashboardColor", "false");
+                  localStorage.setItem(tenantStorageKey("bankSetuUseCustomDashboardColor"), "false");
                   setUseCustomDashboardColor(false);
                   void saveGlobalUiTheme({ dashboardTheme, useCustomDashboardColor: false });
                 }}>Use Preset</button>}
@@ -2492,7 +1954,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
       )}
 
-      {menuThemeModalOpen && userRole === "admin" && (
+      {menuThemeModalOpen && canControlGlobalDashboard && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
           <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
             <div style={styles.modalHeader}>
@@ -2516,14 +1978,37 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
         </div>
       )}
 
-      {advancedAdminOpen && userRole === "admin" && (
+      {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setClientCreateOpen(false); }}>
+          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Create Client Admin</h2>
+              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => setClientCreateOpen(false)}>×</button>
+            </div>
+            <MasterClients enabled />
+          </div>
+        </div>
+      )}
+
+      {advancedAdminOpen && !licenseReadOnly && userRole === "admin" && (
         <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
           <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
-              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>Advanced Administrator Control</h2></div>
-              <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
+              <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {accountRole === "client_admin" && <button type="button" style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.35)",background:"#153b47",color:"#fff"}} onClick={() => { setAdvancedAdminOpen(false); openPage("bank-formats"); }}>🏦 Bank Formats</button>}
+                <button type="button" style={styles.modalClose} onClick={() => setAdvancedAdminOpen(false)}>×</button>
+              </div>
             </div>
-            <AdvancedAdmin />
+            <AdvancedAdmin
+              allowConnectionSettings={accountRole === "master_owner" || accountRole === "admin"}
+              isMasterOwner={accountRole === "master_owner" || (
+                accountRole === "admin" &&
+                getAuth().currentUser?.email?.trim().toLowerCase() === "banksetu2026@gmail.com" &&
+                getAuth().currentUser?.emailVerified === true
+              )}
+              isClientAdmin={accountRole === "client_admin"}
+            />
           </div>
         </div>
       )}
@@ -2984,6 +2469,10 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
           }
 
+          .dashboard-count-transition { display:inline-block; animation:banksetu-count-enter .2s ease-out; }
+          @keyframes banksetu-count-enter { from { opacity:.5; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+          @media (prefers-reduced-motion:reduce) { .dashboard-count-transition { animation:none; } }
+
           @media (max-width: 620px) {
 
             .bank-info-form-grid {
@@ -3102,7 +2591,7 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
               display: grid !important;
 
-              grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+              grid-template-columns: 42px minmax(0, 1fr) max-content !important;
 
               align-items: start !important;
 
@@ -3151,6 +2640,8 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
               grid-row: 1 !important;
 
               justify-self: end !important;
+
+              gap: 4px !important;
 
               padding-left: 0 !important;
 
@@ -3342,13 +2833,111 @@ function Dashboard({ onLogout, userRole }: DashboardProps) {
 
 \========================= */
 
+type StatusPanelType = "kyc" | "passbook" | "inactive";
+type StatusCustomer = Record<string, unknown> & {rowNumber?: number; recordId?: string};
+const statusPanelConfig = {
+  kyc: {title:"KYC Pending Customers", field:"status", current:"Pending", next:"Active"},
+  passbook: {title:"Passbook Pending Customers", field:"passbookStatus", current:"Pending", next:"Printed"},
+  inactive: {title:"Inactive Account Customers", field:"status", current:"Inactive", next:"Active"},
+} as const;
+
+function DashboardStatusPanel({type, accountRole, onClose}: {type:StatusPanelType;accountRole:string;onClose:()=>void}) {
+  const config=statusPanelConfig[type];
+  const [customers,setCustomers]=useState<StatusCustomer[]>([]);
+  const [query,setQuery]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState("");
+  const [error,setError]=useState("");
+  const [notice,setNotice]=useState("");
+  const canUpdate=["admin","master_owner","client_admin","client_user","user"].includes(accountRole);
+  const refresh=async()=>{
+    if(localModeEnabled())return await getActiveLocalCustomers() as StatusCustomer[];
+    const apiUrl=getTenantApiUrl();
+    if(!apiUrl)throw new Error("Customer workspace is unavailable.");
+    const all:StatusCustomer[]=[];
+    for(let page=1;page<=100;page++){
+      const response=await localDataFetch(apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"getAllCustomers",page,pageSize:250,idToken:await getDataIdToken()})});
+      if(!response.ok)throw new Error("Customer list could not be loaded.");
+      const result=await response.json() as {success?:boolean;message?:string;customers?:StatusCustomer[];hasNextPage?:boolean};
+      if(!result.success||!Array.isArray(result.customers))throw new Error(result.message||"Customer list could not be loaded.");
+      all.push(...result.customers);
+      if(!result.hasNextPage)return all;
+    }
+    throw new Error("Customer list is too large to load in this popup.");
+  };
+  useEffect(()=>{
+    let active=true;
+    const load=()=>{void refresh().then(rows=>{if(active){setCustomers(rows);setError("");setLoading(false);}}).catch(cause=>{if(active){setError(cause instanceof Error?cause.message:"Customer list unavailable.");setLoading(false);}});};
+    load();
+    const onSync=()=>{if(localModeEnabled())load();};
+    const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")onClose();};
+    window.addEventListener("banksetu-sync-change",onSync);
+    window.addEventListener("keydown",onKey);
+    return()=>{active=false;window.removeEventListener("banksetu-sync-change",onSync);window.removeEventListener("keydown",onKey);};
+    // The active workspace already scopes the repository and Google bridge.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[type]);
+  const matched=customers.filter(customer=>{
+    const status=String(customer[config.field]??"").trim().toLowerCase();
+    return type==="passbook" ? !status||status==="pending" : status===config.current.toLowerCase();
+  });
+  const visible=matched.filter(customer=>[customer.name,customer.accountNo,customer.enrolId].some(value=>String(value??"").toLowerCase().includes(query.trim().toLowerCase())));
+  const update=async(customer:StatusCustomer,next:string)=>{
+    if(next===String(customer[config.field]||config.current))return;
+    const id=String(customer.recordId||customer.rowNumber||customer.accountNo);
+    setBusy(id);setError("");setNotice("");
+    try{
+      const apiUrl=getTenantApiUrl();if(!apiUrl)throw new Error("Customer workspace is unavailable.");
+      const response=await localDataFetch(apiUrl,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"updateCustomer",recordId:customer.recordId,rowNumber:customer.rowNumber,statusOnly:true,statusField:config.field,statusValue:next,customer:{},idToken:await getDataIdToken()})});
+      if(!response.ok)throw new Error("Customer status could not be saved.");
+      const result=await response.json() as {success?:boolean;message?:string;queued?:boolean};
+      if(!result.success)throw new Error(result.message||"Customer status could not be saved.");
+      setCustomers(previous=>previous.map(item=>String(item.recordId||item.rowNumber||item.accountNo)===id?{...item,[config.field]:next}:item));
+      setNotice(result.queued?"Saved locally; Google sync pending.":"Customer status saved.");
+      if(!result.queued)window.dispatchEvent(new Event("banksetu-sync-change"));
+    }catch(cause){setError(cause instanceof Error?cause.message:"Customer status update failed.");}
+    finally{setBusy("");}
+  };
+  const copy=async(account:string)=>{
+    try{
+      const desktop=(window as Window & {bankSetuDesktop?:{copyText?:(value:string)=>Promise<void>}}).bankSetuDesktop;
+      if(desktop?.copyText)await desktop.copyText(account);
+      else await navigator.clipboard.writeText(account);
+      setNotice("Account number copied.");
+    }catch{setError("Clipboard unavailable on this device.");}
+  };
+  return createPortal(<div className="dashboard-status-overlay" onClick={onClose}>
+    <section className="dashboard-status-panel" role="dialog" aria-modal="true" aria-label={config.title} onClick={event=>event.stopPropagation()}>
+      <header><div><h2>{config.title}</h2><p>Total {config.current}: {matched.length}</p></div><button type="button" aria-label="Close" onClick={onClose}>×</button></header>
+      <input type="search" aria-label="Search customers" placeholder="Search customer or account number…" value={query} onChange={event=>setQuery(event.target.value)} />
+      {error&&<p role="alert" className="dashboard-status-error">{error}</p>}
+      {notice&&<p role="status" className="dashboard-status-notice">{notice}</p>}
+      {loading?<p role="status">Loading customers…</p>:<div className="dashboard-status-list">
+        {visible.map(customer=>{const id=String(customer.recordId||customer.rowNumber||customer.accountNo);const account=String(customer.accountNo??"");return <div className="dashboard-status-row" key={id}>
+          <strong>{String(customer.name??"")}</strong>
+          <span className="dashboard-status-account">{account}<button type="button" aria-label={`Copy account number ${account}`} onClick={()=>void copy(account)}>⧉</button></span>
+          <select aria-label={`${config.title} status for ${String(customer.name??"")}`} value={String(customer[config.field]||config.current)} disabled={!canUpdate||busy===id} onChange={event=>void update(customer,event.target.value)}>
+            {[...new Set([String(customer[config.field]||config.current),config.next])].map(value=><option key={value} value={value}>{value}</option>)}
+          </select>
+        </div>;})}
+        {!visible.length&&<p>No matching customers.</p>}
+      </div>}
+      <footer><span>Showing {visible.length} of {matched.length} customers</span><button type="button" onClick={onClose}>Close</button></footer>
+    </section>
+  </div>,document.body);
+}
+
 function DashboardHome({
 
   openPage,
+  bankSettingsReady,
+  accountRole,
 
 }: {
 
   openPage: (page: PageName) => void;
+  bankSettingsReady: boolean;
+  accountRole: string;
 
 }) {
 
@@ -3377,6 +2966,7 @@ function DashboardHome({
       inactiveAccounts: 0,
 
     });
+  const [analyticsRows, setAnalyticsRows] = useState<Record<string, unknown>[] | null>(null);
 
   const [statsLoading, setStatsLoading] =
 
@@ -3385,26 +2975,66 @@ function DashboardHome({
   const [statsError, setStatsError] =
 
     useState("");
+  const statsLoadedOnce = useRef(false);
+
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
 
   useEffect(() => {
+    const refreshDashboardAfterWorkspaceReady = () => {
+      setWorkspaceVersion((version) => version + 1);
+    };
+    window.addEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+    window.addEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);
+    return () => {window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);window.removeEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);};
+  }, []);
+
+  useEffect(() => {
+
+    // Workspace/API hydration completes after the dashboard mounts on a fresh
+    // session. Do not report a false sync error while that configuration is
+    // still being restored from Firebase/local session state.
+    if (!bankSettingsReady) {
+      if(!statsLoadedOnce.current)setStatsLoading(true);
+      return;
+    }
 
     let cancelled = false;
 
     const loadDashboardStats = async () => {
 
-      setStatsLoading(true);
+      if(!statsLoadedOnce.current)setStatsLoading(true);
 
       setStatsError("");
 
       try {
 
-        const apiUrl =
+        // The customer list and dashboard use the same scoped local records;
+        // the existing sync engine refreshes them from Google in the background.
+        if (localModeEnabled()) {
+            const records = await getActiveLocalCustomers();
+              const text = (value: unknown) => String(value ?? "").trim().toLowerCase();
+              const field = (customer: Record<string, unknown>, names: string[]) => {
+                const key = Object.keys(customer).find((candidate) => names.includes(candidate.toLowerCase().replace(/[ _-]/g, "")));
+                return key ? customer[key] : "";
+              };
+              const localStats = {
+                totalCustomers: records.length,
+                kycPending: records.filter((customer) => text(field(customer, ["status"])) === "pending").length,
+                passbookPending: records.filter((customer) => ["", "pending"].includes(text(field(customer, ["passbookstatus"])))).length,
+                inactiveAccounts: records.filter((customer) => text(field(customer, ["status"])) === "inactive").length,
+              };
+              if (!cancelled) {
+                setDashboardStats(localStats);
+                setAnalyticsRows(records);
+                statsLoadedOnce.current=true;
+                setStatsLoading(false);
+                setStatsError("");
+              }
+            return;
+        }
 
-          localStorage
-
-            .getItem("bankSetuApiUrl")
-
-            ?.trim() || "";
+        const apiUrl = getTenantApiUrl();
 
         if (!apiUrl) {
 
@@ -3446,13 +3076,9 @@ function DashboardHome({
 
           try {
 
-            const idToken = await user.getIdToken(
+            const idToken = await getDataIdToken(attempt > 0);
 
-              attempt > 0
-
-            );
-
-            const response = await fetch(apiUrl, {
+            const response = await localDataFetch(apiUrl, {
 
               method: "POST",
 
@@ -3594,37 +3220,43 @@ function DashboardHome({
 
         }
 
-        const liveStats = result.stats || {};
+        // Legacy cloud-only workspaces must count the same filtered rows that
+        // All Customer Data displays; the aggregate endpoint can include
+        // tombstoned Sheet rows.
+        const customerIds = new Map<string,Record<string,unknown>>();
+        for (let page = 1; page <= 100; page++) {
+          const idToken = await getDataIdToken();
+          const response = await localDataFetch(apiUrl, {
+            method: "POST", headers: {"Content-Type": "text/plain;charset=utf-8"},
+            body: JSON.stringify({action: "getAllCustomers", page, pageSize: 250, idToken}),
+          });
+          if (!response.ok) throw new Error("Customer count could not be loaded.");
+          const listing = await response.json() as {success?: boolean; message?: string; customers?: Array<Record<string, unknown>>; hasNextPage?: boolean};
+          if (!listing.success || !Array.isArray(listing.customers)) throw new Error(listing.message || "Customer count could not be loaded.");
+          for (const customer of listing.customers) {
+            const key = String(customer.recordId || customer.rowNumber || customer.accountNo || "").trim();
+            if (key) customerIds.set(key,customer);
+          }
+          if (!listing.hasNextPage) break;
+          if (page === 100) throw new Error("Customer count exceeds the available page limit.");
+        }
 
         if (!cancelled) {
+          const active=[...customerIds.values()];
+          // Legacy workspaces already loaded these pages for the overview;
+          // charts must not request the same customers a second time.
+          setAnalyticsRows(active);
+          const status=(customer:Record<string,unknown>,field:string)=>String(customer[field]??"").trim().toLowerCase();
 
           setDashboardStats({
 
-            totalCustomers: Number(
-
-              liveStats.totalCustomers || 0
-
-            ),
-
-            kycPending: Number(
-
-              liveStats.kycPending || 0
-
-            ),
-
-            passbookPending: Number(
-
-              liveStats.passbookPending || 0
-
-            ),
-
-            inactiveAccounts: Number(
-
-              liveStats.inactiveAccounts || 0
-
-            ),
+            totalCustomers: customerIds.size,
+            kycPending:active.filter(customer=>status(customer,"status")==="pending").length,
+            passbookPending:active.filter(customer=>["","pending"].includes(status(customer,"passbookStatus"))).length,
+            inactiveAccounts:active.filter(customer=>status(customer,"status")==="inactive").length,
 
           });
+          statsLoadedOnce.current=true;
 
         }
 
@@ -3672,7 +3304,7 @@ function DashboardHome({
 
     };
 
-  }, []);
+  }, [bankSettingsReady, workspaceVersion]);
 
   const stats = [
 
@@ -3750,15 +3382,17 @@ function DashboardHome({
 
       <section className="dashboard-stats-grid" style={styles.statsGrid}>
 
-        {stats.map(([icon, title, value]) => (
+        {stats.map(([icon, title, value], index) => (
 
-          <article
+          <button type="button"
 
             key={title}
 
             className="dashboard-stat-card"
+            aria-label={`Open ${title}`}
+            onClick={() => index === 0 ? openPage("all-customer-data") : setStatusPanel(index === 1 ? "kyc" : index === 2 ? "passbook" : "inactive")}
 
-          style={styles.statCard}
+          style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
           >
 
@@ -3780,7 +3414,7 @@ function DashboardHome({
 
             <div className="dashboard-stat-value" style={styles.statValue}>
 
-              {statsLoading ? "…" : value}
+              {statsLoading ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
@@ -3790,11 +3424,12 @@ function DashboardHome({
 
             </h3>
 
-          </article>
+          </button>
 
         ))}
 
       </section>
+      {statusPanel && <DashboardStatusPanel type={statusPanel} accountRole={accountRole} onClose={() => setStatusPanel(null)} />}
 
       <section className="dashboard-quick-panel" style={styles.panel}>
 
@@ -3827,7 +3462,7 @@ function DashboardHome({
             icon="➕"
 
             title="Add Customer"
-            gradient="linear-gradient(135deg,#ec4899 0%,#f43f5e 48%,#fb7185 100%)"
+            gradient={CARD_GRADIENTS[0]}
 
             text="Create a new customer record"
 
@@ -3844,7 +3479,7 @@ function DashboardHome({
             icon="📄"
 
             title="Upload PDF"
-            gradient="linear-gradient(135deg,#7c3aed 0%,#8b5cf6 48%,#c084fc 100%)"
+            gradient={CARD_GRADIENTS[1]}
 
             text="Import account opening PDF"
 
@@ -3861,7 +3496,7 @@ function DashboardHome({
             icon="🖨"
 
             title="Passbook Print"
-            gradient="linear-gradient(135deg,#059669 0%,#10b981 48%,#2dd4bf 100%)"
+            gradient={CARD_GRADIENTS[2]}
 
             text="Search and print passbook"
 
@@ -3878,7 +3513,7 @@ function DashboardHome({
             icon="🔎"
 
             title="Account Opening PDF"
-            gradient="linear-gradient(135deg,#f59e0b 0%,#f97316 52%,#ef4444 100%)"
+            gradient={CARD_GRADIENTS[3]}
 
             text="Generate account opening PDF"
 
@@ -3894,10 +3529,48 @@ function DashboardHome({
 
       </section>
 
+      <DashboardAnalytics rows={analyticsRows} stats={dashboardStats} loading={statsLoading} />
+
     </>
 
   );
 
+}
+
+function DashboardAnalytics({ rows, stats, loading }: { rows: Record<string, unknown>[] | null; stats: { kycPending:number; passbookPending:number; inactiveAccounts:number }; loading:boolean }) {
+  const analytics = rows === null ? null : customerAnalytics(rows);
+  const months = analytics?.months || [];
+  const maxEntries = Math.max(1, ...months.map(month => month.entries));
+  const maxGrowth = Math.max(1, ...months.map(month => month.growth));
+  const statuses = [
+    { title:'KYC Pending', count:stats.kycPending, color:'#38bdf8' },
+    { title:'Passbook Pending', count:stats.passbookPending, color:'#a78bfa' },
+    { title:'Inactive Accounts', count:stats.inactiveAccounts, color:'#fbbf24' },
+  ];
+  return <section className="dashboard-analytics" aria-label="Customer analytics">
+    <h2>Analytics</h2>
+    <div className="dashboard-analytics-grid">
+      <article className="dashboard-analytics-card"><h3>Customer Growth</h3>
+        {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable. No historical totals estimated.</p> : <>
+          <p>Currently active customers with recorded entry dates · {analytics.known} known{analytics.undated ? ` · ${analytics.undated} undated excluded` : ''}</p>
+          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.growth}`).join(', ')}>
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar growth" style={{height:`${Math.max(2, m.growth / maxGrowth * 100)}%`}} title={`${m.key}: ${m.growth}`} /><small>{m.label}</small></div>)}
+          </div><small>Deleted customers and records without entry dates are not included in historical totals.</small>
+        </>}
+      </article>
+      <article className="dashboard-analytics-card"><h3>Monthly Customer Entries</h3>
+        {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable.</p> : <>
+          <p>This month: {analytics.thisMonth} · Monthly average (12 months): {analytics.monthlyAverage.toFixed(2)}</p>
+          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.entries}`).join(', ')}>
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} title={`${m.key}: ${m.entries}`} /><small>{m.label}</small></div>)}
+          </div><small>{analytics.undated} customer(s) without an entry date excluded.</small>
+        </>}
+      </article>
+      <article className="dashboard-analytics-card"><h3>Customer Status Analytics</h3><p>Current dashboard counts · categories may overlap</p>
+        {statuses.map(item => <div className="dashboard-analytics-status" key={item.title}><span>{item.title}</span><strong>{loading ? '…' : item.count}</strong><div className="dashboard-analytics-track"><span style={{width:`${stats.kycPending + stats.passbookPending + stats.inactiveAccounts ? item.count / Math.max(1, ...statuses.map(s=>s.count)) * 100 : 0}%`,background:item.color}} /></div></div>)}
+      </article>
+    </div>
+  </section>;
 }
 
 function QuickAction({
@@ -4040,54 +3713,6 @@ function NavButton({
 
 \========================= */
 
-function ComingSoon({
-
-  title,
-
-  text,
-
-}: {
-
-  title: string;
-
-  text: string;
-
-}) {
-
-  return (
-
-    <section style={styles.comingSoon}>
-
-      <div style={styles.comingSoonIcon}>
-
-        🛠
-
-      </div>
-
-      <h2>
-
-        {title}
-
-      </h2>
-
-      <p>
-
-        {text}
-
-      </p>
-
-    </section>
-
-  );
-
-}
-
-/* =========================
-
-   STATUS ROW
-
-\========================= */
-
 function StatusRow({
 
   name,
@@ -4142,11 +3767,27 @@ function StatusRow({
 
 const styles: Record<
 
+
   string,
 
   CSSProperties
 
 > = {
+  dashboardSyncButton: {
+    width: "38px",
+    height: "38px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    borderRadius: "12px",
+    border: "1px solid rgba(71,226,200,0.24)",
+    background: "rgba(50,218,192,0.08)",
+    color: "#4ce0c6",
+    cursor: "pointer",
+    fontSize: "22px",
+    lineHeight: 1,
+  },
 
   page: {
 
@@ -4249,7 +3890,7 @@ const styles: Record<
 
       `url(${bankSetuLogo})`,
 
-    backgroundSize: "cover",
+    backgroundSize: "contain",
 
     backgroundPosition: "center",
 
@@ -4468,6 +4109,14 @@ const styles: Record<
   adminWrapper: {
 
     position: "relative",
+
+    display: "flex",
+
+    alignItems: "center",
+
+    gap: "8px",
+
+    whiteSpace: "nowrap",
 
     flexShrink: 0,
 

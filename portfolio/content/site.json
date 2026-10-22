@@ -1,0 +1,65 @@
+{
+  "title": "Bank Setu",
+  "hero": "Digital customer management for rural banking",
+  "description": "Bank Setu brings customer records, passbook printing, PDF workflows and local-first synchronization together in one Windows and Android application for authorized teams.",
+  "banner": "CUSTOMER WORKSPACE · WINDOWS & ANDROID",
+  "theme": {
+    "primary": "#1264e8",
+    "deep": "#082b5d",
+    "accent": "#12b9d4"
+  },
+  "features": [
+    {
+      "icon": "◉",
+      "title": "Customer Management",
+      "text": "Add, edit and search customer records in the authorized workspace."
+    },
+    {
+      "icon": "▤",
+      "title": "Passbook Printing",
+      "text": "Prepare customer passbook PDFs with the existing print workflow."
+    },
+    {
+      "icon": "✓",
+      "title": "KYC & Status",
+      "text": "Track KYC, passbook and account status in one place."
+    },
+    {
+      "icon": "▧",
+      "title": "Documents & Photos",
+      "text": "Handle customer PDFs and photos through the connected workspace."
+    },
+    {
+      "icon": "↔",
+      "title": "Local-first Sync",
+      "text": "Work with local records and sync through Google Sheets and Drive when available."
+    },
+    {
+      "icon": "◈",
+      "title": "Backup & Restore",
+      "text": "Create a local backup file and restore it through the app when needed."
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/dashboard-privacy.png",
+      "alt": "Bank Setu mobile dashboard, identity details removed for privacy",
+      "title": "Dashboard",
+      "text": "Quick access to customer work and status cards."
+    },
+    {
+      "src": "/screenshots/navigation.jpg",
+      "alt": "Bank Setu mobile navigation menu",
+      "title": "Navigation",
+      "text": "Customer, passbook, reports and sync tools in one menu."
+    },
+    {
+      "src": "/screenshots/sync-backup.jpg",
+      "alt": "Bank Setu mobile Sync and Backup screen",
+      "title": "Sync & Backup",
+      "text": "Local records, pending work and sync controls."
+    }
+  ],
+  "downloadText": "Choose the current published release for your device. Sign in with an authorized Bank Setu account after installing.",
+  "footer": "Bank Setu is customer-workflow software for authorized CSP and rural banking teams. It is not an official bank service or endorsement."
+}

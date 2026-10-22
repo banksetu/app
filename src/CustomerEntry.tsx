@@ -1,3 +1,8 @@
+import {confirmAction} from './uiDialogs';
+import { initializeApp, deleteApp } from "firebase/app";
+import { localDataFetch, getDataIdToken, localModeEnabled } from "./core/localData";
+import { CUSTOMER_PHOTO_MAX_BYTES, optimizeCustomerPhoto } from "./customerPhoto";
+import CustomerCamera from "./CustomerCamera";
 import {
 
   useRef,
@@ -20,11 +25,14 @@ import type {
 
 import {
 
-  EmailAuthProvider,
-
-  reauthenticateWithCredential,
+  getAuth,
+  setPersistence,
+  inMemoryPersistence,
+  signInWithEmailAndPassword,
+  signOut,
 
 } from "firebase/auth";
+import { getTenantApiUrl } from "./tenantApi";
 
 
 
@@ -34,7 +42,7 @@ import {
 
   GlobalWorkerOptions,
 
-} from "pdfjs-dist";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 
 
 
@@ -42,17 +50,20 @@ import type {
 
   PDFDocumentProxy,
 
-} from "pdfjs-dist";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
 
 
 
 import pdfWorker from
 
-  "pdfjs-dist/build/pdf.worker.min.mjs?url";
+  "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 
 
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { doc, getDocFromServer } from "firebase/firestore";
+import { isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { extractBankCustomer } from "./bankPdf";
 
 
 
@@ -167,6 +178,8 @@ type SearchCustomerResponse = {
 type ApiResponse = {
 
   success: boolean;
+  deleted?: boolean;
+  queued?: boolean;
 
   message?: string;
 
@@ -195,12 +208,6 @@ type ApiResponse = {
    CONSTANTS
 
 \========================================================= */
-
-
-
-const API_STORAGE_KEY =
-
-  "bankSetuApiUrl";
 
 
 
@@ -408,7 +415,7 @@ function createEmptyForm(): CustomerForm {
 
 
 
-function CustomerEntry() {
+function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
   const [form, setForm] =
 
@@ -581,6 +588,12 @@ function CustomerEntry() {
   ] =
 
     useState("");
+
+  const [cameraOpen,setCameraOpen]=useState(false);
+  const [photoReview,setPhotoReview]=useState("");
+  const [photoOptimizing,setPhotoOptimizing]=useState(false);
+
+
 
 
 
@@ -812,17 +825,7 @@ function CustomerEntry() {
 
   const getApiUrl = () => {
 
-    const apiUrl =
-
-      localStorage
-
-        .getItem(
-
-          API_STORAGE_KEY
-
-        )
-
-        ?.trim();
+    const apiUrl = getTenantApiUrl();
 
 
 
@@ -872,11 +875,7 @@ function CustomerEntry() {
 
 
 
-      return user.getIdToken(
-
-        forceRefresh
-
-      );
+      return getDataIdToken(forceRefresh);
 
     };
 
@@ -920,7 +919,7 @@ function CustomerEntry() {
 
       const response =
 
-        await fetch(
+        await localDataFetch(
 
           apiUrl,
 
@@ -998,178 +997,42 @@ function CustomerEntry() {
 
 
 
-  const handlePhotoSelect = (
-
-    event:
-
-      ChangeEvent<HTMLInputElement>
-
-  ) => {
-
-    const file =
-
-      event.target.files?.[0];
-
-
-
-    if (!file) {
-
-      return;
-
+  const acceptPhoto=async (file:Blob) => {
+    const optimized=await optimizeCustomerPhoto(file);
+    setPhotoPreview(optimized.dataUrl);
+    if(optimized.qualityWarning){
+      setPhotoReview(optimized.dataUrl);setPhotoDataUrl("");
+      showMessage("Photo is under 15 KB but may be unclear. Check the preview, then use it or retake/choose another.","info");
+    }else{
+      setPhotoReview("");setPhotoDataUrl(optimized.dataUrl);
+      showMessage(`Photo ready (${(optimized.bytes/1024).toFixed(1)} KB).`,"info");
     }
-
-
-
-    const allowedTypes = [
-
-      "image/jpeg",
-
-      "image/jpg",
-
-      "image/png",
-
-      "image/webp",
-
-    ];
-
-
-
-    if (
-
-      !allowedTypes.includes(
-
-        file.type
-
-      )
-
-    ) {
-
-      showMessage(
-
-        "Only JPG, PNG or WEBP photos are allowed.",
-
-        "error"
-
-      );
-
-
-
-      event.target.value =
-
-        "";
-
-
-
-      return;
-
-    }
-
-
-
-    if (
-
-      file.size >
-
-      5 * 1024 * 1024
-
-    ) {
-
-      showMessage(
-
-        "Customer photo must be smaller than 5 MB.",
-
-        "error"
-
-      );
-
-
-
-      event.target.value =
-
-        "";
-
-
-
-      return;
-
-    }
-
-
-
-    const reader =
-
-      new FileReader();
-
-
-
-    reader.onload = () => {
-
-      if (
-
-        typeof reader.result !==
-
-        "string"
-
-      ) {
-
-        return;
-
-      }
-
-
-
-      setPhotoPreview(
-
-        reader.result
-
-      );
-
-
-
-      setPhotoDataUrl(
-
-        reader.result
-
-      );
-
-
-
-      setPhotoFileName(
-
-        file.name
-
-      );
-
-
-
-      showMessage(
-
-        "Customer photo selected.",
-
-        "info"
-
-      );
-
-    };
-
-
-
-    reader.readAsDataURL(
-
-      file
-
-    );
-
-
-
-    event.target.value =
-
-      "";
-
+    setPhotoFileName("customer-photo.jpg");
   };
 
+  const handlePhotoSelect = async (event:ChangeEvent<HTMLInputElement>) => {
+    const file=event.target.files?.[0];event.target.value="";
+    if(!file)return;
+    if(!["image/jpeg","image/jpg","image/png","image/webp"].includes(file.type)){
+      showMessage("Only JPG, PNG or WEBP photos are allowed.","error");return;
+    }
+    if(file.size>20*1024*1024){showMessage("Choose a photo smaller than 20 MB.","error");return;}
+    setPhotoOptimizing(true);
+    try{await acceptPhoto(file);}catch(error){showMessage(error instanceof Error?error.message:"Photo could not be optimized.","error");}
+    finally{setPhotoOptimizing(false);}
+  };
 
-
+  const photoIsReady = () => {
+    if(photoOptimizing || photoReview){
+      showMessage("Review the optimized photo before saving, or choose another photo.","error");return false;
+    }
+    if(photoDataUrl){
+      const payload=photoDataUrl.split(",")[1]||"";
+      const bytes=Math.floor(payload.length*3/4)-(payload.endsWith("==")?2:payload.endsWith("=")?1:0);
+      if(bytes>CUSTOMER_PHOTO_MAX_BYTES){showMessage("Photo must be 15 KB or smaller. Choose another photo.","error");return false;}
+    }
+    return true;
+  };
 
 
   /* =========================================================
@@ -1242,6 +1105,8 @@ function CustomerEntry() {
 
 
 
+    if (file.size > 5 * 1024 * 1024) { showMessage("PDF must be smaller than 5 MB.", "error"); return; }
+
     setSelectedPdfName(
 
       file.name
@@ -1268,6 +1133,7 @@ function CustomerEntry() {
 
 
 
+    let importedPdfTask: ReturnType<typeof getDocument> | undefined;
     try {
 
       const buffer =
@@ -1276,13 +1142,9 @@ function CustomerEntry() {
 
 
 
-      const pdf =
+      importedPdfTask = getDocument({ data: buffer });
+      const pdf = await importedPdfTask.promise;
 
-        await getDocument({
-
-          data: buffer,
-
-        }).promise;
 
 
 
@@ -1308,13 +1170,29 @@ function CustomerEntry() {
 
 
 
-      const extracted =
-
-        parseCustomerPdf(
-
-          text
-
-        );
+      let extractionMap: import("./bankFormatUtils").BankFieldPlacement[] = [];
+      if (!isAssamBank(bankName)) {
+        const tenantId = sessionStorage.getItem("bankSetuTenantId");
+        if (tenantId) {
+          const settings = await getDocFromServer(doc(db, "tenantSettings", tenantId));
+          const sample = settings.data()?.bankFormats?.accountOpening;
+          if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
+        }
+      }
+      const bankSpecific = isAssamBank(bankName)
+        ? Object.fromEntries(Object.entries(parseCustomerPdf(text)).filter(([, value]) => String(value || "").trim()))
+        : {};
+      // AOF footers contain generic Name/Address labels. Never let those
+      // overwrite the Assam bank parser's customer identity/address.
+      const extracted: Partial<CustomerForm> = {
+        ...await extractBankCustomer(pdf, extractionMap, !isAssamBank(bankName)),
+        ...bankSpecific,
+      };
+      if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
+      const extractedCount = Object.values(extracted).filter(value => String(value || "").trim()).length;
+      const extractionMessage = extractedCount
+        ? `${extractedCount} PDF fields extracted. Please check the values before saving. Aadhaar remains manual.`
+        : "No customer values detected. For this bank, check Account Opening sample → Edit field layout. Scanned PDFs require manual entry.";
 
 
 
@@ -1426,7 +1304,7 @@ function CustomerEntry() {
 
           accountOpeningDate:
 
-            previous.accountOpeningDate ||
+            extracted.accountOpeningDate || previous.accountOpeningDate ||
 
             getTodayLocalDate(),
 
@@ -1519,20 +1397,8 @@ function CustomerEntry() {
         extractedPhoto
 
       ) {
-
-        setPhotoPreview(
-
-          extractedPhoto
-
-        );
-
-
-
-        setPhotoDataUrl(
-
-          extractedPhoto
-
-        );
+        try { await acceptPhoto(await (await fetch(extractedPhoto)).blob()); }
+        catch(error){showMessage(error instanceof Error?error.message:"Extracted photo could not fit under 15 KB.","error");}
 
 
 
@@ -1562,13 +1428,7 @@ function CustomerEntry() {
 
 
 
-        showMessage(
-
-          "PDF data and customer photo extracted successfully. Aadhaar has been left blank for manual entry.",
-
-          "success"
-
-        );
+        // acceptPhoto shows the size/clarity review in the existing preview.
 
 
 
@@ -1576,7 +1436,7 @@ function CustomerEntry() {
 
         showMessage(
 
-          "PDF data extracted successfully. Photo crop could not be generated. Aadhaar has been left blank.",
+          `${extractionMessage} Photo crop could not be generated.`,
 
           "success"
 
@@ -1611,6 +1471,7 @@ function CustomerEntry() {
 
 
     } finally {
+      if (importedPdfTask) await importedPdfTask.destroy();
 
       setExtractingPdf(
 
@@ -1772,11 +1633,26 @@ function CustomerEntry() {
 
 
 
+      let region = PDF_PHOTO_REGION;
+      let photoPage = 1;
+      if (!isAssamBank(bankName)) {
+        const tenantId = sessionStorage.getItem("bankSetuTenantId") || "";
+        if (!tenantId) return "";
+        const settings = (await getDocFromServer(doc(db, "tenantSettings", tenantId))).data();
+        const sample = settings?.bankFormats?.accountOpening;
+        if (!templateMatchesBank(sample, bankName)) return "";
+        const photo = sample.extractionMap?.find((field: { field: string }) => field.field === "customerPhoto");
+        if (!photo) return "";
+        photoPage = photo.page || 1;
+        if (photoPage > pdf.numPages) return "";
+        region = {x:photo.x/100,y:photo.y/100,width:photo.width/100,height:(photo.height || photo.width*0.8)/100};
+      }
+
       const page =
 
         await pdf.getPage(
 
-          1
+          photoPage
 
         );
 
@@ -1952,7 +1828,7 @@ function CustomerEntry() {
 
           pageCanvas.width *
 
-            PDF_PHOTO_REGION.x
+            region.x
 
         );
 
@@ -1964,7 +1840,7 @@ function CustomerEntry() {
 
           pageCanvas.height *
 
-            PDF_PHOTO_REGION.y
+            region.y
 
         );
 
@@ -1976,7 +1852,7 @@ function CustomerEntry() {
 
           pageCanvas.width *
 
-            PDF_PHOTO_REGION.width
+            region.width
 
         );
 
@@ -1988,7 +1864,7 @@ function CustomerEntry() {
 
           pageCanvas.height *
 
-            PDF_PHOTO_REGION.height
+            region.height
 
         );
 
@@ -2228,7 +2104,7 @@ function CustomerEntry() {
 
 
 
-          /Customer\s*Name\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
+          /Customer\s*Name\s*[:-]?\s*([A-Za-z][A-Za-z .'-]+?)(?=\s+(?:Sex|Gender)\b)/i,
 
         ]
 
@@ -2312,7 +2188,7 @@ function CustomerEntry() {
 
 
 
-          /Customer\s*Id\s*[:\-]?\s*([A-Z0-9]+)/i,
+          /Customer\s*Id\s*[:-]?\s*([A-Z0-9]+)/i,
 
         ]
 
@@ -2406,7 +2282,7 @@ function CustomerEntry() {
 
         [
 
-          /C\/O\s*[:\-]\s*([^,]+)/i,
+          /C\/O\s*[:-]\s*([^,]+)/i,
 
 
 
@@ -3238,7 +3114,7 @@ function CustomerEntry() {
 
       if (
 
-        !validateForm()
+        !validateForm() || !photoIsReady()
 
       ) {
 
@@ -3311,6 +3187,7 @@ function CustomerEntry() {
             customer: {
 
               ...form,
+
 
 
 
@@ -3730,6 +3607,8 @@ function CustomerEntry() {
 
         );
 
+        setPhotoReview("");
+
 
 
 
@@ -3814,7 +3693,7 @@ function CustomerEntry() {
 
       if (
 
-        !validateForm()
+        !validateForm() || !photoIsReady()
 
       ) {
 
@@ -3828,7 +3707,7 @@ function CustomerEntry() {
 
       const confirmed =
 
-        window.confirm(
+        await confirmAction(
 
           `Update customer "${form.name}"?`
 
@@ -3886,6 +3765,7 @@ function CustomerEntry() {
 
 
 
+
               photoDataUrl,
 
 
@@ -3934,19 +3814,9 @@ function CustomerEntry() {
 
         showMessage(
 
-          "Customer updated successfully.",
+          result.queued ? "Customer updated locally. Google sync pending." : "Customer updated successfully.",
 
-          "success"
-
-        );
-
-
-
-
-
-        setPhotoDataUrl(
-
-          ""
+          result.queued ? "info" : "success"
 
         );
 
@@ -3954,11 +3824,8 @@ function CustomerEntry() {
 
 
 
-        setPhotoFileName(
-
-          ""
-
-        );
+        clearFormOnly();
+        setSearchText("");
 
 
 
@@ -4120,44 +3987,20 @@ function CustomerEntry() {
 
       try {
 
-        const credential =
-
-          EmailAuthProvider
-
-            .credential(
-
-              user.email,
-
-              deletePassword
-
-            );
-
-
-
-
-
-        await reauthenticateWithCredential(
-
-          user,
-
-          credential
-
-        );
-
-
-
-
-
-        const freshToken =
-
-          await user.getIdToken(
-
-            true
-
-          );
-
-
-
+        // Verify the administrator password in an isolated Firebase Auth instance.
+        // Reauthenticating the primary app can replace its token and break the active workspace.
+        const verifierApp = initializeApp(auth.app.options, `delete-verifier-${crypto.randomUUID()}`);
+        try {
+          const verifier = getAuth(verifierApp);
+          await setPersistence(verifier, inMemoryPersistence);
+          const verified = await signInWithEmailAndPassword(verifier, user.email, deletePassword);
+          if (verified.user.uid !== user.uid) throw new Error("Administrator account does not match the active workspace.");
+          await signOut(verifier);
+        } finally {
+          await deleteApp(verifierApp);
+        }
+        if (auth.currentUser?.uid !== user.uid) throw new Error("Administrator session changed. Reload and try again.");
+        const freshToken = await user.getIdToken();
 
 
         const apiUrl =
@@ -4170,7 +4013,7 @@ function CustomerEntry() {
 
         const response =
 
-          await fetch(
+          await localDataFetch(
 
             apiUrl,
 
@@ -4232,7 +4075,7 @@ function CustomerEntry() {
 
         if (
 
-          !result.success
+          !result.success || (localModeEnabled() && result.deleted !== true)
 
         ) {
 
@@ -4242,13 +4085,13 @@ function CustomerEntry() {
 
               "Delete failed.",
 
-            "error"
+            result.queued && result.deleted ? "info" : "error"
 
           );
 
 
 
-          return;
+          if (!(result.queued && result.deleted)) return;
 
         }
 
@@ -4284,9 +4127,9 @@ function CustomerEntry() {
 
         showMessage(
 
-          "Customer deleted successfully.",
+          result.queued ? "Customer deleted locally. Google Sheet and Drive deletion is pending sync." : "Customer deleted successfully.",
 
-          "success"
+          result.queued ? "info" : "success"
 
         );
 
@@ -4304,7 +4147,7 @@ function CustomerEntry() {
 
         showMessage(
 
-          "Administrator verification failed or delete permission denied.",
+          getErrorMessage(error),
 
           "error"
 
@@ -4424,6 +4267,8 @@ function CustomerEntry() {
 
       );
 
+      setPhotoReview("");
+
 
 
       setPhotoFileName(
@@ -4431,6 +4276,7 @@ function CustomerEntry() {
         ""
 
       );
+
 
 
 
@@ -4473,6 +4319,11 @@ function CustomerEntry() {
       type
 
     );
+    if (text && !/sync pending|deleted locally|saved on this device/i.test(text)) {
+      const event = new Event("banksetu-notification") as Event & {detail:{type:string;title:string;message:string}};
+      event.detail={type:type === "info" ? "progress" : type,title:type === "error" ? "Action failed" : type === "success" ? "Action completed" : "In progress",message:text};
+      window.dispatchEvent(event);
+    }
 
   };
 
@@ -4731,6 +4582,22 @@ function CustomerEntry() {
               : "Upload Photo"}
 
           </button>
+
+          <button type="button" style={{...styles.smallButton,marginLeft:8}} aria-label="Open camera"
+            disabled={photoOptimizing} onClick={()=>setCameraOpen(true)}>📷 Camera</button>
+
+          {photoOptimizing && <p role="status">Optimizing photo…</p>}
+          {photoReview && <div className="customer-photo-review" role="status">
+            <p>Check the photo clarity before saving.</p>
+            <button type="button" onClick={()=>{setPhotoDataUrl(photoReview);setPhotoReview("");}}>Use this photo</button>
+            <button type="button" onClick={()=>setCameraOpen(true)}>Retake</button>
+            <button type="button" onClick={()=>photoInputRef.current?.click()}>Choose another</button>
+          </div>}
+
+          {cameraOpen && <CustomerCamera onClose={()=>setCameraOpen(false)} onUse={async photo=>{
+            setPhotoOptimizing(true);
+            try {await acceptPhoto(photo);setCameraOpen(false);} finally {setPhotoOptimizing(false);}
+          }} />}
 
 
 
@@ -5635,6 +5502,7 @@ function CustomerEntry() {
       {deleteModalOpen && (
 
         <div
+          className="customer-delete-overlay"
 
           style={
 
@@ -5645,6 +5513,7 @@ function CustomerEntry() {
         >
 
           <div
+            className="customer-delete-dialog" role="dialog" aria-modal="true" aria-label="Delete Customer"
 
             style={
 
@@ -6377,7 +6246,7 @@ function normalizeDateForInput(
 
     clean.match(
 
-      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+      /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/
 
     );
 
@@ -6517,7 +6386,7 @@ const styles: Record<
 
     margin: 0,
 
-    color: "#42dfc4",
+    color: "var(--app-dark-text, #42dfc4)",
 
     fontSize: "9px",
 
@@ -6533,7 +6402,7 @@ const styles: Record<
 
     margin: "6px 0",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "29px",
 
@@ -6547,7 +6416,7 @@ const styles: Record<
 
     margin: 0,
 
-    color: "#91a7b3",
+    color: "var(--app-dark-text, #91a7b3)",
 
     fontSize: "11px",
 
@@ -6587,7 +6456,7 @@ const styles: Record<
 
       "1px solid rgba(55,220,195,0.12)",
 
-    color: "#47e1c7",
+    color: "var(--app-dark-text, #47e1c7)",
 
   },
 
@@ -6603,7 +6472,7 @@ const styles: Record<
 
       "1px solid rgba(59,153,246,0.15)",
 
-    color: "#74b8ff",
+    color: "var(--app-dark-text, #74b8ff)",
 
   },
 
@@ -6615,7 +6484,7 @@ const styles: Record<
 
     marginTop: "4px",
 
-    color: "#a2b5be",
+    color: "var(--app-dark-text, #a2b5be)",
 
     fontSize: "9px",
 
@@ -6639,7 +6508,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.07)",
 
-    color: "#4be1c7",
+    color: "var(--app-dark-text, #4be1c7)",
 
     cursor: "pointer",
 
@@ -6715,7 +6584,7 @@ const styles: Record<
 
     margin: 0,
 
-    color: "#45dfc5",
+    color: "var(--app-dark-text, #45dfc5)",
 
     fontSize: "8px",
 
@@ -6731,7 +6600,7 @@ const styles: Record<
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "18px",
 
@@ -6745,7 +6614,7 @@ const styles: Record<
 
     minHeight: "30px",
 
-    color: "#94a9b4",
+    color: "var(--app-dark-text, #94a9b4)",
 
     fontSize: "9px",
 
@@ -6787,7 +6656,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -6811,7 +6680,7 @@ const styles: Record<
 
       "linear-gradient(90deg,#34dcbf,#2faade)",
 
-    color: "#032229",
+    color: "var(--app-dark-text, #032229)",
 
     fontWeight: 900,
 
@@ -6871,7 +6740,7 @@ const styles: Record<
 
     gap: "4px",
 
-    color: "#718b98",
+    color: "var(--app-dark-text, #718b98)",
 
     fontSize: "9px",
 
@@ -6903,7 +6772,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.10)",
 
-    color: "#4be1c7",
+    color: "var(--app-dark-text, #4be1c7)",
 
     cursor: "pointer",
 
@@ -6929,7 +6798,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.045)",
 
-    color: "#48dfc5",
+    color: "var(--app-dark-text, #48dfc5)",
 
     cursor: "pointer",
 
@@ -6943,7 +6812,7 @@ const styles: Record<
 
     marginTop: "8px",
 
-    color: "#afc0c8",
+    color: "var(--app-dark-text, #afc0c8)",
 
     fontSize: "9px",
 
@@ -6979,7 +6848,7 @@ const styles: Record<
 
       "rgba(55,220,195,0.07)",
 
-    color: "#4be2c8",
+    color: "var(--app-dark-text, #4be2c8)",
 
   },
 
@@ -6991,7 +6860,7 @@ const styles: Record<
 
       "rgba(255,80,80,0.07)",
 
-    color: "#ff9898",
+    color: "var(--app-dark-text, #ff9898)",
 
   },
 
@@ -7003,7 +6872,7 @@ const styles: Record<
 
       "rgba(66,153,225,0.07)",
 
-    color: "#8cc5ff",
+    color: "var(--app-dark-text, #8cc5ff)",
 
   },
 
@@ -7042,7 +6911,7 @@ const styles: Record<
 
     margin: "6px 0",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontSize: "20px",
 
@@ -7110,7 +6979,7 @@ const styles: Record<
 
   label: {
 
-    color: "#d8e4e9",
+    color: "var(--app-dark-text, #d8e4e9)",
 
     fontSize: "10px",
 
@@ -7122,7 +6991,7 @@ const styles: Record<
 
   required: {
 
-    color: "#ff8888",
+    color: "var(--app-dark-text, #ff8888)",
 
   },
 
@@ -7148,7 +7017,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -7192,7 +7061,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -7236,7 +7105,7 @@ const styles: Record<
 
     background: "#0a303c",
 
-    color: "#ffffff",
+    color: "var(--app-dark-text, #ffffff)",
 
     fontSize: "13px",
 
@@ -7274,7 +7143,7 @@ const styles: Record<
 
       "linear-gradient(90deg,#35dcbf,#2eaade)",
 
-    color: "#032329",
+    color: "var(--app-dark-text, #032329)",
 
     fontSize: "11px",
 
@@ -7300,7 +7169,7 @@ const styles: Record<
 
       "linear-gradient(90deg,#37dfc3,#35a7f1)",
 
-    color: "#032329",
+    color: "var(--app-dark-text, #032329)",
 
     fontWeight: 900,
 
@@ -7326,7 +7195,7 @@ const styles: Record<
 
       "rgba(255,80,80,0.055)",
 
-    color: "#ff9494",
+    color: "var(--app-dark-text, #ff9494)",
 
     fontWeight: 800,
 
@@ -7350,9 +7219,9 @@ const styles: Record<
 
     background:
 
-      "rgba(255,255,255,0.035)",
+      "var(--app-dark-surface, rgba(255,255,255,0.035))",
 
-    color: "#c5d4db",
+    color: "var(--app-dark-text, #c5d4db)",
 
     fontWeight: 800,
 
@@ -7402,7 +7271,7 @@ const styles: Record<
 
     borderRadius: "19px",
 
-    background: "linear-gradient(145deg, #ffffff 0%, #f4f1ff 48%, #edf7ff 100%)",
+    background: "var(--app-dark-surface, linear-gradient(145deg, #ffffff 0%, #f4f1ff 48%, #edf7ff 100%))",
 
     border:
 
@@ -7416,7 +7285,7 @@ const styles: Record<
 
   deleteTitle: {
 
-    color: "#2d2457",
+    color: "var(--app-dark-text, #2d2457)",
 
     fontSize: "21px",
 
@@ -7426,7 +7295,7 @@ const styles: Record<
 
   deleteWarning: {
 
-    color: "#b4233d",
+    color: "var(--app-dark-text, #b4233d)",
 
     fontSize: "10px",
 
@@ -7460,7 +7329,7 @@ const styles: Record<
 
     background: "#c83f4c",
 
-    color: "#fff",
+    color: "var(--app-dark-text, #fff)",
 
     fontWeight: 800,
 
@@ -7480,9 +7349,9 @@ const styles: Record<
 
     border: "1px solid #d9dbe7",
 
-    background: "#eef0f7",
+    background: "var(--app-dark-surface, #eef0f7)",
 
-    color: "#34344c",
+    color: "var(--app-dark-text, #34344c)",
 
     fontWeight: 800,
 

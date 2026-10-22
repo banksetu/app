@@ -1,0 +1,1173 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+import {indexedDB} from 'fake-indexeddb';
+const compile = source => 'data:text/javascript;base64,'+Buffer.from(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}}).outputText).toString('base64');
+globalThis.indexedDB=indexedDB;
+const {indexedDbRepository: repository}=await import(compile(fs.readFileSync('src/platform/web/indexedDbRepository.ts','utf8')));
+const storage=new Map();globalThis.sessionStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)};
+globalThis.window=new EventTarget();globalThis.__auth={currentUser:{uid:'user-a',getIdToken:async()=> 'fresh-firebase-token'}};
+Object.defineProperty(globalThis,'navigator',{value:{onLine:false},configurable:true});
+let handler=async()=>{throw new Error('offline');};
+let protectionOverride;
+let protectionCalls=0;
+let protectionRequest;
+let inventoryOverride,inventoryCalls=0;
+let photoIndexOverride;
+globalThis.fetch=async(...args)=>{
+ const body=args[1]?.body?JSON.parse(args[1].body):{};
+ if(body.action==='getPhotoPresence'){inventoryCalls++;if(photoIndexOverride)return Response.json(photoIndexOverride);return new Response(JSON.stringify({success:true,complete:true,connectionId:storage.get('bankSetuConnectionId'),customerIds:inventoryOverride||[]}));}
+ if(body.action==='getSyncProtection'){
+   protectionCalls++;
+   protectionRequest=body;
+   const connectionId=storage.get('bankSetuConnectionId');
+   const scope=`${globalThis.__auth.currentUser.uid}:${storage.get('bankSetuMasterLocalEnabled')==='true'?`master:${globalThis.__auth.currentUser.uid}`:storage.get('bankSetuTenantId')}:${connectionId}`;
+   const state=await repository.read(scope);
+   return new Response(JSON.stringify((typeof protectionOverride==='function'?await protectionOverride(body):protectionOverride)||{success:true,protectionVersion:1,photoIndexVersion:photoIndexOverride?1:undefined,connectionId,resetId:'',activeIds:state.records.filter(r=>r.revision).map(r=>r.recordId),deletedIds:[]}));
+ }
+ return handler(...args);
+};
+globalThis.__repository=repository;
+let source=fs.readFileSync('src/core/localData.ts','utf8').replace('import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";','const isAndroid=()=>false;const shareAndroidBackup=async()=>{};').replace('import { notifySystem } from "../platform/systemNotifications";','const notifySystem=()=>{};').replace('import { auth } from "../firebase";','const auth=globalThis.__auth;').replace('import { requireLicensedWrite } from "./licenseAccess";','const requireLicensedWrite=async()=>{};').replace('import { classifyRecovery, recoveryJournal, type RecoveryCategory } from "./recovery";','const classifyRecovery=()=>"sync";const recoveryJournal=()=>({list:()=>[],add:()=>{},clear:()=>{}});').replace('import { customerRepository as repository } from "./customerRepository";','const repository=globalThis.__repository;');
+globalThis.__backup=await import(compile(fs.readFileSync("src/core/backup.ts","utf8")));
+source=source.replace('import { makeBackup, parseBackup, mergeBackup } from "./backup";','const {makeBackup,parseBackup,mergeBackup}=globalThis.__backup;');
+globalThis.__photoState=await import(compile(fs.readFileSync("src/core/photoState.ts","utf8")));
+source=source.replace('import { mergeRemotePhoto, mergeUploadedPhoto, applyPhotoIndex, photoBytesHash } from "./photoState";','const {mergeRemotePhoto,mergeUploadedPhoto,applyPhotoIndex,photoBytesHash}=globalThis.__photoState;');
+const engine=await import(compile(source));
+function connect(id='connection-a') {storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));storage.set('bankSetuTenantId','tenant-a');storage.set('bankSetuConnectionId',id);storage.set('bankSetuConnectionMode','option-b');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuAccountRole','client_admin');}
+const customer={name:'Alice',accountNo:'1001',enrolId:'C001',uidaiNo:'123456789012'};
+const photoIndex=(connectionId,entries=[])=>({success:true,photoIndexVersion:1,connectionId,revision:entries.length,complete:true,entries});
+test('offline customer entry records its creation date immediately and later edits preserve it for analytics',async()=>{
+ storage.clear();connect('analytics-entry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer});
+ const first=(await engine.getActiveLocalCustomers())[0];assert(Number.isFinite(Date.parse(first.createdAt)));
+ await request({action:'updateCustomer',rowNumber:saved.rowNumber,customer:{...customer,name:'Edited name',createdAt:'2000-01-01T00:00:00Z'}});
+ const next=(await engine.getActiveLocalCustomers())[0];assert.equal(next.createdAt,first.createdAt);
+ assert.equal((await repository.read('user-a:tenant-a:analytics-entry')).operations[0].customer.createdAt,first.createdAt);
+});
+async function recoveryFixture(connection,recordId=crypto.randomUUID()){
+ storage.clear();connect(connection);navigator.onLine=true;
+ const scope=`user-a:tenant-a:${connection}`,now=Date.now();
+ const cloud={...customer,recordId,rowNumber:2,revision:'r1',photoUrl:'saved-photo',photoState:'SYNCED'};
+ await repository.transact(scope,state=>{
+  state.records=[{key:recordId,scope,recordId,rowNumber:2,revision:'r1',pending:false,customer:{...cloud,photoPreview:'data:image/png;base64,c2F2ZWQ='}}];
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-1000,changeCursor:5,changeEpoch:'old-epoch',remoteRevision:'same-revision'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+  state.photoPresence={checkedAt:now,customerIds:[customer.enrolId]};
+ });
+ const full={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:connection,activeIds:[recordId],deletedIds:[],remoteRevision:'same-revision',changeEpoch:'new-epoch',changeCursor:9};
+ const delta={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:connection,incremental:true,changedIds:[recordId],deletedIds:[],changeEpoch:'old-epoch',changeCursor:6,hasMoreChanges:false};
+ return {scope,recordId,cloud,full,delta};
+}
+for(const failure of ['rebase','missing row','duplicate row','legacy ID'])test(`mobile journal ${failure} recovers once through a verified snapshot and retains cached photo`,async()=>{
+ const f=await recoveryFixture(`mobile-${failure}`,failure==='legacy ID'?'legacy-row-id':undefined);
+ let fullRequests=0,batches=0,pages=0;
+ protectionOverride=body=>{
+  if(body.changeEpoch==='new-epoch')return {...f.delta,changedIds:[],changeEpoch:'new-epoch',changeCursor:9};
+  if(body.changeEpoch)return f.delta;
+  fullRequests++;return f.full;
+ };
+ handler=async(_url,init)=>{
+  const body=JSON.parse(init.body);
+  if(body.action==='getCustomerChanges'){
+   batches++;
+   return Response.json(failure==='rebase'?{success:false,code:'REBASE_REQUIRED'}:
+    {success:true,customers:failure==='duplicate row'?[f.cloud,f.cloud]:[],deletedIds:[]});
+  }
+  assert.equal(body.action,'getCustomerPage');assert.equal(body.cursor,0);pages++;
+  return Response.json({success:true,customers:[f.cloud],hasNextPage:false});
+ };
+ try{
+  await engine.syncNow(true);const state=await repository.read(f.scope);
+  assert.equal(fullRequests,1);assert.equal(pages,1);assert.equal(batches,failure==='legacy ID'?0:1);
+  assert.equal(state.pull.changeEpoch,'new-epoch');assert.equal(state.pull.changeCursor,9);assert.equal(state.pull.cursor,0);
+  assert.equal(state.records.length,1);assert.equal(state.records[0].customer.photoPreview,'data:image/png;base64,c2F2ZWQ=');
+  assert.equal((await engine.getLocalStatus()).error,'');
+  await engine.syncNow(true);assert.equal(fullRequests,1);assert.equal(pages,1,'reopening a recovered checkpoint does not rescan the Sheet');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('successful manual sync retires the previous background Recovering error immediately',async()=>{
+ const f=await recoveryFixture('manual-health');
+ globalThis.document=new EventTarget();document.visibilityState='visible';
+ engine.configureConnectionRecovery(async()=>{throw new Error('Synthetic bridge failure');});
+ const stop=engine.startLocalSync();
+ try{
+  for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(engine.getConnectionHealth().state,'recovering');
+  assert.match(engine.getConnectionHealth().error,/bridge failure/);
+  engine.configureConnectionRecovery(undefined);protectionOverride=f.full;
+  handler=async()=>Response.json({success:true,customers:[f.cloud],hasNextPage:false});
+  await engine.syncNow(true);
+  assert.equal(engine.getConnectionHealth().state,'healthy');assert.equal(engine.getConnectionHealth().error,'');
+  assert.equal((await engine.getLocalStatus()).error,'');
+ }finally{stop();engine.configureConnectionRecovery(undefined);protectionOverride=undefined;navigator.onLine=false;}
+});
+test('unverified recovery cannot advance a cursor, clear pending edits, lose photos or cross tenant connection',async()=>{
+ const f=await recoveryFixture('mobile-unverified');
+ await repository.transact(f.scope,state=>state.operations.push({key:'pending-edit',scope:f.scope,operationId:'pending-edit',recordId:f.recordId,action:'updateCustomer',customer:{name:'Pending name'},baseRevision:'r1',rowNumber:2,createdAt:Date.now(),state:'pending'}));
+ protectionOverride=body=>body.changeEpoch?f.delta:{...f.full,connectionId:'another-connection'};
+ handler=async()=>Response.json({success:false,code:'REBASE_REQUIRED'});
+ try{
+  await assert.rejects(engine.syncNow(true),/another workspace connection/);
+  const state=await repository.read(f.scope);
+  assert.equal(state.pull.changeCursor,5);assert.equal(state.pull.changeEpoch,'old-epoch');
+  assert.equal(state.operations[0].operationId,'pending-edit');assert.equal(state.operations[0].state,'pending');
+  assert.equal(state.records[0].customer.photoPreview,'data:image/png;base64,c2F2ZWQ=');assert.equal(state.records[0].deleted,undefined);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('interrupted full recovery resumes its durable page rather than retrying the stale change batch',async()=>{
+ const f=await recoveryFixture('mobile-restart');let pages=[],batches=0,interrupted=false;
+ protectionOverride=body=>body.changeEpoch?f.delta:f.full;
+ handler=async(_url,init)=>{
+  const body=JSON.parse(init.body);
+  if(body.action==='getCustomerChanges'){batches++;return Response.json({success:true,customers:[],deletedIds:[]});}
+  assert.equal(body.action,'getCustomerPage');pages.push(body.cursor);
+  if(body.cursor===0)return Response.json({success:true,customers:[f.cloud],hasNextPage:true,nextCursor:250});
+  if(!interrupted){interrupted=true;throw new Error('mobile download interrupted');}
+  return Response.json({success:true,customers:[],hasNextPage:false});
+ };
+ try{
+  await assert.rejects(engine.syncNow(true),/download interrupted/);
+  assert.equal((await repository.read(f.scope)).pull.cursor,250);
+  await engine.syncNow(true);const state=await repository.read(f.scope);
+  assert.deepEqual(pages,[0,250,250]);assert.equal(batches,1);assert.equal(state.pull.cursor,0);assert.equal(state.pull.changeEpoch,'new-epoch');
+  assert.equal(state.records[0].customer.photoPreview,'data:image/png;base64,c2F2ZWQ=');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('bridge diagnostic compares public GET with authenticated tenant POST without touching local customer state',async()=>{
+ storage.clear();connect('diagnostic-tenant');navigator.onLine=true;
+ handler=async()=>Response.json({success:true,photoIndexVersion:1,afsmVersion:1});
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,afsmVersion:1,connectionId:'diagnostic-tenant'};
+ try {const before=await repository.read('user-a:tenant-a:diagnostic-tenant');const result=await engine.diagnoseSyncBridge();assert.match(result.publicStatus,/GET healthy/);assert.equal(result.authenticatedStatus,'POST authenticated');assert.equal(result.connection,'matched');assert.equal(result.photoIndex,'supported');assert.equal(result.afsm,'supported');assert.deepEqual(await repository.read('user-a:tenant-a:diagnostic-tenant'),before);}
+ finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('public GET cannot falsely validate an unauthenticated or differently bound POST',async()=>{
+ storage.clear();connect('diagnostic-mismatch');handler=async()=>Response.json({success:true,photoIndexVersion:1,afsmVersion:1});protectionOverride={success:false,code:'CONNECTION_CHANGED'};
+ try{const result=await engine.diagnoseSyncBridge();assert.match(result.publicStatus,/GET healthy/);assert.equal(result.connection,'mismatch');assert.equal(result.photoIndex,'unverified');}
+ finally{protectionOverride=undefined;}
+});
+const request=body=>engine.localDataFetch('https://script.google.com/macros/s/bridge/exec',{method:'POST',body:JSON.stringify({...body,idToken:'never-store-this'})}).then(response=>response.json());
+const tenantApiSource=fs.readFileSync('src/tenantApi.ts','utf8').replace('import { getAuth } from "firebase/auth";','const getAuth=()=>globalThis.__auth;');
+const {getCustomerSearchApiUrl,getTenantApiUrl}=await import(compile(tenantApiSource));
+test('stale cached bridge URL still searches verified local workspace first and uses only its bound bridge for cloud fallback',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('search-bridge');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,name:'Bridge Cached',accountNo:'00045',enrolId:'BRIDGE-1'}});assert(saved.success);
+ const verified=storage.get('bankSetuBridgeUrl');
+ // Simulate an Android tenant cache left behind by the previous bridge deployment.
+ globalThis.localStorage={getItem:()=> 'https://script.google.com/macros/s/old-bridge/exec'};
+ assert.equal(getCustomerSearchApiUrl(true),verified);
+ assert.equal(getTenantApiUrl(),verified);
+ let calls=0;navigator.onLine=true;
+ handler=async(url,init)=>{calls++;assert.equal(String(url),verified);assert.equal(JSON.parse(init.body).action,'searchCustomer');return new Response(JSON.stringify({success:true,customer:{recordId:'remote-1',revision:'r1',rowNumber:12,name:'Remote Match',enrolId:'REMOTE-1',accountNo:'0099'},rowNumber:12}));};
+ const local=await engine.localDataFetch(getCustomerSearchApiUrl(true),{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Bridge Cached'})}).then(response=>response.json());
+ assert.equal(local.customer.recordId,saved.recordId);assert.equal(calls,0);
+ const remote=await engine.localDataFetch(getCustomerSearchApiUrl(true),{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Remote Match'})}).then(response=>response.json());
+ assert.equal(remote.customer.name,'Remote Match');assert.equal(calls,1);
+ const stale=await engine.localDataFetch('https://script.google.com/macros/s/old-bridge/exec',{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Bridge Cached',idToken:'token'})}).then(response=>response.json());
+ assert.equal(stale.customer.recordId,saved.recordId);
+ assert.equal(calls,1,'stale bridge never receives customer request');
+ const fallback=await engine.localDataFetch('https://script.google.com/macros/s/old-bridge/exec',{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'unseen cloud match'})}).then(response=>response.json());
+ assert.equal(fallback.customer.name,'Remote Match');assert.equal(calls,2,'cloud fallback uses the verified bridge');
+ navigator.onLine=false;storage.set('bankSetuTenantId','another-tenant');
+ const other=await engine.localDataFetch(getCustomerSearchApiUrl(true),{method:'POST',body:JSON.stringify({action:'searchCustomer',query:'Bridge Cached'})}).then(response=>response.json());
+ assert.equal(other.success,false,'other tenant cannot read cached customer');
+ storage.set('bankSetuWorkspaceReady','false');assert.equal(getCustomerSearchApiUrl(true),'');
+});
+test('IndexedDB persists customer and queue in one atomic transaction and rolls back failed changes',async()=>{
+ await repository.transact('atomic',state=>{state.records.push({recordId:'kept'});state.operations.push({operationId:'kept'});});
+ await assert.rejects(repository.transact('atomic',state=>{state.records.push({recordId:'lost'});throw Error('abort');}));
+ const state=await repository.read('atomic');assert.equal(state.records.length,1);assert.equal(state.operations.length,1);
+});
+test('offline save, search, retry, connection isolation and explicit conflict review',async()=>{
+ connect();const saved=await request({action:'saveCustomer',customer});assert(saved.success&&saved.queued);
+ let state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.records.length,1);assert.equal(state.operations.length,1);assert(!JSON.stringify(state).includes('never-store-this'));
+ const search=await request({action:'searchCustomer',query:'alice'});assert.equal(search.customer.name,'Alice');assert.equal(search.customer.recordId,saved.recordId);
+ connect('connection-b');const miss=await request({action:'searchCustomer',query:'alice'});assert.equal(miss.success,false);assert.equal((await repository.read('user-a:tenant-a:connection-a')).operations.length,1);
+ connect();navigator.onLine=true;let sent=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);sent.push(body);throw Error('timeout after cloud commit');};
+ await assert.rejects(engine.syncNow());assert.equal((await repository.read('user-a:tenant-a:connection-a')).operations.length,1);
+ const originalId=sent[0].operation.operationId;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){sent.push(body);return new Response(JSON.stringify({success:true,rowNumber:9,revision:'r1',customer:{...customer,recordId:saved.recordId,revision:'r1',rowNumber:9}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,revision:'r1',rowNumber:9}],hasNextPage:false,nextCursor:1}));};
+ await engine.syncNow();assert.equal(sent.at(-1).operation.operationId,originalId);state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].rowNumber,9);
+ navigator.onLine=false;await request({action:'updateCustomer',rowNumber:9,customer:{...customer,name:'Local edit'}});navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='syncCustomerOperation'?{success:false,code:'CONFLICT',message:'Changed remotely',customer:{...customer,name:'Cloud edit',recordId:saved.recordId,revision:'r2',rowNumber:4}}:{success:true,customers:[{...customer,name:'Cloud edit',recordId:saved.recordId,revision:'r2',rowNumber:4}],hasNextPage:false,nextCursor:1}));};
+ await engine.syncNow();const conflicts=await engine.getConflicts();assert.equal(conflicts[0].remoteCustomer.name,'Cloud edit');assert.equal((await repository.read('user-a:tenant-a:connection-a')).records[0].customer.name,'Local edit');
+ storage.set('bankSetuAccountRole','client_user');await assert.rejects(engine.resolveConflict(conflicts[0].operationId,'local'),/Admin/);storage.set('bankSetuAccountRole','client_admin');
+ await engine.resolveConflict(conflicts[0].operationId,'cloud');state=await repository.read('user-a:tenant-a:connection-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].customer.name,'Cloud edit');assert.equal(state.records[0].rowNumber,4);
+});
+
+test('session-only pause resumes manually and every local customer change auto-resumes without losing its queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('pause-device');navigator.onLine=false;
+ engine.pauseSync();assert.equal(engine.isSyncPaused(),true);assert.equal((await engine.getLocalStatus()).paused,true);
+ engine.resumeSync();assert.equal(engine.isSyncPaused(),false);
+ engine.pauseSync();const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'PAUSE-1',accountNo:'8101'}});
+ assert(saved.queued);assert.equal(engine.isSyncPaused(),false,'a local add automatically resumes sync');
+ let state=await repository.read('user-a:tenant-a:pause-device');assert.equal(state.operations.length,1);
+ await repository.transact('user-a:tenant-a:pause-device',current=>{current.operations=[];current.records[0].pending=false;current.records[0].revision='r1';current.records[0].customer.uidaiNo='';});
+ engine.pauseSync();const status=await request({action:'updateCustomer',rowNumber:saved.rowNumber,statusOnly:true,statusField:'status',statusValue:'Active',customer:{name:'must not overwrite'}});
+ assert(status.success&&status.queued);assert.equal(engine.isSyncPaused(),false,'a status change automatically resumes sync');
+ state=await repository.read('user-a:tenant-a:pause-device');assert.equal(state.records[0].customer.name,'Alice');assert.equal(state.records[0].customer.status,'Active');assert.deepEqual(state.operations[0].customer,{status:'Active'});
+});
+
+test('rapid duplicate saves and simultaneous status changes retain one identity and all fields',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('rapid-device');navigator.onLine=false;
+ const first={...customer,enrolId:'RAPID-1',accountNo:'9811001'};
+ const results=await Promise.allSettled(Array.from({length:5},()=>request({action:'saveCustomer',customer:first})));
+ assert.equal(results.filter(result=>result.status==='fulfilled'&&result.value.success).length,1);
+ const scope='user-a:tenant-a:rapid-device';let state=await repository.read(scope);
+ assert.equal(state.records.length,1);assert.equal(state.operations.length,1);
+ await repository.transact(scope,current=>{current.records[0].revision='cloud-v1';current.records[0].pending=false;current.operations=[];current.records[0].customer.uidaiNo='';});
+ const rowNumber=state.records[0].rowNumber;
+ const updates=await Promise.allSettled([
+   request({action:'updateCustomer',rowNumber,statusOnly:true,statusField:'status',statusValue:'Active'}),
+   request({action:'updateCustomer',rowNumber,statusOnly:true,statusField:'passbookStatus',statusValue:'Printed'})
+ ]);
+ assert.equal(updates.filter(result=>result.status==='fulfilled'&&result.value.success).length,1);
+ state=await repository.read(scope);assert.equal(state.records[0].customer.name,first.name);assert.equal(state.records[0].customer.uidaiNo,'');assert.equal(state.operations.length,1);
+});
+
+test('Master local-first save/search/sync stays outside client scope and retains original connection',async()=>{
+ const clientBefore=await repository.read('user-a:tenant-a:connection-a');
+ globalThis.__auth.currentUser={uid:'master-user',getIdToken:async()=> 'master-token'};
+ storage.clear();storage.set('bankSetuAccountRole','master_owner');storage.set('bankSetuMasterLocalEnabled','true');storage.set('bankSetuConnectionMode','master-local');storage.set('bankSetuConnectionId','master-existing-sheet');storage.set('bankSetuBridgeUrl','https://script.google.com/macros/s/bridge/exec');storage.set('bankSetuWorkspaceReady','true');storage.set('bankSetuOfflineUntil',String(Date.now()+3600000));navigator.onLine=false;
+ const result=await request({action:'saveCustomer',customer:{name:'Master customer',accountNo:'9876543210',enrolId:'M001',uidaiNo:'123456789012'}});assert(result.queued);
+ const scope='master-user:master:master-user:master-existing-sheet';let state=await repository.read(scope);assert.equal(state.operations.length,1);const recordId=state.records[0].recordId;
+ assert.equal((await request({action:'searchCustomer',query:'Master customer'})).customer.name,'Master customer');assert.deepEqual(await repository.read('user-a:tenant-a:connection-a'),clientBefore);
+ navigator.onLine=true;let writes=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.masterLocalSync,true);if(body.action==='syncCustomerOperation'){writes++;assert.equal(body.connectionId,'master-existing-sheet');return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...body.operation.customer,recordId,revision:'r1'}}));}return new Response(JSON.stringify({success:true,customers:[{...state.records[0].customer,recordId,revision:'r1',rowNumber:2}],hasNextPage:false}));};
+ await engine.syncNow();state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(writes,1);await engine.syncNow();assert.equal(writes,1);assert.deepEqual(await repository.read('user-a:tenant-a:connection-a'),clientBefore);
+ storage.set('bankSetuConnectionId','master-replacement');navigator.onLine=false;assert.equal((await request({action:'searchCustomer',query:'Master customer'})).success,false);
+});
+
+test('fresh installation downloads every page automatically, hydrates photos and searches locally',async()=>{
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};storage.clear();connect('fresh-device');navigator.onLine=true;
+ photoIndexOverride=photoIndex('fresh-device',[{fileId:'drive-photo',customerId:'FIRST',url:'drive-photo',version:'1',revision:1,deleted:false}]);
+ globalThis.document=new EventTarget();document.visibilityState='visible';
+ const records=Array.from({length:1251},(_,i)=>({recordId:'cloud-'+i,rowNumber:i+2,revision:'v1',name:'Existing '+i,accountNo:String(i),...(i===0?{photoUrl:'drive-photo'}:{})}));
+ const calls=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);calls.push(body.action);assert.equal(body.connectionId,'fresh-device');
+ if(body.action==='getCustomerByRowNumber')return new Response(JSON.stringify({success:true,customer:{...records[0],photoPreview:'data:image/png;base64,cGhvdG8='},rowNumber:2}));
+ assert.equal(body.action,'getCustomerPage');const end=Math.min(body.cursor+250,records.length);return new Response(JSON.stringify({success:true,customers:records.slice(body.cursor,end),nextCursor:end,hasNextPage:end<records.length}));};
+ // Mount before workspace verification completes, then wake when it becomes ready.
+ storage.delete('bankSetuWorkspaceReady');const stop=engine.startLocalSync();
+ try{
+ await new Promise(resolve=>setTimeout(resolve,10));assert.equal(calls.length,0);
+ storage.set('bankSetuWorkspaceReady','true');window.dispatchEvent(new Event('banksetu-workspace-change'));
+ const deadline=Date.now()+10000;
+ while(Date.now()<deadline){const status=await engine.getLocalStatus();if(status.lastCompletedAt&&status.mediaPending===0&&!status.syncing)break;await new Promise(resolve=>setTimeout(resolve,50));}
+ const state=await repository.read('user-a:tenant-a:fresh-device');assert.equal(state.records.length,1251);assert(state.pull.lastCompletedAt);assert.match(state.records.find(record=>record.recordId==='cloud-0').customer.photoPreview,/data:image/);
+ assert.equal((await engine.getActiveLocalCustomers()).length,1251);
+ assert.equal((await engine.getLocalStatus()).records,1251);
+ const before=calls.length;const hit=await request({action:'searchCustomer',query:'Existing 0'});assert.equal(hit.local,true);assert.equal(calls.length,before,'local hits never await Google');
+ navigator.onLine=false;assert.equal((await request({action:'searchCustomer',query:'Existing 1250'})).customer.name,'Existing 1250');
+ }finally{stop();photoIndexOverride=undefined;}
+});
+
+test('10,000 generated customers import through durable 250-row pages, including a 3,000-row restart checkpoint',async()=>{
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};storage.clear();connect('bulk-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:bulk-device';
+ const rows=Array.from({length:10000},(_,i)=>({recordId:`bulk-${i}`,rowNumber:i+2,revision:'v1',name:`Customer ${i}`,accountNo:`B${i}`,photoUrl:'',photoAvailable:false}));
+ let failed=false,pages=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerPage');assert.equal(body.pageSize,250);
+   if(body.cursor===3000&&!failed){failed=true;throw Error('Synthetic connection loss');}
+   pages++;const end=Math.min(body.cursor+250,rows.length);
+   return new Response(JSON.stringify({success:true,customers:rows.slice(body.cursor,end),nextCursor:end,hasNextPage:end<rows.length}));
+ };
+ for(let i=0;i<3;i++)await engine.syncNow(true);
+ let state=await repository.read(scope);assert.equal(state.records.length,3000);assert.equal(state.pull.cursor,3000);
+ await assert.rejects(engine.syncNow(true),/Synthetic connection loss/);
+ state=await repository.read(scope);assert.equal(state.records.length,3000);assert.equal(state.pull.cursor,3000);
+ for(let i=0;i<7;i++)await engine.syncNow(true);
+ state=await repository.read(scope);assert.equal(state.records.length,10000);assert.equal(new Set(state.records.map(record=>record.recordId)).size,10000);
+ assert.equal(state.pull.cursor,0);assert(state.pull.lastCompletedAt);assert.equal(state.operations.length,0);assert.equal(pages,40);
+});
+
+test('oversized Google pages shrink with a durable cursor and resume without duplicate customers',async()=>{
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};storage.clear();connect('adaptive-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:adaptive-device';
+ const rows=Array.from({length:130},(_,i)=>({recordId:`adaptive-${i}`,rowNumber:i+2,revision:'r1',name:`Adaptive ${i}`,photoAvailable:false,photoUrl:''}));
+ const sizes=[];let lost=false;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerPage');sizes.push(body.pageSize);
+   if(body.pageSize>40)return new Response('too large',{status:413});
+   if(body.cursor>0&&!lost){lost=true;throw Error('Connection interrupted after first page');}
+   const end=Math.min(body.cursor+body.pageSize,rows.length);
+   return new Response(JSON.stringify({success:true,customers:rows.slice(body.cursor,end),nextCursor:end,hasNextPage:end<rows.length}));
+ };
+ for(let i=0;i<3;i++)await engine.syncNow(true);
+ let state=await repository.read(scope);assert.deepEqual(sizes.slice(0,3),[250,125,62]);assert.equal(state.pull.pageSize,31);assert.equal(state.records.length,0);
+ await assert.rejects(engine.syncNow(true),/Connection interrupted/);
+ state=await repository.read(scope);assert.equal(state.pull.cursor,31);assert.equal(state.records.length,31);
+ for(let i=0;i<10;i++){await engine.syncNow(true);state=await repository.read(scope);if(!state.pull.cursor)break;}
+ assert.equal(state.records.length,130);assert.equal(new Set(state.records.map(record=>record.recordId)).size,130);
+ assert(sizes.some(size=>size>31&&size<62),'successful pages eventually increase the batch size');
+ assert(state.pull.pageSize>=50);assert.equal(state.pull.cursor,0);
+});
+
+test('interrupted download resumes its cursor, exposes error and never overwrites a pending local edit',async()=>{
+ connect('resume-device');navigator.onLine=true;const scope='user-a:tenant-a:resume-device';
+ await repository.transact(scope,state=>state.records.push({key:'edit',recordId:'edit',scope,rowNumber:2,revision:'old',customer:{name:'Unsynced edit'},pending:true}));
+ let fail=true;const cursors=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);cursors.push(body.cursor);if(body.cursor===250&&fail)throw Error('Network interrupted');return new Response(JSON.stringify({success:true,customers:body.cursor===0?[{recordId:'edit',name:'Cloud old',rowNumber:2},{recordId:'older',name:'Older',rowNumber:3}]:[{recordId:'last',name:'Last',rowNumber:4}],hasNextPage:body.cursor===0,nextCursor:body.cursor===0?250:251}));};
+ await assert.rejects(engine.syncNow(),/Network interrupted/);assert.match((await engine.getLocalStatus()).error,/Network interrupted/);assert.equal((await repository.read(scope)).pull.cursor,250);
+ fail=false;await engine.syncNow();const state=await repository.read(scope);assert.equal(cursors.at(-1),250);assert.equal(state.records.find(r=>r.recordId==='edit').customer.name,'Unsynced edit');assert.equal(state.records.find(r=>r.recordId==='older').deleted,undefined);assert.equal((await engine.getLocalStatus()).error,'');
+});
+
+test('shared recovery backs off, reconnects immediately, retains queued identity and exposes real activity',async()=>{
+ connect('health-engine');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:health-engine';const original=(await repository.read(scope)).operations[0].operationId;
+ const nativeTimeout=globalThis.setTimeout,nativeClear=globalThis.clearTimeout;
+ const timers=new Map();let id=0;globalThis.setTimeout=(fn,delay)=>{timers.set(++id,{fn,delay});return id};globalThis.clearTimeout=key=>timers.delete(key);
+ let healthy=false,attempts=0,recoveries=0;const activity=[];
+ const changed=()=>{void engine.getLocalStatus().then(status=>activity.push(status.syncing))};window.addEventListener('banksetu-sync-change',changed);
+ engine.configureConnectionRecovery(async()=>{recoveries++});
+ handler=async(_url,init)=>{if(!init?.body)return new Response('{}');const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){attempts++;assert.equal(body.operation.operationId,original);if(!healthy)throw Error('Backend unavailable');return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,photoPreview:'data:image/png;base64,eA=='}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1',photoPreview:'data:image/png;base64,eA=='}],hasNextPage:false}));};
+ const settle=async()=>{for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));};
+ navigator.onLine=true;const stop=engine.startLocalSync();
+ try{
+ await settle();assert.equal(attempts,1);assert([...timers.values()].some(t=>t.delay>=4000&&t.delay<=6000));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await engine.getLocalStatus()).syncing,false);
+ const retry=[...timers.values()].find(t=>t.delay>=4000&&t.delay<=6000);retry.fn();await settle();assert.equal(attempts,2);assert([...timers.values()].some(t=>t.delay>=8000&&t.delay<=12000));
+ healthy=true;navigator.onLine=false;window.dispatchEvent(new Event('offline'));navigator.onLine=true;window.dispatchEvent(new Event('online'));await settle();assert.equal(attempts,3);assert.equal((await repository.read(scope)).operations.length,0);assert(activity.includes(true));assert.equal(activity.at(-1),false);assert(recoveries>=2);
+ const before=attempts;document.visibilityState='visible';window.dispatchEvent(new Event('focus'));await settle();assert.equal(attempts,before,'focus does not poll an already healthy connection');
+ }finally{stop();engine.configureConnectionRecovery(undefined);window.removeEventListener('banksetu-sync-change',changed);globalThis.setTimeout=nativeTimeout;globalThis.clearTimeout=nativeClear;}
+});
+
+test('foreground resume immediately reconciles queued work through the shared engine',async()=>{
+ connect('resume-on-return');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='hidden';
+ const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:resume-on-return';
+ let writes=0,recoveries=0;
+ engine.configureConnectionRecovery(async()=>{recoveries++;});
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){writes++;return new Response(JSON.stringify({success:true,rowNumber:8,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:8,revision:'r1'}}));}return new Response(JSON.stringify({success:true,customers:[{...customer,recordId:saved.recordId,rowNumber:8,revision:'r1'}],hasNextPage:false}));};
+ const stop=engine.startLocalSync();
+ try{
+   await new Promise(resolve=>setTimeout(resolve,10));assert.equal(writes,0);
+   document.visibilityState='visible';navigator.onLine=true;document.dispatchEvent(new Event('visibilitychange'));
+   const deadline=Date.now()+3000;while(Date.now()<deadline&&(await repository.read(scope)).operations.length)await new Promise(resolve=>setTimeout(resolve,10));
+   assert.equal((await repository.read(scope)).operations.length,0);assert.equal(writes,1);assert.equal(recoveries,1);
+ }finally{stop();engine.configureConnectionRecovery(undefined);}
+});
+
+test('manual header refresh forces reconciliation through the same engine state',async()=>{
+ connect('header-refresh');navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';
+ let pulls=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage')pulls++;return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ const stop=engine.startLocalSync();
+ try{
+   const deadline=Date.now()+3000;while(Date.now()<deadline&&!pulls)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(pulls,1);
+   window.dispatchEvent(new CustomEvent('banksetu-sync-request',{detail:{refresh:true}}));
+   while(Date.now()<deadline+3000&&pulls<2)await new Promise(resolve=>setTimeout(resolve,10));
+   assert.equal(pulls,2);
+ }finally{stop();}
+});
+
+test('idle workspace makes one hourly reconciliation, no focus pull, and manual sync bypasses the interval',async()=>{
+ storage.clear();connect('hourly-idle');navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';
+ photoIndexOverride=photoIndex('hourly-idle');
+ const previousUser=globalThis.__auth.currentUser,originalNow=Date.now,originalTimeout=globalThis.setTimeout,originalClear=globalThis.clearTimeout;
+ let now=1800000000000,tokens=0,worker=0,pages=0,nextId=0;protectionCalls=0;
+ Date.now=()=>now;globalThis.__auth.currentUser={uid:'user-a',getIdToken:async(force)=>{assert(!force);tokens++;return 'cached-token';}};
+ const timers=new Map();globalThis.setTimeout=(fn,delay)=>{const id=++nextId;timers.set(id,{fn,delay});return id;};globalThis.clearTimeout=id=>timers.delete(id);
+ engine.configureConnectionRecovery(async()=>{worker++;});
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage'){pages++;return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));}throw Error(`Unexpected ${body.action}`);};
+ // getSyncProtection is intercepted by the fixture fetch wrapper.
+ const settle=async()=>{for(let i=0;i<50;i++)await new Promise(resolve=>setImmediate(resolve));};
+ const stop=engine.startLocalSync();
+ try{
+   await settle();assert.equal(pages,1);assert.equal(protectionCalls,1);assert.equal(worker,1);assert.equal(tokens,2);
+   let state=await repository.read('user-a:tenant-a:hourly-idle');assert.equal(state.pull.lastCompletedAt,now);
+   for(let i=0;i<2;i++){const fast=[...timers.values()].find(timer=>timer.delay===250);if(!fast)break;now+=250;fast.fn();await settle();}
+   now+=30*60000;window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));await settle();
+   assert.equal(pages,1);assert.equal(protectionCalls,1);assert.equal(worker,1);assert.equal(tokens,2);
+   const due=[...timers.values()].find(timer=>timer.delay>=29*60000&&timer.delay<=30*60000);assert(due,JSON.stringify([...timers.values()].map(timer=>timer.delay)));now+=due.delay;due.fn();await settle();
+   assert.equal(pages,2);assert.equal(protectionCalls,2);assert.equal(worker,2);assert.equal(tokens,4);
+   await engine.syncNow(true);assert.equal(pages,3);assert.equal(protectionCalls,3);assert.equal(tokens,6);
+   state=await repository.read('user-a:tenant-a:hourly-idle');assert.equal(state.pull.lastCompletedAt,now);
+ }finally{stop();photoIndexOverride=undefined;engine.configureConnectionRecovery(undefined);Date.now=originalNow;globalThis.setTimeout=originalTimeout;globalThis.clearTimeout=originalClear;globalThis.__auth.currentUser=previousUser;}
+});
+
+test('completed customer and photo sync becomes idle for an hour after the launch check',async()=>{
+ storage.clear();connect('idle-photos');navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const scope='user-a:tenant-a:idle-photos',previousNow=Date.now,previousTimeout=globalThis.setTimeout,previousClear=globalThis.clearTimeout;
+ let now=1800000000000,nextId=0,photoReads=0,pageReads=0;const timers=new Map();
+ Date.now=()=>now;globalThis.setTimeout=(fn,delay)=>{const id=++nextId;timers.set(id,{fn,delay});return id;};globalThis.clearTimeout=id=>timers.delete(id);
+ const entries=Array.from({length:6},(_,i)=>({fileId:`photo-${i}`,customerId:`PHOTO-${i}`,url:`https://drive.google.com/file/d/photo-${i}/view`,version:'1',revision:i+1,deleted:false}));
+ await repository.transact(scope,state=>{
+  state.records=Array.from({length:2767},(_,i)=>({key:`record-${i}`,scope,recordId:`record-${i}`,rowNumber:i+2,revision:'r1',pending:false,customer:{name:'Synthetic',enrolId:i<6?`PHOTO-${i}`:`EMPTY-${i}`,photoUrl:i<6?entries[i].url:'',photoVersion:i<6?'1':undefined,photoPreview:i<6?'data:image/jpeg;base64,c2FmZQ==':''}}));
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now,remoteRevision:'unchanged'};
+  state.photoIndex={revision:6,complete:true,checkedAt:now-6*60000,entries};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'idle-photos',activeIds:Array.from({length:2767},(_,i)=>`record-${i}`),deletedIds:[],remoteRevision:'unchanged'};
+ photoIndexOverride={...photoIndex('idle-photos'),revision:6,entries:[]};
+ handler=async(_url,init)=>{const action=JSON.parse(init.body).action;if(action==='getCustomerPage')pageReads++;else if(action==='getCustomerByRowNumber')photoReads++;throw Error(`Unexpected ${action}`);};
+ const before=inventoryCalls,settle=async()=>{for(let i=0;i<100;i++)await new Promise(resolve=>setImmediate(resolve));};
+ const stop=engine.startLocalSync();
+ try{
+  await settle();assert.equal(inventoryCalls-before,1,'launch checks the incremental photo index once');assert.equal(pageReads,0);assert.equal(photoReads,0);
+  assert.equal((await engine.getLocalStatus()).syncing,false);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  now+=30*60000;window.dispatchEvent(new Event('focus'));await settle();
+  assert.equal(inventoryCalls-before,1,'unchanged photos are not polled again after 30 minutes');assert.equal(pageReads,0);assert.equal(photoReads,0);
+  const timer=[...timers.values()].find(item=>item.delay>=29*60000&&item.delay<=30*60000);assert(timer,'next quiet check is scheduled for one hour');
+  now+=timer.delay;timer.fn();await settle();assert.equal(inventoryCalls-before,2);assert.equal(photoReads,0);
+  assert.equal((await engine.getLocalStatus()).syncing,false);
+ }finally{stop();protectionOverride=undefined;photoIndexOverride=undefined;Date.now=previousNow;globalThis.setTimeout=previousTimeout;globalThis.clearTimeout=previousClear;navigator.onLine=false;}
+});
+
+test('missing temporary preview ends legacy hash retries and recovers only a real indexed photo',async()=>{
+ storage.clear();connect('missing-baseline-preview');navigator.onLine=true;
+ const scope='user-a:tenant-a:missing-baseline-preview',url='https://drive.google.com/file/d/actual-file/view';
+ await repository.transact(scope,state=>{
+  state.records=[
+   {key:'real',scope,recordId:'real',rowNumber:2,revision:'r1',pending:false,customer:{name:'Synthetic',enrolId:'REAL',photoUrl:url,photoNeedsBaselineHash:true,photoPreview:''}},
+   {key:'absent',scope,recordId:'absent',rowNumber:3,revision:'r1',pending:false,customer:{name:'Synthetic',enrolId:'ABSENT',photoUrl:'',photoNeedsBaselineHash:true,photoPreview:''}},
+  ];
+  state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};
+  state.photoIndex={revision:1,complete:true,checkedAt:Date.now(),entries:[{fileId:'actual-file',customerId:'REAL',url,version:'1',revision:1,deleted:false}]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'missing-baseline-preview',activeIds:['real','absent'],deletedIds:[]};
+ let reads=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');assert.equal(body.recordId,'real');reads++;return Response.json({success:true,rowNumber:2,customer:{recordId:'real',rowNumber:2,revision:'r1',enrolId:'REAL',photoUrl:url,photoVersion:'1',photoPreview:'data:image/jpeg;base64,c2FmZQ=='}});};
+ try{
+  await engine.syncNow(false);let state=await repository.read(scope);
+  assert(state.records.every(record=>!record.customer.photoNeedsBaselineHash));assert.equal(reads,1);
+  assert.equal(state.records.find(record=>record.recordId==='absent').customer.photoState,'NO_PHOTO');
+  await engine.syncNow(false);state=await repository.read(scope);
+  assert.equal(reads,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  await engine.syncNow(false);assert.equal(reads,1,'completed photo is not downloaded again');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('permanent rejected upload remains reviewable without a fast retry loop',async()=>{
+ storage.clear();connect('permanent-upload');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'INVALID-1',accountNo:'91001'}});assert(saved.queued);
+ navigator.onLine=true;let writes=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   writes++;return new Response(JSON.stringify({success:false,code:'INVALID_INPUT',message:'Invalid customer field.'}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ await engine.syncNow(true);
+ const scope='user-a:tenant-a:permanent-upload';const state=await repository.read(scope);
+ assert.equal(state.operations.length,1);assert.equal(state.operations[0].state,'failed');assert.equal(state.operations[0].recordId,saved.recordId);
+ await engine.syncNow(false);assert.equal(writes,1);assert.equal((await engine.getLocalStatus()).conflicts,1);
+});
+
+test('authentication recovery refreshes the Firebase token at most once and retains unsent work',async()=>{
+ storage.clear();connect('auth-recovery');navigator.onLine=false;const previous=globalThis.__auth.currentUser;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'AUTH-1',accountNo:'91002'}});assert(saved.queued);
+ let forced=0,attempts=0;globalThis.__auth.currentUser={uid:'user-a',getIdToken:async(force)=>{if(force)forced++;return force?'renewed':'cached';}};
+ navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   attempts++;return attempts===1?new Response('',{status:401}):new Response(JSON.stringify({success:false,code:'AUTH_REQUIRED'}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ try{await assert.rejects(engine.syncNow(true),/authentication needs attention/);assert.equal(attempts,2);assert.equal(forced,1);
+   const state=await repository.read('user-a:tenant-a:auth-recovery');assert.equal(state.operations[0].state,'pending');assert.equal(state.operations[0].recordId,saved.recordId);
+ }finally{globalThis.__auth.currentUser=previous;}
+});
+
+test('HTTP 429 Retry-After delays the next upload and keeps its operation identity',async()=>{
+ storage.clear();connect('rate-limit');navigator.onLine=false;globalThis.document=new EventTarget();document.visibilityState='visible';
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'RATE-1',accountNo:'91003'}});
+ const scope='user-a:tenant-a:rate-limit',id=(await repository.read(scope)).operations[0].operationId;
+ const oldTimeout=globalThis.setTimeout,oldClear=globalThis.clearTimeout,timers=new Map();let nextId=0,attempts=0;
+ globalThis.setTimeout=(fn,delay)=>{const key=++nextId;timers.set(key,{fn,delay});return key};globalThis.clearTimeout=key=>timers.delete(key);
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   attempts++;assert.equal(body.operation.operationId,id);
+   if(attempts===1)return new Response('',{status:429,headers:{'Retry-After':'120'}});
+   return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ navigator.onLine=true;const settle=async()=>{for(let i=0;i<40;i++)await new Promise(resolve=>setImmediate(resolve));};const stop=engine.startLocalSync();
+ try{
+   await settle();assert.equal(attempts,1);assert.equal((await repository.read(scope)).operations[0].state,'pending');
+   const retry=[...timers.values()].find(timer=>timer.delay>=120000);assert(retry);
+   retry.fn();await settle();assert.equal(attempts,2);assert.equal((await repository.read(scope)).operations.length,0);
+ }finally{stop();globalThis.setTimeout=oldTimeout;globalThis.clearTimeout=oldClear;}
+});
+
+test('stopping the lifecycle engine aborts active cloud work and preserves its queue',async()=>{
+ connect('stop-cleanly');navigator.onLine=false;const saved=await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:stop-cleanly';
+ navigator.onLine=true;globalThis.document=new EventTarget();document.visibilityState='visible';engine.configureConnectionRecovery(async()=>{});
+ let observedSignal;let resolveStarted;const started=new Promise(resolve=>{resolveStarted=resolve;});
+ handler=(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){observedSignal=init.signal;resolveStarted();return new Promise((_resolve,reject)=>init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true}));}return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));};
+ const stop=engine.startLocalSync();
+ try{await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(new Error('sync did not start')),3000))]);stop();assert.equal(observedSignal.aborted,true);await new Promise(resolve=>setTimeout(resolve,10));assert.equal((await repository.read(scope)).operations[0].state,'pending');assert.equal((await repository.read(scope)).records[0].recordId,saved.recordId);}
+ finally{stop();engine.configureConnectionRecovery(undefined);}
+});
+
+test('online entry survives auth refresh failure; cloud fallback caches customers for later local search',async()=>{
+ connect('fast-entry');navigator.onLine=true;const user=globalThis.__auth.currentUser;const token=user.getIdToken;user.getIdToken=async()=>{throw Error('refresh unavailable')};
+ try{assert.equal(await engine.getDataIdToken(),'');const saved=await request({action:'saveCustomer',customer});assert(saved.queued);assert.equal((await repository.read('user-a:tenant-a:fast-entry')).operations.length,1);}finally{user.getIdToken=token;}
+ connect('fallback');let reads=0;
+ handler=async()=>{reads++;return new Response(JSON.stringify({success:true,rowNumber:2,customer:{recordId:'found',name:'Cloud customer',revision:'r1'}}));};
+ await request({action:'searchCustomer',query:'Cloud customer'});assert.equal(reads,1);assert.equal((await request({action:'searchCustomer',query:'Cloud customer'})).local,true);assert.equal(reads,1);
+});
+
+test('customer delete stays local first, syncs immediately on reconnect, and never crosses a tenant scope',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'fresh-firebase-token'};
+ connect('delete-a');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'DELETE-1',accountNo:'9901'}});
+ const deleted=await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
+ assert.equal(deleted.success,false);assert.equal(deleted.deleted,true);assert.equal(deleted.queued,true);
+ assert.equal((await request({action:'searchCustomer',query:'DELETE-1'})).success,false);
+ let state=await repository.read('user-a:tenant-a:delete-a');assert.equal(state.operations.length,2);
+ connect('delete-other');assert.equal((await request({action:'searchCustomer',query:'DELETE-1'})).success,false);
+ connect('delete-a');navigator.onLine=true;let actions=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);actions.push(body.action);
+   if(body.action==='syncCustomerOperation')return new Response(JSON.stringify({
+     success:true,rowNumber:9,revision:body.operation.action==='deleteCustomer'?'r2':'r1',
+     deleted:body.operation.action==='deleteCustomer',driveDeleted:body.operation.action==='deleteCustomer',rowDeleted:body.operation.action==='deleteCustomer',
+     customer:{...customer,recordId:saved.recordId,rowNumber:9,revision:'r2'}}));
+   return new Response(JSON.stringify({success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:1}));
+ };
+ await engine.syncNow(false);
+ state=await repository.read('user-a:tenant-a:delete-a');assert.equal(state.operations.length,0);assert.equal(state.records[0].deleted,true);
+ assert.equal((await engine.getActiveLocalCustomers()).length,0);
+ assert.equal(actions.filter(item=>item==='syncCustomerOperation').length,2);
+ assert.equal((await repository.read('user-a:tenant-a:delete-other')).records.length,0);
+ navigator.onLine=false;const second=await request({action:'saveCustomer',customer:{...customer,enrolId:'DELETE-2',accountNo:'9902'}});
+ await request({action:'deleteCustomer',rowNumber:second.rowNumber});navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='syncCustomerOperation'?
+   {success:true,rowNumber:10,revision:'r3',deleted:body.operation.action==='deleteCustomer',customer:{...customer,recordId:second.recordId,rowNumber:10,revision:'r3'}}:
+   {success:true,customers:[],hasNextPage:false,nextCursor:1}));};
+ await assert.rejects(engine.syncNow(false),/row and Drive deletion are not confirmed/);
+ state=await repository.read('user-a:tenant-a:delete-a');assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
+ assert.equal(state.records.find(record=>record.recordId===second.recordId).deleted,true);
+ navigator.onLine=false;
+});
+
+test('dashboard and list share active scoped records; temporary cleanup preserves customers and queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};
+ connect('count-view');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'COUNT-1',accountNo:'9911'}});
+ const scope='user-a:tenant-a:count-view';
+ await repository.transact(scope,state=>{
+   state.records.push({key:'cloud',scope,recordId:'cloud',rowNumber:2,revision:'r1',pending:false,
+     customer:{name:'Cloud only',accountNo:'9912',photoUrl:'drive-photo',photoPreview:'data:image/png;base64,cGhvdG8='}});
+   state.records.push({key:'duplicate',scope,recordId:'cloud',rowNumber:2,revision:'r1',pending:false,customer:{name:'Duplicate cloud row'}});
+   state.records.push({key:'deleted',scope,recordId:'deleted',rowNumber:3,revision:'r1',pending:false,deleted:true,customer:{name:'Deleted'}});
+ });
+ assert.deepEqual((await engine.getActiveLocalCustomers()).map(item=>item.recordId),[saved.recordId,'cloud']);
+ assert.equal((await engine.getLocalStatus()).records,2);
+ assert.equal(await engine.clearTemporaryLocalData(),1);
+ const state=await repository.read(scope);
+ assert.equal(state.records.find(item=>item.recordId==='cloud').customer.photoPreview,undefined);
+ assert.equal(state.records.find(item=>item.recordId==='cloud').customer.photoUrl,'drive-photo');
+ assert.equal(state.operations.length,1);
+ await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
+ assert.deepEqual((await engine.getActiveLocalCustomers()).map(item=>item.recordId),['cloud']);
+ assert.equal((await engine.getLocalStatus()).records,1);
+ connect('other-count-view');assert.equal((await engine.getActiveLocalCustomers()).length,0);
+});
+
+test('online add and delete respond after local commit while cloud confirmation clears the queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('immediate-actions');navigator.onLine=true;
+ const sent=[];let confirmDelete=false;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   sent.push(body.operation.action);
+   if(body.operation.action==='deleteCustomer')return new Response(JSON.stringify({success:true,deleted:true,driveDeleted:true,rowDeleted:confirmDelete}));
+   return new Response(JSON.stringify({success:true,rowNumber:2,revision:'r1',customer:{...body.operation.customer,recordId:body.operation.recordId,rowNumber:2,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false,nextCursor:0}));};
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'IMMEDIATE',accountNo:'7722'}});
+ assert(saved.success&&saved.queued);assert.equal(sent.length,0);assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,1);
+ await engine.syncNow(false);assert(sent.includes('saveCustomer'));
+ const pending=await request({action:'deleteCustomer',rowNumber:2});assert.equal(pending.success,false);assert.equal(pending.queued,true);
+ assert.equal((await request({action:'searchCustomer',query:'IMMEDIATE'})).success,false);
+ await assert.rejects(engine.syncNow(false),/row and Drive deletion are not confirmed/);
+ confirmDelete=true;await engine.syncNow(false);
+ assert.equal((await repository.read('user-a:tenant-a:immediate-actions')).operations.length,0);
+ assert(sent.filter(action=>action==='deleteCustomer').length>=2);
+ navigator.onLine=false;
+});
+
+test('DELETE sends only stable identity, retains pending on cloud rejection, and keeps Firebase session',async()=>{
+ storage.clear();const user={uid:'user-a',getIdToken:async()=> 'authenticated-token'};globalThis.__auth.currentUser=user;connect('delete-retry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'RETRY-1',accountNo:'7788'}});
+ const deleted=await request({action:'deleteCustomer',rowNumber:saved.rowNumber});assert.equal(deleted.success,false);
+ const scope='user-a:tenant-a:delete-retry';let state=await repository.read(scope);
+ const operation=state.operations.find(op=>op.action==='deleteCustomer');assert.deepEqual(operation.customer,{});assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ let reject=true;const sent=[];navigator.onLine=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.idToken,'authenticated-token');if(body.action==='syncCustomerOperation'){
+   sent.push(body.operation.action);
+   if(body.operation.action==='deleteCustomer'&&reject)return new Response(JSON.stringify({success:false,code:'SERVER_ERROR',message:'Google temporarily unavailable'}));
+   return new Response(JSON.stringify(body.operation.action==='deleteCustomer'?{success:true,deleted:true,driveDeleted:true,rowDeleted:true,recordId:saved.recordId}:{success:true,rowNumber:2,revision:'r1',customer:{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:1}));};
+ await assert.rejects(engine.syncNow(false),/temporarily unavailable/);state=await repository.read(scope);
+ assert(state.operations.some(op=>op.operationId===operation.operationId&&op.state==='pending'));assert.equal(globalThis.__auth.currentUser,user);
+ reject=false;await engine.syncNow(false);state=await repository.read(scope);
+ assert.equal(state.operations.length,0);assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ assert.equal((await request({action:'searchCustomer',query:'RETRY-1'})).success,false);assert.equal(globalThis.__auth.currentUser,user);
+ assert.deepEqual(sent,['saveCustomer','deleteCustomer','deleteCustomer']);navigator.onLine=false;
+});
+test('sync protection reports the actual bridge rejection and retains the pending operation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('protection-diagnostic');navigator.onLine=false;
+ await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:protection-diagnostic';
+ navigator.onLine=true;let uploads=0;handler=async(_url,init)=>{if(JSON.parse(init.body).action==='syncCustomerOperation')uploads++;return new Response('{}');};
+ try{
+   protectionOverride={success:false,code:'SERVER_ERROR',message:'Firebase authentication required.'};
+   await assert.rejects(engine.syncNow(false),/Firebase authentication required/);
+   protectionOverride={success:false,code:'CONNECTION_CHANGED',message:'Workspace connection changed.'};
+   await assert.rejects(engine.syncNow(false),/Reconnect this tenant/);
+   assert.equal(uploads,0);assert.equal((await repository.read(scope)).operations[0].state,'pending');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('another device removes a cloud-deleted customer on next refresh and never recreates it',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('shared-tenant');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'CROSS-DEVICE',accountNo:'9921'}});
+ const scope='user-a:tenant-a:shared-tenant';await repository.transact(scope,state=>{state.records[0].pending=false;state.records[0].revision='cloud-r1';state.operations=[];});
+ navigator.onLine=true;handler=async(_url,init)=>{const body=JSON.parse(init.body);return new Response(JSON.stringify(body.action==='getCustomerPage'?{success:true,customers:[],deletedIds:[saved.recordId],hasNextPage:false,nextCursor:250}:{success:false,message:'Customer not found.'}));};
+ await engine.syncNow(true);let state=await repository.read(scope);
+ assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ assert.equal(state.operations.length,0);
+ await engine.syncNow(true);state=await repository.read(scope);
+ assert.equal(state.records.find(row=>row.recordId===saved.recordId).deleted,true);
+ assert.equal((await request({action:'searchCustomer',query:'CROSS-DEVICE'})).success,false);
+ navigator.onLine=false;
+});
+
+test('sheet-only records download, queued local saves upload, and orphan cache rows stay hidden',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('two-way');navigator.onLine=false;
+ const scope='user-a:tenant-a:two-way';
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'LOCAL',accountNo:'9001'}});
+ const localId=saved.recordId,orphanId=crypto.randomUUID();
+ await repository.transact(scope,state=>state.records.push({key:orphanId,scope,recordId:orphanId,rowNumber:1000000002,revision:'',customer:{...customer,enrolId:'STALE',accountNo:'9003'},pending:false}));
+ navigator.onLine=true;
+ let saves=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation'){
+   saves++;return new Response(JSON.stringify({success:true,rowNumber:3,revision:'r1',customer:{...body.operation.customer,recordId:localId,rowNumber:3,revision:'r1'}}));
+ }return new Response(JSON.stringify({success:true,customers:[{...customer,enrolId:'SHEET',accountNo:'9002',recordId:'cloud-only',rowNumber:2,revision:'r1'}],hasNextPage:false,nextCursor:1}));};
+ await engine.syncNow();let state=await repository.read(scope);assert.equal(state.records.find(row=>row.recordId==='cloud-only').customer.enrolId,'SHEET');
+ assert.equal(saves,1);assert.equal(state.records.find(row=>row.recordId===localId).revision,'r1');
+ assert.equal(state.operations.length,0);assert.equal((await engine.getActiveLocalCustomers()).length,2);
+ assert(state.records.some(row=>row.recordId===orphanId),'orphan remains recoverable in local backup');
+ navigator.onLine=false;
+});
+
+test('a pending local delete cannot reappear through cloud search or paged customer listing',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'fresh-firebase-token'};
+ connect('delete-tombstone');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer:{...customer,enrolId:'TOMB-1',accountNo:'9911'}});
+ await request({action:'deleteCustomer',rowNumber:saved.rowNumber});
+ navigator.onLine=true;
+ const stale={...customer,enrolId:'TOMB-1',accountNo:'9911',recordId:saved.recordId,rowNumber:7,revision:'r1'};
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation')throw Error('cloud unavailable');return new Response(JSON.stringify({success:true,customer:stale,customers:[stale],matches:[stale],rowNumber:7}));};
+ assert.equal((await request({action:'searchCustomer',query:'TOMB-1'})).success,false);
+ assert.equal((await request({action:'getAllCustomers',page:1,pageSize:15})).success,false);
+ const state=await repository.read('user-a:tenant-a:delete-tombstone');
+ assert.equal(state.records.find(record=>record.recordId===saved.recordId).deleted,true);
+ assert(state.operations.some(op=>op.action==='deleteCustomer'&&op.state==='pending'));
+ navigator.onLine=false;
+});
+
+test('remote delete and direct Sheet removal block stale uploads before normal reconciliation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('shared-delete');navigator.onLine=true;
+ const scope='user-a:tenant-a:shared-delete';
+ const ids=['keep','deleted','manual'];
+ await repository.transact(scope,state=>ids.forEach((recordId,i)=>state.records.push({key:recordId,scope,recordId,rowNumber:i+2,revision:'r1',customer:{name:recordId},pending:false})));
+ await repository.transact(scope,state=>state.operations.push({key:'pending-edit',scope,operationId:'pending-edit',recordId:'deleted',action:'updateCustomer',customer:{name:'Stale edit'},baseRevision:'r1',rowNumber:3,createdAt:1,state:'pending'}));
+ protectionOverride={success:true,protectionVersion:1,connectionId:'shared-delete',resetId:'',activeIds:['keep'],deletedIds:['deleted']};
+ let writes=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='syncCustomerOperation')writes++;return new Response(JSON.stringify({success:true,customers:[{recordId:'keep',rowNumber:2,revision:'r1',name:'Valid'}],hasNextPage:false,nextCursor:1}));};
+ try{
+ await engine.syncNow(true);const state=await repository.read(scope);
+ assert.equal(writes,0);assert(state.records.find(r=>r.recordId==='deleted').deleted);assert(state.records.find(r=>r.recordId==='manual').deleted);
+ assert.equal(state.operations[0].state,'conflict');assert.deepEqual((await engine.getActiveLocalCustomers()).map(r=>r.recordId),['keep']);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('shared reset clears only the current tenant cache, restores valid cloud rows, and blocks unsynced changes',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('reset-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:reset-device';
+ await repository.transact(scope,state=>{for(let i=0;i<3;i++)state.records.push({key:'old-'+i,scope,recordId:'old-'+i,rowNumber:i+2,revision:'r1',customer:{name:'Old '+i},pending:false});state.documents={mapping:{safe:true}};});
+ protectionOverride={success:true,protectionVersion:1,connectionId:'reset-device',resetId:'reset-from-other-device',activeIds:['cloud-valid'],deletedIds:[]};
+ handler=async()=>new Response(JSON.stringify({success:true,customers:[{recordId:'cloud-valid',rowNumber:2,revision:'r2',name:'Valid cloud'}],hasNextPage:false,nextCursor:1}));
+ try{
+ await engine.syncNow(true);let state=await repository.read(scope);assert.equal(state.resetId,'reset-from-other-device');assert.equal(state.records.length,1);assert.equal((await engine.getActiveLocalCustomers()).length,1);assert.deepEqual(state.documents,{mapping:{safe:true}});
+ connect('other-reset-tenant');assert.equal((await engine.getActiveLocalCustomers()).length,0);
+ connect('reset-device');navigator.onLine=false;await request({action:'saveCustomer',customer:{...customer,enrolId:'PENDING-RESET',accountNo:'9009'}});
+ protectionOverride={...protectionOverride,resetId:'newer-reset'};navigator.onLine=true;
+ await assert.rejects(engine.syncNow(true),/shared reset is pending/);
+ state=await repository.read(scope);assert.equal(state.operations.length,1);assert(state.records.some(r=>r.customer.enrolId==='PENDING-RESET'));
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('admin reset publishes a shared marker only after safety checks and downloads Sheet data',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('admin-reset');navigator.onLine=true;
+ const scope='user-a:tenant-a:admin-reset';
+ await repository.transact(scope,state=>state.records.push({key:'old',scope,recordId:'old',rowNumber:2,revision:'r1',customer:{name:'Old'},pending:false}));
+ let published=0,sharedResetId='';
+ protectionOverride={success:true,protectionVersion:1,connectionId:'admin-reset',resetId:'',activeIds:['old','new'],deletedIds:[]};
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+   if(body.action==='publishLocalReset'){
+     published++;sharedResetId=body.resetId;protectionOverride={...protectionOverride,resetId:sharedResetId};
+     return new Response(JSON.stringify(protectionOverride));
+   }
+   return new Response(JSON.stringify({success:true,customers:[{recordId:'new',rowNumber:3,revision:'r2',name:'Cloud valid'}],hasNextPage:false,nextCursor:1}));
+ };
+ try{
+  assert.equal(await engine.resetLocalDatabase(),1);
+  assert.equal(published,1);assert.equal((await repository.read(scope)).resetId,sharedResetId);
+  assert.deepEqual((await engine.getActiveLocalCustomers()).map(r=>r.recordId),['new']);
+  await repository.transact(scope,state=>{state.records[0].customer.photoDataUrl='data:image/png;base64,cGhvdG8=';});
+  await assert.rejects(engine.resetLocalDatabase(),/resolve every pending/);assert.equal(published,1);
+  await repository.transact(scope,state=>{delete state.records[0].customer.photoDataUrl;});
+  navigator.onLine=false;await request({action:'saveCustomer',customer:{...customer,enrolId:'UNSYNCED',accountNo:'9090'}});
+  navigator.onLine=true;await assert.rejects(engine.resetLocalDatabase(),/resolve every pending/);assert.equal(published,1);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('verified missing photo stays out of repeated sync; changed reference resumes existing photo download',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('photo-status');navigator.onLine=true;
+ photoIndexOverride=photoIndex('photo-status');
+ const scope='user-a:tenant-a:photo-status',recordId='missing-photo';
+ await repository.transact(scope,state=>{state.records.push({key:recordId,scope,recordId,rowNumber:2,revision:'r1',customer:{name:'Photo customer',enrolId:'PHOTO-1'},pending:false});state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let downloads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');downloads++;return Response.json({success:true,customer:{recordId,rowNumber:2,revision:'r2',name:'Photo customer',enrolId:'PHOTO-1',photoUrl:'new-photo',photoPreview:'data:image/png;base64,cGhvdG8='}});};
+ try{
+  await engine.syncNow(false);assert.equal(downloads,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  await engine.syncNow(false);assert.equal(downloads,0);
+  await repository.transact(scope,state=>{state.records[0].customer.photoUrl='new-photo';state.records[0].photoCheckedAt=undefined;state.photoIndex.checkedAt=0;});
+  photoIndexOverride=photoIndex('photo-status',[{fileId:'new-photo',customerId:'PHOTO-1',url:'new-photo',version:'1',revision:1,deleted:false}]);
+  const originalNow=Date.now;Date.now=()=>originalNow()+61000;
+  try{await engine.syncNow(false);}finally{Date.now=originalNow;}
+  assert.equal(downloads,1);
+  assert.match((await repository.read(scope)).records[0].customer.photoPreview,/data:image/);
+ }finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+test('a stale Sheet photo URL with a verified Drive 404 stops retrying without erasing the reference',async()=>{
+ storage.clear();connect('stale-photo-link');navigator.onLine=true;
+ const scope='user-a:tenant-a:stale-photo-link',recordId='stale-record',url='https://drive.google.com/file/d/missing-file/view';
+ photoIndexOverride=photoIndex('stale-photo-link');
+ await repository.transact(scope,state=>{state.records=[{key:recordId,scope,recordId,rowNumber:2,revision:'r1',pending:false,customer:{enrolId:'STALE',photoUrl:url},photoFailures:2,photoLastError:'Previous Drive failure'}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let reads=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');reads++;return Response.json({success:true,photoNotFound:true,customer:{recordId,rowNumber:2,revision:'r1',enrolId:'STALE',photoUrl:url}});};
+ try{await engine.syncNow(false);assert.equal(reads,0,'a completed Drive inventory already proves this URL is missing');assert.equal((await engine.getLocalStatus()).mediaPending,0);const saved=(await repository.read(scope)).records[0];assert.equal(saved.customer.photoUrl,url);assert.equal(saved.customer.photoState,'NO_PHOTO');assert.equal(saved.photoFailures,undefined);assert.equal(saved.photoLastError,undefined);await engine.syncNow(false);assert.equal(reads,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);}finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('2,767 enrollment-only customers with two stale photo URLs reach idle and retain recoverable references',async()=>{
+ storage.clear();connect('stuck-two-photos');navigator.onLine=true;
+ const scope='user-a:tenant-a:stuck-two-photos';
+ photoIndexOverride=photoIndex('stuck-two-photos',Array.from({length:6},(_,i)=>({fileId:`valid-${i}`,customerId:`WITH-${i}`,url:`https://drive.google.com/file/d/valid-${i}/view`,version:'1',revision:i+1,deleted:false})));
+ await repository.transact(scope,state=>{
+   state.records=Array.from({length:2767},(_,i)=>({key:`row-${i}`,scope,recordId:`row-${i}`,rowNumber:i+2,revision:'r1',customer:{enrolId:`ENROL-${i}`,...(i<2?{photoUrl:`https://drive.google.com/file/d/missing-${i}/view`}:{}),...(i>=2&&i<8?{photoUrl:`https://drive.google.com/file/d/valid-${i-2}/view`,photoPreview:'data:image/png;base64,cGhvdG8=',photoVersion:'1'}:{})},pending:false,...(i<2?{photoFailures:2,photoLastError:'Previous retry failed'}:{})}));
+   state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};
+ });
+ let requests=0;handler=async()=>{requests++;throw Error('An unchanged photo must not be requested');};
+ try{
+   await engine.syncNow(false);let status=await engine.getLocalStatus();assert.equal(status.mediaPending,0);assert.equal(status.photoRetry,false);assert.equal(status.syncing,false);assert.equal(requests,0);
+   const saved=await repository.read(scope);assert.equal(saved.records.length,2767);assert.equal(saved.operations.length,0);assert(saved.records.slice(0,2).every(row=>row.customer.photoState==='NO_PHOTO'&&row.customer.photoUrl.includes('missing-')&&!row.photoLastError));
+   const before=protectionCalls;await engine.syncNow(false);await engine.syncNow(false);status=await engine.getLocalStatus();assert.equal(status.syncing,false);assert.equal(status.mediaPending,0);assert.equal(protectionCalls,before,'idle sync does not repeatedly query the bridge');
+ }finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('indexed photo hydration uses bounded parallel reads, skips cached photos and duplicate jobs',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('parallel-photos');navigator.onLine=true;
+ photoIndexOverride=photoIndex('parallel-photos',Array.from({length:6},(_,i)=>({fileId:`drive-${i}`,customerId:`P-${i}`,url:`drive-${i}`,version:'1',revision:i+1,deleted:false})));
+ const scope='user-a:tenant-a:parallel-photos';
+ await repository.transact(scope,state=>{
+   for(let i=0;i<6;i++)state.records.push({key:`photo-${i}`,scope,recordId:`photo-${i}`,rowNumber:i+2,revision:'r1',customer:{enrolId:`P-${i}`,photoUrl:`drive-${i}`},pending:false});
+   state.records.push({key:'cached',scope,recordId:'cached',rowNumber:8,revision:'r1',customer:{enrolId:'CACHED',photoUrl:'drive-cached',photoPreview:'data:image/jpeg;base64,eA=='},pending:false});
+   state.records.push({key:'discovery',scope,recordId:'discovery',rowNumber:9,revision:'r1',customer:{enrolId:'DISCOVERY'},pending:false});
+   state.records.push({...state.records[0],key:'duplicate'});
+   state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};
+ });
+ let active=0,maxActive=0;const calls=[];
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');calls.push(body.recordId);active++;maxActive=Math.max(maxActive,active);
+   await new Promise(resolve=>setTimeout(resolve,12));active--;
+   return new Response(JSON.stringify({success:true,photoNotFound:body.recordId==='discovery',customer:{recordId:body.recordId,rowNumber:body.rowNumber,revision:'r1',enrolId:body.recordId==='discovery'?'DISCOVERY':`P-${body.recordId.split('-')[1]}`,photoUrl:body.recordId==='discovery'?'':`drive-${body.recordId.split('-')[1]}`,photoPreview:body.recordId==='discovery'?'':'data:image/jpeg;base64,eA=='}}));
+ };
+ try{
+   await engine.syncNow(false);assert.equal(calls.length,6);assert.equal(new Set(calls).size,6);assert(maxActive>1&&maxActive<=3);
+   assert(!calls.includes('discovery'));assert.equal((await engine.getLocalStatus()).mediaPending,0);
+   await engine.syncNow(false);assert.equal(calls.length,6);
+ }finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('photo failure retries later without blocking new photo upload; new save preempts legacy reads',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('photo-priority');navigator.onLine=true;
+ photoIndexOverride=photoIndex('photo-priority',[{fileId:'old-photo',customerId:'OLD',url:'old-photo',version:'1',revision:1,deleted:false}]);
+ const scope='user-a:tenant-a:photo-priority';
+ await repository.transact(scope,state=>{state.records.push({key:'old',scope,recordId:'old',rowNumber:2,revision:'r1',customer:{enrolId:'OLD',photoUrl:'old-photo'},pending:false});state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let started;const inFlight=new Promise(resolve=>started=resolve);let aborted=0,uploads=0,reads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+   if(body.action==='syncCustomerOperation'){uploads++;assert(body.operation.customer.photoDataUrl);return new Response(JSON.stringify({success:true,rowNumber:3,revision:'r2',customer:{...body.operation.customer,recordId:body.operation.recordId,rowNumber:3,revision:'r2',photoUrl:'new-drive-photo',photoPreview:body.operation.customer.photoDataUrl}}));}
+   reads++;
+   if(reads===1){started();return new Promise((_resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Photo request did not yield')),3000);init.signal.addEventListener('abort',()=>{clearTimeout(timer);aborted++;reject(init.signal.reason);},{once:true});});}
+   if(reads===2)return new Response(JSON.stringify({success:false,message:'Temporary Drive error'}));
+   return new Response(JSON.stringify({success:true,customer:{recordId:'old',rowNumber:2,revision:'r1',enrolId:'OLD',photoUrl:'old-photo',photoPreview:'data:image/jpeg;base64,eA=='}}));
+ };
+ try{
+   const first=engine.syncNow(false);await inFlight;
+   await request({action:'saveCustomer',customer:{...customer,enrolId:'NEW-PHOTO',accountNo:'8800',photoDataUrl:'data:image/jpeg;base64,eA=='}});
+   await first;assert.equal(aborted,1);
+   await engine.syncNow(false);assert.equal(uploads,1);
+   let state=await repository.read(scope);assert.equal(state.operations.length,0);assert(state.records.find(item=>item.customer.enrolId==='NEW-PHOTO').customer.photoUrl);
+   assert(state.records.find(item=>item.recordId==='old').photoRetryAt>Date.now());
+   const before=reads;await engine.syncNow(false);assert.equal(reads,before);
+   navigator.onLine=false;await engine.syncNow(false);assert.equal(reads,before);navigator.onLine=true;
+   await repository.transact(scope,current=>{current.records.find(item=>item.recordId==='old').photoRetryAt=Date.now()-1;});
+   await engine.syncNow(false);state=await repository.read(scope);assert.match(state.records.find(item=>item.recordId==='old').customer.photoPreview,/data:image/);
+ }finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('2,734 migrated rows with explicit empty photo metadata make zero photo requests or uploads; remote new photo invalidates absence',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('migrated-2734');navigator.onLine=true;
+ photoIndexOverride=photoIndex('migrated-2734');
+ const scope='user-a:tenant-a:migrated-2734';
+ const records=Array.from({length:2734},(_,i)=>({recordId:`migrated-${i}`,revision:'r1',rowNumber:i+2,name:`Migrated ${i}`,enrolId:`M-${i}`,accountNo:'',uidaiNo:'',photoUrl:''}));
+ let photoRequests=0,uploads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='syncCustomerOperation'){uploads++;throw Error('No imported row should upload');}
+  if(body.action==='getCustomerByRowNumber'){photoRequests++;assert.equal(body.recordId,'migrated-2');return new Response(JSON.stringify({success:true,customer:{...records[2],photoPreview:'data:image/jpeg;base64,eA=='},rowNumber:4}));}
+  assert.equal(body.action,'getCustomerPage');const end=Math.min(body.cursor+250,records.length);return new Response(JSON.stringify({success:true,customers:records.slice(body.cursor,end),nextCursor:end,hasNextPage:end<records.length}));
+ };
+ try{
+  for(let i=0;i<3;i++)await engine.syncNow(false);
+  assert.equal((await engine.getLocalStatus()).records,2734);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  await engine.syncNow(false);assert.equal(photoRequests,0);assert.equal(uploads,0);
+  const before=await repository.read(scope);assert.equal(before.operations.length,0);assert.deepEqual(before.photoIndex.entries,[]);
+  records[2]={...records[2],photoUrl:'new-drive-id',revision:'r2'};
+  photoIndexOverride=photoIndex('migrated-2734',[{fileId:'new-drive-id',customerId:'M-2',url:'new-drive-id',version:'1',revision:1,deleted:false}]);
+  for(let i=0;i<3;i++)await engine.syncNow(true);
+  assert.equal(photoRequests,1);assert.equal(uploads,0);assert.match((await repository.read(scope)).records.find(r=>r.recordId==='migrated-2').customer.photoPreview,/data:image/);
+ }finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('busy lock preserves the exact pending operation and retries safely on the next sync',async()=>{
+ storage.clear();connect('lock-retry');navigator.onLine=false;const saved=await request({action:'saveCustomer',customer});
+ const scope='user-a:tenant-a:lock-retry';const before=await repository.read(scope);navigator.onLine=true;let busy=true;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='syncCustomerOperation')return new Response(JSON.stringify(busy?{success:false,code:'SYNC_BUSY',message:'Another request is active'}:{success:true,revision:'r1',rowNumber:2,customer:{...customer,recordId:saved.recordId,rowNumber:2,revision:'r1',photoUrl:''}}));
+  return new Response(JSON.stringify({success:true,customers:[],hasNextPage:false}));
+ };
+ try{
+  await assert.rejects(engine.syncNow(false),/retry automatically/);
+  assert.deepEqual((await repository.read(scope)).operations,before.operations);
+  busy=false;await engine.syncNow(false);assert.equal((await repository.read(scope)).operations.length,0);
+ }finally{navigator.onLine=false;}
+});
+
+test('incomplete migrated row accepts only the allowed status patch and keeps full-form validation',async()=>{
+ storage.clear();connect('legacy-status');navigator.onLine=false;const scope='user-a:tenant-a:legacy-status';
+ await repository.transact(scope,state=>state.records.push({key:'legacy',scope,recordId:'legacy',rowNumber:2,revision:'r1',pending:false,customer:{name:'Legacy',accountNo:'',uidaiNo:'',enrolId:'L-1',photoUrl:'',address:'unchanged'}}));
+ const before=await repository.read(scope);
+ assert.equal((await request({action:'updateCustomer',recordId:'foreign',rowNumber:2,statusOnly:true,statusField:'status',statusValue:'Active'})).success,false);
+ assert.equal((await request({action:'updateCustomer',recordId:'legacy',rowNumber:2,statusOnly:true,statusField:'status',statusValue:'INVALID'})).success,false);
+ assert.equal((await request({action:'updateCustomer',rowNumber:2,customer:{name:'Edited',enrolId:'L-1',accountNo:'',uidaiNo:''}})).success,false);
+ assert.deepEqual(await repository.read(scope),before);
+ const patch=await request({action:'updateCustomer',recordId:'legacy',rowNumber:999,statusOnly:true,statusField:'status',statusValue:'Active',customer:{name:'must not overwrite'}});
+ assert(patch.queued);const after=await repository.read(scope);
+ assert.deepEqual(after.records[0].customer,{...before.records[0].customer,status:'Active'});
+ assert.deepEqual(after.operations[0].customer,{status:'Active'});assert.equal(after.operations[0].statusOnly,true);
+});
+
+test('blank URL does not hide an existing legacy customer-ID photo from the verified photo index',async()=>{
+ storage.clear();connect('legacy-folder-photo');navigator.onLine=true;photoIndexOverride=photoIndex('legacy-folder-photo',[{fileId:'legacy-drive',customerId:'EXISTING',url:'legacy-drive',version:'1',revision:1,deleted:false}]);
+ const scope='user-a:tenant-a:legacy-folder-photo';
+ await repository.transact(scope,state=>{state.records.push({key:'present',recordId:'present',scope,rowNumber:2,revision:'r1',customer:{name:'Legacy photo',enrolId:'EXISTING',photoUrl:''},pending:false});state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let reads=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);assert.equal(body.action,'getCustomerByRowNumber');reads++;return new Response(JSON.stringify({success:true,rowNumber:2,customer:{recordId:'present',rowNumber:2,revision:'r1',enrolId:'EXISTING',photoUrl:'legacy-drive',photoPreview:'data:image/jpeg;base64,eA=='}}));};
+ try{await engine.syncNow(false);assert.equal(reads,1);assert.match((await repository.read(scope)).records[0].customer.photoPreview,/data:image/);}
+ finally{photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('outdated bridge keeps customer reconciliation but makes zero legacy photo scans or individual photo requests',async()=>{
+ storage.clear();connect('old-photo-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:old-photo-bridge',recordId='photo-customer';
+ await repository.transact(scope,state=>{state.records=[{key:recordId,scope,recordId,rowNumber:2,revision:'r1',customer:{name:'Existing',enrolId:'EXISTING',photoUrl:'cloud-photo'},pending:false}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let pages=0;const before=inventoryCalls;
+ handler=async(_url,init)=>{const action=JSON.parse(init.body).action;assert.equal(action,'getCustomerPage','outdated bridge must not perform individual photo reads');pages++;return Response.json({success:true,customers:[{recordId,rowNumber:2,revision:'r1',name:'Existing',enrolId:'EXISTING',photoUrl:'cloud-photo'}],hasNextPage:false});};
+ try{
+  await engine.syncNow(true);assert.equal(pages,1);assert.equal(inventoryCalls,before,'no full Drive photo inventory');
+  assert.match((await engine.getLocalStatus()).photoError,/current Code.gs/);
+  assert.equal((await repository.read(scope)).records.length,1);
+ }finally{navigator.onLine=false;}
+});
+
+test('upgraded bridge clears a saved outdated-Code.gs warning without touching customers or queued edits',async()=>{
+ storage.clear();connect('upgraded-photo-bridge');navigator.onLine=false;
+ const scope='user-a:tenant-a:upgraded-photo-bridge';
+ await repository.transact(scope,state=>{state.photoDiscoveryError='Photo sync needs the current Code.gs. In Apps Script, update this workspace\'s existing deployment to a new version; customer changes and pending photos remain saved.';state.records=[{key:'kept',scope,recordId:'kept',revision:'r1',rowNumber:2,customer:{name:'Kept',enrolId:'KEPT',photoUrl:''},pending:false}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ const before=(await repository.read(scope)).records.length;
+ photoIndexOverride=photoIndex('upgraded-photo-bridge');navigator.onLine=true;
+ handler=async()=>{throw Error('No customer page needed');};
+ try {await engine.syncNow(false);assert.equal((await engine.getLocalStatus()).photoError,'');assert.equal((await repository.read(scope)).records.length,before);}
+ finally {photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('an incomplete photo index reply reports the actual bridge problem and keeps the local queue',async()=>{
+ storage.clear();connect('incomplete-photo-bridge');navigator.onLine=false;
+ const scope='user-a:tenant-a:incomplete-photo-bridge';
+ await repository.transact(scope,state=>{state.records=[{key:'kept',scope,recordId:'kept',revision:'r1',rowNumber:2,customer:{name:'Kept',enrolId:'KEPT',photoUrl:''},pending:false}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ photoIndexOverride={success:true,connectionId:'incomplete-photo-bridge'};navigator.onLine=true;
+ handler=async()=>{throw Error('No customer page needed');};
+ try {await engine.syncNow(false);assert.match((await engine.getLocalStatus()).photoError,/incomplete photo index response/);assert.equal((await repository.read(scope)).records.length,1);}
+ finally {photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('lock contention leaves operations pending and concurrent sync requests share one job',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('lock-busy');navigator.onLine=false;
+ await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:lock-busy';const before=await repository.read(scope);navigator.onLine=true;
+ protectionOverride={success:false,code:'SYNC_BUSY',message:'Another device is committing a change.'};
+ try{const first=engine.syncNow(false);assert.equal(engine.syncNow(false),first);await assert.rejects(first,/retry automatically/);assert.deepEqual(await repository.read(scope),before);}finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('pause aborts an already running manual sync without deleting its pending operation',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('pause-inflight');navigator.onLine=false;
+ photoIndexOverride=photoIndex('pause-inflight');
+ await request({action:'saveCustomer',customer});const scope='user-a:tenant-a:pause-inflight';const before=await repository.read(scope);navigator.onLine=true;
+ let started;const ready=new Promise(resolve=>{started=resolve});
+ handler=async(_url,init)=>new Promise((_resolve,reject)=>{started();init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true});});
+ const task=engine.syncNow(false);await ready;engine.pauseSync();engine.resumeSync();await task;
+ const after=await repository.read(scope);assert.equal(engine.isSyncPaused(),false);assert.deepEqual(after.operations,before.operations);assert.equal(after.records[0].customer.name,before.records[0].customer.name);assert.equal((await engine.getLocalStatus()).error,'');photoIndexOverride=undefined;navigator.onLine=false;
+});
+test('new account session clears pause and preserves the old account queue',async()=>{
+ storage.clear();globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('switch-a');navigator.onLine=false;
+ await request({action:'saveCustomer',customer});const previous=await repository.read('user-a:tenant-a:switch-a');
+ engine.pauseSync();assert.equal(engine.isSyncPaused(),true);
+ engine.resetSyncSession();assert.equal(engine.isSyncPaused(),false);
+ globalThis.__auth.currentUser={uid:'user-b',getIdToken:async()=> 'token'};connect('switch-b');
+ assert.equal((await engine.getLocalStatus()).pending,0);
+ assert.deepEqual(await repository.read('user-a:tenant-a:switch-a'),previous);
+ globalThis.__auth.currentUser={uid:'user-a',getIdToken:async()=> 'token'};connect('switch-a');
+ assert.equal((await engine.getLocalStatus()).pending,1);
+});
+
+test('old AFSM bridge retains pending events but still downloads desktop customers and retries after upgrade',async()=>{
+ storage.clear();connect('afsm-old-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:afsm-old-bridge',id=crypto.randomUUID(),operationId=crypto.randomUUID();
+ const event={operationId,recordId:id,action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}};
+ await repository.transact(scope,state=>{state.records=[{scope,key:id,recordId:id,revision:'r1',customer:{name:'Synthetic',photoUrl:'',...event.customer},pending:true}];state.operations=[event];});
+ let upgraded=false,pulls=0,afsmAttempts=0;const remoteId=crypto.randomUUID();
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='syncCustomerOperation'){afsmAttempts++;return Response.json(upgraded?{success:true,revision:'r2',rowNumber:2,customer:{recordId:id,name:'Synthetic',photoUrl:'',...event.customer}}:{success:false,message:'Unsupported queued operation.'});}
+  if(body.action==='getCustomerPage'){pulls++;return Response.json({success:true,customers:[{recordId:id,revision:upgraded?'r2':'r1',rowNumber:2,name:'Synthetic',photoUrl:'',...(upgraded?event.customer:{})},{recordId:remoteId,revision:'desktop-r1',rowNumber:3,name:'Desktop addition',photoUrl:''}],hasNextPage:false});}
+  throw Error('Unexpected request');
+ };
+ try{
+  await engine.syncNow(true);
+  let state=await repository.read(scope);assert.equal(pulls,1);assert.deepEqual(state.operations,[event]);assert(state.records.some(r=>r.recordId===remoteId));assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+  assert.match((await engine.getLocalStatus()).error,/AFSM uploads remain pending/);
+  await engine.syncNow(false);assert.equal(afsmAttempts,1,'background retry waits while the bridge is incompatible');
+  upgraded=true;protectionOverride={success:true,protectionVersion:1,afsmVersion:1,connectionId:'afsm-old-bridge',resetId:'',activeIds:[id,remoteId],deletedIds:[]};
+  await engine.syncNow(false);state=await repository.read(scope);assert.equal(state.operations.length,0);assert.equal(state.records.find(r=>r.recordId===id).customer.afsmSentAt,event.customer.afsmSentAt);
+  assert.equal(afsmAttempts,2);assert.equal((await engine.getLocalStatus()).error,'');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('an old bridge is probed once for a large AFSM queue while ordinary customer uploads continue',async()=>{
+ storage.clear();connect('afsm-queue-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:afsm-queue-bridge';const oldOps=Array.from({length:35},(_,i)=>({operationId:crypto.randomUUID(),recordId:crypto.randomUUID(),action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}}));
+ const normal={operationId:crypto.randomUUID(),recordId:crypto.randomUUID(),action:'updateCustomer',state:'pending',baseRevision:'r1',customer:{status:'active'}};
+ await repository.transact(scope,state=>{state.operations=[...oldOps,normal];state.records=state.operations.map(op=>({key:op.recordId,scope,recordId:op.recordId,rowNumber:2,revision:'r1',customer:{name:'Synthetic',photoUrl:'',...op.customer},pending:true}));state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let afsmAttempts=0,ordinaryAttempts=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action!=='syncCustomerOperation')throw Error('Unexpected request');const op=body.operation;if(op.action==='markAfsmSent'){afsmAttempts++;return Response.json({success:false,message:'Unsupported queued operation.'});}ordinaryAttempts++;return Response.json({success:true,revision:'r2',rowNumber:2,customer:{recordId:op.recordId,name:'Synthetic',photoUrl:'',status:'active'}});};
+ try{
+  await engine.syncNow(false);let state=await repository.read(scope);assert.equal(afsmAttempts,1);assert.equal(ordinaryAttempts,1);assert.equal(state.operations.length,35);assert(state.operations.every(op=>op.action==='markAfsmSent'&&op.state==='pending'));
+  await engine.syncNow(false);assert.equal(afsmAttempts,1);assert.equal(ordinaryAttempts,1);assert.equal((await engine.getLocalStatus()).pending,35);
+ }finally{navigator.onLine=false;}
+});
+
+test('background sync waits on incompatible AFSM and photo bridges instead of spinning or reporting repeated failures',async()=>{
+ storage.clear();connect('afsm-background-bridge');navigator.onLine=true;
+ const scope='user-a:tenant-a:afsm-background-bridge';const id=crypto.randomUUID();
+ await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,revision:'r1',rowNumber:2,customer:{name:'Synthetic',photoUrl:'old-photo'},pending:true}];state.operations=[{operationId:crypto.randomUUID(),recordId:id,action:'markAfsmSent',state:'pending',baseRevision:'r1',customer:{afsmStatus:'sent',afsmSentAt:'2026-10-13T12:00:00.000Z',afsmOperationId:crypto.randomUUID()}}];state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now()};});
+ let attempts=0;handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage')return Response.json({success:true,customers:[],hasNextPage:false});assert.equal(body.action,'syncCustomerOperation');attempts++;return Response.json({success:false,message:'Unsupported queued operation.'});};
+ const stop=engine.startLocalSync();
+ try{await new Promise(resolve=>setTimeout(resolve,750));assert.equal(attempts,1);assert.equal((await engine.getLocalStatus()).pending,1);assert.equal((await engine.getConnectionHealth()).state,'healthy');}
+ finally{stop();navigator.onLine=false;}
+});
+
+test('completed customer and photo checkpoints leave the background scheduler idle',async()=>{
+ storage.clear();connect('idle-checkpoint');navigator.onLine=true;
+ const scope='user-a:tenant-a:idle-checkpoint';
+ const records=Array.from({length:2767},(_,i)=>({key:`row-${i}`,scope,recordId:`row-${i}`,rowNumber:i+2,revision:'r1',pending:false,customer:{enrolId:`ENROL-${i}`,photoState:'NO_PHOTO',photoIndexWaiting:i<100}}));
+ await repository.transact(scope,state=>{state.records=records;state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),remoteRevision:'same'};state.photoIndex={revision:6,complete:true,checkedAt:Date.now(),entries:[]};});
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'idle-checkpoint',activeIds:records.map(item=>item.recordId),deletedIds:[],remoteRevision:'same'};
+ photoIndexOverride=photoIndex('idle-checkpoint');let remotePages=0;
+ handler=async(_url,init)=>{if(JSON.parse(init.body).action==='getCustomerPage')remotePages++;throw Error('No unchanged customer or photo transfer is needed');};
+ const before=protectionCalls,stop=engine.startLocalSync();
+ try{await new Promise(resolve=>setTimeout(resolve,800));const status=await engine.getLocalStatus();assert.equal(status.syncing,false);assert.equal(status.downloading,false);assert.equal(status.mediaPending,0);assert.equal(status.pending,0);assert.equal(remotePages,0);assert.equal(protectionCalls,before+1,'startup performs one lightweight revision check');assert.equal((await repository.read(scope)).records.filter(item=>item.customer.photoIndexWaiting).length,0);}
+ finally{stop();protectionOverride=undefined;photoIndexOverride=undefined;navigator.onLine=false;}
+});
+
+test('2000 unchanged photos transfer zero; one new remote photo transfers once on the next sync',async()=>{
+ storage.clear();connect('incremental-2000');navigator.onLine=true;const scope='user-a:tenant-a:incremental-2000';
+ const entries=Array.from({length:2000},(_,i)=>({fileId:`file-${i}`,customerId:`ID-${i}`,url:`https://drive.google.com/file/d/file-${i}/view`,version:'1',revision:i+1,deleted:false}));
+ await repository.transact(scope,state=>{state.records=entries.map((e,i)=>({key:`record-${i}`,scope,recordId:`record-${i}`,rowNumber:i+2,revision:'r1',customer:{name:'Synthetic',enrolId:e.customerId,photoUrl:e.url,photoVersion:'1',photoPreview:'data:image/jpeg;base64,c2FmZQ=='},pending:false}));state.pull={cursor:0,seen:[],startedAt:Date.now(),lastCompletedAt:Date.now(),remoteRevision:'same'};state.photoIndex={revision:2000,complete:true,checkedAt:Date.now()-301000,entries};});
+ let photos=0,pages=0;let change=false;
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'incremental-2000',activeIds:Array.from({length:2000},(_,i)=>`record-${i}`),deletedIds:[],remoteRevision:'same'};
+ photoIndexOverride={success:true,photoIndexVersion:1,connectionId:'incremental-2000',revision:2000,complete:true,entries:[]};
+ handler=async(url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='getCustomerPage'){pages++;return Response.json({success:true,hasNextPage:false,customers:[...entries.map((e,i)=>({recordId:`record-${i}`,rowNumber:i+2,revision:'r1',enrolId:e.customerId,photoUrl:e.url})),{recordId:'new-record',rowNumber:2002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view'}]});}
+  if(body.action==='getCustomerByRowNumber'){photos++;assert.equal(body.recordId,'new-record');return Response.json({success:true,customer:{recordId:'new-record',rowNumber:2002,revision:'r1',enrolId:'NEW',photoUrl:'https://drive.google.com/file/d/new-file/view',photoPreview:'data:image/jpeg;base64,bmV3'}});}
+  throw Error(`Unexpected ${body.action}`);
+ };
+ try{
+  await engine.syncNow(true);assert.equal(photos,0);assert.equal(pages,0);assert.equal((await engine.getLocalStatus()).mediaPending,0);
+  change=true;protectionOverride.remoteRevision='new';protectionOverride.activeIds.push('new-record');photoIndexOverride={...photoIndexOverride,revision:2001,entries:[{fileId:'new-file',customerId:'NEW',url:'https://drive.google.com/file/d/new-file/view',version:'1',revision:2001,deleted:false}]};
+  await engine.syncNow(true);assert.equal(photos,1);assert.equal((await engine.getLocalStatus()).mediaPending,0);assert.equal((await repository.read(scope)).records.length,2001);
+  change=false;const count=photos;await engine.syncNow(true);assert.equal(photos,count);assert.equal(pages,1,'matching customer fingerprint skips all unchanged pages');
+ }finally{protectionOverride=undefined;photoIndexOverride=undefined;navigator.onLine=false;}
+});
+test('photo retry diagnostics retain only identity and failure evidence across local reads',async()=>{
+ storage.clear();connect('photo-diagnostics');navigator.onLine=false;const scope='user-a:tenant-a:photo-diagnostics';
+ await repository.transact(scope,state=>{state.records=[{key:'retry',scope,recordId:'retry',rowNumber:2,revision:'r1',pending:false,customer:{name:'Private Name',uidaiNo:'123456789012',enrolId:'PHOTO-1',photoUrl:'https://drive.google.com/file/d/file-one/view',photoPreview:''},photoFailures:2,photoRetryAt:Date.now()+10000,photoLastError:'Drive metadata HTTP 503'}];});
+ const items=await engine.getPhotoSyncDiagnostics();assert.equal(items.length,1);assert.equal(items[0].recordId,'retry');assert.equal(items[0].fileId,'file-one');assert.equal(items[0].attempts,2);assert.equal(items[0].lastError,'Drive metadata HTTP 503');assert(!JSON.stringify(items).includes('Private Name'));assert(!JSON.stringify(items).includes('123456789012'));
+});
+test('text-only edit with existing photo bytes does not enqueue another upload; genuine replacement hashes once',async()=>{
+ storage.clear();connect('photo-text');navigator.onLine=false;const scope='user-a:tenant-a:photo-text',id=crypto.randomUUID(),preview='data:image/png;base64,c2FtZQ==';
+ await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,photoUrl:'photo-file',photoPreview:preview}}];});
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Text edit',photoDataUrl:preview}});
+ let state=await repository.read(scope);assert.equal(state.operations[0].customer.photoDataUrl,undefined);
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Text edit',photoDataUrl:'data:image/png;base64,bmV3'}});
+ state=await repository.read(scope);assert.equal(state.operations[1].customer.photoState,'PENDING_UPLOAD');assert.match(state.operations[1].customer.photoContentHash,/^[a-f0-9]{64}$/);
+});
+
+test('offline replacement followed by text edit keeps one upload and cannot restore the stale active photo URL',async()=>{
+ storage.clear();connect('replacement-text');navigator.onLine=false;const scope='user-a:tenant-a:replacement-text',id=crypto.randomUUID();
+ await repository.transact(scope,state=>{state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,photoUrl:'old-file',photoPreview:'data:image/png;base64,b2xk'}}];});
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,photoDataUrl:'data:image/png;base64,bmV3',photoUrl:'old-file'}});
+ await request({action:'updateCustomer',recordId:id,customer:{...customer,name:'Changed text',photoUrl:'old-file'}});
+ const state=await repository.read(scope);assert.equal(state.operations.filter(op=>op.customer.photoDataUrl).length,1);assert.equal(state.operations[1].customer.photoUrl,undefined);assert.equal(state.operations[1].customer.photoDataUrl,undefined);
+});
+test('durable change cursor downloads one changed record, applies deletion, and skips unchanged pages',async()=>{
+ storage.clear();connect('delta-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:delta-device',oldId=crypto.randomUUID(),newId=crypto.randomUUID(),now=Date.now();
+ await repository.transact(scope,state=>{
+  state.records=[{key:oldId,scope,recordId:oldId,rowNumber:2,revision:'old',pending:false,customer:{...customer,recordId:oldId}}];
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-3*60*60*1000,lastFullCheckAt:now-3*60*60*1000,changeCursor:4,changeEpoch:'synthetic-epoch',remoteRevision:'baseline'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'delta-device',incremental:true,changeCursor:6,changeEpoch:'synthetic-epoch',changedIds:[newId],deletedIds:[oldId],hasMoreChanges:false};
+ let pages=0,batches=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage'){pages++;throw Error('A valid delta must not download the full Sheet');}
+  assert.equal(body.action,'getCustomerChanges');assert.equal(body.changeEpoch,'synthetic-epoch');batches++;assert.deepEqual(body.recordIds,[newId]);return Response.json({success:true,customers:[{...customer,recordId:newId,rowNumber:3,revision:'new'}],deletedIds:[]});};
+ try{
+  await engine.syncNow(true);
+  let state=await repository.read(scope);assert.equal(pages,0);assert.equal(batches,1);assert.equal(state.pull.changeCursor,6);
+  assert.equal(state.records.find(item=>item.recordId===oldId).deleted,true);
+  assert.equal(state.records.find(item=>item.recordId===newId).customer.name,customer.name);
+  protectionOverride={...protectionOverride,changedIds:[],deletedIds:[],changeCursor:6};
+  await engine.syncNow(true);state=await repository.read(scope);assert.equal(batches,1);assert.equal(pages,0);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('completed checkpoint reopened after six days checks only the journal, even without an old audit timestamp',async()=>{
+ storage.clear();connect('reopened-complete');navigator.onLine=true;
+ const scope='user-a:tenant-a:reopened-complete',now=Date.now(),id=crypto.randomUUID();
+ await repository.transact(scope,state=>{
+  state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,recordId:id}}];
+  state.pull={cursor:0,seen:[],startedAt:now-6*24*60*60*1000,lastCompletedAt:now-6*24*60*60*1000,changeCursor:7,changeEpoch:'epoch',remoteRevision:'r1'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'reopened-complete',incremental:true,changeCursor:7,changeEpoch:'epoch',changedIds:[],deletedIds:[],hasMoreChanges:false};
+ let pages=0;
+ handler=async(_url,init)=>{pages++;throw Error(`Unexpected ${JSON.parse(init.body).action}`);};
+ try{
+  await engine.syncNow(true);
+  const state=await repository.read(scope);
+  assert.equal(protectionRequest.changeCursor,7);assert.equal(protectionRequest.changeEpoch,'epoch');
+  assert.equal(protectionRequest.lastFullCheckAt,undefined);
+  assert.equal(pages,0);assert.equal(state.pull.cursor,0);assert.equal(state.pull.changeCursor,7);
+  assert.equal(state.operations.length,0);assert.equal(state.records[0].revision,'r1');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('years-old checkpoint repairs a damaged local record by ID without customer pagination',async()=>{
+ storage.clear();connect('integrity-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:integrity-device',id=crypto.randomUUID(),now=Date.now();
+ await repository.transact(scope,state=>{
+  state.records=[{key:id,scope,recordId:id,rowNumber:2,revision:'r1',pending:false,customer:{...customer,recordId:id}}];
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-3*365*86400000,changeCursor:8,changeEpoch:'epoch'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'integrity-device',incremental:true,changeCursor:8,changeEpoch:'epoch',changedIds:[],deletedIds:[],hasMoreChanges:false};
+ let transferred=0,pages=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);if(body.action==='getCustomerPage'){pages++;throw Error('Full customer pagination is unnecessary');}
+  assert.deepEqual(body.recordIds,[id]);transferred++;return Response.json({success:true,customers:[{...customer,recordId:id,rowNumber:2,revision:'r1'}],deletedIds:[]});};
+ try{
+  await engine.syncNow(true);
+  await repository.transact(scope,state=>{state.records[0].customer.name='Locally damaged';});
+  await engine.syncNow(true);
+  const state=await repository.read(scope);assert.equal(transferred,1);assert.equal(pages,0);
+  assert.equal(state.records[0].customer.name,customer.name);assert.equal(state.pull.changeCursor,8);
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+test('same cloud revision repairs 100 missing local IDs without downloading 2,000 rows',async()=>{
+ storage.clear();connect('gap-device');navigator.onLine=true;
+ const scope='user-a:tenant-a:gap-device',now=Date.now();
+ const ids=Array.from({length:2000},(_,i)=>`00000000-0000-4000-8000-${String(i).padStart(12,'0')}`);
+ await repository.transact(scope,state=>{
+  state.records=ids.slice(0,1900).map((id,i)=>({key:id,scope,recordId:id,rowNumber:i+2,revision:'r1',pending:false,customer:{...customer,recordId:id}}));
+  state.pull={cursor:0,seen:[],startedAt:now,lastCompletedAt:now-1000,remoteRevision:'same'};
+  state.photoIndex={revision:0,complete:true,checkedAt:now,entries:[]};
+ });
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'gap-device',changeEpoch:'epoch',changeCursor:12,remoteRevision:'same',activeIds:ids,deletedIds:[]};
+ let batches=0,pages=0,transferred=0;
+ handler=async(_url,init)=>{const body=JSON.parse(init.body);
+  if(body.action==='getCustomerPage'){pages++;throw Error('Gap recovery must not transfer unchanged rows');}
+  assert.equal(body.action,'getCustomerChanges');batches++;transferred+=body.recordIds.length;
+  return Response.json({success:true,customers:body.recordIds.map(id=>({...customer,recordId:id,rowNumber:ids.indexOf(id)+2,revision:'r1'})),deletedIds:[]});};
+ try{await engine.syncNow(true);const state=await repository.read(scope);
+  assert.equal(state.records.length,2000);assert.equal(batches,2);assert.equal(transferred,100);assert.equal(pages,0);
+  assert.equal(state.pull.changeEpoch,'epoch');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('a transient fetch failure retries a read once, completes the checkpoint and returns to idle',async()=>{
+ storage.clear();connect('read-network-retry');navigator.onLine=true;
+ const scope='user-a:tenant-a:read-network-retry',recordId=crypto.randomUUID();
+ protectionOverride={success:true,protectionVersion:1,connectionId:'read-network-retry',activeIds:[recordId],deletedIds:[],remoteRevision:'r1'};
+ let reads=0;
+ handler=async(_url,init)=>{
+  assert.equal(JSON.parse(init.body).action,'getCustomerPage');
+  if(++reads===1)throw new TypeError('Failed to fetch');
+  return Response.json({success:true,customers:[{...customer,recordId,rowNumber:2,revision:'r1'}],hasNextPage:false});
+ };
+ try{
+  await engine.syncNow(true);
+  assert.equal(reads,2);assert.equal((await repository.read(scope)).records.length,1);
+  assert.equal((await engine.getLocalStatus()).syncing,false);assert.equal((await engine.getLocalStatus()).syncStage,'');assert.equal((await engine.getLocalStatus()).error,'');
+ }finally{protectionOverride=undefined;navigator.onLine=false;}
+});
+
+test('a failed write is never repeated speculatively and its pending operation remains durable',async()=>{
+ storage.clear();connect('write-network-retry');navigator.onLine=false;
+ const saved=await request({action:'saveCustomer',customer});
+ const scope='user-a:tenant-a:write-network-retry',operation=(await repository.read(scope)).operations[0].operationId;
+ navigator.onLine=true;let writes=0;
+ handler=async(_url,init)=>{assert.equal(JSON.parse(init.body).action,'syncCustomerOperation');writes++;throw new TypeError('Failed to fetch');};
+ try{
+  await assert.rejects(engine.syncNow(true),/syncCustomerOperation request could not reach/);
+  const state=await repository.read(scope);
+  assert.equal(writes,1);assert.equal(state.operations.length,1);assert.equal(state.operations[0].operationId,operation);
+  assert.equal(state.operations[0].state,'pending');assert.equal(state.records[0].recordId,saved.recordId);
+ }finally{navigator.onLine=false;}
+});
+test('Windows replacement database resumes partial cloud download and does not upload pending work until verified',async()=>{
+ storage.clear();connect('windows-cloud-recovery');navigator.onLine=false;
+ const scope='user-a:tenant-a:windows-cloud-recovery';
+ const offline=await request({action:'saveCustomer',customer:{...customer,accountNo:'offline-only'}});
+ const cloudIds=[crypto.randomUUID(),crypto.randomUUID()];
+ const cloud=cloudIds.map((recordId,i)=>({...customer,recordId,rowNumber:i+2,revision:'remote-1',accountNo:String(900+i)}));
+ let pending=true,writes=0,failSecond=true,completed=0;
+ window.bankSetuDesktop={
+   recoveryStatus:async()=>({pending,downloaded:(await repository.read(scope)).records.filter(r=>!!r.revision).length,cursor:(await repository.read(scope)).pull?.cursor||0,completed:!pending}),
+   completeRecovery:async(_scope,count,revision)=>{
+     assert.equal(_scope,scope);assert.equal(count,2);assert.equal(revision,'remote-1');
+     const state=await repository.read(scope);
+     assert.equal(state.pull.cursor,0);assert.equal(state.records.filter(r=>!!r.revision&&!r.deleted).length,2);
+     pending=false;completed++;return true;
+   }
+ };
+ protectionOverride={success:true,protectionVersion:1,photoIndexVersion:1,connectionId:'windows-cloud-recovery',activeIds:cloudIds,deletedIds:[],remoteRevision:'remote-1'};
+ handler=async(_url,init)=>{
+   const body=JSON.parse(init.body);
+   if(body.action==='syncCustomerOperation'){writes++;return Response.json({success:true,rowNumber:5,revision:'remote-2',customer:body.operation.customer});}
+   assert.equal(body.action,'getCustomerPage');
+   if(body.cursor===0)return Response.json({success:true,customers:[cloud[0]],hasNextPage:true,nextCursor:1});
+   if(failSecond){failSecond=false;throw new Error('Temporary cloud outage');}
+   return Response.json({success:true,customers:[cloud[1]],hasNextPage:false});
+ };
+ navigator.onLine=true;
+ try{
+   await assert.rejects(engine.syncNow(true),/Temporary cloud outage/);
+   assert.equal(writes,0);assert.equal(completed,0);
+   assert.equal((await repository.read(scope)).pull.cursor,1);
+   await engine.syncNow(true);
+   assert.equal(completed,1);assert.equal(writes,0);
+   assert.equal((await repository.read(scope)).records.filter(r=>!!r.revision).length,2);
+   await engine.syncNow(true);
+   assert.equal(writes,1);assert.equal((await repository.read(scope)).operations.some(o=>o.recordId===offline.recordId),false);
+ }finally{delete window.bankSetuDesktop;protectionOverride=undefined;navigator.onLine=false;}
+});
