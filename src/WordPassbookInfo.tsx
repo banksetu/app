@@ -53,7 +53,8 @@ for(const label of labels) {
 }
 export const WORD_LABELS = labels;
 const leftFields=['branchName','branchEmail','customerId','accountNo','pan','mobile','openedOn','issueDate','operatedBy','nominee'];
-export function wordValueX(key:string,value:string) {
+export function wordValueX(key:string,value:string,quick=false) {
+  if(quick && key==='branchCode')return 134*72/25.4;
   if(/^address[1-4]$/.test(key))return WORD_HOLDER_COLON_X+colonLeft-leftInk(value);
   if(key==='postOffice')return APPROVED_INFO_SLOTS[key].x+addressShift;
   if(key==='district')return APPROVED_INFO_SLOTS[key].x+districtShift;
@@ -81,16 +82,16 @@ export function wordPassbookValues(...args:Parameters<typeof approvedPassbookVal
   return values;
 }
 
-export function wordPassbookProblems(values:ApprovedPassbookValues):string[] {
+export function wordPassbookProblems(values:ApprovedPassbookValues,quick=false):string[] {
   return Object.entries(APPROVED_INFO_SLOTS).flatMap(([key,slot])=>{
     const value=values[key]||'';
     if ([...value].some(char=>WORD_GLYPHS[char]===undefined)) return [`${key}: contains a character unavailable in the Word font`];
-    return [...value].length*WORD_ADVANCE_PT > slot.end-wordValueX(key,value)
+    return [...value].length*WORD_ADVANCE_PT > slot.end-wordValueX(key,value,quick)
       ? [`${key}: exceeds the existing printing boundary at Word 10 pt / 70% compression`] : [];
   });
 }
 
-export function WordPassbookArtwork({values}:{values:ApprovedPassbookValues}) {
+export function WordPassbookArtwork({values,quick=false}:{values:ApprovedPassbookValues;quick?:boolean}) {
   const unit=WORD_FONT_SIZE_PT/WORD_FONT_UNITS;
   const text=(value:string,x:number,y:number,compression=1)=>[...value].map((char,index)=>WORD_GLYPHS[char]
     ? <path key={index} d={WORD_GLYPHS[char]} transform={`translate(${x+index*WORD_ADVANCE_PT*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
@@ -101,7 +102,7 @@ export function WordPassbookArtwork({values}:{values:ApprovedPassbookValues}) {
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y,label.compression)}</g>)}</g>
     {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>
-      <title>{values[key]||''}</title>{text(values[key]||'',wordValueX(key,values[key]||''),slot.y)}
+      <title>{values[key]||''}</title>{text(values[key]||'',wordValueX(key,values[key]||'',quick),slot.y)}
     </g>)}
   </svg>;
 }

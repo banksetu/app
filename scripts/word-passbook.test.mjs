@@ -72,3 +72,16 @@ test('four customer address rows share holder colon ink origin, without affectin
  const unknown=word.wordPassbookValues({fullAddress:'VILL-TEST, OTHER DISTRICT'},branch);
  assert.equal(unknown.address3,'OTHER DISTRICT');assert.equal(unknown.address4,'');
 });
+
+test('Quick reuses final typography and values with its existing branch-code placement',async()=>{
+ const values=word.wordPassbookValues({name:'TEST CUSTOMER',coName:'PARENT',fullAddress:'VILL-TEST, P.O-POST, KARIMGANJ, ASSAM, PIN-001200'},branch);
+ const normal=renderToStaticMarkup(word.WordPassbookArtwork({values}));
+ const quick=renderToStaticMarkup(word.WordPassbookArtwork({values,quick:true}));
+ const withoutBranch=html=>html.replace(/<g data-field="branchCode"[\s\S]*?<\/g>/,'');
+ assert.equal(withoutBranch(quick),withoutBranch(normal));
+ assert.equal(word.wordValueX('branchCode',values.branchCode,true),134*72/25.4);
+ assert.deepEqual(word.wordPassbookProblems(values,true),[]);
+ const source=await readFile(resolve(root,'src/AssamQuickPassbook.tsx'),'utf8');
+ assert.match(source,/<WordPassbookArtwork quick values=\{wordPassbookValues/);
+ assert.match(source,/onClick=\{onEdit\}>Temporary Edit/);
+});

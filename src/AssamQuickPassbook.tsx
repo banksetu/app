@@ -1,4 +1,4 @@
-import {ApprovedPassbookArtwork,approvedPassbookValues} from './ApprovedPassbookInfo';
+import {WordPassbookArtwork,wordPassbookValues} from './WordPassbookInfo';
 import {passbookBranchForTenant} from './passbookInfoLayout';
 import type { CSSProperties } from "react";
 
@@ -116,7 +116,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       <div className="assam-quick-photo" style={at(146,98,30)}>
         {photo && <img src={photo} alt="Customer photograph" />}
       </div>
-      <div className="assam-quick-data" style={{position:'absolute',left:0,top:'91mm'}}><ApprovedPassbookArtwork quick values={approvedPassbookValues(c,passbookBranchForTenant(bankInfo))}/></div>
+      <div className="assam-quick-data" style={{position:'absolute',left:0,top:'91mm'}}><WordPassbookArtwork quick values={wordPassbookValues(c,passbookBranchForTenant(bankInfo))}/></div>
       <div className="assam-quick-manager" style={at(144,157,36)}>Branch Manager</div>
     </article>
     <button type="button" className="passbook-button assam-quick-edit" onClick={onEdit}>Temporary Edit</button>

@@ -64,3 +64,13 @@ holder colon's left ink edge, while CUST ADD. stays in place. Customer address
 rows are care-of; village/post; district/remaining locality; state/postal suffix.
 Missing state/district is never filled from branch data. Unknown text is retained.
 Only Word Assam Print mapping changes; Quick and Union remain unchanged.
+
+Owner accepted the format and requested its reuse in Assam Quick Passbook.
+Quick now uses WordPassbookArtwork + wordPassbookValues, including four address
+rows, 1 mm label gaps, 3 mm value gaps, plain zeros and uniform 70% compression.
+The existing Quick container offset (91 mm) and branch-code anchor (134 mm)
+are retained so the fixed photo area stays in place. No hints, Aadhaar header,
+photo box, logo, bank title, Head Office, manager signature area, page size or
+Temporary Edit markup/styles changed. Both Assam modes use the same validation.
+Union unchanged. Screenshot: scripts/word-passbook.browser.mjs --quick with
+synthetic customer/Aadhaar/bank fixtures through the existing search interface.

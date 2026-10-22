@@ -6,10 +6,11 @@ fs.mkdirSync('test-evidence',{recursive:true});
 import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
 import {chromium} from 'playwright';
+const quick=process.argv.includes('--quick');
 const bank={bankName:'Assam Gramin Bank',passbookBank:'Assam Gramin Bank',branchName:'TEST BRANCH',branchAddress:'TEST ROAD',branchPostOffice:'TEST POST',branchDistrict:'TEST DISTRICT',branchPinCode:'001200',branchEmail:'TEST@EXAMPLE.COM',ifsc:'ABCD0000001',micr:'000123000',branchCode:'0001'};
-const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',coName:'TEST GUARDIAN',contact:'9000000000',accountOpeningDate:'2024-08-24',issueDate:'2026-10-20',nominee:'2',fullAddress:'VILLAGE TEST\nPOST TEST\nKARIMGANJ\nASSAM,INDIA PIN-001200'};
+const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',coName:'TEST GUARDIAN',contact:'9000000000',accountOpeningDate:'2024-08-24',issueDate:'2026-10-20',nominee:'2',uidaiNo:'000000000000',fullAddress:'VILLAGE TEST\nPOST TEST\nKARIMGANJ\nASSAM,INDIA PIN-001200'};
 fs.writeFileSync('test-evidence/menu.html','<title>Bank Setu — temporary test customer review</title><div id="root"></div><script type="module" src="/test-evidence/menu.tsx"></script>');
-fs.writeFileSync('test-evidence/menu.tsx',`import '../src/index.css';import '../src/App.css';import React from 'react';import{createRoot}from'react-dom/client';import Passbook from'../src/Passbook';const q=new URLSearchParams(location.search);const bank=${JSON.stringify(bank)};if(q.get('bank')==='union')Object.assign(bank,{bankName:'Union Bank of India',passbookBank:'Union Bank of India',branchName:'UNION TEST BRANCH',address:'UNION TEST ADDRESS'});if(q.get('tenant')==='second')Object.assign(bank,{branchName:'SECOND BRANCH',micr:'900000009',ifsc:'EFGH0000002'});sessionStorage.setItem('bankSetuTenantId','synthetic-test-only');window.testCalls=[];createRoot(document.getElementById('root')).render(<div className="banksetu-app-shell" data-appearance="dark"><Passbook bankInfo={bank} formatType={q.get('mode')==='quick'?'quickPassbook':'passbook'}/></div>);`);
+fs.writeFileSync('test-evidence/menu.tsx',`import '../src/index.css';import '../src/App.css';import React from 'react';import{createRoot}from'react-dom/client';import Passbook from'../src/Passbook';const q=new URLSearchParams(location.search);const bank=${JSON.stringify(bank)};if(q.get('bank')==='union')Object.assign(bank,{bankName:'Union Bank of India',passbookBank:'Union Bank of India',branchName:'UNION TEST BRANCH',address:'UNION TEST ADDRESS'});if(q.get('tenant')==='second')Object.assign(bank,{branchName:'SECOND BRANCH',micr:'900000009',ifsc:'EFGH0000002'});sessionStorage.setItem('bankSetuTenantId','synthetic-test-only');window.testCalls=[];createRoot(document.getElementById('root')).render(<div className="banksetu-app-shell" data-appearance={q.get('mode')==='quick'?'light':'dark'}><Passbook bankInfo={bank} formatType={q.get('mode')==='quick'?'quickPassbook':'passbook'}/></div>);`);
 const mocks={
  './core/localData':`export function identity(){return 'synthetic:user:tenant:connection';}export async function getDataIdToken(){return 'synthetic';}export async function localDataFetch(url,options){const body=JSON.parse(options.body);window.testCalls.push(body);return{json:async()=>body.action==='searchCustomer'?{success:true,customer:${JSON.stringify(customer)},rowNumber:1}:{success:true}};}`,
  './core/licenseAccess':`export async function requireLicensedWrite(){if(window.blockTestLicense)throw Error('License suspended');}`,
@@ -22,8 +23,8 @@ let browser;
 try{
  await server.listen();
  browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--use-gl=angle','--use-angle=swiftshader']});
- const page=await browser.newPage({viewport:{width:1300,height:1100},deviceScaleFactor:2});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5197/test-evidence/menu.html');
+ const page=await browser.newPage({viewport:{width:1300,height:1100},deviceScaleFactor:2,timezoneId:'Asia/Kolkata'});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:5197/test-evidence/menu.html'+(quick?'?mode=quick':''));
  await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();
  await page.locator('.pb-approved-artwork').waitFor();
  assert.equal(await page.locator('[data-field="branchName"]').getAttribute('aria-label'),'branchName: TEST BRANCH');
@@ -42,8 +43,16 @@ try{
  for(const b of addressBoxes)assert(Math.abs(b.x-addressBoxes[0].x)<.001);
  assert.equal(await page.locator('[data-field="address3"]').getAttribute('aria-label'),'address3: KARIMGANJ');
  assert.equal(await page.locator('[data-field="address4"]').getAttribute('aria-label'),'address4: ASSAM, INDIA PIN-001200');
- await page.screenshot({path:'test-evidence/word-passbook-four-lines-app.png',fullPage:true});
- await page.locator('.pb-word-artwork').screenshot({path:'test-evidence/word-passbook-four-lines-closeup.png',scale:'device'});
+ if(quick){
+  assert.equal(await page.locator('.assam-quick-hints li').count(),7);
+  assert.equal(await page.locator('.assam-quick-photo').count(),1);
+  assert.equal(await page.locator('.assam-quick-aadhaar').innerText(),'000000000000');
+  assert.equal(await page.locator('.assam-quick-manager').innerText(),'Branch Manager');
+  assert.match(await page.locator('.assam-quick-title').innerText(),/HEAD OFFICE : GUWAHATI/);
+  await page.locator('.assam-quick-document').screenshot({path:'test-evidence/word-quick-passbook.png',scale:'device'});
+ }
+ await page.screenshot({path:quick?'test-evidence/word-quick-passbook-app.png':'test-evidence/word-passbook-four-lines-app.png',fullPage:true});
+ await page.locator('.pb-word-artwork').screenshot({path:quick?'test-evidence/word-quick-passbook-closeup.png':'test-evidence/word-passbook-four-lines-closeup.png',scale:'device'});
  assert.equal(await page.locator('[data-label="JOINT HOLDER"]').count(),1);
  const shapes=await page.locator('.pb-word-artwork path').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.getAttribute('transform').split('scale(')[1]))]);
  assert.equal(shapes.length,1,'all labels and values, including Joint Holder, use uniform 70% compression');
