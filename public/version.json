@@ -1,31 +1,73 @@
 {
-  "latestVersion": "1.0.106",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.106/BankSetu-Setup-1.0.106-x64.exe",
+  "latestVersion": "1.0.107",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.107/BankSetu-Setup-1.0.107-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.106",
-  "releaseTag": "v1.0.106",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.106",
+  "version": "1.0.107",
+  "releaseTag": "v1.0.107",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.107",
   "releaseDate": "2026-10-22",
-  "windowsVersion": "1.0.106",
-  "androidBuild": 1000106,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.106/BankSetu-Setup-1.0.106-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.106/BankSetu-Android-1000106.apk",
+  "windowsVersion": "1.0.107",
+  "androidBuild": 1000107,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.107/BankSetu-Setup-1.0.107-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.107/BankSetu-Android-1000107.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.106",
+      "version": "1.0.107",
       "releaseDate": "2026-10-22",
       "categories": {
         "Improvements": [
-          "Slightly bold Assam passbook SVG glyphs only (59)."
+          "Preview Assam glyphs at 75 percent horizontal width with fixed 10pt size (61).",
+          "Make Assam passbook text visibly bold while preserving compression and alignment (60)."
         ]
       }
     },
     "android": {
-      "version": "1.0.106",
+      "version": "1.0.107",
       "releaseDate": "2026-10-22",
       "categories": {
         "Improvements": [
-          "Slightly bold Assam passbook SVG glyphs only (59)."
+          "Preview Assam glyphs at 75 percent horizontal width with fixed 10pt size (61).",
+          "Make Assam passbook text visibly bold while preserving compression and alignment (60).",
+          "Slightly bold Assam passbook SVG glyphs only (59).",
+          "Merge Assam Word typography review into production branch for release.",
+          "Release fullscreen, dark mode, support media controls and PR2 testing bridge.",
+          "Release approved passbooks, mobile fixes, analytics, support media and sidebar scrolling.",
+          "Merge pull request 54 from banksetu/codex/restore-passbook-menu-v80-20261019.",
+          "Release candidate: native passbook master PDF.",
+          "Load passbook font from correct app base.",
+          "Match passbook print to A4 scan.",
+          "Maintenance and reliability updates.",
+          "Fix dark mode surfaces and dialogs for bank and licensing.",
+          "Release scoped theme and dashboard analytics.",
+          "Keep completed sync checkpoints valid across idle days.",
+          "Merge targeted sync stability and five-card All PDF.",
+          "Fix Assam Gramin Bank quick passbook print alignment.",
+          "Recover missing Windows local database safely.",
+          "Merge pull request 41 from banksetu/codex/sync-reliability-20261016.",
+          "Merge incremental customer change journal.",
+          "Merge PR 38: stop completed sync from spinning.",
+          "Merge pull request 37 from banksetu/codex/sync-idle-state-20261015.",
+          "Merge photo sync retry and replacement fixes.",
+          "Merge pull request 35 from banksetu/codex/afsm-capability-release-20261014.",
+          "Merge pull request 33 from banksetu/codex/sync-bridge-diagnostic-20261014.",
+          "Merge fresh Code.gs downloads for v1.0.79.",
+          "Merge Code.gs syntax fix into v1.0.79 production.",
+          "Reset Customer Entry after successful customer update.",
+          "Add authenticated Android FCM registration and closed-app license alerts.",
+          "Stage tenant-scoped Android push backend without app release.",
+          "Keep configured sidebar colors on licensing page and enlarge menu content.",
+          "Match approved license dashboard and sidebar layout.",
+          "Repair customer PDF export and report Android storage accurately.",
+          "Repair Android xxxhdpi splash PNG resources for AAPT2.",
+          "Place draggable support button nearer safe-area bottom on mobile.",
+          "Notify on tenant license activation transitions.",
+          "Modernize licensing, native alerts, updates and Bank Setu branding."
+        ],
+        "Bug Fixes": [
+          "Maintenance and reliability updates."
+        ],
+        "New Features": [
+          "Forms Send to Branch and shared AFSM confirmation."
         ]
       }
     }
