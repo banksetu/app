@@ -54,3 +54,13 @@ ink, accounting for each initial glyph bearing. PO/DIST prefixes follow the
 left value column. Paper, row baselines, source/Quick/Union artwork unchanged.
 Replaces the earlier pending spacing question. Verified by targeted unit tests,
 actual-component browser screenshot/ink-bound checks and production build.
+
+Latest owner-approved correction (22 October): supersedes the 1px/extra Joint
+Holder compression above. The reference-label ink-to-colon gap is now 1 mm.
+JOINT HOLDER uses normal 70% compression; both holder colons are positioned
+from its longer width, leaving the natural extra gap after ACC. HOLDER. Data
+continues 3 mm after colon ink. All four address rows start directly under the
+holder colon's left ink edge, while CUST ADD. stays in place. Customer address
+rows are care-of; village/post; district/remaining locality; state/postal suffix.
+Missing state/district is never filled from branch data. Unknown text is retained.
+Only Word Assam Print mapping changes; Quick and Union remain unchanged.
