@@ -1501,7 +1501,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         }
         @font-face{font-family:"Bank Setu Passbook Mono";src:url("${import.meta.env.BASE_URL}fonts/BankSetuPassbookMono-Bold.ttf") format("truetype");font-style:normal;font-weight:700;font-display:block}
         .pb-info-layout{position:absolute;inset:0;color:#161616!important;font-family:"Bank Setu Passbook Mono","Courier New",monospace;font-weight:700;letter-spacing:0;text-transform:uppercase}
-        .pb-info-layout *{color:#111!important;box-sizing:border-box;text-align:left!important}
+        .pb-info-layout *{color:#111!important;box-sizing:border-box;text-align:left!important;-webkit-text-stroke:0.06mm currentColor}
 
 
 
