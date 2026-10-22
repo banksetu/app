@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.105",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.105/BankSetu-Setup-1.0.105-x64.exe",
+  "latestVersion": "1.0.106",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.106/BankSetu-Setup-1.0.106-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.105",
-  "releaseTag": "v1.0.105",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.105",
+  "version": "1.0.106",
+  "releaseTag": "v1.0.106",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.106",
   "releaseDate": "2026-10-22",
-  "windowsVersion": "1.0.105",
-  "androidBuild": 1000105,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.105/BankSetu-Setup-1.0.105-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.105/BankSetu-Android-1000105.apk",
+  "windowsVersion": "1.0.106",
+  "androidBuild": 1000106,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.106/BankSetu-Setup-1.0.106-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.106/BankSetu-Android-1000106.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.105",
+      "version": "1.0.106",
       "releaseDate": "2026-10-22",
       "categories": {
         "Improvements": [
-          "Merge Assam Word typography review into production branch for release."
+          "Slightly bold Assam passbook SVG glyphs only (59)."
         ]
       }
     },
     "android": {
-      "version": "1.0.105",
+      "version": "1.0.106",
       "releaseDate": "2026-10-22",
       "categories": {
         "Improvements": [
-          "Merge Assam Word typography review into production branch for release."
+          "Slightly bold Assam passbook SVG glyphs only (59)."
         ]
       }
     }
