@@ -18,7 +18,7 @@ import { getTenantApiUrl } from "./tenantApi";
 
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
-import ApprovedPassbookInfo, { approvedPassbookValues, approvedPassbookProblems } from "./ApprovedPassbookInfo";
+import WordPassbookInfo, { wordPassbookProblems, wordPassbookValues } from "./WordPassbookInfo";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
@@ -781,7 +781,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       await requireLicensedWrite();
 
       if (isApprovedAssamPrint || isAssamQuick) {
-        const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
+        const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
         if (problems.length) throw new Error(`Passbook data cannot fit the approved format: ${problems.join('; ')}. The font and compression have not been changed.`);
       }
 
@@ -905,7 +905,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
     }
     if (isApprovedAssamPrint || isAssamQuick) {
-      const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
+      const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
       if (problems.length) { setError(problems.join(' ')); return; }
     }
     try { await requireLicensedWrite(); setError(""); setMessage(""); setDirectPrinting(true); }
@@ -2445,7 +2445,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-              {isApprovedAssamPrint ? <ApprovedPassbookInfo customer={p} bank={BRANCH} /> : <PassbookInfoFields customer={p} bank={BRANCH} />}
+              {isApprovedAssamPrint ? <WordPassbookInfo customer={p} bank={BRANCH} /> : <PassbookInfoFields customer={p} bank={BRANCH} />}
 
             </div>
 

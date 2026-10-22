@@ -82,7 +82,7 @@ test('slash dates, print-day rollover, care-of parsing and nominee edits preserv
 test('renderer is scoped to Assam Passbook Print and existing print/search actions remain',async()=>{
   const source=await readFile(resolve(root,'src/Passbook.tsx'),'utf8');
   assert.match(source,/const isApprovedAssamPrint = formatType === 'passbook' && isAssamBank/);
-  assert.match(source,/isApprovedAssamPrint \? <ApprovedPassbookInfo customer=\{p\} bank=\{BRANCH\} \/> : <PassbookInfoFields/);
+  assert.match(source,/isApprovedAssamPrint \? <WordPassbookInfo customer=\{p\} bank=\{BRANCH\} \/> : <PassbookInfoFields/);
   assert.match(source,/isAssamQuick \? <AssamQuickPassbook/);
   assert.match(source,/isUnion \? <UnionPassbook/);
   assert.match(source,/action: "searchCustomer"/);
