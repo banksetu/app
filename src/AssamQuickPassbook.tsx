@@ -48,7 +48,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .assam-quick-document { position:relative; width:205mm; height:175mm; background:white;
         color:#242424; margin:0 auto; box-sizing:border-box; box-shadow:0 4px 24px #0002;
         font-family:"Courier New",monospace; font-size:2.9mm; line-height:4.3mm;
-        text-align:left!important; letter-spacing:normal; }
+        text-align:left!important; letter-spacing:normal; font-weight:700; }
       .passbook-page .assam-quick-document * { box-sizing:border-box; text-align:left!important; }
       .passbook-page .assam-quick-document .assam-quick-hints h2,
       .passbook-page .assam-quick-document .assam-quick-title,
@@ -57,7 +57,7 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
       .passbook-page .assam-quick-document .assam-quick-title strong { color:#0782b2!important; }
       .assam-quick-version { margin:0 0 10px; color:#545467; font:12px Arial,sans-serif; text-align:left; }
       @media print { .assam-quick-version { display:none!important; } }
-      .assam-quick-hints { text-align:left; font:3.25mm/3.8mm "Times New Roman",serif; }
+      .assam-quick-hints { text-align:left; font:700 3.25mm/3.8mm "Times New Roman",serif; }
       .assam-quick-hints h2 { margin:0 0 13mm; text-align:center; text-decoration:underline;
         font:bold 4mm "Times New Roman",serif; color:#242424; }
       .assam-quick-hints ol { margin:0; padding-left:6mm; list-style:decimal-leading-zero; }
