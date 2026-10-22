@@ -1,6 +1,15 @@
 'use strict';
 const {C,status,paper,rasterJob}=require('./pr2-protocol.cjs');
 const hex=b=>Buffer.from(b).toString('hex').match(/../g)?.join(' ')||'';
+// Epson NPD0841-00, sheet 57: ESC } - measures width and, when aligned,
+// inserts the document. ESC S followed by four ASCII decimal digits is a
+// measurement, never a ready/status response. Width units are 1/240 inch.
+function widthMeasurement(frame){
+ if(frame.length!==6||frame[0]!==27||frame[1]!==83||!frame.subarray(2).every(x=>x>=48&&x<=57))throw Error('Invalid PR2 paper-width measurement response; motion state uncertain');
+ const units=Number(frame.subarray(2).toString('ascii'));
+ if(units===0||units>3000)throw Error('PR2 paper-width measurement outside supported test range; motion state uncertain');
+ return {widthUnits:units,widthMm:Math.round(units*25.4/240*10)/10};
+}
 function proof(resolution){
  const width=360,height=180,stride=Math.ceil(width/8),bits=Buffer.alloc(stride*height);
  // Synthetic 25.4 x 12.7 mm box at 12.7 mm from left, 5 mm from top.
@@ -8,7 +17,7 @@ function proof(resolution){
  return rasterJob({dpi:180,width,height,bits:bits.toString('base64')},{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
 }
 async function run({io,action,resolution,approve,log,fence,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
- if(!['diagnose','feed','print','eject'].includes(action))throw Error('Unsupported action');
+ if(!['diagnose','measure-width','feed','print','eject'].includes(action))throw Error('Unsupported action');
  if(action==='print'&&![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
  const tx=async(label,b)=>{log({direction:'TX',label,hex:hex(b)});await io.write(b);};
  const direct=typeof io.capture==='function';
@@ -24,9 +33,18 @@ async function run({io,action,resolution,approve,log,fence,wait=ms=>new Promise(
  let p=paper(await query('paper',C.paper,6));log({paper:p});
  if(action==='diagnose')return {transportAcknowledged:true,physicalVerified:false};
  if(action==='print'&&initialStatus.ready!==true)throw Error('Printer did not report ready; no print proof sent');
+ if(action==='measure-width'&&(initialStatus.ready!==true||p!=='aligned'))throw Error('Width diagnostic requires ready printer and a newly aligned disposable document');
  if(['feed','print'].includes(action)&&!['aligned','inserted'].includes(p))throw Error('Insert disposable test passbook and rerun after inspecting it');
  if(!await approve(action))throw Error('Local approval declined');
  await fence(); // durable review marker BEFORE first motion byte; never auto replay
+ if(action==='measure-width'){
+  const measured=widthMeasurement(await query('width-measurement',Buffer.from([27,125,45]),6));
+  log({measurement:measured});
+  const after=status(await query('after-measure-status',C.status,3),{allowNoPaper:true});
+  p=paper(await query('after-measure-paper',C.paper,6));log({paper:p});
+  if(after.ready!==true||p!=='inserted')throw Error('Width measurement did not confirm ready and inserted paper; no print data sent or automatic retry');
+  return {...measured,paper:p,transportAcknowledged:true,physicalVerified:false,requiresHumanConfirmation:true};
+ }
  if(action==='feed')await tx('feed',Buffer.from([27,76,48,48,48]));
  if(action==='eject')await tx('eject',C.eject);
  if(action==='print'){
@@ -48,4 +66,4 @@ async function run({io,action,resolution,approve,log,fence,wait=ms=>new Promise(
  p=paper(await query('post-paper',C.paper,6));log({paper:p});
  return {transportAcknowledged:true,physicalVerified:false,requiresHumanConfirmation:true};
 }
-module.exports={run,hex,proof};
+module.exports={run,hex,proof,widthMeasurement};

@@ -3,7 +3,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),Module=re
 const m=new Module(path.join(__dirname,'core.cjs'));m.filename=path.join(__dirname,'core.cjs');m.paths=module.paths;
 m.require=id=>id==='./pr2-protocol.cjs'?require('../../desktop/pr2-protocol.cjs'):require(id);
 m._compile(require('node:fs').readFileSync(m.filename,'utf8'),m.filename);
-const {run,proof}=m.exports;
+const {run,proof,widthMeasurement}=m.exports;
 function fixture(responses){const sent=[],events=[];let fenced=0,approved=0;return {sent,events,get fenced(){return fenced;},get approved(){return approved;},io:{write:async b=>sent.push(Buffer.from(b)),read:async()=>Buffer.from(responses.shift())},log:e=>events.push(e),fence:async()=>{fenced++;},approve:async()=>{approved++;return true;},wait:async()=>{}};}
 const good=()=>[[27,47,55],[27,114,80],[27,66,53,66,27,90]];
 test('unknown status captured and blocks motion',async()=>{const f=fixture([[27,47,55],[0,0,0]]);await assert.rejects(run({...f,action:'print',resolution:216}),/Unrecognized/);assert.equal(f.sent.length,3);assert.equal(f.events.at(-1).hex,'00 00 00');assert.equal(f.fenced,0);});
@@ -55,4 +55,35 @@ test('no-document status cannot authorize a print even with aligned paper bytes'
  const f=fixture([[27,47,55],[27,114,50],[27,66,53,66,27,90]]);
  await assert.rejects(run({...f,action:'print',resolution:240}),/did not report ready/);
  assert.equal(f.approved,0);assert.equal(f.fenced,0);
+});
+test('documented width measurement feeds once, requires local approval, and never sends graphics',async()=>{
+ const f=fixture([...good(),[27,83,49,57,52,54],[27,114,80],[27,66,53,67,27,90]]);
+ const result=await run({...f,action:'measure-width'});
+ assert.equal(result.widthUnits,1946);
+ assert.equal(result.paper,'inserted');
+ assert.equal(result.physicalVerified,false);
+ assert.equal(f.approved,1);assert.equal(f.fenced,1);
+ assert.equal(f.sent.filter(b=>b.equals(Buffer.from([27,125,45]))).length,1);
+ assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));
+});
+test('measurement rejects malformed data and never interprets it as printer ready',async()=>{
+ for(const reply of [[27,114,80],[27,83,48,48,48,48],[27,83,49,57,52,54,0]]){
+  const f=fixture([...good(),reply]);
+  await assert.rejects(run({...f,action:'measure-width'}));
+  assert.equal(f.fenced,1);
+  assert.equal(f.sent.filter(b=>b.equals(Buffer.from([27,125,45]))).length,1);
+  assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));
+ }
+ assert.deepEqual(widthMeasurement(Buffer.from([27,83,49,57,52,54])),{widthUnits:1946,widthMm:206});
+});
+test('width measurement refuses no-paper, already-inserted and non-ready before approval',async()=>{
+ for(const frames of [
+  [[27,47,55],[27,114,80],[27,66,53,64,27,90]],
+  [[27,47,55],[27,114,80],[27,66,53,67,27,90]],
+  [[27,47,55],[27,114,50],[27,66,53,66,27,90]]
+ ]){
+  const f=fixture(frames);
+  await assert.rejects(run({...f,action:'measure-width'}));
+  assert.equal(f.approved,0);assert.equal(f.fenced,0);
+ }
 });
