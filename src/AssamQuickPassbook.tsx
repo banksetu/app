@@ -73,6 +73,8 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
          Existing A4 page dimensions, row height and absolute field anchors are unchanged. */
       .assam-quick-field { display:grid; grid-template-columns:20mm minmax(0,1fr); column-gap:0; }
       .assam-quick-field > span:first-child { white-space:nowrap; }
+      /* Slight ink-weight increase only; preserve font metrics and compression. */
+      .assam-quick-field > span, .assam-quick-inline-field, .assam-quick-lines { -webkit-text-stroke:0.06mm currentColor; }
       .assam-quick-field > span,
       .assam-quick-inline-field {
         transform:scaleX(.70);
