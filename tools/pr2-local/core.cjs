@@ -7,7 +7,7 @@ function proof(resolution){
  for(let y=36;y<126;y++)for(let x=90;x<270;x++)if(y===36||y===125||x===90||x===269)bits[y*stride+(x>>3)]|=128>>(x&7);
  return rasterJob({dpi:180,width,height,bits:bits.toString('base64')},{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
 }
-async function run({io,action,resolution,approve,log,fence}){
+async function run({io,action,resolution,approve,log,fence,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
  if(!['diagnose','feed','print','eject'].includes(action))throw Error('Unsupported action');
  if(action==='print'&&![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
  const tx=async(label,b)=>{log({direction:'TX',label,hex:hex(b)});await io.write(b);};
@@ -34,7 +34,11 @@ async function run({io,action,resolution,approve,log,fence}){
   await tx('print-feed',chunks[0]);
   // An aligned document is at the feeder, not at the print position. Never
   // stream image bytes until the printer reports that it actually inserted it.
-  p=paper(await query('after-feed-paper',C.paper,6));log({paper:p});
+  for(let attempt=0;attempt<5;attempt++){
+   p=paper(await query('after-feed-paper',C.paper,6));log({paper:p});
+   if(p==='inserted'||p!=='aligned')break;
+   if(attempt<4)await wait(500); // Read-only observation; never resend feed.
+  }
   const feedStatus=status(await query('after-feed-status',C.status,3),{allowNoPaper:true});
   if(feedStatus.ready!==true)throw Error('Printer is not ready after feed; graphics stopped. No automatic retry.');
   if(p!=='inserted')throw Error('Feed was not confirmed (paper='+p+'); graphics stopped. No automatic retry.');

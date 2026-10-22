@@ -60,7 +60,12 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     const ids=Object.keys(saved.jobs);for(const old of ids.slice(0,Math.max(0,ids.length-200)))delete saved.jobs[old];persist();transmitted=true;
     notify('Feeding the passbook. Do not remove it.');
     await job.io.write(chunks[0]);check();
-    const inserted=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
+    let inserted;
+    for(let attempt=0;attempt<5;attempt++){
+     check();inserted=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
+     if(inserted==='inserted'||inserted!=='aligned')break;
+     if(attempt<4)await wait(500); // Observe only; never resend feed.
+    }
     const feedStatus=status(await exchange(job.io,C.status,3,device.transport==='usb-direct'),{allowNoPaper:true});
     if(feedStatus.ready!==true)throw Error('Printer is not ready after feed. Graphics were stopped.');
     if(inserted!=='inserted')throw Error('Paper feed not confirmed ('+inserted+'). Graphics were stopped.');

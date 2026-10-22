@@ -39,6 +39,11 @@ test('aligned paper that fails to feed stops before graphics and fences retry',a
  assert.ok(!f.writes.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));
  await assert.rejects(f.bridge.print({...f.request,id:crypto.randomUUID()}),/interrupted/);
 });
+test('delayed feed is observed without resending motion',async t=>{
+ const f=fixture(t,{paper:[66,66,67]});const result=await f.bridge.print(f.request);
+ assert.equal(result.completed,true);
+ assert.equal(f.writes.filter(b=>b.equals(Buffer.from([27,76,48,48,48]))).length,1);
+});
 test('no paper has bounded wait and no feeding bytes',async t=>{
  const f=fixture(t,{paper:[64]});const result=await f.bridge.print(f.request);assert.equal(result.completed,false);assert.match(result.message,/60 seconds/);assert.ok(!f.writes.some(b=>b[1]===76));
 });
