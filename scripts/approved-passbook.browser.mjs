@@ -11,13 +11,13 @@ const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',
 fs.writeFileSync('test-evidence/menu.html','<div id="root"></div><script type="module" src="/test-evidence/menu.tsx"></script>');
 fs.writeFileSync('test-evidence/menu.tsx',`import React from 'react';import{createRoot}from'react-dom/client';import Passbook from'../src/Passbook';const q=new URLSearchParams(location.search);const bank=${JSON.stringify(bank)};if(q.get('bank')==='union')Object.assign(bank,{bankName:'Union Bank of India',passbookBank:'Union Bank of India',branchName:'UNION TEST BRANCH',address:'UNION TEST ADDRESS'});if(q.get('tenant')==='second')Object.assign(bank,{branchName:'SECOND BRANCH',micr:'900000009',ifsc:'EFGH0000002'});sessionStorage.setItem('bankSetuTenantId','synthetic-test-only');window.testCalls=[];createRoot(document.getElementById('root')).render(<Passbook bankInfo={bank} formatType={q.get('mode')==='quick'?'quickPassbook':'passbook'}/>);`);
 const mocks={
- './core/localData':`export async function getDataIdToken(){return 'synthetic';}export async function localDataFetch(url,options){const body=JSON.parse(options.body);window.testCalls.push(body);return{json:async()=>body.action==='searchCustomer'?{success:true,customer:${JSON.stringify(customer)},rowNumber:1}:{success:true}};}`,
+ './core/localData':`export function identity(){return 'synthetic:user:tenant:connection';}export async function getDataIdToken(){return 'synthetic';}export async function localDataFetch(url,options){const body=JSON.parse(options.body);window.testCalls.push(body);return{json:async()=>body.action==='searchCustomer'?{success:true,customer:${JSON.stringify(customer)},rowNumber:1}:{success:true}};}`,
  './core/licenseAccess':`export async function requireLicensedWrite(){if(window.blockTestLicense)throw Error('License suspended');}`,
  'firebase/auth':`export function getAuth(){return{currentUser:{uid:'synthetic'}};}`,
  './tenantApi':`export function getTenantApiUrl(){return '/synthetic-bridge';}`,
  './platform/print':`export async function printCurrentDocument(){window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
 };
-const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if(importer?.endsWith('/src/Passbook.tsx')&&mocks[source])return '\0test:'+source;if(importer?.endsWith('/src/PrintAlignmentPreview.tsx')&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
+const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if((importer?.endsWith('/src/Passbook.tsx')||importer?.endsWith('/src/Pr2PrinterDialog.tsx'))&&mocks[source])return '\0test:'+source;if(importer?.endsWith('/src/PrintAlignmentPreview.tsx')&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
 let browser;
 try{
  await server.listen();
@@ -68,7 +68,7 @@ try{
   const value=async(key)=>isAssam?(await field(key).getAttribute('aria-label')).slice(key.length+2):await field(key).innerText();
   assert.equal(await value('nominee'),isAssam?'1':'2');
   assert.equal(await value('accountNo'),customer.accountNo);
-  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.equal(await field('address4').locator('path').count(),0);}
+  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.match(await value('address4'),/ASSAM/);}
   else{assert.equal(await page.locator('.union-upper').count(),mode==='quick'?1:0);assert.equal(await page.locator('.pb-approved-artwork').count(),0);}
   const openEdit=async()=>{
    if(isAssam&&mode==='print'){
@@ -84,7 +84,7 @@ try{
   await page.getByRole('button',{name:'Apply to Preview',exact:true}).click();
   assert.equal(await value('accountNo'),edits['Account Number']);assert.equal(await value('nominee'),'3');
   if(isAssam){
-   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(await value('address3'),'ASSAM, PIN-001200');
+   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(await value('address4'),'ASSAM, PIN-001200');assert.equal(await value('address3'),'');
   }else assert.equal(await value('address'),'C/O EDITED GUARDIAN\nVILL-TEST, P.O-TEST\nASSAM, PIN-001200');
   await openEdit();for(const [label,text]of Object.entries(edits))assert.equal(await input(label).inputValue(),text);
   await page.getByRole('button',{name:'Cancel Changes',exact:true}).click();

@@ -2,7 +2,7 @@ name: Isolated PR2 Local Agent (no deployment)
 on:
   pull_request:
     branches: [codex/pr2-review-base-20261021]
-    paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', 'desktop/pr2*', 'desktop/pr2-helper/**', 'src/Passbook.tsx', 'src/WordPassbookInfo.tsx', 'src/wordPassbookGlyphs.ts', 'scripts/pr2*', '.github/workflows/pr2-local-agent.yml']
+    paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', 'desktop/pr2*', 'desktop/pr2-helper/**', 'src/Passbook.tsx', 'src/WordPassbookInfo.tsx', 'src/wordPassbookGlyphs.ts', 'scripts/pr2*', 'scripts/approved-passbook.browser.mjs', '.github/workflows/pr2-local-agent.yml']
   push:
     branches: [codex/pr2-local-test-20261021]
     paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', 'desktop/pr2*', 'desktop/pr2-helper/**', 'src/Passbook.tsx', 'src/WordPassbookInfo.tsx', 'src/wordPassbookGlyphs.ts', 'scripts/pr2*', '.github/workflows/pr2-local-agent.yml']
