@@ -22,7 +22,7 @@ source=source.replace(old,`bool timedOut=false;var watch=System.Diagnostics.Stop
 if(!source.includes('case "capture": {')||!source.includes('new FileStream(handle,FileAccess.ReadWrite,1,true)'))throw Error('Shared USB capture changed; review the local package before building');
 const cs=path.join(out,'LocalBridge.cs');fs.writeFileSync(cs,source);
 execFileSync(path.join(process.env.WINDIR,'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),['/nologo','/target:exe','/platform:x64','/r:System.Management.dll','/r:System.Web.Extensions.dll','/out:'+path.join(out,'BankSetu.Pr2Bridge.exe'),cs],{stdio:'inherit'});
-for(const f of ['agent.cjs','core.cjs','diagnostics.cjs','controller.cjs','controller-main.cjs','Start.cmd','Controller.cmd','mailbox-crypto.cjs','mailbox.cjs','mailbox-session.cjs','pairing-gate.cjs','README.md'])fs.copyFileSync(path.join(__dirname,f),path.join(out,f));
+for(const f of ['agent.cjs','core.cjs','diagnostics.cjs','suite.cjs','controller.cjs','controller-main.cjs','Start.cmd','Controller.cmd','mailbox-crypto.cjs','mailbox.cjs','mailbox-session.cjs','pairing-gate.cjs','README.md'])fs.copyFileSync(path.join(__dirname,f),path.join(out,f));
 for(const f of ['pr2-native.cjs','pr2-protocol.cjs'])fs.copyFileSync(path.join(root,'desktop',f),path.join(out,f));
 fs.copyFileSync(process.execPath,path.join(out,'node.exe'));
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(path.join(out,f))).digest('hex');
