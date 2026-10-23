@@ -1,33 +1,31 @@
 {
-  "latestVersion": "1.0.111",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.111/BankSetu-Setup-1.0.111-x64.exe",
+  "latestVersion": "1.0.112",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.112/BankSetu-Setup-1.0.112-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.111",
-  "releaseTag": "v1.0.111",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.111",
+  "version": "1.0.112",
+  "releaseTag": "v1.0.112",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.112",
   "releaseDate": "2026-10-23",
-  "windowsVersion": "1.0.111",
-  "androidBuild": 1000111,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.111/BankSetu-Setup-1.0.111-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.111/BankSetu-Android-1000111.apk",
+  "windowsVersion": "1.0.112",
+  "androidBuild": 1000112,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.112/BankSetu-Setup-1.0.112-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.112/BankSetu-Android-1000112.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.111",
+      "version": "1.0.112",
       "releaseDate": "2026-10-23",
       "categories": {
         "Improvements": [
-          "Reduce Union Bank lower panel vertical spacing by 10 percent (67).",
-          "Assam passbook: 70% width, 10.2pt, 1.5px spacing, lighter ink (66)."
+          "Fit Union normal and quick passbook into 175mm open book and 87.5mm lower page (68)."
         ]
       }
     },
     "android": {
-      "version": "1.0.111",
+      "version": "1.0.112",
       "releaseDate": "2026-10-23",
       "categories": {
         "Improvements": [
-          "Reduce Union Bank lower panel vertical spacing by 10 percent (67).",
-          "Assam passbook: 70% width, 10.2pt, 1.5px spacing, lighter ink (66)."
+          "Fit Union normal and quick passbook into 175mm open book and 87.5mm lower page (68)."
         ]
       }
     }
