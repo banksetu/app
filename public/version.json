@@ -1,18 +1,18 @@
 {
-  "latestVersion": "1.0.113",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.113/BankSetu-Setup-1.0.113-x64.exe",
+  "latestVersion": "1.0.114",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.114/BankSetu-Setup-1.0.114-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.113",
-  "releaseTag": "v1.0.113",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.113",
+  "version": "1.0.114",
+  "releaseTag": "v1.0.114",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.114",
   "releaseDate": "2026-10-23",
-  "windowsVersion": "1.0.113",
-  "androidBuild": 1000113,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.113/BankSetu-Setup-1.0.113-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.113/BankSetu-Android-1000113.apk",
+  "windowsVersion": "1.0.114",
+  "androidBuild": 1000114,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.114/BankSetu-Setup-1.0.114-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.114/BankSetu-Android-1000114.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.113",
+      "version": "1.0.114",
       "releaseDate": "2026-10-23",
       "categories": {
         "Improvements": [
@@ -21,7 +21,7 @@
       }
     },
     "android": {
-      "version": "1.0.113",
+      "version": "1.0.114",
       "releaseDate": "2026-10-23",
       "categories": {
         "Improvements": [
