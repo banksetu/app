@@ -4,7 +4,9 @@
 const PROFILES=Object.freeze({
   'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20 / PLQ-20M · PR2',model:/\bPLQ[- ]?20(?:M)?\b/i,dpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
 });
-const C={start:Buffer.from([27,110]),identity:Buffer.from([27,90]),status:Buffer.from([27,106]),paper:Buffer.from([27,32,66]),end:Buffer.from([27,50]),eject:Buffer.from([12])};
+// Passbooks must return through the front slot. PR2 ESC O is front output;
+// FF outputs from the rear and is not the Direct Printer Send behavior wanted.
+const C={start:Buffer.from([27,110]),identity:Buffer.from([27,90]),status:Buffer.from([27,106]),paper:Buffer.from([27,32,66]),end:Buffer.from([27,50]),eject:Buffer.from([27,79])};
 const esc=text=>Buffer.concat([Buffer.from([27]),Buffer.from(text,'ascii')]);
 function digits(n,width){if(!Number.isInteger(n)||n<0||n>=10**width)throw Error('Printer coordinate is out of range.');return String(n).padStart(width,'0');}
 function status(frame,{allowNoPaper=false}={}){
