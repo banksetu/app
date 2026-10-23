@@ -1,13 +1,13 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),Module=require('node:module'),fs=require('node:fs'),path=require('node:path');
 function load(name){const m=new Module(path.join(__dirname,name));m.filename=path.join(__dirname,name);m.paths=module.paths;m.require=id=>id==='./pr2-protocol.cjs'?require('../../desktop/pr2-protocol.cjs'):id==='./core.cjs'?load('core.cjs'):require(id);m._compile(fs.readFileSync(m.filename,'utf8'),m.filename);return m.exports;}
 const {fullSuite}=load('suite.cjs');
-const {rasterBands}=require('../../desktop/pr2-protocol.cjs'),{makeSampleRaster}=load('core.cjs');
+const {rasterBandsPhysical}=require('../../desktop/pr2-protocol.cjs'),{makeSampleRaster}=load('core.cjs');
 const ready=[27,114,80],commandError=[27,114,56],aligned=[27,66,53,66,27,90],released=[27,66,53,65,27,90],inserted=[27,66,53,67,27,90],config=[27,112,81,65,48,32];
 function fixture(replies,approvals={"full-suite":true,"print-and-front-eject":false}){const sent=[],events=[],asked=[];let fenced=0;return {sent,events,asked,get fenced(){return fenced;},io:{rpc:async()=>{const data=replies.shift();if(data===undefined)throw Error('missing fixture reply');return {data:Buffer.from(data).toString('base64'),segments:[],zeroReads:0,quietTimeout:true,limitReached:false};},write:async b=>{sent.push(Buffer.from(b));return {written:b.length};}},log:e=>events.push(e),approve:async a=>{asked.push(a);return approvals[a]===true;},fence:async()=>{fenced++;},wait:async()=>{}};}
 const count=(f,bytes)=>f.sent.filter(b=>b.equals(Buffer.from(bytes))).length;
 const has=(buffer,bytes)=>buffer.includes(Buffer.from(bytes));
 const successReplies=()=>[ready,aligned,config,[],ready,aligned,[],inserted,ready];
-const sampleBandCount=rasterBands(makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:216,offsetX:0,offsetY:0}).bands.length;
+const sampleBandCount=rasterBandsPhysical(makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:216,offsetX:0,offsetY:0}).bands.length;
 const printReplies=(afterEject=[])=>[...successReplies(),...Array.from({length:sampleBandCount},()=>ready),inserted,[],...afterEject];
 test('bank-style sequence sets automatic mode and page geometry then feeds exactly once',async()=>{
  const f=fixture(successReplies());const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
