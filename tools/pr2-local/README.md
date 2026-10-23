@@ -49,3 +49,10 @@ Prepared one-time activation sequence (NOT instructions to execute yet): install
 
 
 Live connector smoke evidence: one throwaway, signed encrypted pairing-probe packet was created and fetched on codex/pr2-local-test-20261021 through the connected GitHub plugin. Its signature and decrypted synthetic nonce were verified locally; ephemeral private keys were deleted. This proves connector write/read plus envelope correctness, not Windows connectivity, secret custody, pairing or USB access. No hardware commands, real device logs, tokens or customer data were in the probe. Commit bc25b9aff0db6cac8200892f93066e0565f673e8 records ciphertext only. Mailbox paths are excluded from the dedicated PR2 build workflow to prevent every diagnostic message from rebuilding executable code.
+
+
+## Physical partial-print correction (2026-10-23)
+
+The real PLQ-20 run proved visible 24-pin raster output and one front return, but only part of the synthetic passbook reached paper. A USB write acknowledgement is not mechanical completion. The agent now sends one complete 24-dot band, queues `ESC } W`, requests status with `ESC j`, and requires the strict `ESC r P` READY frame before sending the next band. It never retries a band. After the final READY it confirms the document is still inserted, waits once, and sends one `ESC O`.
+
+The synthetic test bitmap is now frozen from the same `WordPassbookInfo` renderer used by the current approved Assam layout (Courier New 10.2 pt glyph path, 70% horizontal width, 1.5 px letter gap). Transport removes only empty horizontal bytes inside each band; it does not scale, reflow, change fonts, or modify pixel coordinates. Physical completeness, alignment and front release still require human confirmation.

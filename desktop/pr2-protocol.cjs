@@ -59,14 +59,17 @@ function rasterBands(r,settings){
  if(right<left)throw Error('The active passbook layout is blank.');
  const xMm=left*25.4/180+settings.offsetX;
  if(xMm<0||top*25.4/180+settings.offsetY<1||right*25.4/180+settings.offsetX>profile.maxWidthMm||bottom*25.4/180+settings.offsetY>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
- const width=right-left+1,bands=[];
+ const bands=[];
  for(let y=top;y<=bottom;y+=24){
-  const yMm=y*25.4/180+settings.offsetY,bytes=[];
-  for(let x=left;x<=right;x++)for(let block=0;block<3;block++){
+  let bandLeft=right+1,bandRight=left-1;
+  for(let x=left;x<=right;x++)for(let row=y;row<Math.min(y+24,r.height);row++)if(ink(x,row)){bandLeft=Math.min(bandLeft,x);bandRight=Math.max(bandRight,x);}
+  if(bandRight<bandLeft)continue;
+  const yMm=y*25.4/180+settings.offsetY,bandXmm=bandLeft*25.4/180+settings.offsetX,width=bandRight-bandLeft+1,bytes=[];
+  for(let x=bandLeft;x<=bandRight;x++)for(let block=0;block<3;block++){
    let byte=0;for(let bit=0;bit<8;bit++)if(ink(x,y+block*8+bit))byte|=1<<bit;
    bytes.push(byte);if(byte===27)bytes.push(27);
   }
-  bands.push(Buffer.concat([esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(Math.round(xMm*120/25.4),3)),Buffer.from([13]),esc('!G1'),esc('1C'+digits(width,4)+'000'),Buffer.from(bytes),C.end,C.waitPrint]));
+  bands.push(Buffer.concat([esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(Math.round(bandXmm*120/25.4),3)),Buffer.from([13]),esc('!G1'),esc('1C'+digits(width,4)+'000'),Buffer.from(bytes),C.end,C.waitPrint]));
  }
  return {feed:esc('L000'),bands,pixels:{left,right,top,bottom},transport:'absolute-24-dot-bands'};
 }

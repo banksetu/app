@@ -17,8 +17,8 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
   return {...settings,profile:profile.id};
  }
  async function connection(device,settings){const io=transport();try{await io.handshake();await io.open(device,settings);return io;}catch(e){io.close();throw e;}}
- async function response(io,length,directUsb){const bytes=directUsb?await io.capture():await io.read(length);if(bytes.length!==length)throw Error('Incomplete or mixed PR2 response. No print data sent.');return bytes;}
- async function exchange(io,command,length,directUsb){await io.write(command);return response(io,length,directUsb);}
+ async function response(io,length,directUsb,timeoutMs=1500){const bytes=directUsb?await io.capture(timeoutMs):await io.read(length);if(bytes.length!==length)throw Error('Incomplete or mixed PR2 response. No print data sent.');return bytes;}
+ async function exchange(io,command,length,directUsb,timeoutMs=1500){await io.write(command);return response(io,length,directUsb,timeoutMs);}
  async function identify(io,device){
   const directUsb=device.transport==='usb-direct';
   if(directUsb){
@@ -45,7 +45,7 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
    if(active.has(device.id))throw Error('This printer already has an active request.');
    if(!test&&settings.acceptRaster!==true)throw Error('Confirm the 180 dpi graphics proof; physical alignment has not been verified.');
    const plan=rasterBands(raster,settings),job={id,scope,cancelled:false,io:null};active.set(device.id,job);
-   let transmitted=false;const overallDeadline=now()+180000;
+   let transmitted=false;const overallDeadline=now()+600000;
    const check=()=>{authorize(scope);if(now()>overallDeadline)throw Error('Printer job timed out.');if(job.cancelled)throw Error('Printing cancelled.');};
    const notify=message=>progress({id,message});
    try{
@@ -70,11 +70,14 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     if(feedStatus.ready!==true)throw Error('Printer is not ready after feed. Graphics were stopped.');
     if(inserted!=='inserted')throw Error('Paper feed not confirmed ('+inserted+'). Graphics were stopped.');
     notify('Printing the active passbook layout. Do not remove the passbook.');
-    for(let band=0;band<plan.bands.length;band++){check();notify('Printing passbook band '+(band+1)+' of '+plan.bands.length+'. Do not remove it.');await job.io.write(plan.bands[band]);await wait(400);}
-    // The PLQ-20 may be silent while the raster is mechanically completing.
-    // Queue the already-approved documented front return after a conservative
-    // delay. Never infer readiness from silence and never resend ESC O.
-    await wait(500);check();
+    for(let band=0;band<plan.bands.length;band++){
+     check();notify('Printing passbook band '+(band+1)+' of '+plan.bands.length+'. Do not remove it.');await job.io.write(plan.bands[band]);
+     const completed=status(await exchange(job.io,C.status,3,device.transport==='usb-direct',15000),{allowNoPaper:true});
+     if(completed.ready!==true)throw Error('Printer did not confirm completion of passbook band '+(band+1)+'. Printing stopped before eject.');
+    }
+    const retained=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct',5000));
+    if(retained!=='inserted')throw Error('Passbook was not retained after the final print band; front eject was not sent.');
+    await wait(1000);check();
     notify('Returning the passbook through the front slot. Do not pull it.');
     await job.io.write(C.eject);
     let released=null,observedInserted=false;

@@ -2,7 +2,7 @@ name: PR2 Bridge Windows acceptance (no release)
 on:
   pull_request:
     branches: [codex/spark-client-workspace-20261001, codex/fullscreen-support-theme-20261020, codex/pr2-review-base-20261021]
-    paths: ['desktop/pr2*', 'desktop/pr2-helper/**', 'desktop/main.cjs', 'desktop/preload.cjs', 'desktop/license-guard*', 'src/Passbook.tsx', 'src/Pr2*', 'src/platform/pr2.ts', 'scripts/pr2*', 'package.json', '.github/workflows/pr2-validation.yml']
+    paths: ['desktop/pr2*', 'desktop/pr2-helper/**', 'desktop/main.cjs', 'desktop/preload.cjs', 'desktop/license-guard*', 'src/Passbook.tsx', 'src/WordPassbookInfo.tsx', 'src/wordPassbookGlyphs.ts', 'src/Pr2*', 'src/platform/pr2.ts', 'scripts/pr2*', 'package.json', '.github/workflows/pr2-validation.yml']
   workflow_dispatch:
 permissions:
   contents: read

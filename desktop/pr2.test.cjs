@@ -30,6 +30,7 @@ test('banded graphics preserves pixels with one feed and a completion barrier pe
 });
 test('device completion is confirmed; repeat identity is not resent even after restart',async t=>{
  const f=fixture(t);assert.equal((await f.bridge.print(f.request)).completed,true);const count=f.writes.length;
+ assert.equal(f.writes.filter(b=>b.equals(C.status)).length,3+rasterBands(raster(),settings).bands.length);
  assert.equal((await f.restart().print(f.request)).replayed,true);assert.equal(f.writes.length,count);
  const disk=fs.readFileSync(path.join(f.directory,'pr2-state-v1.json'),'utf8');assert.ok(!disk.includes(f.request.raster.bits));assert.ok(!disk.includes(scope));
 });

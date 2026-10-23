@@ -89,11 +89,12 @@ class Bridge {
    }
    case "capture": {
     if(stream==null||handle==null)throw new Exception("Direct USB printer is not connected.");
+    int maxWait=Math.Max(250,Math.Min(20000,Number(x,"timeoutMs",1500)));
     byte[] bytes=new byte[256];int total=0;bool quiet=false;int zeroReads=0;
     var segments=new List<object>();var watch=System.Diagnostics.Stopwatch.StartNew();long lastByteAt=0;
-    while(total<bytes.Length && watch.ElapsedMilliseconds<1500){
-     int wait=total==0?1000-(int)watch.ElapsedMilliseconds:150-(int)(watch.ElapsedMilliseconds-lastByteAt);
-     wait=Math.Min(wait,1500-(int)watch.ElapsedMilliseconds);
+    while(total<bytes.Length && watch.ElapsedMilliseconds<maxWait){
+     int wait=total==0?maxWait-(int)watch.ElapsedMilliseconds:150-(int)(watch.ElapsedMilliseconds-lastByteAt);
+     wait=Math.Min(wait,maxWait-(int)watch.ElapsedMilliseconds);
      if(wait<=0){quiet=true;break;}
      var pending=stream.BeginRead(bytes,total,bytes.Length-total,null,null);
      if(!pending.AsyncWaitHandle.WaitOne(wait)){
@@ -111,7 +112,7 @@ class Bridge {
      }
      segments.Add(new {offset=total,count=n,elapsedMs=watch.ElapsedMilliseconds,cancelRace=false});total+=n;lastByteAt=watch.ElapsedMilliseconds;
     }
-    if(watch.ElapsedMilliseconds>=1500)quiet=true;
+    if(watch.ElapsedMilliseconds>=maxWait)quiet=true;
     return new {data=Convert.ToBase64String(bytes,0,total),segments=segments,zeroReads=zeroReads,quietTimeout=quiet,limitReached=total==bytes.Length};
    }
    case "read": {

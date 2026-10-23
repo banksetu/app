@@ -9,14 +9,15 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  const typeByte={document:0x40,vertical:0x44,horizontal:0x46}[passbookType];
  if(typeByte===undefined)throw Error('Paper type must be document, vertical or horizontal');
  if(![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
- const capture=async label=>{
-  const r=await io.rpc('capture',{},5000),bytes=Buffer.from(r.data,'base64');
+ const capture=async(label,maxWait=1500)=>{
+  const bounded=Math.max(250,Math.min(20000,maxWait));
+  const r=await io.rpc('capture',{timeoutMs:bounded},bounded+4000),bytes=Buffer.from(r.data,'base64');
   log({direction:'RX',label,hex:hex(bytes),segments:r.segments||[],zeroReads:r.zeroReads||0,quietTimeout:!!r.quietTimeout,limitReached:!!r.limitReached});
   if(r.limitReached)throw Error('USB reply exceeded the bounded capture window');
   return bytes;
  };
  const tx=async(label,bytes)=>{log({direction:'TX',label,hex:hex(bytes)});const r=await io.write(bytes);log({direction:'WRITE-ACK',label,written:r.written});};
- const query=async(label,command,length)=>{await tx(label,command);const bytes=await capture(label);if(bytes.length!==length)throw Error(label+' returned '+bytes.length+' bytes; expected '+length);return bytes;};
+ const query=async(label,command,length,maxWait=1500)=>{await tx(label,command);const bytes=await capture(label,maxWait);if(bytes.length!==length)throw Error(label+' returned '+bytes.length+' bytes; expected '+length);return bytes;};
  const rawState=async prefix=>{
   const sbytes=await query(prefix+'-status',C.status,3),pbytes=await query(prefix+'-paper',C.paper,6);
   let parsedStatus=null,parsedPaper=null,error=null;
@@ -83,11 +84,19 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  if(!await approve('print-and-front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,ejected:false,postPaper:p,physicalVerified:false,requiresHumanConfirmation:true};
  const plan=rasterBands(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
  log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels});
- // Every small block ends BIM, then queues documented ESC } W. A short host
- // pace keeps the 64 KB interface buffer from receiving the complete layout at
- // once. No status bytes are inserted inside image data and no band is retried.
- for(let i=0;i<plan.bands.length;i++){await tx('suite-passbook-band-'+(i+1)+'-of-'+plan.bands.length,plan.bands[i]);await wait(400);}
- await wait(500);
+ // Each block ends BIM and queues documented ESC } W. The following ESC j
+ // status request is sent only after that complete block; READY is the strict
+ // printer acknowledgement before the next block. No band or motion is retried.
+ for(let i=0;i<plan.bands.length;i++){
+  const label='suite-passbook-band-'+(i+1)+'-of-'+plan.bands.length;
+  await tx(label,plan.bands[i]);
+  const completed=status(await query(label+'-ready',C.status,3,15000),{allowNoPaper:true});
+  if(completed.ready!==true)throw Error('Printer did not confirm completion of passbook band '+(i+1)+'. Printing stopped before eject.');
+  log({stage:'band-complete',band:i+1,bands:plan.bands.length,status:'ready'});
+ }
+ const postPrintPaper=paper(await query('after-passbook-bands-paper',C.paper,6,5000));
+ if(postPrintPaper!=='inserted')throw Error('Passbook was not retained after the final print band; front eject was not sent.');
+ await wait(1000);
  await tx('front-eject',C.eject);
  const ejectReply=await capture('front-eject');
  if(ejectReply.length)throw Error('Unexpected response during front eject: '+hex(ejectReply));
