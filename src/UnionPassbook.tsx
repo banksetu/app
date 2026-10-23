@@ -35,7 +35,7 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
   const quick = formatType === "quickPassbook";
   const photo = c.photoPreview || c.photoDataUrl || c.photoUrl || "";
   const position = (x: number, y: number, width: number): CSSProperties => ({
-    left: `${x}mm`, top: `${12 + (y - 12) * 0.9}mm`, width: `${width}mm`,
+    left: `${x}mm`, top: `${5 + (y - 12) * 0.86}mm`, width: `${width}mm`,
   });
   const value = (field: string, text: string, x: number, y: number, w: number, extra: CSSProperties = {}) =>
     <span data-field={field} className="union-value" style={{ ...position(x,y,w), ...(field !== "address" ? {whiteSpace:"nowrap",fontSize:`${Math.min(3.2,w/Math.max(1,text.length*.61))}mm`} : {}), ...extra }}>{text}</span>;
@@ -45,14 +45,14 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
     <li key={i}><div lang="hi">{hi}</div><div>{en}</div></li>)}</ol>;
   return <div className="union-preview">
     <style>{`
-      .union-document { position:relative; width:203.2mm; height:213.36mm; margin:auto; color:#111; background:white; box-shadow:0 3px 20px #0002; overflow:hidden; }
+      .union-document { position:relative; width:203.2mm; height:175mm; margin:auto; color:#111; background:white; box-shadow:0 3px 20px #0002; overflow:hidden; }
       .union-document * { box-sizing:border-box; text-align:left; }
       .union-upper { position:absolute; left:7mm; top:5mm; width:189.2mm; font:2.35mm/2.65mm Arial,sans-serif; }
       .union-upper h3 { font-size:3.2mm; line-height:3.7mm; margin:0 0 1mm; }
       .union-upper ol { margin:0 0 1mm; padding-left:5mm; }
       .union-upper li { padding-left:.5mm; margin-bottom:.6mm; }
-      .union-lower { position:absolute; left:0; top:106.68mm; width:203.2mm; height:106.68mm; }
-      .union-fold { position:absolute; top:106.68mm; left:0; width:100%; border-top:.2mm solid #ccc; }
+      .union-lower { position:absolute; left:0; top:87.5mm; width:203.2mm; height:87.5mm; }
+      .union-fold { position:absolute; top:87.5mm; left:0; width:100%; border-top:.2mm solid #ccc; }
       .union-value { position:absolute; font:700 3.2mm/4mm "Courier New",monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
       .union-label { position:absolute; font:3mm/3.7mm Arial,sans-serif; white-space:pre-wrap; }
       .union-logo { position:absolute; left:70mm; top:7mm; width:55mm; height:10mm; object-fit:contain; }
