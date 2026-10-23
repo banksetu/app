@@ -1,33 +1,31 @@
 {
-  "latestVersion": "1.0.109",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.109/BankSetu-Setup-1.0.109-x64.exe",
+  "latestVersion": "1.0.110",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.110/BankSetu-Setup-1.0.110-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.109",
-  "releaseTag": "v1.0.109",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.109",
+  "version": "1.0.110",
+  "releaseTag": "v1.0.110",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.110",
   "releaseDate": "2026-10-23",
-  "windowsVersion": "1.0.109",
-  "androidBuild": 1000109,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.109/BankSetu-Setup-1.0.109-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.109/BankSetu-Android-1000109.apk",
+  "windowsVersion": "1.0.110",
+  "androidBuild": 1000110,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.110/BankSetu-Setup-1.0.110-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.110/BankSetu-Android-1000110.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.109",
+      "version": "1.0.110",
       "releaseDate": "2026-10-23",
       "categories": {
         "Improvements": [
-          "Halve Assam passbook extra SVG bold stroke (64).",
-          "Add 2px spacing between Assam glyphs and increase medium stroke 10% (63)."
+          "Refine Assam passbook to 77% width and lighter medium ink (65)."
         ]
       }
     },
     "android": {
-      "version": "1.0.109",
+      "version": "1.0.110",
       "releaseDate": "2026-10-23",
       "categories": {
         "Improvements": [
-          "Halve Assam passbook extra SVG bold stroke (64).",
-          "Add 2px spacing between Assam glyphs and increase medium stroke 10% (63)."
+          "Refine Assam passbook to 77% width and lighter medium ink (65)."
         ]
       }
     }
