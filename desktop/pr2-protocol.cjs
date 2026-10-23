@@ -2,7 +2,7 @@
 // Epson NPD0841-00 Rev A, sheets 43, 51, 54, 58–66, 73, 76–79, 83.
 // Protocol profiles are deliberately independent from bank/customer templates.
 const PROFILES=Object.freeze({
-  'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20 / PLQ-20M · PR2',model:/\bPLQ[- ]?20(?:M)?\b/i,dpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
+  'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20 / PLQ-20M · PR2',model:/\bPLQ[- ]?20(?:M)?\b/i,dpi:180,horizontalGraphicsDpi:120,verticalGraphicsDpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
 });
 // Passbooks must return through the front slot. PR2 ESC O is front output;
 // FF outputs from the rear and is not the Direct Printer Send behavior wanted.
@@ -73,4 +73,55 @@ function rasterBands(r,settings){
  }
  return {feed:esc('L000'),bands,pixels:{left,right,top,bottom},transport:'absolute-24-dot-bands'};
 }
-module.exports={PROFILES,C,status,paper,validateRaster,rasterJob,rasterBands};
+
+// Physical-size PR2 proof path. The approved PDFs are rasterized at 180 dpi,
+// while PLQ-20 PR2 G1 columns and absolute X positions use a 120 dpi grid.
+// Sending one 180 dpi source column as one G1 column expands artwork by 1.5x.
+// This converter resamples only the transport grid; it never reflows, fits,
+// scales or changes the source template's font/compression/coordinates.
+function rasterBandsPhysical(r,settings){
+ const {bits,stride}=validateRaster(r),profile=PROFILES[settings.profile];if(!profile)throw Error('This model has no documented graphics profile.');
+ if(![216,240].includes(settings.verticalResolution)||![settings.offsetX,settings.offsetY].every(n=>Number.isFinite(n)&&Math.abs(n)<=10))throw Error('Confirm the printer vertical resolution and bounded calibration.');
+ const sourceDpi=r.dpi,horizontalDpi=profile.horizontalGraphicsDpi;
+ if(!Number.isInteger(horizontalDpi)||horizontalDpi<1||horizontalDpi>sourceDpi)throw Error('Invalid PR2 graphics density profile.');
+ const ink=(x,y)=>x>=0&&x<r.width&&y>=0&&y<r.height&&(bits[y*stride+(x>>3)]&(128>>(x&7)));
+ let left=r.width,right=-1,top=r.height,bottom=-1;
+ for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++)if(ink(x,y)){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
+ if(right<left)throw Error('The active passbook layout is blank.');
+ const leftMm=left*25.4/sourceDpi+settings.offsetX,rightMm=(right+1)*25.4/sourceDpi+settings.offsetX;
+ const topMm=top*25.4/sourceDpi+settings.offsetY,bottomMm=(bottom+1)*25.4/sourceDpi+settings.offsetY;
+ if(leftMm<0||topMm<1||rightMm>profile.maxWidthMm||bottomMm>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
+ const ratio=horizontalDpi/sourceDpi,offsetColumns=Math.round(settings.offsetX*horizontalDpi/25.4);
+ const sampledInk=(column,y)=>{
+  const start=column/ratio,end=(column+1)/ratio,total=end-start;
+  let coverage=0;
+  for(let x=Math.floor(start);x<Math.ceil(end);x++){
+   const overlap=Math.max(0,Math.min(end,x+1)-Math.max(start,x));
+   if(overlap&&ink(x,y))coverage+=overlap;
+  }
+  return coverage>=total/2;
+ };
+ const bands=[];
+ for(let y=top;y<=bottom;y+=24){
+  let sourceLeft=right+1,sourceRight=left-1;
+  for(let x=left;x<=right;x++)for(let row=y;row<Math.min(y+24,r.height);row++)if(ink(x,row)){sourceLeft=Math.min(sourceLeft,x);sourceRight=Math.max(sourceRight,x);}
+  if(sourceRight<sourceLeft)continue;
+  const outputLeft=Math.floor(sourceLeft*ratio),outputRight=Math.ceil((sourceRight+1)*ratio)-1,width=outputRight-outputLeft+1,bytes=[];
+  for(let x=outputLeft;x<=outputRight;x++)for(let block=0;block<3;block++){
+   let byte=0;for(let bit=0;bit<8;bit++)if(sampledInk(x,y+block*8+bit))byte|=1<<bit;
+   bytes.push(byte);if(byte===27)bytes.push(27);
+  }
+  const yMm=y*25.4/sourceDpi+settings.offsetY,xColumns=outputLeft+offsetColumns;
+  if(xColumns<0)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
+  bands.push(Buffer.concat([esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(xColumns,3)),Buffer.from([13]),esc('!G1'),esc('1C'+digits(width,4)+'000'),Buffer.from(bytes),C.end,C.waitPrint]));
+ }
+ const outputLeft=Math.floor(left*ratio),outputRight=Math.ceil((right+1)*ratio)-1;
+ return {
+  feed:esc('L000'),bands,pixels:{left,right,top,bottom},
+  transport:'physical-120dpi-horizontal-24-dot-bands',
+  density:{sourceDpi,horizontalDpi,verticalGraphicsDpi:profile.verticalGraphicsDpi,verticalPositionUnits:settings.verticalResolution},
+  physical:{sourceWidthMm:(right-left+1)*25.4/sourceDpi,outputWidthMm:(outputRight-outputLeft+1)*25.4/horizontalDpi,topMm,bottomMm}
+ };
+}
+
+module.exports={PROFILES,C,status,paper,validateRaster,rasterJob,rasterBands,rasterBandsPhysical};
