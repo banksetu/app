@@ -1,5 +1,5 @@
 'use strict';
-const {C,status,paper,rasterBands}=require('./pr2-protocol.cjs');
+const {C,status,paper,rasterBandsPhysical}=require('./pr2-protocol.cjs');
 const {hex,makeSampleRaster}=require('./core.cjs');
 
 // Epson NPD0841-00: reproduce the documented bank-style PR2 start sequence.
@@ -84,8 +84,8 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  // documented front output. This prevents a successfully printed passbook from
  // being stranded because a second prompt was missed.
  if(!await approve('print-and-front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,ejected:false,postPaper:p,physicalVerified:false,requiresHumanConfirmation:true};
- const plan=rasterBands(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
- log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels});
+ const plan=rasterBandsPhysical(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
+ log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels,density:plan.density,physical:plan.physical});
  // Each block ends BIM and queues documented ESC } W. The following ESC j
  // status request is sent only after that complete block; READY is the strict
  // printer acknowledgement before the next block. No band or motion is retried.
