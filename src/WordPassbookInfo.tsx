@@ -21,8 +21,11 @@ for (const c of APPROVED_LABELS) {
 // Review correction: 1 mm label gap. Gaps are measured between ink
 // edges, not the surrounding monospaced character cells. No paper/Y changes.
 const unit = WORD_FONT_SIZE_PT / WORD_FONT_UNITS;
+// Two CSS pixels at 96 DPI, expressed in SVG point coordinates.
+const WORD_LETTER_GAP_PT = 1.5;
+const wordAdvance = WORD_ADVANCE_PT + WORD_LETTER_GAP_PT;
 const leftInk=(value:string)=> (WORD_INK_BOUNDS[value[0]]?.[0] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
-const rightInk=(value:string)=> (value.length-1)*WORD_ADVANCE_PT+(WORD_INK_BOUNDS[value.at(-1)||'']?.[1] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
+const rightInk=(value:string)=> (value.length-1)*wordAdvance+(WORD_INK_BOUNDS[value.at(-1)||'']?.[1] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
 export const WORD_LABEL_GAP_PT = 72/25.4;
 export const WORD_DATA_GAP_PT = 3*72/25.4;
 const colonLeft=leftInk(':');
@@ -86,19 +89,19 @@ export function wordPassbookProblems(values:ApprovedPassbookValues,quick=false):
   return Object.entries(APPROVED_INFO_SLOTS).flatMap(([key,slot])=>{
     const value=values[key]||'';
     if ([...value].some(char=>WORD_GLYPHS[char]===undefined)) return [`${key}: contains a character unavailable in the Word font`];
-    return [...value].length*WORD_ADVANCE_PT > slot.end-wordValueX(key,value,quick)
-      ? [`${key}: exceeds the existing printing boundary at Word 10 pt / 70% compression`] : [];
+    return ([ ...value ].length ? ([...value].length-1)*wordAdvance + WORD_ADVANCE_PT : 0) > slot.end-wordValueX(key,value,quick)
+      ? [`${key}: exceeds the existing printing boundary at Word 10 pt / 80% width plus 2px letter gap`] : [];
   });
 }
 
 export function WordPassbookArtwork({values,quick=false,assamInkBoost=false}:{values:ApprovedPassbookValues;quick?:boolean;assamInkBoost?:boolean}) {
   const unit=WORD_FONT_SIZE_PT/WORD_FONT_UNITS;
   const text=(value:string,x:number,y:number,compression=1)=>[...value].map((char,index)=>WORD_GLYPHS[char]
-    ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*WORD_ADVANCE_PT*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
+    ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*wordAdvance*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
-    width="206mm" height="85mm" role="img" aria-label="Passbook customer information — Courier New 10 pt, 70%"
-    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:0.36,strokeLinejoin:'round' as const}: {})}}>
+    width="206mm" height="85mm" role="img" aria-label="Passbook customer information — Courier New 10 pt, 80% width, 2px letter spacing"
+    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:0.396,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y,label.compression)}</g>)}</g>
     {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>
