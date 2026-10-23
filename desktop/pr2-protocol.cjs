@@ -6,7 +6,7 @@ const PROFILES=Object.freeze({
 });
 // Passbooks must return through the front slot. PR2 ESC O is front output;
 // FF outputs from the rear and is not the Direct Printer Send behavior wanted.
-const C={start:Buffer.from([27,110]),identity:Buffer.from([27,90]),status:Buffer.from([27,106]),paper:Buffer.from([27,32,66]),end:Buffer.from([27,50]),eject:Buffer.from([27,79])};
+const C={start:Buffer.from([27,110]),identity:Buffer.from([27,90]),status:Buffer.from([27,106]),paper:Buffer.from([27,32,66]),end:Buffer.from([27,50]),waitPrint:Buffer.from([27,125,87]),eject:Buffer.from([27,79])};
 const esc=text=>Buffer.concat([Buffer.from([27]),Buffer.from(text,'ascii')]);
 function digits(n,width){if(!Number.isInteger(n)||n<0||n>=10**width)throw Error('Printer coordinate is out of range.');return String(n).padStart(width,'0');}
 function status(frame,{allowNoPaper=false}={}){
@@ -46,4 +46,28 @@ function rasterJob(r,settings){
  }
  chunks.push(C.end);return chunks;
 }
-module.exports={PROFILES,C,status,paper,validateRaster,rasterJob};
+// Large approved layouts are sent as independent 24-dot BIM blocks. Each
+// block has absolute X/Y coordinates, exits BIM with ESC 2, then queues the
+// documented PR2 `ESC } W` print-completion barrier. Pixel positions are not
+// scaled or reflowed; only transport framing changes.
+function rasterBands(r,settings){
+ const {bits,stride}=validateRaster(r),profile=PROFILES[settings.profile];if(!profile)throw Error('This model has no documented graphics profile.');
+ if(![216,240].includes(settings.verticalResolution)||![settings.offsetX,settings.offsetY].every(n=>Number.isFinite(n)&&Math.abs(n)<=10))throw Error('Confirm the printer vertical resolution and bounded calibration.');
+ const ink=(x,y)=>y<r.height&&(bits[y*stride+(x>>3)]&(128>>(x&7)));
+ let left=r.width,right=-1,top=r.height,bottom=-1;
+ for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++)if(ink(x,y)){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
+ if(right<left)throw Error('The active passbook layout is blank.');
+ const xMm=left*25.4/180+settings.offsetX;
+ if(xMm<0||top*25.4/180+settings.offsetY<1||right*25.4/180+settings.offsetX>profile.maxWidthMm||bottom*25.4/180+settings.offsetY>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
+ const width=right-left+1,bands=[];
+ for(let y=top;y<=bottom;y+=24){
+  const yMm=y*25.4/180+settings.offsetY,bytes=[];
+  for(let x=left;x<=right;x++)for(let block=0;block<3;block++){
+   let byte=0;for(let bit=0;bit<8;bit++)if(ink(x,y+block*8+bit))byte|=1<<bit;
+   bytes.push(byte);if(byte===27)bytes.push(27);
+  }
+  bands.push(Buffer.concat([esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(Math.round(xMm*120/25.4),3)),Buffer.from([13]),esc('!G1'),esc('1C'+digits(width,4)+'000'),Buffer.from(bytes),C.end,C.waitPrint]));
+ }
+ return {feed:esc('L000'),bands,pixels:{left,right,top,bottom},transport:'absolute-24-dot-bands'};
+}
+module.exports={PROFILES,C,status,paper,validateRaster,rasterJob,rasterBands};

@@ -4,6 +4,7 @@ const {fullSuite}=load('suite.cjs');
 const ready=[27,114,80],commandError=[27,114,56],aligned=[27,66,53,66,27,90],released=[27,66,53,65,27,90],inserted=[27,66,53,67,27,90],config=[27,112,81,65,48,32];
 function fixture(replies,approvals={"full-suite":true,"print-and-front-eject":false}){const sent=[],events=[],asked=[];let fenced=0;return {sent,events,asked,get fenced(){return fenced;},io:{rpc:async()=>{const data=replies.shift();if(data===undefined)throw Error('missing fixture reply');return {data:Buffer.from(data).toString('base64'),segments:[],zeroReads:0,quietTimeout:true,limitReached:false};},write:async b=>{sent.push(Buffer.from(b));return {written:b.length};}},log:e=>events.push(e),approve:async a=>{asked.push(a);return approvals[a]===true;},fence:async()=>{fenced++;},wait:async()=>{}};}
 const count=(f,bytes)=>f.sent.filter(b=>b.equals(Buffer.from(bytes))).length;
+const has=(buffer,bytes)=>buffer.includes(Buffer.from(bytes));
 const successReplies=()=>[ready,aligned,config,[],ready,aligned,[],inserted,ready];
 test('bank-style sequence sets automatic mode and page geometry then feeds exactly once',async()=>{
  const f=fixture(successReplies());const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
@@ -26,18 +27,19 @@ test('setup error stops before feed',async()=>{
 test('aligned paper after single feed is observed without retry and blocks graphics',async()=>{
  const f=fixture([ready,aligned,config,[],ready,aligned,[],aligned,aligned,aligned,aligned,aligned,ready]);
  await assert.rejects(fullSuite({...f,resolution:216,passbookType:'horizontal'}),/not confirmed/);
- assert.equal(count(f,[27,76,48,48,48]),1);assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));
+ assert.equal(count(f,[27,76,48,48,48]),1);assert.ok(!f.sent.some(b=>has(b,[27,49,67])));
 });
 test('declined atomic print-and-eject approval sends neither graphics nor eject',async()=>{
  const f=fixture(successReplies());const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(r.printed,false);assert.equal(r.physicalVerified,false);assert.equal(count(f,[27,76,48,48,48]),1);
- assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));assert.equal(count(f,[27,79]),0);assert.equal(r.ejected,false);
+ assert.ok(!f.sent.some(b=>has(b,[27,49,67])));assert.equal(count(f,[27,79]),0);assert.equal(r.ejected,false);
 });
 test('one approved atomic job prints sample then uses ESC O once and confirms released paper',async()=>{
  const f=fixture([...successReplies(),[],released],{'full-suite':true,'print-and-front-eject':true});
  const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(r.printed,true);assert.equal(r.sample,'synthetic-bank-setu');assert.equal(r.ejectCommandSent,true);assert.equal(r.ejected,true);assert.equal(r.postPaper,'released');assert.equal(r.physicalVerified,false);
  assert.equal(count(f,[27,76,48,48,48]),1);assert.equal(count(f,[27,79]),1);assert.equal(count(f,[12]),0);
+ assert.ok(f.sent.filter(b=>has(b,[27,49,67])).every(b=>b.subarray(-3).equals(Buffer.from([27,125,87]))));
 });
 test('front release observation is bounded without resending ESC O',async()=>{
  const f=fixture([...successReplies(),[],inserted,inserted,released],{'full-suite':true,'print-and-front-eject':true});

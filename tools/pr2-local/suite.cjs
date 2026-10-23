@@ -1,11 +1,11 @@
 'use strict';
-const {C,status,paper}=require('./pr2-protocol.cjs');
-const {hex,sampleProof}=require('./core.cjs');
+const {C,status,paper,rasterBands}=require('./pr2-protocol.cjs');
+const {hex,makeSampleRaster}=require('./core.cjs');
 
 // Epson NPD0841-00: reproduce the documented bank-style PR2 start sequence.
 // The earlier isolated ESC } - experiment was rejected by the real device with
 // ESC r 38. It is intentionally not retried here.
-async function fullSuite({io,log,approve,fence,resolution=216,passbookType='horizontal',wait=ms=>new Promise(r=>setTimeout(r,ms))}){
+async function fullSuite({io,log,approve,fence,resolution=216,passbookType='horizontal',sampleRaster,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
  const typeByte={document:0x40,vertical:0x44,horizontal:0x46}[passbookType];
  if(typeByte===undefined)throw Error('Paper type must be document, vertical or horizontal');
  if(![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
@@ -81,12 +81,13 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  // documented front output. This prevents a successfully printed passbook from
  // being stranded because a second prompt was missed.
  if(!await approve('print-and-front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,ejected:false,postPaper:p,physicalVerified:false,requiresHumanConfirmation:true};
- for(const bytes of sampleProof(resolution).slice(1))await tx('suite-passbook-sample',bytes);
- // The real PLQ-20 can be silent while it mechanically finishes a raster. A
- // missing query reply must not be interpreted as READY, but it must also not
- // strand a locally approved print before its already-approved front return.
- // Queue documented ESC O once after a conservative delay; never retry it.
- await wait(2500);
+ const plan=rasterBands(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
+ log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels});
+ // Every small block ends BIM, then queues documented ESC } W. A short host
+ // pace keeps the 64 KB interface buffer from receiving the complete layout at
+ // once. No status bytes are inserted inside image data and no band is retried.
+ for(let i=0;i<plan.bands.length;i++){await tx('suite-passbook-band-'+(i+1)+'-of-'+plan.bands.length,plan.bands[i]);await wait(400);}
+ await wait(500);
  await tx('front-eject',C.eject);
  const ejectReply=await capture('front-eject');
  if(ejectReply.length)throw Error('Unexpected response during front eject: '+hex(ejectReply));

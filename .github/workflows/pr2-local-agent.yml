@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - name: Freeze approved Assam layout with synthetic data
+        run: node scripts/pr2-ui.browser.mjs
       - run: node --test tools/pr2-local/*.test.cjs desktop/pr2.test.cjs
       - run: node tools/pr2-local/build.cjs
       - name: Verify packaged helper handshake only (no printer access)

@@ -24,6 +24,7 @@ const cs=path.join(out,'LocalBridge.cs');fs.writeFileSync(cs,source);
 execFileSync(path.join(process.env.WINDIR,'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),['/nologo','/target:exe','/platform:x64','/r:System.Management.dll','/r:System.Web.Extensions.dll','/out:'+path.join(out,'BankSetu.Pr2Bridge.exe'),cs],{stdio:'inherit'});
 for(const f of ['agent.cjs','core.cjs','diagnostics.cjs','suite.cjs','controller.cjs','controller-main.cjs','Start.cmd','Controller.cmd','mailbox-crypto.cjs','mailbox.cjs','mailbox-session.cjs','pairing-gate.cjs','README.md'])fs.copyFileSync(path.join(__dirname,f),path.join(out,f));
 for(const f of ['pr2-native.cjs','pr2-protocol.cjs'])fs.copyFileSync(path.join(root,'desktop',f),path.join(out,f));
+const sample=path.join(root,'test-evidence/pr2-assam-raster.json');if(!fs.existsSync(sample))throw Error('Approved Assam synthetic raster fixture was not generated');fs.copyFileSync(sample,path.join(out,'assam-sample-raster.json'));
 fs.copyFileSync(process.execPath,path.join(out,'node.exe'));
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(path.join(out,f))).digest('hex');
 fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify({protocol:1,sha256:sha('BankSetu.Pr2Bridge.exe')}));

@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const {PROFILES,C,status,paper,rasterJob}=require('./pr2-protocol.cjs');
+const {PROFILES,C,status,paper,rasterBands}=require('./pr2-protocol.cjs');
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 function createBridge({directory,transport,authorize,progress=()=>{},now=Date.now,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
  const file=path.join(directory,'pr2-state-v1.json');let saved={version:1,preferences:{},jobs:{},fences:{}};
@@ -44,7 +44,7 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
    if(saved.fences[device.id])throw Error('Previous printing was interrupted. Inspect the passbook and acknowledge its result before another job.');
    if(active.has(device.id))throw Error('This printer already has an active request.');
    if(!test&&settings.acceptRaster!==true)throw Error('Confirm the 180 dpi graphics proof; physical alignment has not been verified.');
-   const chunks=rasterJob(raster,settings),job={id,scope,cancelled:false,io:null};active.set(device.id,job);
+   const plan=rasterBands(raster,settings),job={id,scope,cancelled:false,io:null};active.set(device.id,job);
    let transmitted=false;const overallDeadline=now()+180000;
    const check=()=>{authorize(scope);if(now()>overallDeadline)throw Error('Printer job timed out.');if(job.cancelled)throw Error('Printing cancelled.');};
    const notify=message=>progress({id,message});
@@ -59,7 +59,7 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     saved.jobs[id]={scope:scopeHash,deviceId:device.id,state:'sending',time:now()};
     const ids=Object.keys(saved.jobs);for(const old of ids.slice(0,Math.max(0,ids.length-200)))delete saved.jobs[old];persist();transmitted=true;
     notify('Feeding the passbook. Do not remove it.');
-    await job.io.write(chunks[0]);check();
+    await job.io.write(plan.feed);check();
     let inserted;
     for(let attempt=0;attempt<5;attempt++){
      check();inserted=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
@@ -70,11 +70,11 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     if(feedStatus.ready!==true)throw Error('Printer is not ready after feed. Graphics were stopped.');
     if(inserted!=='inserted')throw Error('Paper feed not confirmed ('+inserted+'). Graphics were stopped.');
     notify('Printing the active passbook layout. Do not remove the passbook.');
-    for(const chunk of chunks.slice(1)){check();await job.io.write(chunk);}
+    for(let band=0;band<plan.bands.length;band++){check();notify('Printing passbook band '+(band+1)+' of '+plan.bands.length+'. Do not remove it.');await job.io.write(plan.bands[band]);await wait(400);}
     // The PLQ-20 may be silent while the raster is mechanically completing.
     // Queue the already-approved documented front return after a conservative
     // delay. Never infer readiness from silence and never resend ESC O.
-    await wait(2500);check();
+    await wait(500);check();
     notify('Returning the passbook through the front slot. Do not pull it.');
     await job.io.write(C.eject);
     let released=null,observedInserted=false;
