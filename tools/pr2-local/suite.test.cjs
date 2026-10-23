@@ -12,7 +12,7 @@ const printReplies=(afterEject=[])=>[...successReplies(),...Array.from({length:s
 test('bank-style sequence sets automatic mode and page geometry then feeds exactly once',async()=>{
  const f=fixture(successReplies());const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(r.insertedBy,'bank-style-feed');assert.equal(r.printed,false);assert.equal(r.physicalVerified,false);assert.equal(f.fenced,1);
- for(const command of [[27,46],[27,85,96],[27,83,53],[27,39,70],[27,38,48,48],[27,81,48,51,48,27,90],[27,35,48],[27,76,48,48,48]])assert.equal(count(f,command),1);
+ for(const command of [[27,46],[27,85,96],[27,83,53],[27,39,70],[27,38,48,48],[27,81,48,52,50,27,90],[27,35,48],[27,76,48,48,48]])assert.equal(count(f,command),1);
  assert.equal(count(f,[27,125,45]),0);assert.equal(count(f,[27,45]),0);assert.deepEqual(f.asked,['full-suite','print-and-front-eject']);
 });
 test('known 38 command error is cleared once before bank-style setup',async()=>{
