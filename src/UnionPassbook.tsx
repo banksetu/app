@@ -35,7 +35,7 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
   const quick = formatType === "quickPassbook";
   const photo = c.photoPreview || c.photoDataUrl || c.photoUrl || "";
   const position = (x: number, y: number, width: number): CSSProperties => ({
-    left: `${x}mm`, top: `${y}mm`, width: `${width}mm`,
+    left: `${x}mm`, top: `${12 + (y - 12) * 0.9}mm`, width: `${width}mm`,
   });
   const value = (field: string, text: string, x: number, y: number, w: number, extra: CSSProperties = {}) =>
     <span data-field={field} className="union-value" style={{ ...position(x,y,w), ...(field !== "address" ? {whiteSpace:"nowrap",fontSize:`${Math.min(3.2,w/Math.max(1,text.length*.61))}mm`} : {}), ...extra }}>{text}</span>;
