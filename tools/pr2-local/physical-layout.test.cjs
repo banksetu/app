@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {rasterBandsPhysical}=require('../../desktop/pr2-protocol.cjs');
 const settings={profile:'epson-plq20-pr2-v1',verticalResolution:216,offsetX:0,offsetY:0};
-function rectangle(width,height=24,left=0,right=width-1){
+function rectangle(width,height=32,left=0,right=width-1){
  const stride=Math.ceil(width/8),bits=Buffer.alloc(stride*height);
- for(let y=0;y<height;y++)for(let x=left;x<=right;x++)bits[y*stride+(x>>3)]|=128>>(x&7);
+ for(let y=8;y<height;y++)for(let x=left;x<=right;x++)bits[y*stride+(x>>3)]|=128>>(x&7);
  return {width,height,dpi:180,bits:bits.toString('base64')};
 }
 const close=(actual,expected,tolerance=.001)=>assert.ok(Math.abs(actual-expected)<=tolerance,`${actual} != ${expected}`);
@@ -32,7 +32,7 @@ test('different bank layout widths retain their own physical dimensions',()=>{
 });
 
 test('alignment is a bounded whole-layout translation and never a font scale',()=>{
- const raster=rectangle(300,24,90,269);
+ const raster=rectangle(300,32,90,269);
  const base=rasterBandsPhysical(raster,settings),shifted=rasterBandsPhysical(raster,{...settings,offsetX:2});
  assert.equal(base.physical.sourceWidthMm,shifted.physical.sourceWidthMm);
  assert.equal(base.physical.outputWidthMm,shifted.physical.outputWidthMm);
@@ -41,7 +41,7 @@ test('alignment is a bounded whole-layout translation and never a font scale',()
 });
 
 test('one thin source column never becomes multiple bold native columns',()=>{
- const plan=rasterBandsPhysical(rectangle(20,24,0,0),settings);
+ const plan=rasterBandsPhysical(rectangle(20,32,0,0),settings);
  assert.equal(plan.bands.length,1);
  assert.ok(plan.physical.outputWidthMm<=25.4/120+.0001);
 });
