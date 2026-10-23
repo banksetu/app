@@ -90,7 +90,7 @@ export function wordPassbookProblems(values:ApprovedPassbookValues,quick=false):
     const value=values[key]||'';
     if ([...value].some(char=>WORD_GLYPHS[char]===undefined)) return [`${key}: contains a character unavailable in the Word font`];
     return ([ ...value ].length ? ([...value].length-1)*wordAdvance + WORD_ADVANCE_PT : 0) > slot.end-wordValueX(key,value,quick)
-      ? [`${key}: exceeds the existing printing boundary at Word 10 pt / 80% width plus 2px letter gap`] : [];
+      ? [`${key}: exceeds the existing printing boundary at Word 10 pt / 77% width plus 2px letter gap`] : [];
   });
 }
 
@@ -100,8 +100,8 @@ export function WordPassbookArtwork({values,quick=false,assamInkBoost=false}:{va
     ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*wordAdvance*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
-    width="206mm" height="85mm" role="img" aria-label="Passbook customer information — Courier New 10 pt, 80% width, 2px letter spacing"
-    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:0.198,strokeLinejoin:'round' as const}: {})}}>
+    width="206mm" height="85mm" role="img" aria-label="Passbook customer information — Courier New 10 pt, 77% width, 2px letter spacing"
+    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:0.1485,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y,label.compression)}</g>)}</g>
     {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>
