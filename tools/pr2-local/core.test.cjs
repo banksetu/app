@@ -3,7 +3,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),Module=re
 const m=new Module(path.join(__dirname,'core.cjs'));m.filename=path.join(__dirname,'core.cjs');m.paths=module.paths;
 m.require=id=>id==='./pr2-protocol.cjs'?require('../../desktop/pr2-protocol.cjs'):require(id);
 m._compile(require('node:fs').readFileSync(m.filename,'utf8'),m.filename);
-const {run,proof,widthMeasurement}=m.exports;
+const {run,proof,sampleProof,widthMeasurement}=m.exports;
 function fixture(responses){const sent=[],events=[];let fenced=0,approved=0;return {sent,events,get fenced(){return fenced;},get approved(){return approved;},io:{write:async b=>sent.push(Buffer.from(b)),read:async()=>Buffer.from(responses.shift())},log:e=>events.push(e),fence:async()=>{fenced++;},approve:async()=>{approved++;return true;},wait:async()=>{}};}
 const good=()=>[[27,47,55],[27,114,80],[27,66,53,66,27,90]];
 test('unknown status captured and blocks motion',async()=>{const f=fixture([[27,47,55],[0,0,0]]);await assert.rejects(run({...f,action:'print',resolution:216}),/Unrecognized/);assert.equal(f.sent.length,3);assert.equal(f.events.at(-1).hex,'00 00 00');assert.equal(f.fenced,0);});
@@ -13,6 +13,7 @@ test('declined approval sends no motion',async()=>{const f=fixture(good());await
 test('unknown identity stops before status',async()=>{const f=fixture([[0,0,0]]);await assert.rejects(run({...f,action:'eject'}),/identity/);assert.equal(f.sent.length,2);});
 test('invalid action or resolution sends nothing',async()=>{for(const args of [{action:'shell'},{action:'print',resolution:100}]){const f=fixture([]);await assert.rejects(run({...f,...args}));assert.equal(f.sent.length,0);}});
 test('synthetic proof uses reused raster protocol',()=>{assert.ok(proof(216).length>3);});
+test('synthetic passbook sample is deterministic and contains no customer input',()=>{const a=sampleProof(216),b=sampleProof(216);assert.ok(a.length>3);assert.deepEqual(a,b);});
 test('direct USB print proof rejects stale and shifted frames before motion',async()=>{
  for(const frames of [
   [[27,114,80]],

@@ -33,16 +33,22 @@ test('declined atomic print-and-eject approval sends neither graphics nor eject'
  assert.equal(r.printed,false);assert.equal(r.physicalVerified,false);assert.equal(count(f,[27,76,48,48,48]),1);
  assert.ok(!f.sent.some(b=>b.subarray(0,3).equals(Buffer.from([27,49,67]))));assert.equal(count(f,[27,79]),0);assert.equal(r.ejected,false);
 });
-test('one approved atomic job prints then uses ESC O once and confirms released paper',async()=>{
- const f=fixture([...successReplies(),ready,inserted,[],released,ready],{'full-suite':true,'print-and-front-eject':true});
+test('one approved atomic job prints sample then uses ESC O once and confirms released paper',async()=>{
+ const f=fixture([...successReplies(),[],released],{'full-suite':true,'print-and-front-eject':true});
  const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
- assert.equal(r.printed,true);assert.equal(r.ejected,true);assert.equal(r.postPaper,'released');assert.equal(r.physicalVerified,false);
+ assert.equal(r.printed,true);assert.equal(r.sample,'synthetic-bank-setu');assert.equal(r.ejectCommandSent,true);assert.equal(r.ejected,true);assert.equal(r.postPaper,'released');assert.equal(r.physicalVerified,false);
  assert.equal(count(f,[27,76,48,48,48]),1);assert.equal(count(f,[27,79]),1);assert.equal(count(f,[12]),0);
 });
 test('front release observation is bounded without resending ESC O',async()=>{
- const f=fixture([...successReplies(),ready,inserted,[],inserted,inserted,released,ready],{'full-suite':true,'print-and-front-eject':true});
+ const f=fixture([...successReplies(),[],inserted,inserted,released],{'full-suite':true,'print-and-front-eject':true});
  const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(r.printed,true);assert.equal(r.ejected,true);assert.equal(count(f,[27,79]),1);
+});
+test('silent USB observation never becomes success and never resends ESC O',async()=>{
+ const f=fixture([...successReplies(),[],...Array.from({length:10},()=>[])],{'full-suite':true,'print-and-front-eject':true});
+ const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
+ assert.equal(r.printed,true);assert.equal(r.ejectCommandSent,true);assert.equal(r.ejected,false);assert.equal(r.postPaper,'unobserved');assert.equal(r.physicalVerified,false);
+ assert.equal(count(f,[27,79]),1);
 });
 test('invalid options reject before approval, fence and USB writes',async()=>{
  for(const args of [{resolution:100,passbookType:'horizontal'},{resolution:216,passbookType:'unknown'}]){const f=fixture([]);await assert.rejects(fullSuite({...f,...args}));assert.equal(f.sent.length,0);assert.equal(f.fenced,0);}

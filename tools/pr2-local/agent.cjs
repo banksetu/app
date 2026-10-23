@@ -9,7 +9,7 @@ async function main(){
  const output=path.join(process.env.LOCALAPPDATA,'BankSetu-PR2-LocalTest');fs.mkdirSync(output,{recursive:true});
  const lock=path.join(output,'agent.lock');const fd=fs.openSync(lock,'wx');
  const report=path.join(output,'diagnostic-'+new Date().toISOString().replace(/[:.]/g,'-')+'.jsonl');
- const log=e=>{const row={time:new Date().toISOString(),...e};fs.appendFileSync(report,JSON.stringify(row)+'\n');const shown=e.label==='synthetic-print'&&e.direction==='TX'?{...row,hex:'[saved in private local report]',bytes:e.hex.split(' ').length}:row;console.log(JSON.stringify(shown));};
+ const log=e=>{const row={time:new Date().toISOString(),...e};fs.appendFileSync(report,JSON.stringify(row)+'\n');const shown=/print/.test(e.label||'')&&e.direction==='TX'?{...row,hex:'[saved in private local report]',bytes:e.hex.split(' ').length}:row;console.log(JSON.stringify(shown));};
  const prompt=readline.createInterface({input:process.stdin,output:process.stdout});let io;
  try{
  log({agent:'local-pr2-v1',source:fs.readFileSync(path.join(base,'SOURCE.txt'),'utf8').trim(),physicalVerified:false});
@@ -28,6 +28,7 @@ async function main(){
  }
  const action=await prompt.question('Action (diagnose / full-suite / measure-width / print): ');
  if(!['diagnose','full-suite','measure-width','print'].includes(action))throw Error('Only diagnostic, consolidated full suite, one measured feed or one synthetic print proof is available');
+ if(action==='full-suite')console.log('Full suite prints synthetic Bank Setu sample data, waits for raster completion, then sends one front eject. It never retries motion.');
  const resolution=['print','full-suite'].includes(action)?Number(await prompt.question('Printer configuration vertical resolution (216 or 240): ')):undefined;
  const passbookType=action==='full-suite'?await prompt.question('Test paper type (horizontal / vertical / document): '):undefined;
  await io.open(devices[Number(index)],{});

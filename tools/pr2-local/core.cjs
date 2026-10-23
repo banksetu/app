@@ -16,6 +16,29 @@ function proof(resolution){
  for(let y=36;y<126;y++)for(let x=90;x<270;x++)if(y===36||y===125||x===90||x===269)bits[y*stride+(x>>3)]|=128>>(x&7);
  return rasterJob({dpi:180,width,height,bits:bits.toString('base64')},{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
 }
+const FONT={
+ ' ':['00000','00000','00000','00000','00000','00000','00000'],'-':['00000','00000','00000','11111','00000','00000','00000'],'/':['00001','00010','00100','01000','10000','00000','00000'],':':['00000','00100','00100','00000','00100','00100','00000'],
+ '0':['01110','10001','10011','10101','11001','10001','01110'],'1':['00100','01100','00100','00100','00100','00100','01110'],'2':['01110','10001','00001','00010','00100','01000','11111'],'3':['11110','00001','00001','01110','00001','00001','11110'],'4':['00010','00110','01010','10010','11111','00010','00010'],'5':['11111','10000','10000','11110','00001','00001','11110'],'6':['01110','10000','10000','11110','10001','10001','01110'],'7':['11111','00001','00010','00100','01000','01000','01000'],'8':['01110','10001','10001','01110','10001','10001','01110'],'9':['01110','10001','10001','01111','00001','00001','01110'],
+ A:['01110','10001','10001','11111','10001','10001','10001'],B:['11110','10001','10001','11110','10001','10001','11110'],C:['01111','10000','10000','10000','10000','10000','01111'],D:['11110','10001','10001','10001','10001','10001','11110'],E:['11111','10000','10000','11110','10000','10000','11111'],F:['11111','10000','10000','11110','10000','10000','10000'],G:['01111','10000','10000','10111','10001','10001','01111'],H:['10001','10001','10001','11111','10001','10001','10001'],I:['01110','00100','00100','00100','00100','00100','01110'],J:['00001','00001','00001','00001','10001','10001','01110'],K:['10001','10010','10100','11000','10100','10010','10001'],L:['10000','10000','10000','10000','10000','10000','11111'],M:['10001','11011','10101','10101','10001','10001','10001'],N:['10001','11001','10101','10011','10001','10001','10001'],O:['01110','10001','10001','10001','10001','10001','01110'],P:['11110','10001','10001','11110','10000','10000','10000'],Q:['01110','10001','10001','10001','10101','10010','01101'],R:['11110','10001','10001','11110','10100','10010','10001'],S:['01111','10000','10000','01110','00001','00001','11110'],T:['11111','00100','00100','00100','00100','00100','00100'],U:['10001','10001','10001','10001','10001','10001','01110'],V:['10001','10001','10001','10001','10001','01010','00100'],W:['10001','10001','10001','10101','10101','10101','01010'],X:['10001','10001','01010','00100','01010','10001','10001'],Y:['10001','10001','01010','00100','00100','00100','00100'],Z:['11111','00001','00010','00100','01000','10000','11111']
+};
+function sampleProof(resolution){
+ const width=1260,height=420,stride=Math.ceil(width/8),bits=Buffer.alloc(stride*height);
+ const dot=(x,y)=>{if(x>=0&&x<width&&y>=0&&y<height)bits[y*stride+(x>>3)]|=128>>(x&7);};
+ const line=(x1,y1,x2,y2)=>{if(y1===y2)for(let x=x1;x<=x2;x++)dot(x,y1);else for(let y=y1;y<=y2;y++)dot(x1,y);};
+ const text=(x,y,value,scale=3)=>{for(const ch of value){const rows=FONT[ch]||FONT[' '];for(let ry=0;ry<7;ry++)for(let rx=0;rx<5;rx++)if(rows[ry][rx]==='1')for(let sy=0;sy<scale;sy++)for(let sx=0;sx<scale;sx++)dot(x+rx*scale+sx,y+ry*scale+sy);x+=6*scale;}};
+ // Synthetic content only. Geometry is intentionally independent of every
+ // approved customer/passbook template and exists solely to verify PR2 output.
+ line(72,28,1188,28);line(72,374,1188,374);line(72,28,72,374);line(1188,28,1188,374);
+ text(108,55,'BANK SETU PR2 TEST',4);
+ text(108,105,'SYNTHETIC PASSBOOK SAMPLE',3);
+ line(108,136,1110,136);
+ text(108,160,'NAME  TEST CUSTOMER',3);
+ text(108,202,'A/C   000000000000',3);
+ text(108,244,'ID    TEST-0001',3);
+ text(108,286,'DATE  23-10-2026',3);
+ text(108,330,'NO CUSTOMER DATA',3);
+ return rasterJob({dpi:180,width,height,bits:bits.toString('base64')},{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
+}
 async function run({io,action,resolution,approve,log,fence,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
  if(!['diagnose','measure-width','feed','print','eject'].includes(action))throw Error('Unsupported action');
  if(action==='print'&&![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
@@ -66,4 +89,4 @@ async function run({io,action,resolution,approve,log,fence,wait=ms=>new Promise(
  p=paper(await query('post-paper',C.paper,6));log({paper:p});
  return {transportAcknowledged:true,physicalVerified:false,requiresHumanConfirmation:true};
 }
-module.exports={run,hex,proof,widthMeasurement};
+module.exports={run,hex,proof,sampleProof,widthMeasurement};

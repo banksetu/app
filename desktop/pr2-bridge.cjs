@@ -71,23 +71,22 @@ function createBridge({directory,transport,authorize,progress=()=>{},now=Date.no
     if(inserted!=='inserted')throw Error('Paper feed not confirmed ('+inserted+'). Graphics were stopped.');
     notify('Printing the active passbook layout. Do not remove the passbook.');
     for(const chunk of chunks.slice(1)){check();await job.io.write(chunk);}
-    // A completed OS write is not proof that the mechanical raster pass ended.
-    // Wait briefly, then require the printer to remain READY + INSERTED before
-    // sending the documented front-output command exactly once.
-    await wait(750);check();
-    const printStatus=status(await exchange(job.io,C.status,3,device.transport==='usb-direct'),{allowNoPaper:true});
-    const postPrintPaper=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
-    if(printStatus.ready!==true||postPrintPaper!=='inserted')throw Error('Print completion was not confirmed; front eject was not sent.');
+    // The PLQ-20 may be silent while the raster is mechanically completing.
+    // Queue the already-approved documented front return after a conservative
+    // delay. Never infer readiness from silence and never resend ESC O.
+    await wait(2500);check();
     notify('Returning the passbook through the front slot. Do not pull it.');
     await job.io.write(C.eject);
-    let released='inserted';
+    let released=null,observedInserted=false;
     for(let attempt=0;attempt<10;attempt++){
-     check();released=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));
+     check();
+     try{released=paper(await exchange(job.io,C.paper,6,device.transport==='usb-direct'));observedInserted=observedInserted||released==='inserted';}
+     catch(error){if(device.transport!=='usb-direct'||!/Incomplete or mixed/.test(error.message))throw error;released=null;}
      if(['absent','released'].includes(released))break;
      if(attempt<9)await wait(500); // Observe only; never resend ESC O.
     }
-    check();status(await exchange(job.io,C.status,3,device.transport==='usb-direct'),{allowNoPaper:true});
-    if(!['absent','released'].includes(released))throw Error('Print data was transmitted, but paper release was not confirmed.');
+    if(observedInserted&&!['absent','released'].includes(released))throw Error('Front return was sent once, but inserted paper remained.');
+    if(!['absent','released'].includes(released))throw Error('Front return was sent once, but the direct USB status channel stayed silent; inspect the paper.');
     check();saved.jobs[id].state='completed';saved.preferences[scopeHash]={deviceId:device.id,...settings};persist();
     return {state:'completed',completed:true,message:'PR2 device acknowledged processing and paper release. Inspect the physical print alignment.'};
    }catch(error){
