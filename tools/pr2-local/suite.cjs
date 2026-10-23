@@ -57,7 +57,9 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
   ['cut-sheet-passbook',Buffer.from([27,83,53])],
   ['paper-type-'+passbookType,Buffer.from([27,39,typeByte])],
   ['line-space-default',Buffer.from([27,38,48,48])],
-  ['page-length-30-lines',Buffer.from([27,81,48,51,48,27,90])],
+  // 42 default-spaced lines = 177.8 mm. The frozen Assam layout reaches about
+  // 166.7 mm; the former 30-line/127 mm page ended at raster band 12 with ESC r 38.
+  ['page-length-42-lines',Buffer.from([27,81,48,52,50,27,90])],
   ['top-edge-reference',Buffer.from([27,35,48])],
  ];
  for(const [label,command] of setup)await tx(label,command);
