@@ -6,8 +6,8 @@ const device={id:'synthetic-device',name:'EPSON PLQ-20',transport:'usb-direct'},
 function raster(){const bits=Buffer.alloc(100);bits[10]=128;bits[11]=128;bits[13]=128;bits[14]=128;return {width:8,height:100,dpi:180,bits:bits.toString('base64')};}
 function fixture(t,options={}){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-pr2-'));t.after(()=>fs.rmSync(directory,{force:true,recursive:true}));
- let time=0,last,ejected=false,closed=false,writes=[],paperIndex=0,fail=options.fail;
- const io={async handshake(){if(options.offline)throw Error('Bridge unavailable');},async list(){return {devices:options.devices||[device],queues:[{name:'Default office laser'}]};},async open(){closed=false;ejected=false;last=null;},close(){closed=true;},async write(b){if(closed)throw Error('closed');last=b;writes.push(b);if(fail&&b.equals(C.end))throw Error('communication lost');if(b.equals(C.eject))ejected=true;},async read(){if(last.equals(C.identity))return Buffer.from(options.wrongMode?[27,47,47]:[27,47,55]);if(last.equals(C.status))return Buffer.from([27,114,options.status||80]);if(last.equals(C.paper))return Buffer.from([27,66,53,ejected?65:(options.paper?.[Math.min(paperIndex++,options.paper.length-1)]||67),27,90]);throw Error('unexpected read');},async capture(){if(!last)return Buffer.from(options.stale?[27,114,80]:[]);if(last.equals(C.start))return Buffer.from(options.afterStart?[27,47,55]:[]);if(options.shifted&&last.equals(C.status))return Buffer.from([27,47,55]);return io.read();}};
+ let time=0,last,ejected=false,ejectReads=0,closed=false,writes=[],paperIndex=0,fail=options.fail;
+ const io={async handshake(){if(options.offline)throw Error('Bridge unavailable');},async list(){return {devices:options.devices||[device],queues:[{name:'Default office laser'}]};},async open(){closed=false;ejected=false;ejectReads=0;last=null;},close(){closed=true;},async write(b){if(closed)throw Error('closed');last=b;writes.push(b);if(fail&&b.equals(C.end))throw Error('communication lost');if(b.equals(C.eject))ejected=true;},async read(){if(last.equals(C.identity))return Buffer.from(options.wrongMode?[27,47,47]:[27,47,55]);if(last.equals(C.status))return Buffer.from([27,114,options.status||80]);if(last.equals(C.paper))return Buffer.from([27,66,53,ejected?(ejectReads++<(options.releaseDelay||0)?67:65):(options.paper?.[Math.min(paperIndex++,options.paper.length-1)]||67),27,90]);throw Error('unexpected read');},async capture(){if(!last)return Buffer.from(options.stale?[27,114,80]:[]);if(last.equals(C.start))return Buffer.from(options.afterStart?[27,47,55]:[]);if(options.shifted&&last.equals(C.status))return Buffer.from([27,47,55]);return io.read();}};
  const args={directory,transport:()=>io,authorize:s=>{assert.equal(s,scope,'workspace authorization');},now:()=>time,wait:async ms=>{time+=ms;if(options.onWait)await options.onWait();},progress:options.progress};
  const bridge=createBridge(args),request={scope,id:crypto.randomUUID(),device,settings,raster:raster()};return {bridge,request,writes,io,directory,restart:()=>createBridge(args),clearFail:()=>fail=false};
 }
@@ -27,6 +27,10 @@ test('device completion is confirmed; repeat identity is not resent even after r
  const f=fixture(t);assert.equal((await f.bridge.print(f.request)).completed,true);const count=f.writes.length;
  assert.equal((await f.restart().print(f.request)).replayed,true);assert.equal(f.writes.length,count);
  const disk=fs.readFileSync(path.join(f.directory,'pr2-state-v1.json'),'utf8');assert.ok(!disk.includes(f.request.raster.bits));assert.ok(!disk.includes(scope));
+});
+test('front release waits without resending ESC O',async t=>{
+ const f=fixture(t,{releaseDelay:3});assert.equal((await f.bridge.print(f.request)).completed,true);
+ assert.equal(f.writes.filter(b=>b.equals(C.eject)).length,1);
 });
 test('absent paper waits for later insertion without printing early',async t=>{
  const notices=[];const f=fixture(t,{paper:[64,64,67],progress:e=>notices.push(e.message)});

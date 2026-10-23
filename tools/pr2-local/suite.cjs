@@ -77,25 +77,28 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  const after=status(await query('after-bank-style-feed-status',C.status,3),{allowNoPaper:true});
  if(after.ready!==true||p!=='inserted')throw Error('Bank-style feed not confirmed; status ready='+(after.ready===true)+' paper='+p+'. No graphics or retry sent.');
 
- let printed=false,final={status:after,paper:p};
- if(await approve('synthetic-print')){
-  for(const bytes of proof(resolution).slice(1))await tx('suite-synthetic-print',bytes);
-  printed=true;final=await rawState('post-suite-print');
-  if(final.error||final.status?.ready!==true||final.paper!=='inserted')throw Error('Post-print state is uncertain; front eject not sent');
- }
- if(!await approve('front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed,ejected:false,postPaper:final.paper||null,physicalVerified:false,requiresHumanConfirmation:true};
+ // One explicit local approval covers one synthetic print followed by one
+ // documented front output. This prevents a successfully printed passbook from
+ // being stranded because a second prompt was missed.
+ if(!await approve('print-and-front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,ejected:false,postPaper:p,physicalVerified:false,requiresHumanConfirmation:true};
+ for(const bytes of proof(resolution).slice(1))await tx('suite-synthetic-print',bytes);
+ // A native write ACK only means Windows accepted the bytes. Give the printer
+ // time to finish the raster, then require strict READY + INSERTED before eject.
+ await wait(750);
+ const final=await rawState('post-suite-print');
+ if(final.error||final.status?.ready!==true||final.paper!=='inserted')throw Error('Post-print state is uncertain; front eject not sent');
  await tx('front-eject',C.eject);
  const ejectReply=await capture('front-eject');
  if(ejectReply.length)throw Error('Unexpected response during front eject: '+hex(ejectReply));
  let released='inserted';
- for(let attempt=0;attempt<5;attempt++){
+ for(let attempt=0;attempt<10;attempt++){
   released=paper(await query('after-front-eject-paper',C.paper,6));log({paper:released,ejectObservation:attempt+1});
   if(['released','absent'].includes(released))break;
-  if(attempt<4)await wait(500);
+  if(attempt<9)await wait(500);
  }
  const ejectStatusBytes=await query('after-front-eject-status',C.status,3);
  let ejectStatus=null;try{ejectStatus=status(ejectStatusBytes,{allowNoPaper:true});}catch(e){throw Error('Front eject status '+hex(ejectStatusBytes)+': '+e.message);}
  if(!['released','absent'].includes(released))throw Error('Front eject was not confirmed; do not pull against resistance');
- return {configurationValid,insertedBy:'bank-style-feed',printed,ejected:true,postPaper:released,statusReady:ejectStatus.ready===true,physicalVerified:false,requiresHumanConfirmation:true};
+ return {configurationValid,insertedBy:'bank-style-feed',printed:true,ejected:true,postPaper:released,statusReady:ejectStatus.ready===true,physicalVerified:false,requiresHumanConfirmation:true};
 }
 module.exports={fullSuite};
