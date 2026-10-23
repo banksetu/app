@@ -2,12 +2,13 @@
 const {C,status,paper}=require('./pr2-protocol.cjs');
 const {hex,proof}=require('./core.cjs');
 
-// One bounded, locally approved investigation. Each documented motion command
-// is sent at most once. A later candidate is allowed only while the printer
-// still reports READY + DOCUMENT ALIGNED. The first insertion stops the suite.
-async function fullSuite({io,log,approve,fence,resolution=216,passbookType='horizontal'}){
+// Epson NPD0841-00: reproduce the documented bank-style PR2 start sequence.
+// The earlier isolated ESC } - experiment was rejected by the real device with
+// ESC r 38. It is intentionally not retried here.
+async function fullSuite({io,log,approve,fence,resolution=216,passbookType='horizontal',wait=ms=>new Promise(r=>setTimeout(r,ms))}){
  const typeByte={document:0x40,vertical:0x44,horizontal:0x46}[passbookType];
  if(typeByte===undefined)throw Error('Paper type must be document, vertical or horizontal');
+ if(![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
  const capture=async label=>{
   const r=await io.rpc('capture',{},5000),bytes=Buffer.from(r.data,'base64');
   log({direction:'RX',label,hex:hex(bytes),segments:r.segments||[],zeroReads:r.zeroReads||0,quietTimeout:!!r.quietTimeout,limitReached:!!r.limitReached});
@@ -15,61 +16,70 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
   return bytes;
  };
  const tx=async(label,bytes)=>{log({direction:'TX',label,hex:hex(bytes)});const r=await io.write(bytes);log({direction:'WRITE-ACK',label,written:r.written});};
- const exact=async(label,command,length)=>{
-  await tx(label,command);const bytes=await capture(label);
-  if(bytes.length!==length)throw Error(label+' returned '+bytes.length+' bytes; expected '+length);
-  return bytes;
+ const query=async(label,command,length)=>{await tx(label,command);const bytes=await capture(label);if(bytes.length!==length)throw Error(label+' returned '+bytes.length+' bytes; expected '+length);return bytes;};
+ const rawState=async prefix=>{
+  const sbytes=await query(prefix+'-status',C.status,3),pbytes=await query(prefix+'-paper',C.paper,6);
+  let parsedStatus=null,parsedPaper=null,error=null;
+  try{parsedStatus=status(sbytes,{allowNoPaper:true});}catch(e){error=e;}
+  try{parsedPaper=paper(pbytes);}catch(e){error=error||e;}
+  log({stage:prefix,status:parsedStatus,paper:parsedPaper,statusHex:hex(sbytes),error:error?.message||null});
+  return {sbytes,pbytes,status:parsedStatus,paper:parsedPaper,error};
  };
- const state=async prefix=>{
-  const sbytes=await exact(prefix+'-status',C.status,3);
-  const pbytes=await exact(prefix+'-paper',C.paper,6);
-  let parsedStatus;try{parsedStatus=status(sbytes,{allowNoPaper:true});}catch(error){return {sbytes,pbytes,error,statusHex:hex(sbytes)};}
-  let parsedPaper;try{parsedPaper=paper(pbytes);}catch(error){return {sbytes,pbytes,error,statusHex:hex(sbytes)};}
-  log({stage:prefix,status:parsedStatus,paper:parsedPaper});
-  return {sbytes,pbytes,status:parsedStatus,paper:parsedPaper};
- };
- if(![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
+ const requireReadyAligned=s=>{if(s.error||s.status?.ready!==true||s.paper!=='aligned')throw Error('Bank-style setup requires READY + DOCUMENT ALIGNED; status='+hex(s.sbytes)+' paper='+(s.paper||'unknown'));};
  if(!await approve('full-suite'))throw Error('Local approval declined');
  await fence();
 
+ // A prior rejected experiment leaves the documented command-error status and
+ // blinking Ready light. ESC l clears only that error; it does not initialize,
+ // feed, eject or retry the rejected command.
+ let current=await rawState('suite-entry');
+ if(current.sbytes.equals(Buffer.from([27,114,56]))){
+  if(current.paper!=='aligned')throw Error('Command error is present but paper is not aligned; inspect locally');
+  await tx('clear-prior-command-error',Buffer.from([27,108]));
+  const resetReply=await capture('clear-prior-command-error');
+  if(resetReply.length)throw Error('Unexpected response while clearing prior command error');
+  current=await rawState('after-error-clear');
+ }
+ requireReadyAligned(current);
+
  await tx('configuration',Buffer.from([27,105]));
  const configuration=await capture('configuration');
- const configurationValid=configuration.length===6&&configuration[0]===27&&configuration[1]===112;
- log({configurationValid,configurationHex:hex(configuration)});
- if(configuration.length&&!configurationValid)throw Error('Unexpected PR2 configuration response; suite stopped');
+ const configurationValid=configuration.length===6&&configuration[0]===27&&configuration[1]===112&&configuration[2]===81;
+ log({configurationValid,configurationHex:hex(configuration),emulation:configuration[2]===81?'PR2':'not-PR2'});
+ if(!configurationValid)throw Error('Printer configuration did not confirm PR2; suite stopped');
 
- await tx('paper-type-'+passbookType,Buffer.from([27,39,typeByte]));
- const typeReply=await capture('paper-type-'+passbookType);
- if(typeReply.length)throw Error('Unexpected response after paper-type setting; suite stopped');
- let current=await state('after-paper-type');
- if(current.error)throw current.error;
- if(current.status.ready!==true||current.paper!=='aligned')throw Error('Full suite requires READY + DOCUMENT ALIGNED before motion');
-
- const candidates=[
-  {name:'width-measurement',command:Buffer.from([27,125,45]),measurement:true},
-  {name:'length-measurement',command:Buffer.from([27,45]),measurement:true},
-  {name:'absolute-position-feed',command:Buffer.from([27,76,48,48,48]),measurement:false},
+ // Default is manual operation. The bank-style client keeps only Power lit by
+ // selecting automatic mode and automatic paper detection (n=0x60).
+ const setup=[
+  ['automatic-operation-mode',Buffer.from([27,46])],
+  ['automatic-paper-detection',Buffer.from([27,85,96])],
+  ['cut-sheet-passbook',Buffer.from([27,83,53])],
+  ['paper-type-'+passbookType,Buffer.from([27,39,typeByte])],
+  ['line-space-default',Buffer.from([27,38,48,48])],
+  ['page-length-30-lines',Buffer.from([27,81,48,51,48,27,90])],
+  ['top-edge-reference',Buffer.from([27,35,48])],
  ];
- const attempts=[];
- for(const candidate of candidates){
-  await tx(candidate.name,candidate.command);
-  const response=await capture(candidate.name);
-  const measurementValid=candidate.measurement&&response.length===6&&response[0]===27&&response[1]===83&&response.subarray(2).every(x=>x>=48&&x<=57);
-  if(response.length&&!measurementValid)throw Error(candidate.name+' returned unexpected bytes; suite stopped');
-  current=await state('after-'+candidate.name);
-  attempts.push({name:candidate.name,responseHex:hex(response),measurementValid,statusHex:hex(current.sbytes),paper:current.paper||null,error:current.error?.message||null});
-  log({suiteAttempt:attempts.at(-1)});
-  if(current.error)throw Error(candidate.name+' status '+hex(current.sbytes)+': '+current.error.message);
-  if(current.status.ready!==true)throw Error(candidate.name+' left printer non-ready; suite stopped without reset');
-  if(current.paper==='inserted'){
-   if(!await approve('synthetic-print'))return {configurationValid,attempts,insertedBy:candidate.name,printed:false,physicalVerified:false};
-   const chunks=proof(resolution);
-   for(const bytes of chunks.slice(1))await tx('suite-synthetic-print',bytes);
-   const final=await state('post-suite-print');
-   return {configurationValid,attempts,insertedBy:candidate.name,printed:true,postPaper:final.paper||null,physicalVerified:false,requiresHumanConfirmation:true};
-  }
-  if(current.paper!=='aligned')throw Error(candidate.name+' changed paper to '+current.paper+'; suite stopped');
+ for(const [label,command] of setup)await tx(label,command);
+ const unsolicited=await capture('bank-style-setup');
+ if(unsolicited.length&&!unsolicited.equals(Buffer.from([27,114,37])))throw Error('Unexpected response during bank-style setup: '+hex(unsolicited));
+ current=await rawState('after-bank-style-setup');requireReadyAligned(current);
+
+ // One documented feed to printable top. Never resend it.
+ await tx('bank-style-feed',Buffer.from([27,76,48,48,48]));
+ const feedReply=await capture('bank-style-feed');
+ if(feedReply.length)throw Error('Unexpected response during bank-style feed: '+hex(feedReply));
+ let p='aligned';
+ for(let attempt=0;attempt<5;attempt++){
+  p=paper(await query('after-bank-style-feed-paper',C.paper,6));log({paper:p,observation:attempt+1});
+  if(p!=='aligned')break;
+  if(attempt<4)await wait(500);
  }
- return {configurationValid,attempts,insertedBy:null,printed:false,physicalVerified:false,requiresHumanConfirmation:true};
+ const after=status(await query('after-bank-style-feed-status',C.status,3),{allowNoPaper:true});
+ if(after.ready!==true||p!=='inserted')throw Error('Bank-style feed not confirmed; status ready='+(after.ready===true)+' paper='+p+'. No graphics or retry sent.');
+
+ if(!await approve('synthetic-print'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,physicalVerified:false,requiresHumanConfirmation:true};
+ for(const bytes of proof(resolution).slice(1))await tx('suite-synthetic-print',bytes);
+ const final=await rawState('post-suite-print');
+ return {configurationValid,insertedBy:'bank-style-feed',printed:true,postPaper:final.paper||null,physicalVerified:false,requiresHumanConfirmation:true};
 }
 module.exports={fullSuite};

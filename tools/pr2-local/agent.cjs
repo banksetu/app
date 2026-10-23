@@ -36,7 +36,8 @@ async function main(){
  const diagnostic=await require('./diagnostics.cjs').diagnose({io,log});
  if(action==='print'&&(!diagnostic.diagnosticFramesMatched||!diagnostic.statusReady||!['aligned','inserted'].includes(diagnostic.paperState)))throw Error('Strict ready status and aligned synthetic paper are required before the print proof');
  if(action==='measure-width'&&(!diagnostic.diagnosticFramesMatched||!diagnostic.statusReady||diagnostic.paperState!=='aligned'))throw Error('Strict ready status and newly aligned disposable paper are required before measured feed');
- if(action==='full-suite'&&(!diagnostic.diagnosticFramesMatched||!diagnostic.statusReady||diagnostic.paperState!=='aligned'))throw Error('Strict ready status and newly aligned disposable test passbook are required before the full suite');
+ const recoverableCommandError=diagnostic.identityMatched&&diagnostic.cleanInput&&diagnostic.statusFrameMatched&&diagnostic.statusCode===56&&diagnostic.paperFrameMatched&&diagnostic.paperState==='aligned';
+ if(action==='full-suite'&&!((diagnostic.diagnosticFramesMatched&&diagnostic.statusReady&&diagnostic.paperState==='aligned')||recoverableCommandError))throw Error('Strict PR2 identity plus READY/ALIGNED or the known recoverable command-error state is required before the full suite');
  const approve=async a=>await prompt.question('Local approval for '+a+'? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase();
  const fence=async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'});
  const result=action==='diagnose'?diagnostic:action==='full-suite'?await require('./suite.cjs').fullSuite({io,log,approve,fence,resolution,passbookType}):await run({io,action,resolution,log,approve,fence});

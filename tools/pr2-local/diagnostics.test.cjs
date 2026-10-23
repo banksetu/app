@@ -22,3 +22,9 @@ test('valid no-document frame is not print-ready',async()=>{
  assert.equal(r.diagnosticFramesMatched,true);
  assert.equal(r.statusReady,false);
 });
+test('strict command-error frame is exposed for bounded local recovery only',async()=>{
+ const f=fixture([[],[],[27,47,55],[27,114,56],[27,66,53,66,27,90]]);
+ const r=await diagnose(f);
+ assert.equal(r.diagnosticFramesMatched,false);assert.equal(r.identityMatched,true);assert.equal(r.cleanInput,true);
+ assert.equal(r.statusFrameMatched,true);assert.equal(r.statusCode,56);assert.equal(r.paperFrameMatched,true);assert.equal(r.paperState,'aligned');
+});

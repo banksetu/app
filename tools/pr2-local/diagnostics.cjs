@@ -28,7 +28,7 @@ async function diagnose({io,log}){
  try{const parsed=status(st.bytes,{allowNoPaper:true});statusValid=true;statusReady=parsed.ready===true;}catch(e){log({stage:'status',error:e.message,received:hex(st.bytes),expected:'1b 72 xx',identityInsteadOfStatus:st.bytes.equals(identity)});}
  try{paperState=paper(p.bytes);paperValid=true;log({paper:paperState});}catch(e){log({stage:'paper',error:e.message});}
  const matched=id.bytes.equals(identity)&&statusValid&&paperValid&&clean;
- const result={diagnosticFramesMatched:matched,statusReady,paperState,physicalVerified:false,motionAuthorized:false,
+ const result={diagnosticFramesMatched:matched,identityMatched:id.bytes.equals(identity),cleanInput:clean,statusFrameMatched:classify(st.bytes)==='status-frame',statusCode:st.bytes.length===3?st.bytes[2]:null,paperFrameMatched:paperValid,statusReady,paperState,physicalVerified:false,motionAuthorized:false,
   finding:shifted?'response association unresolved; a late or stale frame was observed; no readiness inferred':matched?'strict-frames-match; physical verification still required':'incomplete, unexpected, stale or mixed response; no readiness inferred'};
  log({result});return result;
 }
