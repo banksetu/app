@@ -26,6 +26,10 @@ const WORD_LETTER_GAP_PT = 1.125;
 // One CSS pixel at 96 DPI. The PLQ-20 proof needs this smaller gap so adjacent
 // 70%-width glyphs stay distinct without restoring the normal 1.5 px tracking.
 const PR2_MASTER_LETTER_GAP_PT = 0.75;
+// The accepted physical sample uses a 10 CSS-pixel face. SVG geometry is in
+// points, therefore 10 px at 96 dpi is 7.5 pt. Treating the number as 10 pt
+// made every PR2 glyph and character advance 4/3 too large.
+const PR2_MASTER_FONT_SIZE_PT = 7.5;
 const wordAdvance = WORD_ADVANCE_PT + WORD_LETTER_GAP_PT;
 const leftInk=(value:string)=> (WORD_INK_BOUNDS[value[0]]?.[0] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
 const rightInk=(value:string)=> (value.length-1)*wordAdvance+(WORD_INK_BOUNDS[value.at(-1)||'']?.[1] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
@@ -98,19 +102,22 @@ export function wordPassbookProblems(values:ApprovedPassbookValues,quick=false):
 }
 
 export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2MasterTypography=false}:{values:ApprovedPassbookValues;quick?:boolean;assamInkBoost?:boolean;pr2MasterTypography?:boolean}) {
-  // The owner's Word master is Courier New 10 pt with w:w=70 and no added
-  // tracking. The normal approved UI renderer deliberately retains its later
-  // 10.2 pt / 1.5 px review adjustment. The isolated PR2 physical proof may
-  // select the requested PR2 metrics without changing that production default.
-  const fontSize=pr2MasterTypography?10:WORD_FONT_SIZE_PT;
-  const advance=WORD_ADVANCE_PT+(pr2MasterTypography?PR2_MASTER_LETTER_GAP_PT:WORD_LETTER_GAP_PT);
+  // The isolated PR2 proof uses the accepted 10 CSS-pixel face, 70% glyph
+  // width and exactly 1 CSS pixel of tracking. Scale the Courier advance with
+  // the face as well as the glyph; otherwise the glyph shrinks while its cell
+  // stays wide and the physical result no longer looks 70% compressed.
+  // The normal approved UI remains 10.2 pt / 1.5 px and is not changed here.
+  const fontSize=pr2MasterTypography?PR2_MASTER_FONT_SIZE_PT:WORD_FONT_SIZE_PT;
+  const advance=pr2MasterTypography
+    ? WORD_ADVANCE_PT*(PR2_MASTER_FONT_SIZE_PT/10)+PR2_MASTER_LETTER_GAP_PT
+    : WORD_ADVANCE_PT+WORD_LETTER_GAP_PT;
   const unit=fontSize/WORD_FONT_UNITS;
   const text=(value:string,x:number,y:number,compression=1)=>[...value].map((char,index)=>WORD_GLYPHS[char]
     ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*advance*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
-    width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?'Passbook customer information — Courier New 10 pt, 70% width, 1px letter spacing':'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
-    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:0.13,strokeLinejoin:'round' as const}: {})}}>
+    width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?'Passbook customer information — Courier New 10px, 70% width, 1px letter spacing':'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
+    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:pr2MasterTypography?0.1:0.13,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y,label.compression)}</g>)}</g>
     {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>

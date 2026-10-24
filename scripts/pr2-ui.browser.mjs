@@ -6,9 +6,9 @@ fs.mkdirSync('test-evidence',{recursive:true});
 import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
 import {chromium} from 'playwright';
-// Generate the isolated hardware proof with the exact Word-master typography:
-// Courier New 10 pt, 70% width and no added tracking. Production builds do not
-// set this flag and retain the already-approved application layout unchanged.
+// Generate the isolated hardware proof with the measured physical typography:
+// Courier New 10 CSS px, 70% width and 1 CSS px tracking. Production builds do
+// not set this flag and retain the approved 10.2 pt / 1.5 px application layout.
 process.env.VITE_PR2_LOCAL_MASTER_TYPOGRAPHY='true';
 const bank={bankName:'Assam Gramin Bank',passbookBank:'Assam Gramin Bank',branchName:'TEST BRANCH',branchAddress:'TEST ROAD',branchPostOffice:'TEST POST',branchDistrict:'TEST DISTRICT',branchPinCode:'001200',branchEmail:'TEST@EXAMPLE.COM',ifsc:'ABCD0000001',micr:'000123000',branchCode:'0001'};
 const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',coName:'TEST GUARDIAN',contact:'9000000000',accountOpeningDate:'2024-08-24',issueDate:'2026-10-20',nominee:'2',fullAddress:'VILLAGE TEST\nPOST TEST\nASSAM,INDIA PIN-001200'};
@@ -39,6 +39,7 @@ try {
   const page=await browser.newPage({viewport:{width:1300,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank);
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().waitFor();
+  if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),'Passbook customer information — Courier New 10px, 70% width, 1px letter spacing');
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
   fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',await page.content());
   const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true});
