@@ -1,31 +1,33 @@
 {
-  "latestVersion": "1.0.115",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.115/BankSetu-Setup-1.0.115-x64.exe",
+  "latestVersion": "1.0.116",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.116/BankSetu-Setup-1.0.116-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.115",
-  "releaseTag": "v1.0.115",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.115",
-  "releaseDate": "2026-10-23",
-  "windowsVersion": "1.0.115",
-  "androidBuild": 1000115,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.115/BankSetu-Setup-1.0.115-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.115/BankSetu-Android-1000115.apk",
+  "version": "1.0.116",
+  "releaseTag": "v1.0.116",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.116",
+  "releaseDate": "2026-10-24",
+  "windowsVersion": "1.0.116",
+  "androidBuild": 1000116,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.116/BankSetu-Setup-1.0.116-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.116/BankSetu-Android-1000116.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.115",
-      "releaseDate": "2026-10-23",
+      "version": "1.0.116",
+      "releaseDate": "2026-10-24",
       "categories": {
         "Improvements": [
-          "Fit Union normal and quick passbook into 175mm open book and 87.5mm lower page (68)."
+          "Open existing Bank Setu Support in responsive floating popup (71).",
+          "Fit Union lower fields within 85mm and space letters by 1.5px (70)."
         ]
       }
     },
     "android": {
-      "version": "1.0.115",
-      "releaseDate": "2026-10-23",
+      "version": "1.0.116",
+      "releaseDate": "2026-10-24",
       "categories": {
         "Improvements": [
-          "Fit Union normal and quick passbook into 175mm open book and 87.5mm lower page (68)."
+          "Open existing Bank Setu Support in responsive floating popup (71).",
+          "Fit Union lower fields within 85mm and space letters by 1.5px (70)."
         ]
       }
     }
