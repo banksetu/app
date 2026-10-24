@@ -18,7 +18,7 @@ import { getTenantApiUrl } from "./tenantApi";
 
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
-import ApprovedPassbookInfo, { approvedPassbookValues, approvedPassbookProblems } from "./ApprovedPassbookInfo";
+import WordPassbookInfo, { wordPassbookValues, wordPassbookProblems } from "./WordPassbookInfo";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
@@ -781,7 +781,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       await requireLicensedWrite();
 
       if (isApprovedAssamPrint || isAssamQuick) {
-        const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
+        const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH));
         if (problems.length) throw new Error(`Passbook data cannot fit the approved format: ${problems.join('; ')}. The font and compression have not been changed.`);
       }
 
@@ -905,7 +905,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
     }
     if (isApprovedAssamPrint || isAssamQuick) {
-      const problems = approvedPassbookProblems(approvedPassbookValues(previewCustomer, BRANCH));
+      const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH));
       if (problems.length) { setError(problems.join(' ')); return; }
     }
     try { await requireLicensedWrite(); setError(""); setMessage(""); setDirectPrinting(true); }
@@ -2169,12 +2169,13 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           }
         ` : ""}
         ${isUnion ? `
-          @page { size: 210mm 297mm; margin: 0; }
+          @page { size: 210mm 215mm; margin: 0; }
           @media print {
-            html, body { width:210mm!important; height:297mm!important; }
-            .union-document { width:210mm!important; height:170mm!important; overflow:visible!important; }
-            .union-lower { top:85mm!important; height:85mm!important; }
-            .union-fold { top:85mm!important; }
+            html, body { width:210mm!important; height:215mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:210mm!important; height:215mm!important; overflow:hidden!important; }
+            .union-document { width:203.2mm!important; height:215mm!important; overflow:visible!important; }
+            .union-lower { top:107mm!important; height:108mm!important; }
+            .union-fold { top:107mm!important; }
           }
         ` : ""}
         @media print {
@@ -2445,7 +2446,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-              {isApprovedAssamPrint ? <ApprovedPassbookInfo customer={p} bank={BRANCH} /> : <PassbookInfoFields customer={p} bank={BRANCH} />}
+              {isApprovedAssamPrint ? <WordPassbookInfo customer={p} bank={BRANCH} /> : <PassbookInfoFields customer={p} bank={BRANCH} />}
 
             </div>
 
