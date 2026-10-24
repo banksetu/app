@@ -37,7 +37,7 @@ try {
  const outputs=[];
  for(const [bank,variant] of [['assam','A'],['union','']]) {
   const page=await browser.newPage({viewport:{width:1300,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:''));
+  await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:'')+(bank==='union'?'&mode=quick':''));
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().waitFor();
   if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),`Passbook customer information — PR2 9.25pt, 69% width, 1px letter spacing, ${{A:'0.75',B:'1.00',C:'1.25'}[variant]}mm label gap, 3mm data gap`);
   if(bank==='union'){
@@ -47,10 +47,49 @@ try {
    await page.emulateMedia({media:'screen'});
   }
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
-  const sourceHtml=await page.content();
-  // The isolated Union proof is exactly one physical 215mm sheet. Chromium can
-  // append a blank overflow page for the hidden app shell; never rasterize it.
-  const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true,...(bank==='union'?{pageRanges:'1'}:{})});
+  // Build a clean physical sheet from the layout element itself. Selecting a
+  // page from the application PDF is unsafe: page 1 can be the Search screen.
+  const sourceHtml=await page.evaluate(bank=>{
+   const selector=bank==='union'?'.union-document':'.passbook-shell';
+   const source=document.querySelector(selector);if(!source)throw Error('Passbook layout element is unavailable');
+   const styles=[...document.querySelectorAll('style,link[rel="stylesheet"]')].map(node=>node.outerHTML).join('');
+   const height=bank==='union'?215:175;
+   const bankRules=bank==='union'?`
+    .union-document{position:absolute!important;left:0!important;top:0!important;width:203.2mm!important;height:215mm!important;margin:0!important;box-shadow:none!important;overflow:hidden!important}
+    .union-lower{top:107mm!important;height:108mm!important}.union-fold{top:107mm!important}
+   `:`
+    .passbook-shell{position:absolute!important;left:0!important;top:0!important;width:206mm!important;height:175mm!important;margin:0!important;box-shadow:none!important;border:0!important;overflow:hidden!important}
+    .passbook-cover-space{height:88mm!important}.passbook-print-area{top:88mm!important;width:206mm!important;height:87mm!important}
+    .preview-edit-button,.cover-note{display:none!important}
+   `;
+   return `<!doctype html><html><head><meta charset="utf-8"><base href="${document.baseURI}">${styles}<style>
+    @page{size:210mm ${height}mm;margin:0}html,body{margin:0!important;padding:0!important;width:210mm!important;height:${height}mm!important;background:#fff!important;overflow:hidden!important}
+    body *{visibility:visible!important}${bankRules}
+   </style></head><body data-pr2-proof="${bank}">${source.outerHTML}</body></html>`;
+  },bank);
+  assert.doesNotMatch(sourceHtml,/UNIVERSAL CUSTOMER SEARCH|passbook-search-input|direct-print-button/i,'Application/Search UI must never enter a printer proof');
+  const proof=await browser.newPage({viewport:{width:1600,height:1100}});
+  await proof.setContent(sourceHtml,{waitUntil:'load'});await proof.emulateMedia({media:'print'});
+  if(bank==='assam'){
+   const placement=await proof.evaluate(()=>{
+    const page=document.querySelector('.passbook-shell');const area=document.querySelector('.passbook-print-area');const paths=[...document.querySelectorAll('.pb-approved-artwork path')];
+    if(!page||!area||!paths.length)throw Error('Assam artwork is incomplete');
+    const pageTop=page.getBoundingClientRect().top;const first=Math.min(...paths.map(path=>path.getBoundingClientRect().top));
+    const target=pageTop+108*96/25.4;const shift=target-first;
+    area.style.transform=`translateY(${shift}px)`;area.dataset.physicalOriginMm='108';
+    const after=Math.min(...paths.map(path=>path.getBoundingClientRect().top));
+    return {topMm:(after-pageTop)*25.4/96,bottomMm:(Math.max(...paths.map(path=>path.getBoundingClientRect().bottom))-pageTop)*25.4/96};
+   });
+   assert.ok(Math.abs(placement.topMm-108)<.15,`Assam first ink must start 20mm below the 88mm fold; got ${placement.topMm}mm`);
+   assert.ok(placement.bottomMm<=175,'Assam artwork exceeds the 175mm physical sheet');
+  }else{
+   assert.equal(await proof.locator('.union-document').getAttribute('aria-label'),'Union Bank complete quick passbook');
+   assert.match(await proof.locator('.union-document').innerText(),/BRANCH/);assert.match(await proof.locator('.union-document').innerText(),/Nomination Registered/);
+   const placement=await proof.evaluate(()=>{const page=document.querySelector('.union-document').getBoundingClientRect();const first=document.querySelector('[data-field="branchHeading"]').getBoundingClientRect();const last=document.querySelector('[data-field="nomination"]').getBoundingClientRect();return{firstMm:(first.top-page.top)*25.4/96,lastBottomMm:(last.bottom-page.top)*25.4/96};});
+   assert.ok(Math.abs(placement.firstMm-124)<.2,`Union data must start 17mm below the 107mm fold; got ${placement.firstMm}mm`);
+   assert.ok(placement.lastBottomMm<=215,'Union nomination Y/N line exceeds the 215mm physical sheet');
+  }
+  const pdf=await proof.pdf({preferCSSPageSize:true,printBackground:true});await proof.close();
   await page.evaluate(pdf=>{window.pr2Requests=[];window.bankSetuPr2={platform:'win32',protocol:1,
    prepare:async()=>({id:'12345678-1234-1234-1234-123456789abc',pdf}),
    discover:async()=>({devices:[{id:'synthetic',name:'PLQ-20',transport:'usb-direct',profile:'epson-plq20-pr2-v1'}],queues:[],profiles:[]}),
@@ -68,7 +107,7 @@ try {
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
-  outputs.push({bank,sourceHtml,raster:requests[0].raster});await page.close();
+  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,paperLengthMm:bank==='union'?215:175,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:108}});await page.close();
  }
  // Vite watches this directory. Write every artifact only after both live UI
  // flows finish, otherwise Assam output can reload the Union dialog.

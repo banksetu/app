@@ -22,6 +22,12 @@ test('Union-depth artwork extends page boundary before feed',async()=>{
  assert.equal(count(f,[27,81,48,52,54,27,90]),1);
  assert.equal(count(f,[27,81,48,52,50,27,90]),0);
 });
+
+test('declared physical sheet length, not incidental last ink, sets the eject boundary',async()=>{
+ const f=fixture(successReplies());
+ await fullSuite({...f,sampleRaster:{...makeSampleRaster(),paperLengthMm:215}});
+ assert.equal(count(f,[27,81,48,53,49,27,90]),1);
+});
 test('known 38 command error is cleared once before bank-style setup',async()=>{
  const f=fixture([commandError,aligned,[],ready,aligned,...successReplies().slice(2)]);await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(count(f,[27,108]),1);assert.equal(count(f,[27,76,48,48,48]),1);

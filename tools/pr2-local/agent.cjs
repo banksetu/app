@@ -37,7 +37,7 @@ async function main(){
  const passbookType=action==='full-suite'?(oneClick?'horizontal':await prompt.question('Test paper type (horizontal / vertical / document): ')):undefined;
  let oneClickApproved=false;
  if(oneClick){
-  console.log('ONE-CLICK TEST: one feed, approved Assam Gramin Bank synthetic layout in paced 24-dot bands, then one front eject. No motion retries.');
+  console.log('ONE-CLICK TEST: one feed, synthetic '+(sample==='union'?'Union Bank':'Assam Gramin Bank')+' passbook layout in paced 24-dot bands, then one front eject. No motion retries.');
   if(await prompt.question('Insert the disposable test passbook/sheet in the front slot, confirm PLQ-20 PR2 mode, then press ENTER: ')!=='')throw Error('Local approval cancelled');
   oneClickApproved=true;
  }

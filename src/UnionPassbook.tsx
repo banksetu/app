@@ -26,13 +26,13 @@ const chequeSafeguards = [
   ["यदि बैंक खाता संख्या के सत्यापन हेतु खाली चेक देने के लिए कहा जाए तो उसे देने से पहले उस पर एक कोने से दूसरे कोने तक निरस्त (Cancelled) शब्द लिख दें।", "If asked to give a blank cheque for verification of bank account number, write the word 'Cancelled' diagonally across the cheque before giving it."],
   ["चेकों पर किसी प्रकार का परिवर्तन/संशोधन न करें। प्राप्तकर्ता के नाम, राशि आदि में परिवर्तन हेतु नए चेक का प्रयोग करें।", "No changes/correction should be carried out on the cheques. For any change in the payee's name, amount (other than date for validation purposes) etc. fresh cheque forms should be used."],
 ];
-// Physical open book: 215mm, fold at 107mm. The final 79mm customer-data
-// block ends 5mm before the lower edge. Anchor positions are remapped without
-// scaling the glyphs, so normal and PR2 output retain the same typography.
+// Physical open book: 215mm, fold at 107mm. The owner-measured customer-data
+// origin is 17mm below that fold and its anchor span is 79mm. Anchor positions
+// are remapped without scaling the glyphs, so typography is not distorted.
 const UNION_OPEN_HEIGHT_MM = 215;
 const UNION_FOLD_MM = 107;
-const UNION_DATA_TOP_MM = 23;
-const UNION_DATA_LAST_ANCHOR_MM = 98;
+const UNION_DATA_TOP_MM = 17;
+const UNION_DATA_LAST_ANCHOR_MM = 96;
 const UNION_SOURCE_TOP_MM = 12;
 const UNION_SOURCE_LAST_ANCHOR_MM = 100;
 const unionDataY = (y: number) => UNION_DATA_TOP_MM +

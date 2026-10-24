@@ -38,7 +38,7 @@ test('Union search requests photos and keeps values layer visible for printing',
  assert(!passbook.includes('formatType === "passbook" && isUnionBank'));
 });
 test('Union final nomination row uses the measured 215/107/79 mm geometry',()=>{
- assert(source.includes('const UNION_DATA_TOP_MM = 23'));
- assert(source.includes('const UNION_DATA_LAST_ANCHOR_MM = 98'));
+ assert(source.includes('const UNION_DATA_TOP_MM = 17'));
+ assert(source.includes('const UNION_DATA_LAST_ANCHOR_MM = 96'));
  assert(source.includes('value("nomination",c.nominee ? "Y" : "",109,100,10)'));
 });

@@ -31,7 +31,10 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  await fence();
  const plan=rasterBandsPhysical(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
  const lineHeightMm=25.4/6;
- const pageLines=Math.max(42,Math.min(99,Math.ceil(plan.physical.bottomMm/lineHeightMm)+1));
+ const declaredPaperMm=Number(sampleRaster?.paperLengthMm);
+ const pageLines=Number.isFinite(declaredPaperMm)
+  ? Math.max(42,Math.min(99,Math.ceil(declaredPaperMm/lineHeightMm)))
+  : Math.max(42,Math.min(99,Math.ceil(plan.physical.bottomMm/lineHeightMm)+1));
  const settleMs=Math.max(1000,Math.min(5000,Number(ejectSettleMs)||1000));
 
  // A prior rejected experiment leaves the documented command-error status and
@@ -88,7 +91,7 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  // documented front output. This prevents a successfully printed passbook from
  // being stranded because a second prompt was missed.
  if(!await approve('print-and-front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,ejected:false,postPaper:p,physicalVerified:false,requiresHumanConfirmation:true};
- log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels,density:plan.density,physical:plan.physical,pageLines,ejectSettleMs:settleMs});
+ log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels,density:plan.density,physical:plan.physical,paperLengthMm:Number.isFinite(declaredPaperMm)?declaredPaperMm:null,pageLines,ejectSettleMs:settleMs});
  // Each block ends BIM and queues documented ESC } W. The following ESC j
  // status request is sent only after that complete block; READY is the strict
  // printer acknowledgement before the next block. No band or motion is retried.
