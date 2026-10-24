@@ -46,7 +46,7 @@ try {
    await page.emulateMedia({media:'screen'});
   }
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
-  fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',await page.content());
+  const sourceHtml=await page.content();
   const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true});
   await page.evaluate(pdf=>{window.pr2Requests=[];window.bankSetuPr2={platform:'win32',protocol:1,
    prepare:async()=>({id:'12345678-1234-1234-1234-123456789abc',pdf}),
@@ -64,7 +64,10 @@ try {
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   if(bank==='assam')fs.writeFileSync('test-evidence/pr2-assam-final-raster.json',JSON.stringify(requests[0].raster));
   if(bank==='union')fs.writeFileSync('test-evidence/pr2-union-raster.json',JSON.stringify(requests[0].raster));
-  assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);await page.close();
+  assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
+  // Write snapshots only after the live UI assertions. Vite watches this
+  // directory, so writing earlier can reload the page while the dialog works.
+  fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',sourceHtml);await page.close();
  }
  console.log('PASS: Android/Web exact modal; existing Windows button → active Assam/Union PDF → 180dpi graphics → mock IPC; source artwork unchanged; confirmed job updates status.');
 } finally {await browser?.close();await server.close();}
