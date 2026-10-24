@@ -2,7 +2,7 @@
 // Epson NPD0841-00 Rev A, sheets 43, 51, 54, 58–66, 73, 76–79, 83.
 // Protocol profiles are deliberately independent from bank/customer templates.
 const PROFILES=Object.freeze({
-  'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20 / PLQ-20M · PR2',model:/\bPLQ[- ]?20(?:M)?\b/i,dpi:180,horizontalGraphicsDpi:120,verticalGraphicsDpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
+  'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20 / PLQ-20M · PR2',model:/\bPLQ[- ]?20(?:M)?\b/i,dpi:180,horizontalGraphicsDpi:180,horizontalReferenceDpi:120,verticalGraphicsDpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
 });
 // Passbooks must return through the front slot. PR2 ESC O is front output;
 // FF outputs from the rear and is not the Direct Printer Send behavior wanted.
@@ -74,16 +74,16 @@ function rasterBands(r,settings){
  return {feed:esc('L000'),bands,pixels:{left,right,top,bottom},transport:'absolute-24-dot-bands'};
 }
 
-// Physical-size PR2 proof path. The approved PDFs are rasterized at 180 dpi,
-// while PLQ-20 PR2 G1 columns and absolute X positions use a 120 dpi grid.
-// Sending one 180 dpi source column as one G1 column expands artwork by 1.5x.
-// This converter resamples only the transport grid; it never reflows, fits,
-// scales or changes the source template's font/compression/coordinates.
+// Physical-size PR2 proof path. Epson NPD0841-00 defines G1 + density 000 as
+// 180-dpi 24-pin image data, while ESC | A horizontal reference positions use
+// 1/120-inch units. Keep those two independent units: source pixels are sent
+// unchanged at 180 dpi and only the band origin is converted to 120 units.
+// No reflow, fit, crop, font substitution or horizontal resampling is allowed.
 function rasterBandsPhysical(r,settings){
  const {bits,stride}=validateRaster(r),profile=PROFILES[settings.profile];if(!profile)throw Error('This model has no documented graphics profile.');
  if(![216,240].includes(settings.verticalResolution)||![settings.offsetX,settings.offsetY].every(n=>Number.isFinite(n)&&Math.abs(n)<=10))throw Error('Confirm the printer vertical resolution and bounded calibration.');
- const sourceDpi=r.dpi,horizontalDpi=profile.horizontalGraphicsDpi;
- if(!Number.isInteger(horizontalDpi)||horizontalDpi<1||horizontalDpi>sourceDpi)throw Error('Invalid PR2 graphics density profile.');
+ const sourceDpi=r.dpi,horizontalImageDpi=profile.horizontalGraphicsDpi,horizontalReferenceDpi=profile.horizontalReferenceDpi;
+ if(horizontalImageDpi!==sourceDpi||!Number.isInteger(horizontalReferenceDpi)||horizontalReferenceDpi<1)throw Error('Invalid PR2 graphics density profile.');
  const ink=(x,y)=>x>=0&&x<r.width&&y>=0&&y<r.height&&(bits[y*stride+(x>>3)]&(128>>(x&7)));
  let left=r.width,right=-1,top=r.height,bottom=-1;
  for(let y=0;y<r.height;y++)for(let x=0;x<r.width;x++)if(ink(x,y)){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
@@ -91,49 +91,26 @@ function rasterBandsPhysical(r,settings){
  const leftMm=left*25.4/sourceDpi+settings.offsetX,rightMm=(right+1)*25.4/sourceDpi+settings.offsetX;
  const topMm=top*25.4/sourceDpi+settings.offsetY,bottomMm=(bottom+1)*25.4/sourceDpi+settings.offsetY;
  if(leftMm<0||topMm<1||rightMm>profile.maxWidthMm||bottomMm>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
- const ratio=horizontalDpi/sourceDpi,offsetColumns=Math.round(settings.offsetX*horizontalDpi/25.4),rows=new Map();
- // A 50% area threshold made a one-pixel stem print or disappear according to
- // its 180-dpi phase on the 120-dpi grid. That is why equal CSS text appeared
- // alternately light, heavy and narrow on the real PLQ-20 proof. Preserve each
- // contiguous source-ink run instead: map both physical edges to the global
- // printer grid and guarantee one native dot for a non-empty thin run. This is
- // deterministic for every row, keeps the source coordinates/70% compression,
- // and may make a sub-native-width stem one dot darker rather than deleting it.
- const outputRow=y=>{
-  if(rows.has(y))return rows.get(y);
-  const columns=new Set();
-  if(y>=0&&y<r.height){
-   for(let x=left;x<=right;){
-    while(x<=right&&!ink(x,y))x++;
-    if(x>right)break;
-    const runStart=x;while(x<=right&&ink(x,y))x++;const runEnd=x;
-    let outputStart=Math.round(runStart*ratio),outputEnd=Math.round(runEnd*ratio);
-    if(outputEnd<=outputStart){outputStart=Math.floor((runStart+runEnd)*ratio/2);outputEnd=outputStart+1;}
-    for(let column=outputStart;column<outputEnd;column++)columns.add(column);
-   }
-  }
-  rows.set(y,columns);return columns;
- };
+ const offsetColumns=Math.round(settings.offsetX*horizontalReferenceDpi/25.4);
  const bands=[];
  for(let y=top;y<=bottom;y+=24){
-  let outputLeft=Infinity,outputRight=-1;
-  for(let row=y;row<Math.min(y+24,r.height);row++)for(const column of outputRow(row)){outputLeft=Math.min(outputLeft,column);outputRight=Math.max(outputRight,column);}
-  if(outputRight<outputLeft)continue;
-  const width=outputRight-outputLeft+1,bytes=[];
-  for(let x=outputLeft;x<=outputRight;x++)for(let block=0;block<3;block++){
-   let byte=0;for(let bit=0;bit<8;bit++)if(outputRow(y+block*8+bit).has(x))byte|=1<<bit;
+  let sourceLeft=right+1,sourceRight=left-1;
+  for(let x=left;x<=right;x++)for(let row=y;row<Math.min(y+24,r.height);row++)if(ink(x,row)){sourceLeft=Math.min(sourceLeft,x);sourceRight=Math.max(sourceRight,x);}
+  if(sourceRight<sourceLeft)continue;
+  const width=sourceRight-sourceLeft+1,bytes=[];
+  for(let x=sourceLeft;x<=sourceRight;x++)for(let block=0;block<3;block++){
+   let byte=0;for(let bit=0;bit<8;bit++)if(ink(x,y+block*8+bit))byte|=1<<bit;
    bytes.push(byte);if(byte===27)bytes.push(27);
   }
-  const yMm=y*25.4/sourceDpi+settings.offsetY,xColumns=outputLeft+offsetColumns;
+  const yMm=y*25.4/sourceDpi+settings.offsetY,xColumns=Math.round(sourceLeft*horizontalReferenceDpi/sourceDpi)+offsetColumns;
   if(xColumns<0)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
   bands.push(Buffer.concat([esc('/1'+digits(Math.round(yMm*settings.verticalResolution/25.4),4)),esc('|A'+digits(xColumns,3)),Buffer.from([13]),esc('!G1'),esc('1C'+digits(width,4)+'000'),Buffer.from(bytes),C.end,C.waitPrint]));
  }
- const outputLeft=Math.floor(left*ratio),outputRight=Math.ceil((right+1)*ratio)-1;
  return {
   feed:esc('L000'),bands,pixels:{left,right,top,bottom},
-  transport:'physical-120dpi-horizontal-24-dot-bands',
-  density:{sourceDpi,horizontalDpi,verticalGraphicsDpi:profile.verticalGraphicsDpi,verticalPositionUnits:settings.verticalResolution},
-  physical:{sourceWidthMm:(right-left+1)*25.4/sourceDpi,outputWidthMm:(outputRight-outputLeft+1)*25.4/horizontalDpi,topMm,bottomMm}
+  transport:'physical-180dpi-image-120dpi-reference-24-dot-bands',
+  density:{sourceDpi,horizontalImageDpi,horizontalReferenceDpi,verticalGraphicsDpi:profile.verticalGraphicsDpi,verticalPositionUnits:settings.verticalResolution},
+  physical:{sourceWidthMm:(right-left+1)*25.4/sourceDpi,outputWidthMm:(right-left+1)*25.4/horizontalImageDpi,topMm,bottomMm}
  };
 }
 
