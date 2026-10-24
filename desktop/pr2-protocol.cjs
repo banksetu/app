@@ -91,24 +91,37 @@ function rasterBandsPhysical(r,settings){
  const leftMm=left*25.4/sourceDpi+settings.offsetX,rightMm=(right+1)*25.4/sourceDpi+settings.offsetX;
  const topMm=top*25.4/sourceDpi+settings.offsetY,bottomMm=(bottom+1)*25.4/sourceDpi+settings.offsetY;
  if(leftMm<0||topMm<1||rightMm>profile.maxWidthMm||bottomMm>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
- const ratio=horizontalDpi/sourceDpi,offsetColumns=Math.round(settings.offsetX*horizontalDpi/25.4);
- const sampledInk=(column,y)=>{
-  const start=column/ratio,end=(column+1)/ratio,total=end-start;
-  let coverage=0;
-  for(let x=Math.floor(start);x<Math.ceil(end);x++){
-   const overlap=Math.max(0,Math.min(end,x+1)-Math.max(start,x));
-   if(overlap&&ink(x,y))coverage+=overlap;
+ const ratio=horizontalDpi/sourceDpi,offsetColumns=Math.round(settings.offsetX*horizontalDpi/25.4),rows=new Map();
+ // A 50% area threshold made a one-pixel stem print or disappear according to
+ // its 180-dpi phase on the 120-dpi grid. That is why equal CSS text appeared
+ // alternately light, heavy and narrow on the real PLQ-20 proof. Preserve each
+ // contiguous source-ink run instead: map both physical edges to the global
+ // printer grid and guarantee one native dot for a non-empty thin run. This is
+ // deterministic for every row, keeps the source coordinates/70% compression,
+ // and may make a sub-native-width stem one dot darker rather than deleting it.
+ const outputRow=y=>{
+  if(rows.has(y))return rows.get(y);
+  const columns=new Set();
+  if(y>=0&&y<r.height){
+   for(let x=left;x<=right;){
+    while(x<=right&&!ink(x,y))x++;
+    if(x>right)break;
+    const runStart=x;while(x<=right&&ink(x,y))x++;const runEnd=x;
+    let outputStart=Math.round(runStart*ratio),outputEnd=Math.round(runEnd*ratio);
+    if(outputEnd<=outputStart){outputStart=Math.floor((runStart+runEnd)*ratio/2);outputEnd=outputStart+1;}
+    for(let column=outputStart;column<outputEnd;column++)columns.add(column);
+   }
   }
-  return coverage>=total/2;
+  rows.set(y,columns);return columns;
  };
  const bands=[];
  for(let y=top;y<=bottom;y+=24){
-  let sourceLeft=right+1,sourceRight=left-1;
-  for(let x=left;x<=right;x++)for(let row=y;row<Math.min(y+24,r.height);row++)if(ink(x,row)){sourceLeft=Math.min(sourceLeft,x);sourceRight=Math.max(sourceRight,x);}
-  if(sourceRight<sourceLeft)continue;
-  const outputLeft=Math.floor(sourceLeft*ratio),outputRight=Math.ceil((sourceRight+1)*ratio)-1,width=outputRight-outputLeft+1,bytes=[];
+  let outputLeft=Infinity,outputRight=-1;
+  for(let row=y;row<Math.min(y+24,r.height);row++)for(const column of outputRow(row)){outputLeft=Math.min(outputLeft,column);outputRight=Math.max(outputRight,column);}
+  if(outputRight<outputLeft)continue;
+  const width=outputRight-outputLeft+1,bytes=[];
   for(let x=outputLeft;x<=outputRight;x++)for(let block=0;block<3;block++){
-   let byte=0;for(let bit=0;bit<8;bit++)if(sampledInk(x,y+block*8+bit))byte|=1<<bit;
+   let byte=0;for(let bit=0;bit<8;bit++)if(outputRow(y+block*8+bit).has(x))byte|=1<<bit;
    bytes.push(byte);if(byte===27)bytes.push(27);
   }
   const yMm=y*25.4/sourceDpi+settings.offsetY,xColumns=outputLeft+offsetColumns;
