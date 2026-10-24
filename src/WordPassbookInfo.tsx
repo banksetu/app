@@ -150,7 +150,7 @@ export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2M
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
     width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?`Passbook customer information — PR2 ${fontSize}pt, 70% width, 1px letter spacing, ${(pr2LabelGapPt*25.4/72).toFixed(2)}mm label gap, 3mm data gap`:'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
-    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:pr2MasterTypography?0.1:0.13,strokeLinejoin:'round' as const}: {})}}>
+    style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:pr2MasterTypography?0.07:0.13,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,activeLabelX(label),label.y,label.compression)}</g>)}</g>
     {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>
@@ -161,7 +161,7 @@ export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2M
 
 export default function WordPassbookInfo(props:{customer:Parameters<typeof approvedPassbookValues>[0];bank:Parameters<typeof approvedPassbookValues>[1]}) {
   const isolated=import.meta.env.VITE_PR2_LOCAL_MASTER_TYPOGRAPHY==='true';
-  const requested=isolated?new URLSearchParams(globalThis.location?.search||'').get('pr2Variant')||'B':'B';
+  const requested=isolated?new URLSearchParams(globalThis.location?.search||'').get('pr2Variant')||'A':'A';
   const labelGap=PR2_LABEL_GAPS_PT[requested as keyof typeof PR2_LABEL_GAPS_PT]||PR2_LABEL_GAPS_PT.B;
   return <WordPassbookArtwork values={wordPassbookValues(props.customer,props.bank)} assamInkBoost pr2MasterTypography={isolated} pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={labelGap} />;
 }

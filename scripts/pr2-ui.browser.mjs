@@ -6,8 +6,8 @@ fs.mkdirSync('test-evidence',{recursive:true});
 import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
 import {chromium} from 'playwright';
-// Generate three bounded PR2-only colon-gap calibration proofs using the
-// physically selected C face. Production builds do not set this flag.
+// Freeze the physically selected Assam A proof and the existing Union Bank
+// renderer. Production builds do not set this isolated packaging flag.
 process.env.VITE_PR2_LOCAL_MASTER_TYPOGRAPHY='true';
 const bank={bankName:'Assam Gramin Bank',passbookBank:'Assam Gramin Bank',branchName:'TEST BRANCH',branchAddress:'TEST ROAD',branchPostOffice:'TEST POST',branchDistrict:'TEST DISTRICT',branchPinCode:'001200',branchEmail:'TEST@EXAMPLE.COM',ifsc:'ABCD0000001',micr:'000123000',branchCode:'0001'};
 const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',coName:'TEST GUARDIAN',contact:'9000000000',accountOpeningDate:'2024-08-24',issueDate:'2026-10-20',nominee:'2',fullAddress:'VILLAGE TEST\nPOST TEST\nASSAM,INDIA PIN-001200'};
@@ -34,7 +34,7 @@ try {
   await page.getByRole('alertdialog').getByText('Please use this button on only Windows EXE mode.',{exact:true}).waitFor();await page.getByRole('button',{name:'OK',exact:true}).click();
   assert.deepEqual(await page.evaluate(()=>window.testCalls.map(x=>x.action)),['searchCustomer']);await page.close();
  }
- for(const [bank,variant] of [['assam','A'],['assam','B'],['assam','C'],['union','']]) {
+ for(const [bank,variant] of [['assam','A'],['union','']]) {
   const page=await browser.newPage({viewport:{width:1300,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:''));
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().waitFor();
@@ -56,7 +56,8 @@ try {
   await page.getByLabel('I reviewed the graphics proof.',{exact:false}).check();await page.getByRole('button',{name:'Send this passbook',exact:true}).click();
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
-  if(bank==='assam')fs.writeFileSync('test-evidence/pr2-assam-raster-'+variant.toLowerCase()+'.json',JSON.stringify(requests[0].raster));
+  if(bank==='assam')fs.writeFileSync('test-evidence/pr2-assam-final-raster.json',JSON.stringify(requests[0].raster));
+  if(bank==='union')fs.writeFileSync('test-evidence/pr2-union-raster.json',JSON.stringify(requests[0].raster));
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: Android/Web exact modal; existing Windows button → active Assam/Union PDF → 180dpi graphics → mock IPC; source artwork unchanged; confirmed job updates status.');
