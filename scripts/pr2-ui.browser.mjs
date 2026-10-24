@@ -64,8 +64,9 @@ try {
    `;
    return `<!doctype html><html><head><meta charset="utf-8"><base href="${document.baseURI}">${styles}<style>
     @page{size:210mm ${height}mm;margin:0}html,body{margin:0!important;padding:0!important;width:210mm!important;height:${height}mm!important;background:#fff!important;overflow:hidden!important}
+    body>.passbook-page{position:absolute!important;inset:0!important;width:210mm!important;height:${height}mm!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
     body *{visibility:visible!important}${bankRules}
-   </style></head><body data-pr2-proof="${bank}">${source.outerHTML}</body></html>`;
+   </style></head><body data-pr2-proof="${bank}"><div class="passbook-page">${source.outerHTML}</div></body></html>`;
   },bank);
   const proof=await browser.newPage({viewport:{width:1600,height:1100}});
   await proof.setContent(sourceHtml,{waitUntil:'load'});await proof.emulateMedia({media:'print'});
