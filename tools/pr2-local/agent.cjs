@@ -5,6 +5,8 @@ const {nativeClient}=require('./pr2-native.cjs'),{run}=require('./core.cjs');
 async function main(){
  if(process.platform!=='win32'||!process.stdin.isTTY)throw Error('Interactive Windows console required');
  const oneClick=process.argv.includes('--one-click');
+ const variantArg=process.argv.find(value=>/^--variant=[ABC]$/.test(value));
+ const variant=variantArg?variantArg.slice(-1):'B';
  const base=__dirname,manifest=JSON.parse(fs.readFileSync(path.join(base,'SHA256.json'),'utf8'));
  for(const [name,digest] of Object.entries(manifest))if(path.basename(name)!==name||crypto.createHash('sha256').update(fs.readFileSync(path.join(base,name))).digest('hex')!==digest)throw Error('Package checksum mismatch');
  const output=path.join(process.env.LOCALAPPDATA,'BankSetu-PR2-LocalTest');fs.mkdirSync(output,{recursive:true});
@@ -30,7 +32,7 @@ async function main(){
  }
  const action=oneClick?'full-suite':await prompt.question('Action (diagnose / full-suite / measure-width / print): ');
  if(!['diagnose','full-suite','measure-width','print'].includes(action))throw Error('Only diagnostic, consolidated full suite, one measured feed or one synthetic print proof is available');
- if(action==='full-suite')console.log('Full suite prints synthetic Bank Setu sample data, waits for raster completion, then sends one front eject. It never retries motion.');
+ if(action==='full-suite')console.log('Full suite prints synthetic Bank Setu sample variant '+variant+', waits for raster completion, then sends one front eject. It never retries motion.');
  const resolution=['print','full-suite'].includes(action)?(oneClick?216:Number(await prompt.question('Printer configuration vertical resolution (216 or 240): '))):undefined;
  const passbookType=action==='full-suite'?(oneClick?'horizontal':await prompt.question('Test paper type (horizontal / vertical / document): ')):undefined;
  let oneClickApproved=false;
@@ -49,7 +51,7 @@ async function main(){
  if(action==='full-suite'&&!((diagnostic.diagnosticFramesMatched&&diagnostic.statusReady&&diagnostic.paperState==='aligned')||recoverableCommandError))throw Error(diagnostic.paperState==='absent'||diagnostic.paperState==='released'?'No paper detected. Insert the test passbook/sheet in the front slot and run Start.cmd again.':'Strict PR2 identity plus READY/ALIGNED or the known recoverable command-error state is required before the full suite');
  const approve=async a=>oneClick?oneClickApproved:await prompt.question('Local approval for '+a+'? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase();
  const fence=async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'});
- const sampleRaster=oneClick?JSON.parse(fs.readFileSync(path.join(base,'assam-sample-raster.json'),'utf8')):undefined;
+ const sampleRaster=oneClick?JSON.parse(fs.readFileSync(path.join(base,'assam-sample-raster-'+variant.toLowerCase()+'.json'),'utf8')):undefined;
  const result=action==='diagnose'?diagnostic:action==='full-suite'?await require('./suite.cjs').fullSuite({io,log,approve,fence,resolution,passbookType,sampleRaster}):await run({io,action,resolution,log,approve,fence});
  log({result});
  }catch(e){log({error:e.message,physicalVerified:false});process.exitCode=1;}
