@@ -6,8 +6,20 @@ function rectangle(width,height=32,left=0,right=width-1){
  for(let y=8;y<height;y++)for(let x=left;x<=right;x++)bits[y*stride+(x>>3)]|=128>>(x&7);
  return {width,height,dpi:180,bits:bits.toString('base64')};
 }
+function verticalLines(width,columns,height=32){
+ const stride=Math.ceil(width/8),bits=Buffer.alloc(stride*height);
+ for(let y=8;y<height;y++)for(const x of columns)bits[y*stride+(x>>3)]|=128>>(x&7);
+ return {width,height,dpi:180,bits:bits.toString('base64')};
+}
 const close=(actual,expected,tolerance=.001)=>assert.ok(Math.abs(actual-expected)<=tolerance,`${actual} != ${expected}`);
 const xPosition=band=>Number(/\x1b\|A(\d{3})/.exec(band.toString('latin1'))[1]);
+function printedColumns(band){
+ const marker=/\x1b1C(\d{4})000/.exec(band.toString('latin1')),width=Number(marker[1]),start=marker.index+10,end=band.length-5,raw=[];
+ for(let i=start;i<end;i++){raw.push(band[i]);if(band[i]===27&&band[i+1]===27)i++;}
+ assert.equal(raw.length,width*3);let count=0;
+ for(let x=0;x<width;x++)if(raw[x*3]||raw[x*3+1]||raw[x*3+2])count++;
+ return count;
+}
 
 test('180 dpi source is converted to the PR2 120 dpi grid without changing physical width',()=>{
  const plan=rasterBandsPhysical(rectangle(180),settings);
@@ -44,6 +56,17 @@ test('one thin source column never becomes multiple bold native columns',()=>{
  const plan=rasterBandsPhysical(rectangle(20,32,0,0),settings);
  assert.equal(plan.bands.length,1);
  assert.ok(plan.physical.outputWidthMm<=25.4/120+.0001);
+});
+
+test('equal one-pixel stems survive every 180-to-120 grid phase with equal weight',()=>{
+ const plan=rasterBandsPhysical(verticalLines(12,[0,3,6,9]),settings);
+ assert.equal(plan.bands.length,1);
+ assert.equal(printedColumns(plan.bands[0]),4);
+});
+
+test('separate thin stems do not disappear from account or customer rows',()=>{
+ const plan=rasterBandsPhysical(verticalLines(12,[1,4,7,10]),settings);
+ assert.equal(printedColumns(plan.bands[0]),4);
 });
 
 test('out-of-range artwork is rejected instead of fitted, cropped or silently scaled',()=>{
