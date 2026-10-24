@@ -36,3 +36,8 @@ test('Union search requests photos and keeps values layer visible for printing',
  assert(passbook.includes('photoPreview: result.photo?.previewDataUrl'));
  assert(!passbook.includes('formatType === "passbook" && isUnionBank'));
 });
+test('Union final nomination row remains inside the 85 mm physical lower page',()=>{
+ assert(source.includes('label("नामांकन पंजीकृत / Nomination Registered हाँ Y/ नहीं N",80,106)'));
+ assert(source.includes('value("nomination",c.nominee ? "Y" : "",109,80,10)'));
+ assert(!source.includes('109,100,10'));
+});

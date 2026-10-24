@@ -81,11 +81,11 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
           {label("खाता क्र. Account No.",41)}
           {label("In the Name of :\nनाम Name",50)}
           {[0,1,2,3].map((n)=><span key={n} className="union-label" style={position(24,55+n*4,8)}>{["i)","ii)","iii)","iv)"][n]}</span>)}
-          {label("पेशा Occupation",70)}
-          {label("पता Address",77)}
-          {label("खाता खोलने की तारीख\nDate of Opening A/c",92)}
-          {label("नामांकन पंजीकृत / Nomination Registered हाँ Y/ नहीं N",100,106)}
-          <span className="union-label" style={position(162,94,38)}>लेखाकार Accountant</span>
+          {label("पेशा Occupation",60)}
+          {label("पता Address",64)}
+          {label("खाता खोलने की तारीख\nDate of Opening A/c",74)}
+          {label("नामांकन पंजीकृत / Nomination Registered हाँ Y/ नहीं N",80,106)}
+          <span className="union-label" style={position(162,74,38)}>लेखाकार Accountant</span>
         </>}
         {value("branchHeading",upper(b.branchName),46,12,23)}
         {value("branch",upper(b.branchName),61,20,94)}
@@ -96,11 +96,11 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
         {value("name",upper(c.name),43,48,111)}
         {value("coName",c.coName || c.fatherName ? "C/O - "+upper(c.coName || c.fatherName) : "",43,52,111)}
         {value("jointHolder",upper(c.jointHolder),43,56,111)}
-        {value("occupation",upper(c.occupation),43,69,111)}
-        {value("address",upper(c.fullAddress || [c.address,c.postOffice,c.pinCode].filter(Boolean).join(", ")),43,75,113,{maxHeight:"12mm",overflow:"hidden"})}
-        {value("openingDate",date(c.accountOpeningDate),61,88,39)}
-        {value("nominee",upper(c.nominee),90,93,65)}
-        {value("nomination",c.nominee ? "Y" : "",109,100,10)}
+        {value("occupation",upper(c.occupation),43,60,111)}
+        {value("address",upper(c.fullAddress || [c.address,c.postOffice,c.pinCode].filter(Boolean).join(", ")),43,64,113,{maxHeight:"9mm",overflow:"hidden",lineHeight:"3mm"})}
+        {value("openingDate",date(c.accountOpeningDate),61,74,39)}
+        {value("nominee",upper(c.nominee),90,77,65)}
+        {value("nomination",c.nominee ? "Y" : "",109,80,10)}
         {photo && <img className="union-photo" src={photo} alt="Customer photograph"/>}
       </section>
     </article>

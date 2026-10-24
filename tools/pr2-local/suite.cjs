@@ -61,9 +61,8 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
   ['cut-sheet-passbook',Buffer.from([27,83,53])],
   ['paper-type-'+passbookType,Buffer.from([27,39,typeByte])],
   ['line-space-default',Buffer.from([27,38,48,48])],
-  // Keep one full line below the last ink row. Assam remains at 42 lines;
-  // Union reaches about 187.5 mm and therefore needs 46 lines. The previous
-  // fixed 42-line page boundary could leave the printed Union sheet retained.
+  // Keep one full line below the actual last ink row. Union's final row now
+  // remains inside the physical page, normally returning this to the floor.
   ['page-length-'+pageLines+'-lines',Buffer.concat([Buffer.from([27,81]),Buffer.from(String(pageLines).padStart(3,'0')),Buffer.from([27,90])])],
   ['top-edge-reference',Buffer.from([27,35,48])],
  ];

@@ -39,6 +39,11 @@ try {
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:''));
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().waitFor();
   if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),`Passbook customer information — PR2 9.25pt, 69% width, 1px letter spacing, ${{A:'0.75',B:'1.00',C:'1.25'}[variant]}mm label gap, 3mm data gap`);
+  if(bank==='union'){
+   await page.emulateMedia({media:'print'});
+   const bounds=await page.evaluate(()=>{const documentRect=document.querySelector('.union-document').getBoundingClientRect();const lineRect=document.querySelector('[data-field="nomination"]').getBoundingClientRect();return{documentBottom:documentRect.bottom,lineBottom:lineRect.bottom};});
+   assert.ok(bounds.lineBottom<=bounds.documentBottom,'Union nomination Y/N line must remain inside the physical page');
+  }
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
   fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',await page.content());
   const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true});
