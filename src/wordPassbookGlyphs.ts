@@ -1,7 +1,7 @@
 // Courier New Regular outlines for fixed passbook document rendering.
 // Source: Microsoft corefonts courie32.exe, cour.ttf; font embedding fsType=0.
-// Word rrrrrr.docx: Normal Courier New, every nonempty run 10pt, w:w=70, no extra spacing.
-export const WORD_FONT_SIZE_PT = 10;
+// Word rrrrrr.docx: Normal Courier New, every nonempty run 10pt, original w:w=70; app preview horizontal scale is configured below.
+export const WORD_FONT_SIZE_PT = 10.2;
 export const WORD_HORIZONTAL_SCALE = 0.7;
 export const WORD_FONT_UNITS = 2048;
 export const WORD_ADVANCE_PT = 4.20068359375;

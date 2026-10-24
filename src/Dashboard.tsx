@@ -302,6 +302,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
+  const [supportPopupOpen,setSupportPopupOpen]=useState(false);
+  useEffect(()=>{if(!supportPopupOpen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSupportPopupOpen(false);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[supportPopupOpen]);
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
@@ -854,6 +856,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
     }
+    setSupportPopupOpen(false);
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -995,7 +998,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       </aside>
 
-      <FloatingSupportButton unread={supportUnread} open={() => openPage("support")} />
+      <FloatingSupportButton unread={supportUnread} open={() => {if(canOpenLicensePage("support",licenseReadOnly,demoExpired))setSupportPopupOpen(true);else openPage("support");}} />
+      {supportPopupOpen && typeof document !== "undefined" && createPortal(<div className="banksetu-support-popup-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSupportPopupOpen(false);}}><div className="banksetu-support-popup" role="dialog" aria-modal="true" aria-label="Bank Setu Support"><div className="banksetu-support-popup-header"><div><strong>Bank Setu Support</strong><small>Private chat, announcements and help</small></div><button type="button" aria-label="Close support" onClick={()=>setSupportPopupOpen(false)}>✕</button></div><div className="banksetu-support-popup-body"><SupportCenter accountRole={accountRole}/></div></div></div>,document.body)}
 
       {/* MAIN AREA */}
 
