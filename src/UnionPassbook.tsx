@@ -26,7 +26,19 @@ const chequeSafeguards = [
   ["यदि बैंक खाता संख्या के सत्यापन हेतु खाली चेक देने के लिए कहा जाए तो उसे देने से पहले उस पर एक कोने से दूसरे कोने तक निरस्त (Cancelled) शब्द लिख दें।", "If asked to give a blank cheque for verification of bank account number, write the word 'Cancelled' diagonally across the cheque before giving it."],
   ["चेकों पर किसी प्रकार का परिवर्तन/संशोधन न करें। प्राप्तकर्ता के नाम, राशि आदि में परिवर्तन हेतु नए चेक का प्रयोग करें।", "No changes/correction should be carried out on the cheques. For any change in the payee's name, amount (other than date for validation purposes) etc. fresh cheque forms should be used."],
 ];
-// Coordinates are millimetres relative to the LOWER 106.68mm panel.
+// Physical open book: 215mm, fold at 107mm. The final 79mm customer-data
+// block ends 5mm before the lower edge. Anchor positions are remapped without
+// scaling the glyphs, so normal and PR2 output retain the same typography.
+const UNION_OPEN_HEIGHT_MM = 215;
+const UNION_FOLD_MM = 107;
+const UNION_DATA_TOP_MM = 23;
+const UNION_DATA_LAST_ANCHOR_MM = 98;
+const UNION_SOURCE_TOP_MM = 12;
+const UNION_SOURCE_LAST_ANCHOR_MM = 100;
+const unionDataY = (y: number) => UNION_DATA_TOP_MM +
+  (y - UNION_SOURCE_TOP_MM) * (UNION_DATA_LAST_ANCHOR_MM - UNION_DATA_TOP_MM) /
+  (UNION_SOURCE_LAST_ANCHOR_MM - UNION_SOURCE_TOP_MM);
+// Coordinates passed to position() are the existing Union artwork anchors.
 // Both modes deliberately share this overlay; only Quick Passbook adds stationery.
 export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo = "", formatType = "passbook", onEdit }: {
   customer: Customer; bankInfo?: PassbookBankInfo; bankLogo?: string;
@@ -35,7 +47,7 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
   const quick = formatType === "quickPassbook";
   const photo = c.photoPreview || c.photoDataUrl || c.photoUrl || "";
   const position = (x: number, y: number, width: number): CSSProperties => ({
-    left: `${x}mm`, top: `${y}mm`, width: `${width}mm`,
+    left: `${x}mm`, top: `${unionDataY(y)}mm`, width: `${width}mm`,
   });
   const value = (field: string, text: string, x: number, y: number, w: number, extra: CSSProperties = {}) =>
     <span data-field={field} className="union-value" style={{ ...position(x,y,w), ...(field !== "address" ? {whiteSpace:"nowrap",fontSize:`${Math.min(3.2,w/Math.max(1,text.length*.61))}mm`} : {}), ...extra }}>{text}</span>;
@@ -45,14 +57,14 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
     <li key={i}><div lang="hi">{hi}</div><div>{en}</div></li>)}</ol>;
   return <div className="union-preview">
     <style>{`
-      .union-document { position:relative; width:203.2mm; height:213.36mm; margin:auto; color:#111; background:white; box-shadow:0 3px 20px #0002; overflow:hidden; }
+      .union-document { position:relative; width:203.2mm; height:${UNION_OPEN_HEIGHT_MM}mm; margin:auto; color:#111; background:white; box-shadow:0 3px 20px #0002; overflow:hidden; }
       .union-document * { box-sizing:border-box; text-align:left; }
       .union-upper { position:absolute; left:7mm; top:5mm; width:189.2mm; font:2.35mm/2.65mm Arial,sans-serif; }
       .union-upper h3 { font-size:3.2mm; line-height:3.7mm; margin:0 0 1mm; }
       .union-upper ol { margin:0 0 1mm; padding-left:5mm; }
       .union-upper li { padding-left:.5mm; margin-bottom:.6mm; }
-      .union-lower { position:absolute; left:0; top:106.68mm; width:203.2mm; height:106.68mm; }
-      .union-fold { position:absolute; top:106.68mm; left:0; width:100%; border-top:.2mm solid #ccc; }
+      .union-lower { position:absolute; left:0; top:${UNION_FOLD_MM}mm; width:203.2mm; height:${UNION_OPEN_HEIGHT_MM-UNION_FOLD_MM}mm; }
+      .union-fold { position:absolute; top:${UNION_FOLD_MM}mm; left:0; width:100%; border-top:.2mm solid #ccc; }
       .union-value { position:absolute; font:700 3.2mm/4mm "Courier New",monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
       .union-label { position:absolute; font:3mm/3.7mm Arial,sans-serif; white-space:pre-wrap; }
       .union-logo { position:absolute; left:70mm; top:7mm; width:55mm; height:10mm; object-fit:contain; }
@@ -81,11 +93,11 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
           {label("खाता क्र. Account No.",41)}
           {label("In the Name of :\nनाम Name",50)}
           {[0,1,2,3].map((n)=><span key={n} className="union-label" style={position(24,55+n*4,8)}>{["i)","ii)","iii)","iv)"][n]}</span>)}
-          {label("पेशा Occupation",60)}
-          {label("पता Address",64)}
-          {label("खाता खोलने की तारीख\nDate of Opening A/c",74)}
-          {label("नामांकन पंजीकृत / Nomination Registered हाँ Y/ नहीं N",80,106)}
-          <span className="union-label" style={position(162,74,38)}>लेखाकार Accountant</span>
+          {label("पेशा Occupation",70)}
+          {label("पता Address",77)}
+          {label("खाता खोलने की तारीख\nDate of Opening A/c",92)}
+          {label("नामांकन पंजीकृत / Nomination Registered हाँ Y/ नहीं N",100,106)}
+          <span className="union-label" style={position(162,94,38)}>लेखाकार Accountant</span>
         </>}
         {value("branchHeading",upper(b.branchName),46,12,23)}
         {value("branch",upper(b.branchName),61,20,94)}
@@ -96,11 +108,11 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
         {value("name",upper(c.name),43,48,111)}
         {value("coName",c.coName || c.fatherName ? "C/O - "+upper(c.coName || c.fatherName) : "",43,52,111)}
         {value("jointHolder",upper(c.jointHolder),43,56,111)}
-        {value("occupation",upper(c.occupation),43,60,111)}
-        {value("address",upper(c.fullAddress || [c.address,c.postOffice,c.pinCode].filter(Boolean).join(", ")),43,64,113,{maxHeight:"9mm",overflow:"hidden",lineHeight:"3mm"})}
-        {value("openingDate",date(c.accountOpeningDate),61,74,39)}
-        {value("nominee",upper(c.nominee),90,77,65)}
-        {value("nomination",c.nominee ? "Y" : "",109,80,10)}
+        {value("occupation",upper(c.occupation),43,69,111)}
+        {value("address",upper(c.fullAddress || [c.address,c.postOffice,c.pinCode].filter(Boolean).join(", ")),43,75,113,{maxHeight:"12mm",overflow:"hidden",lineHeight:"3mm"})}
+        {value("openingDate",date(c.accountOpeningDate),61,88,39)}
+        {value("nominee",upper(c.nominee),90,93,65)}
+        {value("nomination",c.nominee ? "Y" : "",109,100,10)}
         {photo && <img className="union-photo" src={photo} alt="Customer photograph"/>}
       </section>
     </article>

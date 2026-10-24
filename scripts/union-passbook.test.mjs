@@ -14,7 +14,7 @@ const props={customer,bankInfo:{branchName:'TEST BRANCH',address:'TEST BRANCH AD
 const quick=renderToStaticMarkup(React.createElement(UnionPassbook,{...props,formatType:'quickPassbook'}));
 const print=renderToStaticMarkup(React.createElement(UnionPassbook,{...props,formatType:'passbook'}));
 test('full page and lower panel use physical dimensions in both modes',()=>{
- for(const html of [quick,print])for(const value of ['203.2mm','213.36mm','106.68mm'])assert(html.includes(value));
+ for(const html of [quick,print])for(const value of ['203.2mm','215mm','107mm','108mm'])assert(html.includes(value));
 });
 test('quick includes bilingual safeguards, labels and selected logo; values-only omits them',()=>{
  for(const text of ['Passbook safeguards:','Cheque book safeguards:','Branch Phone No.','Account No.','Date of Opening A/c','Nomination Registered','Accountant']) {assert(quick.includes(text));assert(!print.includes(text));}
@@ -36,8 +36,8 @@ test('Union search requests photos and keeps values layer visible for printing',
  assert(passbook.includes('photoPreview: result.photo?.previewDataUrl'));
  assert(!passbook.includes('formatType === "passbook" && isUnionBank'));
 });
-test('Union final nomination row remains inside the 85 mm physical lower page',()=>{
- assert(source.includes('label("नामांकन पंजीकृत / Nomination Registered हाँ Y/ नहीं N",80,106)'));
- assert(source.includes('value("nomination",c.nominee ? "Y" : "",109,80,10)'));
- assert(!source.includes('109,100,10'));
+test('Union final nomination row uses the measured 215/107/79 mm geometry',()=>{
+ assert(source.includes('const UNION_DATA_TOP_MM = 23'));
+ assert(source.includes('const UNION_DATA_LAST_ANCHOR_MM = 98'));
+ assert(source.includes('value("nomination",c.nominee ? "Y" : "",109,100,10)'));
 });

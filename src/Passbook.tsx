@@ -2172,9 +2172,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           @page { size: 210mm 297mm; margin: 0; }
           @media print {
             html, body { width:210mm!important; height:297mm!important; }
-            .union-document { width:210mm!important; height:170mm!important; overflow:visible!important; }
-            .union-lower { top:85mm!important; height:85mm!important; }
-            .union-fold { top:85mm!important; }
+            .union-document { width:203.2mm!important; height:215mm!important; overflow:visible!important; }
+            .union-lower { top:107mm!important; height:108mm!important; }
+            .union-fold { top:107mm!important; }
           }
         ` : ""}
         @media print {

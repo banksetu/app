@@ -43,6 +43,7 @@ try {
    await page.emulateMedia({media:'print'});
    const bounds=await page.evaluate(()=>{const documentRect=document.querySelector('.union-document').getBoundingClientRect();const lineRect=document.querySelector('[data-field="nomination"]').getBoundingClientRect();return{documentBottom:documentRect.bottom,lineBottom:lineRect.bottom};});
    assert.ok(bounds.lineBottom<=bounds.documentBottom,'Union nomination Y/N line must remain inside the physical page');
+   await page.emulateMedia({media:'screen'});
   }
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
   fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',await page.content());
