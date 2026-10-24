@@ -67,9 +67,10 @@ try {
     body *{visibility:visible!important}${bankRules}
    </style></head><body data-pr2-proof="${bank}">${source.outerHTML}</body></html>`;
   },bank);
-  assert.doesNotMatch(sourceHtml,/UNIVERSAL CUSTOMER SEARCH|passbook-search-input|direct-print-button/i,'Application/Search UI must never enter a printer proof');
   const proof=await browser.newPage({viewport:{width:1600,height:1100}});
   await proof.setContent(sourceHtml,{waitUntil:'load'});await proof.emulateMedia({media:'print'});
+  assert.equal(await proof.locator('.passbook-search-input,.direct-print-button,.search-button').count(),0,'Application/Search controls must never enter a printer proof');
+  assert.doesNotMatch(await proof.locator('body').innerText(),/UNIVERSAL CUSTOMER SEARCH/i,'Application/Search text must never enter a printer proof');
   if(bank==='assam'){
    const placement=await proof.evaluate(()=>{
     const page=document.querySelector('.passbook-shell');const area=document.querySelector('.passbook-print-area');const paths=[...document.querySelectorAll('.pb-approved-artwork path')];
