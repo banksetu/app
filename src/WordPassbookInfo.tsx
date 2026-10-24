@@ -94,13 +94,19 @@ export function wordPassbookProblems(values:ApprovedPassbookValues,quick=false):
   });
 }
 
-export function WordPassbookArtwork({values,quick=false,assamInkBoost=false}:{values:ApprovedPassbookValues;quick?:boolean;assamInkBoost?:boolean}) {
-  const unit=WORD_FONT_SIZE_PT/WORD_FONT_UNITS;
+export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2MasterTypography=false}:{values:ApprovedPassbookValues;quick?:boolean;assamInkBoost?:boolean;pr2MasterTypography?:boolean}) {
+  // The owner's Word master is Courier New 10 pt with w:w=70 and no added
+  // tracking. The normal approved UI renderer deliberately retains its later
+  // 10.2 pt / 1.5 px review adjustment. The isolated PR2 physical proof may
+  // select the exact master metrics without changing that production default.
+  const fontSize=pr2MasterTypography?10:WORD_FONT_SIZE_PT;
+  const advance=WORD_ADVANCE_PT+(pr2MasterTypography?0:WORD_LETTER_GAP_PT);
+  const unit=fontSize/WORD_FONT_UNITS;
   const text=(value:string,x:number,y:number,compression=1)=>[...value].map((char,index)=>WORD_GLYPHS[char]
-    ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*wordAdvance*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
+    ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*advance*compression} ${y}) scale(${unit*WORD_HORIZONTAL_SCALE*compression} ${-unit})`} /> : null);
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
-    width="206mm" height="85mm" role="img" aria-label="Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing"
+    width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?'Passbook customer information — Courier New 10 pt, 70% width, no added letter spacing':'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
     style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:0.13,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,label.x,label.y,label.compression)}</g>)}</g>
@@ -111,5 +117,5 @@ export function WordPassbookArtwork({values,quick=false,assamInkBoost=false}:{va
 }
 
 export default function WordPassbookInfo(props:{customer:Parameters<typeof approvedPassbookValues>[0];bank:Parameters<typeof approvedPassbookValues>[1]}) {
-  return <WordPassbookArtwork values={wordPassbookValues(props.customer,props.bank)} assamInkBoost />;
+  return <WordPassbookArtwork values={wordPassbookValues(props.customer,props.bank)} assamInkBoost pr2MasterTypography={import.meta.env.VITE_PR2_LOCAL_MASTER_TYPOGRAPHY==='true'} />;
 }
