@@ -34,6 +34,7 @@ try {
   await page.getByRole('alertdialog').getByText('Please use this button on only Windows EXE mode.',{exact:true}).waitFor();await page.getByRole('button',{name:'OK',exact:true}).click();
   assert.deepEqual(await page.evaluate(()=>window.testCalls.map(x=>x.action)),['searchCustomer']);await page.close();
  }
+ const outputs=[];
  for(const [bank,variant] of [['assam','A'],['union','']]) {
   const page=await browser.newPage({viewport:{width:1300,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:''));
@@ -62,12 +63,11 @@ try {
   await page.getByLabel('I reviewed the graphics proof.',{exact:false}).check();await page.getByRole('button',{name:'Send this passbook',exact:true}).click();
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
-  if(bank==='assam')fs.writeFileSync('test-evidence/pr2-assam-final-raster.json',JSON.stringify(requests[0].raster));
-  if(bank==='union')fs.writeFileSync('test-evidence/pr2-union-raster.json',JSON.stringify(requests[0].raster));
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
-  // Write snapshots only after the live UI assertions. Vite watches this
-  // directory, so writing earlier can reload the page while the dialog works.
-  fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',sourceHtml);await page.close();
+  outputs.push({bank,sourceHtml,raster:requests[0].raster});await page.close();
  }
+ // Vite watches this directory. Write every artifact only after both live UI
+ // flows finish, otherwise Assam output can reload the Union dialog.
+ for(const {bank,sourceHtml,raster} of outputs){fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',sourceHtml);fs.writeFileSync('test-evidence/pr2-'+bank+(bank==='assam'?'-final':'')+'-raster.json',JSON.stringify(raster));}
  console.log('PASS: Android/Web exact modal; existing Windows button → active Assam/Union PDF → 180dpi graphics → mock IPC; source artwork unchanged; confirmed job updates status.');
 } finally {await browser?.close();await server.close();}
