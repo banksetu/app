@@ -48,7 +48,9 @@ try {
   }
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
   const sourceHtml=await page.content();
-  const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true});
+  // The isolated Union proof is exactly one physical 215mm sheet. Chromium can
+  // append a blank overflow page for the hidden app shell; never rasterize it.
+  const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true,...(bank==='union'?{pageRanges:'1'}:{})});
   await page.evaluate(pdf=>{window.pr2Requests=[];window.bankSetuPr2={platform:'win32',protocol:1,
    prepare:async()=>({id:'12345678-1234-1234-1234-123456789abc',pdf}),
    discover:async()=>({devices:[{id:'synthetic',name:'PLQ-20',transport:'usb-direct',profile:'epson-plq20-pr2-v1'}],queues:[],profiles:[]}),
