@@ -15,6 +15,13 @@ test('bank-style sequence sets automatic mode and page geometry then feeds exact
  for(const command of [[27,46],[27,85,96],[27,83,53],[27,39,70],[27,38,48,48],[27,81,48,52,50,27,90],[27,35,48],[27,76,48,48,48]])assert.equal(count(f,command),1);
  assert.equal(count(f,[27,125,45]),0);assert.equal(count(f,[27,45]),0);assert.deepEqual(f.asked,['full-suite','print-and-front-eject']);
 });
+test('Union-depth artwork extends page boundary before feed',async()=>{
+ const bits=Buffer.alloc(1400);bits[1328]=0x80;
+ const unionDepth={width:8,height:1400,dpi:180,bits:bits.toString('base64')};
+ const f=fixture(successReplies());await fullSuite({...f,resolution:216,passbookType:'horizontal',sampleRaster:unionDepth});
+ assert.equal(count(f,[27,81,48,52,54,27,90]),1);
+ assert.equal(count(f,[27,81,48,52,50,27,90]),0);
+});
 test('known 38 command error is cleared once before bank-style setup',async()=>{
  const f=fixture([commandError,aligned,[],ready,aligned,...successReplies().slice(2)]);await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(count(f,[27,108]),1);assert.equal(count(f,[27,76,48,48,48]),1);
@@ -39,11 +46,12 @@ test('declined atomic print-and-eject approval sends neither graphics nor eject'
 });
 test('one approved atomic job prints sample then uses ESC O once and confirms released paper',async()=>{
  const f=fixture(printReplies([released]),{'full-suite':true,'print-and-front-eject':true});
- const r=await fullSuite({...f,resolution:216,passbookType:'horizontal'});
+ const waits=[];const r=await fullSuite({...f,resolution:216,passbookType:'horizontal',ejectSettleMs:3000,wait:async ms=>waits.push(ms)});
  assert.equal(r.printed,true);assert.equal(r.sample,'synthetic-bank-setu');assert.equal(r.ejectCommandSent,true);assert.equal(r.ejected,true);assert.equal(r.postPaper,'released');assert.equal(r.physicalVerified,false);
  assert.equal(count(f,[27,76,48,48,48]),1);assert.equal(count(f,[27,79]),1);assert.equal(count(f,[12]),0);
  assert.ok(f.sent.filter(b=>has(b,[27,49,67])).every(b=>b.subarray(-3).equals(Buffer.from([27,125,87]))));
  assert.equal(count(f,[27,106]),3+sampleBandCount);
+ assert.ok(waits.includes(3000));
 });
 test('front release observation is bounded without resending ESC O',async()=>{
  const f=fixture(printReplies([inserted,inserted,released]),{'full-suite':true,'print-and-front-eject':true});

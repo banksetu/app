@@ -5,7 +5,7 @@ const {hex,makeSampleRaster}=require('./core.cjs');
 // Epson NPD0841-00: reproduce the documented bank-style PR2 start sequence.
 // The earlier isolated ESC } - experiment was rejected by the real device with
 // ESC r 38. It is intentionally not retried here.
-async function fullSuite({io,log,approve,fence,resolution=216,passbookType='horizontal',sampleRaster,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
+async function fullSuite({io,log,approve,fence,resolution=216,passbookType='horizontal',sampleRaster,ejectSettleMs=1000,wait=ms=>new Promise(r=>setTimeout(r,ms))}){
  const typeByte={document:0x40,vertical:0x44,horizontal:0x46}[passbookType];
  if(typeByte===undefined)throw Error('Paper type must be document, vertical or horizontal');
  if(![216,240].includes(resolution))throw Error('Select printer configuration resolution 216 or 240');
@@ -29,6 +29,10 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  const requireReadyAligned=s=>{if(s.error||s.status?.ready!==true||s.paper!=='aligned')throw Error('Bank-style setup requires READY + DOCUMENT ALIGNED; status='+hex(s.sbytes)+' paper='+(s.paper||'unknown'));};
  if(!await approve('full-suite'))throw Error('Local approval declined');
  await fence();
+ const plan=rasterBandsPhysical(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
+ const lineHeightMm=25.4/6;
+ const pageLines=Math.max(42,Math.min(99,Math.ceil(plan.physical.bottomMm/lineHeightMm)+1));
+ const settleMs=Math.max(1000,Math.min(5000,Number(ejectSettleMs)||1000));
 
  // A prior rejected experiment leaves the documented command-error status and
  // blinking Ready light. ESC l clears only that error; it does not initialize,
@@ -57,9 +61,10 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
   ['cut-sheet-passbook',Buffer.from([27,83,53])],
   ['paper-type-'+passbookType,Buffer.from([27,39,typeByte])],
   ['line-space-default',Buffer.from([27,38,48,48])],
-  // 42 default-spaced lines = 177.8 mm. The frozen Assam layout reaches about
-  // 166.7 mm; the former 30-line/127 mm page ended at raster band 12 with ESC r 38.
-  ['page-length-42-lines',Buffer.from([27,81,48,52,50,27,90])],
+  // Keep one full line below the last ink row. Assam remains at 42 lines;
+  // Union reaches about 187.5 mm and therefore needs 46 lines. The previous
+  // fixed 42-line page boundary could leave the printed Union sheet retained.
+  ['page-length-'+pageLines+'-lines',Buffer.concat([Buffer.from([27,81]),Buffer.from(String(pageLines).padStart(3,'0')),Buffer.from([27,90])])],
   ['top-edge-reference',Buffer.from([27,35,48])],
  ];
  for(const [label,command] of setup)await tx(label,command);
@@ -84,8 +89,7 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  // documented front output. This prevents a successfully printed passbook from
  // being stranded because a second prompt was missed.
  if(!await approve('print-and-front-eject'))return {configurationValid,insertedBy:'bank-style-feed',printed:false,ejected:false,postPaper:p,physicalVerified:false,requiresHumanConfirmation:true};
- const plan=rasterBandsPhysical(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
- log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels,density:plan.density,physical:plan.physical});
+ log({stage:'banded-print',bands:plan.bands.length,transport:plan.transport,pixels:plan.pixels,density:plan.density,physical:plan.physical,pageLines,ejectSettleMs:settleMs});
  // Each block ends BIM and queues documented ESC } W. The following ESC j
  // status request is sent only after that complete block; READY is the strict
  // printer acknowledgement before the next block. No band or motion is retried.
@@ -98,7 +102,7 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  }
  const postPrintPaper=paper(await query('after-passbook-bands-paper',C.paper,6,5000));
  if(postPrintPaper!=='inserted')throw Error('Passbook was not retained after the final print band; front eject was not sent.');
- await wait(1000);
+ await wait(settleMs);
  await tx('front-eject',C.eject);
  const ejectReply=await capture('front-eject');
  if(ejectReply.length)throw Error('Unexpected response during front eject: '+hex(ejectReply));

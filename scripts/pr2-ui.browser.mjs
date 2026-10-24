@@ -38,7 +38,7 @@ try {
   const page=await browser.newPage({viewport:{width:1300,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:''));
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().waitFor();
-  if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),`Passbook customer information — PR2 9.25pt, 70% width, 1px letter spacing, ${{A:'0.75',B:'1.00',C:'1.25'}[variant]}mm label gap, 3mm data gap`);
+  if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),`Passbook customer information — PR2 9.25pt, 69% width, 1px letter spacing, ${{A:'0.75',B:'1.00',C:'1.25'}[variant]}mm label gap, 3mm data gap`);
   const original=await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML();
   fs.writeFileSync('test-evidence/pr2-'+bank+'-source.html',await page.content());
   const pdf=await page.pdf({preferCSSPageSize:true,printBackground:true});

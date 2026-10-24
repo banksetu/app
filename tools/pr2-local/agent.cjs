@@ -52,7 +52,7 @@ async function main(){
  const approve=async a=>oneClick?oneClickApproved:await prompt.question('Local approval for '+a+'? Type APPROVE '+a.toUpperCase()+': ')==='APPROVE '+a.toUpperCase();
  const fence=async()=>fs.writeFileSync(marker,JSON.stringify({action,time:new Date().toISOString()}),{flag:'wx'});
  const sampleRaster=oneClick?JSON.parse(fs.readFileSync(path.join(base,sample+'-sample-raster.json'),'utf8')):undefined;
- const result=action==='diagnose'?diagnostic:action==='full-suite'?await require('./suite.cjs').fullSuite({io,log,approve,fence,resolution,passbookType,sampleRaster}):await run({io,action,resolution,log,approve,fence});
+ const result=action==='diagnose'?diagnostic:action==='full-suite'?await require('./suite.cjs').fullSuite({io,log,approve,fence,resolution,passbookType,sampleRaster,ejectSettleMs:sample==='union'?3000:1000}):await run({io,action,resolution,log,approve,fence});
  log({result});
  }catch(e){log({error:e.message,physicalVerified:false});process.exitCode=1;}
  finally{io?.close();prompt.close();fs.closeSync(fd);fs.unlinkSync(lock);console.log('Report: '+report+'\nShare this file privately in ChatGPT, never in a public GitHub issue. Physical success requires your confirmation.');}
