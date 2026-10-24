@@ -92,8 +92,19 @@ function rasterBandsPhysical(r,settings){
  const topMm=top*25.4/sourceDpi+settings.offsetY,bottomMm=(bottom+1)*25.4/sourceDpi+settings.offsetY;
  if(leftMm<0||topMm<1||rightMm>profile.maxWidthMm||bottomMm>profile.maxHeightMm)throw Error('Layout falls outside the supported printer area; no font or scaling was changed.');
  const offsetColumns=Math.round(settings.offsetX*horizontalReferenceDpi/25.4);
+ const rowHasInk=y=>{for(let x=left;x<=right;x++)if(ink(x,y))return true;return false;};
+ const windows=[];
+ // Text rows are shorter than the 24-pin image head. Keep every complete row
+ // in one absolute band instead of cutting a glyph between two independently
+ // positioned bands (which made some physical lines look taller/smaller).
+ for(let cursor=top;cursor<=bottom;){
+  while(cursor<=bottom&&!rowHasInk(cursor))cursor++;
+  if(cursor>bottom)break;
+  const runStart=cursor;while(cursor<=bottom&&rowHasInk(cursor))cursor++;const runEnd=cursor-1;
+  for(let y=runStart;y<=runEnd;y+=24)windows.push(y);
+ }
  const bands=[];
- for(let y=top;y<=bottom;y+=24){
+ for(const y of windows){
   let sourceLeft=right+1,sourceRight=left-1;
   for(let x=left;x<=right;x++)for(let row=y;row<Math.min(y+24,r.height);row++)if(ink(x,row)){sourceLeft=Math.min(sourceLeft,x);sourceRight=Math.max(sourceRight,x);}
   if(sourceRight<sourceLeft)continue;
@@ -108,7 +119,7 @@ function rasterBandsPhysical(r,settings){
  }
  return {
   feed:esc('L000'),bands,pixels:{left,right,top,bottom},
-  transport:'physical-180dpi-image-120dpi-reference-24-dot-bands',
+  transport:'physical-180dpi-image-120dpi-reference-row-safe-24-dot-bands',
   density:{sourceDpi,horizontalImageDpi,horizontalReferenceDpi,verticalGraphicsDpi:profile.verticalGraphicsDpi,verticalPositionUnits:settings.verticalResolution},
   physical:{sourceWidthMm:(right-left+1)*25.4/sourceDpi,outputWidthMm:(right-left+1)*25.4/horizontalImageDpi,topMm,bottomMm}
  };
