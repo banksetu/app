@@ -6,6 +6,10 @@ fs.mkdirSync('test-evidence',{recursive:true});
 import {createServer} from 'vite';
 import react from '@vitejs/plugin-react';
 import {chromium} from 'playwright';
+// Generate the isolated hardware proof with the exact Word-master typography:
+// Courier New 10 pt, 70% width and no added tracking. Production builds do not
+// set this flag and retain the already-approved application layout unchanged.
+process.env.VITE_PR2_LOCAL_MASTER_TYPOGRAPHY='true';
 const bank={bankName:'Assam Gramin Bank',passbookBank:'Assam Gramin Bank',branchName:'TEST BRANCH',branchAddress:'TEST ROAD',branchPostOffice:'TEST POST',branchDistrict:'TEST DISTRICT',branchPinCode:'001200',branchEmail:'TEST@EXAMPLE.COM',ifsc:'ABCD0000001',micr:'000123000',branchCode:'0001'};
 const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',coName:'TEST GUARDIAN',contact:'9000000000',accountOpeningDate:'2024-08-24',issueDate:'2026-10-20',nominee:'2',fullAddress:'VILLAGE TEST\nPOST TEST\nASSAM,INDIA PIN-001200'};
 fs.writeFileSync('test-evidence/menu.html','<div id="root"></div><script type="module" src="/test-evidence/menu.tsx"></script>');
