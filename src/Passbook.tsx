@@ -2169,9 +2169,10 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           }
         ` : ""}
         ${isUnion ? `
-          @page { size: 210mm 297mm; margin: 0; }
+          @page { size: 210mm 215mm; margin: 0; }
           @media print {
-            html, body { width:210mm!important; height:297mm!important; }
+            html, body { width:210mm!important; height:215mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:210mm!important; height:215mm!important; overflow:hidden!important; }
             .union-document { width:203.2mm!important; height:215mm!important; overflow:visible!important; }
             .union-lower { top:107mm!important; height:108mm!important; }
             .union-fold { top:107mm!important; }
