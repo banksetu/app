@@ -11,6 +11,11 @@ function verticalLines(width,columns,height=32){
  for(let y=8;y<height;y++)for(const x of columns)bits[y*stride+(x>>3)]|=128>>(x&7);
  return {width,height,dpi:180,bits:bits.toString('base64')};
 }
+function separatedRows(width=180,height=64){
+ const stride=Math.ceil(width/8),bits=Buffer.alloc(stride*height);
+ for(const [start,end] of [[8,25],[33,50]])for(let y=start;y<=end;y++)for(let x=0;x<width;x++)bits[y*stride+(x>>3)]|=128>>(x&7);
+ return {width,height,dpi:180,bits:bits.toString('base64')};
+}
 const close=(actual,expected,tolerance=.001)=>assert.ok(Math.abs(actual-expected)<=tolerance,`${actual} != ${expected}`);
 const xPosition=band=>Number(/\x1b\|A(\d{3})/.exec(band.toString('latin1'))[1]);
 function printedColumns(band){
@@ -25,8 +30,13 @@ test('180 dpi source stays 180 dpi while only the PR2 reference point uses 120 u
  const plan=rasterBandsPhysical(rectangle(180),settings);
  assert.equal(plan.density.sourceDpi,180);assert.equal(plan.density.horizontalImageDpi,180);assert.equal(plan.density.horizontalReferenceDpi,120);
  close(plan.physical.sourceWidthMm,25.4);close(plan.physical.outputWidthMm,25.4);
- assert.equal(plan.transport,'physical-180dpi-image-120dpi-reference-24-dot-bands');
+ assert.equal(plan.transport,'physical-180dpi-image-120dpi-reference-row-safe-24-dot-bands');
  assert.match(plan.bands[0].toString('latin1'),/\x1b1C0180000/);
+});
+
+test('separate text rows are never split across independently positioned bands',()=>{
+ const plan=rasterBandsPhysical(separatedRows(),settings);
+ assert.equal(plan.bands.length,2);
 });
 
 test('70 percent compressed artwork remains 70 percent after PR2 conversion',()=>{
