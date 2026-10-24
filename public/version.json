@@ -1,31 +1,33 @@
 {
-  "latestVersion": "1.0.117",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.117/BankSetu-Setup-1.0.117-x64.exe",
+  "latestVersion": "1.0.118",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.118/BankSetu-Setup-1.0.118-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.117",
-  "releaseTag": "v1.0.117",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.117",
+  "version": "1.0.118",
+  "releaseTag": "v1.0.118",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.118",
   "releaseDate": "2026-10-24",
-  "windowsVersion": "1.0.117",
-  "androidBuild": 1000117,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.117/BankSetu-Setup-1.0.117-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.117/BankSetu-Android-1000117.apk",
+  "windowsVersion": "1.0.118",
+  "androidBuild": 1000118,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.118/BankSetu-Setup-1.0.118-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.118/BankSetu-Android-1000118.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.117",
+      "version": "1.0.118",
       "releaseDate": "2026-10-24",
       "categories": {
         "Improvements": [
+          "Guard floating support portal for server-rendered license tests (72).",
           "Open existing Bank Setu Support in responsive floating popup (71).",
           "Fit Union lower fields within 85mm and space letters by 1.5px (70)."
         ]
       }
     },
     "android": {
-      "version": "1.0.117",
+      "version": "1.0.118",
       "releaseDate": "2026-10-24",
       "categories": {
         "Improvements": [
+          "Guard floating support portal for server-rendered license tests (72).",
           "Open existing Bank Setu Support in responsive floating popup (71).",
           "Fit Union lower fields within 85mm and space letters by 1.5px (70)."
         ]
