@@ -21,11 +21,12 @@ function printedColumns(band){
  return count;
 }
 
-test('180 dpi source is converted to the PR2 120 dpi grid without changing physical width',()=>{
+test('180 dpi source stays 180 dpi while only the PR2 reference point uses 120 units',()=>{
  const plan=rasterBandsPhysical(rectangle(180),settings);
- assert.equal(plan.density.sourceDpi,180);assert.equal(plan.density.horizontalDpi,120);
+ assert.equal(plan.density.sourceDpi,180);assert.equal(plan.density.horizontalImageDpi,180);assert.equal(plan.density.horizontalReferenceDpi,120);
  close(plan.physical.sourceWidthMm,25.4);close(plan.physical.outputWidthMm,25.4);
- assert.equal(plan.transport,'physical-120dpi-horizontal-24-dot-bands');
+ assert.equal(plan.transport,'physical-180dpi-image-120dpi-reference-24-dot-bands');
+ assert.match(plan.bands[0].toString('latin1'),/\x1b1C0180000/);
 });
 
 test('70 percent compressed artwork remains 70 percent after PR2 conversion',()=>{
@@ -55,10 +56,10 @@ test('alignment is a bounded whole-layout translation and never a font scale',()
 test('one thin source column never becomes multiple bold native columns',()=>{
  const plan=rasterBandsPhysical(rectangle(20,32,0,0),settings);
  assert.equal(plan.bands.length,1);
- assert.ok(plan.physical.outputWidthMm<=25.4/120+.0001);
+ assert.ok(plan.physical.outputWidthMm<=25.4/180+.0001);
 });
 
-test('equal one-pixel stems survive every 180-to-120 grid phase with equal weight',()=>{
+test('equal one-pixel stems are emitted unchanged with equal weight',()=>{
  const plan=rasterBandsPhysical(verticalLines(12,[0,3,6,9]),settings);
  assert.equal(plan.bands.length,1);
  assert.equal(printedColumns(plan.bands[0]),4);
