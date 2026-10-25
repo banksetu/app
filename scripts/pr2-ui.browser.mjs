@@ -39,7 +39,7 @@ try {
   const page=await browser.newPage({viewport:{width:1300,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html?bank='+bank+(variant?'&pr2Variant='+variant:''));
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().waitFor();
-  if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),`Passbook customer information — PR2 9.25pt, 69% width, 1px letter spacing, ${{A:'0.75',B:'1.00',C:'1.25'}[variant]}mm label gap, 3mm data gap`);
+  if(bank==='assam')assert.equal(await page.locator('.pb-approved-artwork').first().getAttribute('aria-label'),`Passbook customer information — PR2 9.5pt, 65% width, 1px letter spacing, ${{A:'0.75',B:'1.00',C:'1.25'}[variant]}mm label gap, 3mm data gap`);
   if(bank==='union'){
    await page.emulateMedia({media:'print'});
    const bounds=await page.evaluate(()=>{const documentRect=document.querySelector('.union-document').getBoundingClientRect();const lineRect=document.querySelector('[data-field="nomination"]').getBoundingClientRect();return{documentBottom:documentRect.bottom,lineBottom:lineRect.bottom};});
@@ -78,13 +78,13 @@ try {
     const page=document.querySelector('.passbook-shell');const area=document.querySelector('.passbook-print-area');const paths=[...document.querySelectorAll('.pb-approved-artwork path')];
     if(!page||!area||!paths.length)throw Error('Assam artwork is incomplete');
     const pageTop=page.getBoundingClientRect().top;const first=Math.min(...paths.map(path=>path.getBoundingClientRect().top));
-    const target=pageTop+113*96/25.4;const shift=target-first;
-    area.style.transform=`translateY(${shift}px)`;area.dataset.physicalOriginMm='113';
+    const target=pageTop+116*96/25.4;const shift=target-first;
+    area.style.transform=`translateY(${shift}px)`;area.dataset.physicalOriginMm='116';
     const after=Math.min(...paths.map(path=>path.getBoundingClientRect().top));
     return {topMm:(after-pageTop)*25.4/96,bottomMm:(Math.max(...paths.map(path=>path.getBoundingClientRect().bottom))-pageTop)*25.4/96};
    });
-   assert.ok(Math.abs(placement.topMm-113)<.15,`Assam first ink must start 25mm below the 88mm fold; got ${placement.topMm}mm`);
-   assert.ok(placement.bottomMm<=177.5,'Assam artwork exceeds the measured lower print window');
+   assert.ok(Math.abs(placement.topMm-116)<.15,`Assam first ink must start 28mm below the 88mm fold; got ${placement.topMm}mm`);
+   assert.ok(placement.bottomMm<=181,'Assam artwork exceeds the measured lower print window');
   }else{
    assert.equal(await proof.locator('.union-document').getAttribute('aria-label'),'Union Bank values only');
    assert.equal(await proof.locator('.union-label').count(),0,'Union PR2 proof must not contain pre-printed labels');
@@ -111,7 +111,7 @@ try {
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
-  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,bankProfile:bank,paperLengthMm:bank==='union'?215:177.5,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:113,physicalDataHeightMm:bank==='union'?79:64.5,physicalOriginInkAllowanceMm:1.5,physicalInkAllowanceMm:4}});await page.close();
+  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,bankProfile:bank,paperLengthMm:bank==='union'?215:181,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:116,physicalDataHeightMm:bank==='union'?79:65,physicalOriginInkAllowanceMm:1.5,physicalInkAllowanceMm:4}});await page.close();
  }
  // Vite watches this directory. Write every artifact only after both live UI
  // flows finish, otherwise Assam output can reload the Union dialog.

@@ -26,12 +26,12 @@ const WORD_LETTER_GAP_PT = 1.125;
 // One CSS pixel at 96 DPI. The PLQ-20 proof needs this smaller gap so adjacent
 // 70%-width glyphs stay distinct without restoring the normal 1.5 px tracking.
 const PR2_MASTER_LETTER_GAP_PT = 0.75;
-// Final physical proof: reduce only the isolated PR2 width by one percentage
-// point. The approved normal application artwork remains at 70%.
-const PR2_HORIZONTAL_SCALE = 0.69;
+// Assam physical proof: keep the layout anchors unchanged while narrowing the
+// glyphs to the requested 65% width.
+const PR2_HORIZONTAL_SCALE = 0.65;
 // Physical proof C established the face size. Keep it fixed and calibrate only
 // the measured ink-edge-to-colon gap; the colon-to-data gap stays exactly 3 mm.
-const PR2_MASTER_FONT_SIZE_PT = 9.25;
+const PR2_MASTER_FONT_SIZE_PT = 9.5;
 const PR2_LABEL_GAPS_PT = Object.freeze({A:0.75*72/25.4,B:1*72/25.4,C:1.25*72/25.4});
 const wordAdvance = WORD_ADVANCE_PT + WORD_LETTER_GAP_PT;
 const leftInk=(value:string)=> (WORD_INK_BOUNDS[value[0]]?.[0] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
@@ -153,7 +153,7 @@ export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2M
     ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*advance*compression} ${y}) scale(${unit*activeHorizontalScale*compression} ${-unit})`} /> : null);
   return <svg className="pb-approved-artwork pb-word-artwork" xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
-    width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?`Passbook customer information — PR2 ${fontSize}pt, 69% width, 1px letter spacing, ${(pr2LabelGapPt*25.4/72).toFixed(2)}mm label gap, 3mm data gap`:'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
+    width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?`Passbook customer information — PR2 ${fontSize}pt, 65% width, 1px letter spacing, ${(pr2LabelGapPt*25.4/72).toFixed(2)}mm label gap, 3mm data gap`:'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
     style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:pr2MasterTypography?0.07:0.13,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
     <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,activeLabelX(label),label.y,label.compression)}</g>)}</g>
