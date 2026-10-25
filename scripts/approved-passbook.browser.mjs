@@ -84,7 +84,7 @@ try{
   await page.getByRole('button',{name:'Apply to Preview',exact:true}).click();
   assert.equal(await value('accountNo'),edits['Account Number']);assert.equal(await value('nominee'),'3');
   if(isAssam){
-   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');if(mode==='print'){assert.equal(await value('address3'),'');assert.equal(await value('address4'),'ASSAM, PIN-001200');}else assert.equal(await value('address3'),'ASSAM, PIN-001200');
+   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(await value('address3'),'ASSAM, PIN-001200');assert.equal(await value('address4'),'');
   }else assert.equal(await value('address'),'C/O EDITED GUARDIAN\nVILL-TEST, P.O-TEST\nASSAM, PIN-001200');
   await openEdit();for(const [label,text]of Object.entries(edits))assert.equal(await input(label).inputValue(),text);
   await page.getByRole('button',{name:'Cancel Changes',exact:true}).click();
