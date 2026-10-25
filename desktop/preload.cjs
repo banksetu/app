@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
   commit: (scope,before,after,receipt) => ipcRenderer.invoke('local:commit',scope,before,after,receipt),
   copyText: text => ipcRenderer.invoke('clipboard:write-text',text),
   shareImage: image => ipcRenderer.invoke('clipboard:share-image',image),
+  openWhatsAppSupport: () => ipcRenderer.invoke('support:whatsapp'),
   version: () => ipcRenderer.invoke('update:version'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
