@@ -10,7 +10,7 @@ export type OfflineClaims = {
 };
 export type SignedSession = {payload: string; signature: string; publicKey: JsonWebKey};
 const scope = (uid: string) => `offline:${uid}`;
-export async function verifyOfflineSession(session: SignedSession, uid: string, now = Date.now()): Promise<OfflineClaims> {
+export async function verifyOfflineSession(session: SignedSession, uid: string, now = Date.now(), allowExpiredClientIdentity = false): Promise<OfflineClaims> {
   if (!session || typeof session.payload !== "string" || session.payload.length>20000 || typeof session.signature!=="string") throw new Error("Offline permission is invalid.");
   const pinned = trustedKey as JsonWebKey;
   if (pinned.kty!=="RSA" || !pinned.n || !pinned.e || pinned.d) throw new Error("Trusted offline verification key is unavailable. Update Bank Setu.");
@@ -19,7 +19,9 @@ export async function verifyOfflineSession(session: SignedSession, uid: string, 
   const valid=await crypto.subtle.verify("RSASSA-PKCS1-v1_5",key,Uint8Array.from(binary,c=>c.charCodeAt(0)),new TextEncoder().encode(session.payload));
   if(!valid)throw new Error("Offline permission signature is invalid.");
   const claims=JSON.parse(session.payload) as OfflineClaims;
-  if(claims.uid!==uid || !claims.tenantId || !claims.connectionId || !["client_admin","client_user","master_owner","admin"].includes(claims.role) || claims.status!=="approved" || claims.subscriptionStatus!=="active" || !Number.isFinite(claims.expiresAt) || !Number.isFinite(claims.issuedAt) || claims.issuedAt>now+300000 || claims.expiresAt<=now || claims.expiresAt-claims.issuedAt>(claims.licenseRequired===true?5*86400000:8*3600000) || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(claims.apiUrl)) throw new Error("Offline access expired or belongs to another account. Connect to the internet; local records are retained.");
+  const expired=claims.expiresAt<=now;
+  const signedClientIdentity=allowExpiredClientIdentity&&claims.licenseRequired===true&&["client_admin","client_user"].includes(claims.role);
+  if(claims.uid!==uid || !claims.tenantId || !claims.connectionId || !["client_admin","client_user","master_owner","admin"].includes(claims.role) || claims.status!=="approved" || claims.subscriptionStatus!=="active" || !Number.isFinite(claims.expiresAt) || !Number.isFinite(claims.issuedAt) || claims.issuedAt>now+300000 || expired&&!signedClientIdentity || claims.expiresAt-claims.issuedAt>(claims.licenseRequired===true?5*86400000:8*3600000) || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(claims.apiUrl)) throw new Error("Offline access expired or belongs to another account. Connect to the internet; local records are retained.");
   if(["master_owner","admin"].includes(claims.role)&&claims.tenantId!==`master:${uid}`)throw new Error("Master offline scope is invalid.");
   if(["client_admin","client_user"].includes(claims.role)&&claims.tenantId.startsWith("master:"))throw new Error("Client offline scope is invalid.");
   if(claims.demoOnly===true&&(claims.licenseRequired!==true||claims.connectionId!=="demo-sample"||claims.apiUrl!=="https://script.google.com/macros/s/banksetu-demo-local/exec"))throw new Error("Demo offline scope is invalid.");
@@ -46,7 +48,10 @@ export async function enrollOfflineSession(): Promise<void> {
 export async function resumeOfflineSession(uid: string, expected?: {role:string;tenantId:string;demoOnly?:boolean}): Promise<OfflineClaims> {
   const state=await customerRepository.read(scope(uid));
   if(!state.offlineSession)throw new Error("First login must be online. No verified offline session is saved on this device.");
-  const claims=await verifyOfflineSession(state.offlineSession,uid);
+  // An expired, correctly signed client grant may restore identity only so
+  // local records can open read-only. A current 24-hour license receipt is
+  // still mandatory for every write, PDF and print operation.
+  const claims=await verifyOfflineSession(state.offlineSession,uid,Date.now(),true);
   if(auth.currentUser?.uid!==uid)throw new Error("Session changed.");
   if(expected&&(claims.role!==expected.role||(!["master_owner","admin"].includes(expected.role)&&claims.tenantId!==expected.tenantId)||(expected.demoOnly!==undefined&&Boolean(claims.demoOnly)!==expected.demoOnly)))throw new Error("Offline workspace no longer matches your account.");
   const master=["master_owner","admin"].includes(claims.role);

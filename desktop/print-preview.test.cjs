@@ -8,6 +8,9 @@ test('print controls inherit app dark appearance without changing PDF pixels or 
  assert(dark.includes('<html data-appearance="dark">'));assert(light.includes('<html data-appearance="light">'));
  assert(dark.includes('color-scheme:dark'));assert(dark.includes(pdf.toString('base64')));
  assert(previewHtml(pdf,[],'"><script>bad</script>').includes('<html data-appearance="light">'));
+ const preferred=previewHtml(pdf,[{name:'windows-default',isDefault:true},{name:'banksetu-printer'}],'light','banksetu-printer');
+ assert.match(preferred,/value="banksetu-printer" selected/);
+ assert.doesNotMatch(preferred,/value="windows-default" selected/);
 });
 test('Windows preview freezes print HTML, isolates IPC, validates settings and keeps passbook size',async()=>{
   const handlers=new Map(),windows=[],pdfOptions=[],printOptions=[];

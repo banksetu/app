@@ -1,4 +1,5 @@
 const {createPublicKey, verify} = require('node:crypto');
+const MAX_OFFLINE_LICENSE_MS=24*60*60*1000;
 
 function signedClaims(signed, key) {
   if (!signed || typeof signed.payload !== 'string' || signed.payload.length > 20000 ||
@@ -37,7 +38,7 @@ function createLicenseGuard(publicKey) {
     if (claim.purpose !== 'banksetu-license-v1' || claim.uid !== uid || claim.tenantId !== grant.tenantId ||
         (!Number.isInteger(claim.revision) || claim.revision<0) || !Number.isFinite(claim.issuedAt) ||
         !Number.isFinite(claim.validUntil) || claim.issuedAt > now + 300000 ||
-        claim.validUntil <= now || claim.validUntil<=claim.issuedAt || claim.validUntil - claim.issuedAt > 5 * 86400000 || !['annual','lifetime','demo'].includes(claim.plan) ||
+        claim.validUntil <= now || claim.validUntil<=claim.issuedAt || claim.validUntil - claim.issuedAt > MAX_OFFLINE_LICENSE_MS || !['annual','lifetime','demo'].includes(claim.plan) ||
         !(['active', 'expiring_soon'].includes(claim.state) || (claim.plan === 'demo' && claim.state === 'demo_active')) ||
         (grant.demoOnly && claim.plan !== 'demo') ||
         ((claim.plan === 'annual' || claim.plan === 'demo') &&
@@ -52,16 +53,17 @@ function createLicenseGuard(publicKey) {
   };
 }
 
-function createLicenseAuthority(publicKey,store){
+function createLicenseAuthority(publicKey,store,trustedClock){
   const key=createPublicKey({key:publicKey,format:'jwk'});
   let uid='',receipt;
   const authorize=createLicenseGuard(publicKey);
   const session=value=>{uid=value;receipt=undefined;};
   const status=(signed,now=Date.now())=>{
     const claim=signedClaims(signed,key);
-    if(claim.purpose!=='banksetu-license-status-v1'||claim.uid!==uid||!claim.tenantId||!Number.isInteger(claim.revision)||claim.revision<0||!Number.isFinite(claim.issuedAt)||!Number.isFinite(claim.validUntil)||claim.issuedAt>now+300000||claim.validUntil<=now||claim.validUntil<=claim.issuedAt||claim.validUntil-claim.issuedAt>5*86400000||typeof claim.canWrite!=='boolean'||claim.canWrite!==['active','expiring_soon','demo_active'].includes(claim.state))throw Error('Invalid signed license status.');
+    if(claim.purpose!=='banksetu-license-status-v1'||claim.uid!==uid||!claim.tenantId||!Number.isInteger(claim.revision)||claim.revision<0||!Number.isFinite(claim.issuedAt)||!Number.isFinite(claim.validUntil)||claim.issuedAt>now+300000||claim.validUntil<=now||claim.validUntil<=claim.issuedAt||claim.validUntil-claim.issuedAt>MAX_OFFLINE_LICENSE_MS||typeof claim.canWrite!=='boolean'||claim.canWrite!==['active','expiring_soon','demo_active'].includes(claim.state))throw Error('Invalid signed license status.');
     const identity=`${uid}:${claim.tenantId}`,known=store.getLicenseAuthorization(identity);
     if(known){const prior=signedClaims(known,key);if(claim.revision<prior.revision||claim.revision===prior.revision&&claim.issuedAt<prior.issuedAt)throw Error('License authorization revision is stale.');}
+    trustedClock?.observe(uid,claim.issuedAt);
     store.saveLicenseAuthorization(identity,signed);
     if(!claim.canWrite)receipt=undefined;
   };
@@ -74,10 +76,11 @@ function createLicenseAuthority(publicKey,store){
   const acceptReceipt=(signed,now=Date.now())=>{
     const claim=signedClaims(signed,key),known=store.getLicenseAuthorization(`${uid}:${claim.tenantId}`);
     const status=known?signedClaims(known,key):null;
-    if(claim.purpose!=='banksetu-license-v1'||claim.uid!==uid||!claim.tenantId||!Number.isInteger(claim.revision)||claim.revision<0||!Number.isFinite(claim.issuedAt)||!Number.isFinite(claim.validUntil)||claim.issuedAt>now+300000||claim.validUntil<=now||claim.validUntil<=claim.issuedAt||claim.validUntil-claim.issuedAt>5*86400000||!['annual','lifetime','demo'].includes(claim.plan)||!(claim.plan==='demo'?claim.state==='demo_active':['active','expiring_soon'].includes(claim.state))||(['annual','demo'].includes(claim.plan)&&(!Number.isFinite(Date.parse(claim.expiresAt))||now>=Date.parse(claim.expiresAt)||claim.validUntil>Date.parse(claim.expiresAt)))||status&&(!status.canWrite||status.revision!==claim.revision))throw Error('License authorization is expired or superseded.');
+    if(claim.purpose!=='banksetu-license-v1'||claim.uid!==uid||!claim.tenantId||!Number.isInteger(claim.revision)||claim.revision<0||!Number.isFinite(claim.issuedAt)||!Number.isFinite(claim.validUntil)||claim.issuedAt>now+300000||claim.validUntil<=now||claim.validUntil<=claim.issuedAt||claim.validUntil-claim.issuedAt>MAX_OFFLINE_LICENSE_MS||!['annual','lifetime','demo'].includes(claim.plan)||!(claim.plan==='demo'?claim.state==='demo_active':['active','expiring_soon'].includes(claim.state))||(['annual','demo'].includes(claim.plan)&&(!Number.isFinite(Date.parse(claim.expiresAt))||now>=Date.parse(claim.expiresAt)||claim.validUntil>Date.parse(claim.expiresAt)))||status&&(!status.canWrite||status.revision!==claim.revision))throw Error('License authorization is expired or superseded.');
+    trustedClock?.observe(uid,claim.issuedAt);
     receipt=signed;
   };
-  const protectedAction=()=>{authorize(store,currentScope(),receipt);};
+  const protectedAction=()=>{trustedClock?.verify(uid);authorize(store,currentScope(),receipt);};
   const protectedScope=scope=>{if(scope!==currentScope())throw Error("The active signed-in workspace changed.");protectedAction();};
   const commit=(scope,signed)=>{
     if(scope.startsWith('offline:'))return false;

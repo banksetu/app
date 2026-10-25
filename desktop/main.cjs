@@ -9,7 +9,7 @@ const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 const primaryInstance=app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
-let window,store,background,tray,openMain,quitting=false,downloaded=false;
+let window,store,background,tray,openMain,appMenu,quitting=false,downloaded=false;
 const directoryOptions = () => ({
   userData:app.getPath('userData'),platform:process.platform,executable:process.execPath,env:process.env
 });
@@ -51,10 +51,12 @@ if(primaryInstance)app.whenReady().then(async()=>{
   if(!store)store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
   pinFirstInstall(options,dataDirectory);
   const publicKey=require('../src/generated/licensePublicKey.json');
-  const licenseAuthority=createLicenseAuthority(publicKey,store);
-  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);if(background?.status().uid&&background.status().uid!==uid)background.clear();});
-  ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);});
-  ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);});
+  const trustedClock=require('./trusted-clock.cjs').createTrustedClock(path.join(app.getPath('userData'),'license-clock.enc'),safeStorage);
+  const licenseAuthority=createLicenseAuthority(publicKey,store,trustedClock);
+  appMenu=require('./app-menu.cjs').installAppMenu({app,Menu,dialog,getWindow:()=>window,authorize:()=>licenseAuthority.protectedAction(),userData:app.getPath('userData')});
+  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);appMenu.refreshState();if(background?.status().uid&&background.status().uid!==uid)background.clear();});
+  ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);appMenu.refreshState();});
+  ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);appMenu.refreshState();});
   const validPdf = encoded => {
     if(typeof encoded!=='string'||encoded.length>40_000_000||!/^[A-Za-z0-9+/=]+$/.test(encoded))throw Error('Invalid PDF data.');
     const bytes=Buffer.from(encoded,'base64');
@@ -86,7 +88,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     notice.show();return true;
   });
   require('./pr2-ipc.cjs').installPr2({app,ipcMain,BrowserWindow,trusted,authorize:scope=>licenseAuthority.protectedScope(scope),getWindow:()=>window});
-  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction()});
+  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction(),getDefaultPrinter:()=>appMenu.getDefaultPrinter()});
   const directoryBytes = directory => {
     let total = 0;
     try {
@@ -196,30 +198,25 @@ if(primaryInstance)app.whenReady().then(async()=>{
   window.webContents.on('will-navigate',(event,url)=>{if (!url.startsWith(ORIGIN+'/')) event.preventDefault();});
   const cameraAllowed=(contents,permission,requestingUrl)=>
     permission==='media' && contents===window.webContents &&
-    (requestingUrl===ORIGIN || requestingUrl.startsWith(ORIGIN+'/'));
-  window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>
-    callback(cameraAllowed(contents,permission,details.requestingUrl||contents.getURL())));
-  window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>
-    cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
-    window.on('closed',()=>{window=null;});
-    await window.loadURL(ORIGIN+'/index.html');
-    if(page)window.webContents.send('system-notification:open',page);
-  };
-  const notificationFile=path.join(app.getPath('userData'),'background-notifications.enc');
-  const saveSession=value=>{if(value){if(!safeStorage.isEncryptionAvailable())throw Error('Windows credential encryption is unavailable.');fs.writeFileSync(notificationFile,safeStorage.encryptString(JSON.stringify(value)),{mode:0o600});}else{try{fs.unlinkSync(notificationFile);}catch{}}};
-  background=require('./background-notifications.cjs').createBackgroundNotifications({fetch:net.fetch,currentVersion:app.getVersion(),read:()=>JSON.parse(safeStorage.decryptString(fs.readFileSync(notificationFile))),write:saveSession,notify:value=>{
-    if(window&&!window.isDestroyed()&&window.isVisible())return;
-    if(!Notification.isSupported())return;
-    const notice=new Notification({title:value.title,body:value.body,icon:path.join(root,'icon-512.png')});notice.on('click',()=>void openMain(value.page));notice.show();
-  },onRevoked:()=>{if(!window&&!quitting)app.quit();}});
-  const ensureTray=()=>{if(process.platform!=='win32'||tray)return;tray=new Tray(path.join(root,'icon-512.png'));tray.setToolTip('Bank Setu · Background notifications');tray.on('double-click',()=>void openMain());tray.setContextMenu(Menu.buildFromTemplate([{label:'Open Bank Setu',click:()=>void openMain()},{label:'Disable background notifications',click:()=>{background.clear();tray.destroy();tray=null;if(!window)app.quit();}},{type:'separator'},{label:'Quit Bank Setu (stop notifications)',click:()=>{quitting=true;app.quit();}}]));};
-  ipcMain.handle('background:status',event=>{trusted(event);return background.status();});
-  ipcMain.handle('background:bind',(event,value)=>{trusted(event);if(process.platform!=='win32')throw Error('Background notifications are supported on Windows.');background.bind(value);ensureTray();return background.status();});
-  ipcMain.handle('background:clear',event=>{trusted(event);background.clear();if(tray){tray.destroy();tray=null;}return background.status();});
-  if(background.status().enabled)ensureTray();
-  await openMain();
-
-}).catch(error=>{require('electron').dialog.showErrorBox('Bank Setu startup failed',error.message);app.quit();});
-app.on('second-instance',()=>{if(openMain)void openMain();});
-app.on('window-all-closed',()=>{if(quitting||!background?.status().enabled)app.quit();});
-app.on('before-quit',()=>{quitting=true;background?.stop();tray?.destroy();store?.close();});
+    (requestingUrl===ORIGIN || requestingUr…10976 tokens truncated…pi.getLicensePermission().canWrite,false);
+ h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
+});
+test('account switching rejects in-flight authorizations and prevents cross-tenant receipt reuse',async()=>{
+ const h=harness();let finish;const prior=h.response();h.setRemote(()=>new Promise(resolve=>finish=resolve));
+ const pending=h.api.refreshLicensePermission();h.bind('user-b','tenant-b');finish(prior);await pending;
+ assert.equal(h.api.getLicensePermission().canWrite,false);assert.equal(h.api.getLicensePermission().uid,'user-b');
+ h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
+});
+test('five-day demo still renews its offline write permission every 24 hours',async()=>{
+ const h=harness();h.session.set('bankSetuConnectionMode','option-b');h.setRemote(()=>h.response('demo_active',1,{plan:'demo'}));await h.api.requireLicensedWrite();
+ assert.equal(h.session.get('bankSetuDemoWorkspace'),'active');h.navigator.onLine=false;h.advance(24*60*60*1000);
+ await assert.rejects(h.api.requireLicensedWrite());assert.equal(h.session.get('bankSetuDemoWorkspace'),'expired');
+});
+test('route policy blocks every protected route and preserves the specified read-only routes',()=>{
+ const h=harness();
+ const source=ts.transpileModule(fs.readFileSync('src/core/licensePolicy.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+ const exports={};vm.runInNewContext(source,{exports});
+ for(const page of ['customer-entry','quick-passbook','passbook','bank-formats','search','reports'])assert.equal(exports.canOpenLicensePage(page,true,false),false,page);
+ for(const page of ['dashboard','customers','all-customer-data','settings','sync-backup','license-management','support'])assert.equal(exports.canOpenLicensePage(page,true,false),true,page);
+ h.api.resetLicensePermission();
+});

@@ -37,9 +37,10 @@ const installPrintScript='window.bankSetuPrintJob=(options={})=>{window.dispatch
   +capturePrintDocument.toString()+')();return window.bankSetuPrint.preview(html,{...options,appearance:document.documentElement.dataset.appearance||document.querySelector(".banksetu-app-shell")?.dataset.appearance||"light"}).finally(()=>window.dispatchEvent(new Event("afterprint")));};window.print=()=>{void window.bankSetuPrintJob().catch(error=>alert("Print preview failed: "+error.message));};';
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-function previewHtml(pdf,printers,appearance="light") {
+function previewHtml(pdf,printers,appearance="light",preferredPrinter="") {
   appearance=appearance==="dark"?"dark":"light";
-  const options=printers.map(printer=>'<option value="'+escape(printer.name)+'"'+(printer.isDefault?' selected':'')+'>'+escape(printer.displayName||printer.name)+'</option>').join('');
+  const preferredAvailable=printers.some(printer=>printer.name===preferredPrinter);
+  const options=printers.map(printer=>'<option value="'+escape(printer.name)+'"'+((preferredAvailable?printer.name===preferredPrinter:printer.isDefault)?' selected':'')+'>'+escape(printer.displayName||printer.name)+'</option>').join('');
   return '<!doctype html><html data-appearance="'+appearance+'"><head><meta charset="utf-8"><title>Bank Setu · Print</title><style>'+
     '*{box-sizing:border-box}body{margin:0;font:14px system-ui;background:#e8eaed;color:#202124;display:grid;grid-template-columns:1fr 320px;height:100vh}iframe{width:100%;height:100%;border:0}aside{padding:26px;background:white;display:flex;flex-direction:column;gap:18px;overflow:auto}h2{margin:0;font-size:22px}label{display:grid;gap:8px}select,input{width:100%;padding:10px;border:1px solid #dadce0;border-radius:6px;font:inherit}.buttons{display:flex;gap:10px;margin-top:auto}button{padding:11px 16px;border:0;border-radius:6px;background:#1967d2;color:white;font:inherit;cursor:pointer}button.secondary{background:#eef1f5;color:#202124}#status{font-size:12px;min-height:30px;overflow-wrap:anywhere}html[data-appearance=dark]{color-scheme:dark}html[data-appearance=dark] body{background:#0b1220;color:#f8fafc}html[data-appearance=dark] aside{background:#172338}html[data-appearance=dark] :is(select,input){background:#233249;color:#f8fafc;border-color:#42536b}html[data-appearance=dark] button.secondary{background:#33455f;color:#f8fafc}</style></head><body>'+
     '<iframe id="preview" title="Print page preview" src="data:application/pdf;base64,'+pdf.toString('base64')+'#toolbar=0"></iframe><aside><h2>Print</h2>'+
@@ -57,7 +58,7 @@ function previewHtml(pdf,printers,appearance="light") {
     'async function run(action){$("print").disabled=true;try{const result=await window.bankSetuPrintPreview.action(action,settings());if(result.pdf)$("preview").src="data:application/pdf;base64,"+result.pdf+"#toolbar=0";$("status").textContent=result.accepted?"Print request accepted by the system.":result.message||"";if(result.accepted)setTimeout(()=>window.close(),350)}catch(error){$("status").textContent=action==="print"?"Print Failed/Error: "+error.message:error.message}finally{$("print").disabled=false}}'+
     'for(const id of ["layout","paper","pages","scale"])$(id).onchange=()=>run("preview");$("print").onclick=()=>run($("destination").value==="pdf"?"save":"print");$("cancel").onclick=()=>window.close();document.addEventListener("keydown",e=>{if(e.key==="Escape")window.close()});</script></body></html>';
 }
-function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getParentWindow=()=>parentWindow,authorize=()=>{}}) {
+function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getParentWindow=()=>parentWindow,authorize=()=>{},getDefaultPrinter=()=>""}) {
   const sources=new Set(),previews=new Map(),active=new Map();
   function attach(source){
     // Cache Electron objects while alive: BrowserWindow.webContents throws after close.
@@ -116,7 +117,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
       preview.webContents.setWindowOpenHandler(()=>({action:'deny'}));
       preview.webContents.on('will-navigate',e=>e.preventDefault());
       preview.once('closed',cleanup);
-      await preview.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(previewHtml(pdf,printers,requested?.appearance)));
+      await preview.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent(previewHtml(pdf,printers,requested?.appearance,getDefaultPrinter())));
       if(requested?.duplex===true)await preview.webContents.executeJavaScript('document.getElementById("duplex").checked=true').catch(()=>{});
       return completion;
     }catch(error){const cancelled=state.closed;if(preview&&!preview.isDestroyed())preview.destroy();cleanup();if(cancelled)return {cancelled:true};throw error;}

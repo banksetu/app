@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   notify: value => ipcRenderer.invoke('system-notification:show',value),
+  onAppMenuNavigate: callback => {const listener=(_event,page)=>callback(page);ipcRenderer.on('app-menu:navigate',listener);return ()=>ipcRenderer.removeListener('app-menu:navigate',listener);},
   onNotificationOpen: callback => {const listener=(_event,page)=>callback(page);ipcRenderer.on('system-notification:open',listener);return ()=>ipcRenderer.removeListener('system-notification:open',listener);},
   onUpdateProgress: callback => {
     const listener = (_event, payload) => callback(payload);

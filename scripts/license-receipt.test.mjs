@@ -21,6 +21,7 @@ test('signed tenant license receipt is bounded and cannot be forged or reused fo
   const claims = { purpose: 'banksetu-license-v1', uid: 'uid-a', tenantId: 'tenant-a', revision: 1, state: 'active', plan: 'annual', issuedAt: now, validUntil: now + 8 * 3600000, expiresAt: new Date(now + 365 * 86400000).toISOString() };
   const receipt = create(claims);
   assert.equal((await exports.verifyLicenseReceipt(receipt, 'uid-a', 'tenant-a', now)).tenantId, 'tenant-a');
+  await assert.rejects(exports.verifyLicenseReceipt(create({...claims,validUntil:now+24*60*60*1000+1}), 'uid-a', 'tenant-a', now));
   await assert.rejects(exports.verifyLicenseReceipt(receipt, 'uid-a', 'tenant-b', now));
   await assert.rejects(exports.verifyLicenseReceipt({ ...receipt, payload: receipt.payload.replace('active', 'grace') }, 'uid-a', 'tenant-a', now));
   await assert.rejects(exports.verifyLicenseReceipt(receipt, 'uid-a', 'tenant-a', now + 8 * 3600000 + 1));

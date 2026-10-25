@@ -371,12 +371,12 @@ function App() {
 
   useEffect(() => {
     const refresh=()=>{const user=auth.currentUser,profile=activeProfile.current;if(user&&profile)void checkLicense(user,profile,navigator.onLine);};
+    const refreshIfDue=()=>{const current=getLicensePermission();if(!current.canWrite||current.validUntil<=Date.now())refresh();};
     window.addEventListener("banksetu-license-updated",refresh);
     window.addEventListener("online",refresh);
-    const focus=()=>{if(document.visibilityState==="visible")refresh();};
+    const focus=()=>{if(document.visibilityState==="visible")refreshIfDue();};
     document.addEventListener("visibilitychange",focus);
-    const timer=setInterval(refresh,60_000);
-    return()=>{clearInterval(timer);window.removeEventListener("online",refresh);window.removeEventListener("banksetu-license-updated",refresh);document.removeEventListener("visibilitychange",focus);};
+    return()=>{window.removeEventListener("online",refresh);window.removeEventListener("banksetu-license-updated",refresh);document.removeEventListener("visibilitychange",focus);};
   },[checkLicense]);
 
   const handleForgotPassword = async () => {
