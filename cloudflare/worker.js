@@ -707,11 +707,12 @@ async function handleLicensing(request, env, actor, route, context) {
     let receipt = null;
     if (found && view.canWrite) {
       const expiry = ["annual","demo"].includes(license.plan) ? Date.parse(license.expiresAt) : Infinity;
-      const validUntil = Math.min(serverTime + 5 * 86400000, expiry);
+      const validUntil = Math.min(serverTime + 24 * 60 * 60 * 1000, expiry);
       const signed = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, { purpose: "banksetu-license-v1", uid: actor.uid, tenantId, revision: license.revision, state: view.state, issuedAt: serverTime, validUntil, expiresAt: license.expiresAt, plan: license.plan });
       receipt = { payload: signed.payload, signature: signed.signature };
     }
-    const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:serverTime+5*86400000});
+    const statusExpiry=found&&view.canWrite&&["annual","demo"].includes(license.plan)?Date.parse(license.expiresAt):Infinity;
+    const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:Math.min(serverTime+24*60*60*1000,statusExpiry)});
     return json({ uid:actor.uid,tenantId,license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, paymentDetails:settings.paymentDetails, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
   }
   if (route === "/license-request-change") {
