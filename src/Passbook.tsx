@@ -2165,7 +2165,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
             html, body { width:210mm!important; height:297mm!important; }
             .passbook-shell { width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:175mm!important; overflow:visible!important; }
             .passbook-cover-space { height:88mm!important; }
-            .passbook-print-area { top:88mm!important; width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:87mm!important; }
+            .passbook-print-area { top:93mm!important; width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:87mm!important; }
           }
         ` : ""}
         ${isUnion ? `

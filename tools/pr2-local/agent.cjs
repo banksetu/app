@@ -33,7 +33,7 @@ async function main(){
  const action=oneClick?'full-suite':await prompt.question('Action (diagnose / full-suite / measure-width / print): ');
  if(!['diagnose','full-suite','measure-width','print'].includes(action))throw Error('Only diagnostic, consolidated full suite, one measured feed or one synthetic print proof is available');
  if(action==='full-suite')console.log('Full suite prints the synthetic '+sample+' approved-layout sample, waits for raster completion, then sends one front eject. It never retries motion.');
- const resolution=['print','full-suite'].includes(action)?(oneClick?216:Number(await prompt.question('Printer configuration vertical resolution (216 or 240): '))):undefined;
+ const resolution=['print','full-suite'].includes(action)?(oneClick?(sample==='union'?216:240):Number(await prompt.question('Printer configuration vertical resolution (216 or 240): '))):undefined;
  const passbookType=action==='full-suite'?(oneClick?'horizontal':await prompt.question('Test paper type (horizontal / vertical / document): ')):undefined;
  let oneClickApproved=false;
  if(oneClick){

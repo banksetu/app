@@ -4,19 +4,20 @@ import {requireLicensedWrite} from './core/licenseAccess';
 import {confirmAction} from './uiDialogs';
 import {rasterizePassbook,calibrationRaster,type Pr2Device,type Pr2Settings,type Pr2Raster,type Pr2Outcome} from './platform/pr2';
 import './Pr2PrinterDialog.css';
-const defaults:Pr2Settings={profile:'epson-plq20-pr2-v1',verticalResolution:240,offsetX:0,offsetY:0,confirmMode:false,confirmModel:false,acceptRaster:false,baud:9600,parity:'None',dataBits:8,stopBits:1};
+const defaultsFor=(bankName:string):Pr2Settings=>({profile:'epson-plq20-pr2-v1',verticalResolution:/union bank/i.test(bankName)?216:240,offsetX:0,offsetY:0,confirmMode:false,confirmModel:false,acceptRaster:false,baud:9600,parity:'None',dataBits:8,stopBits:1});
 export default function Pr2PrinterDialog({bankName,onClose,onComplete}:{bankName:string;onClose:()=>void;onComplete:(result:Pr2Outcome)=>void}){
+ const defaults=defaultsFor(bankName);
  const [scope]=useState(()=>identity()),[devices,setDevices]=useState<Pr2Device[]>([]),[deviceId,setDeviceId]=useState(''),[settings,setSettings]=useState(defaults),[raster,setRaster]=useState<Pr2Raster|null>(null),[preview,setPreview]=useState(''),[message,setMessage]=useState('Preparing the active bank template…'),[busy,setBusy]=useState(true),[checked,setChecked]=useState(false),[done,setDone]=useState(false);
  const job=useRef(''),running=useRef(false),alive=useRef(true);const api=window.bankSetuPr2!,device=devices.find(d=>d.id===deviceId);
  const patch=(value:Partial<Pr2Settings>)=>{setSettings(old=>({...old,...value}));setChecked(false);};
  useEffect(()=>{alive.current=true;const stop=api.onProgress(event=>{if(event.id===job.current&&alive.current)setMessage(event.message);});
   const changed=()=>{void api.cancel({scope,id:job.current}).catch(()=>{});onClose();};window.addEventListener('banksetu-workspace-change',changed);
-  const start=setTimeout(()=>{void (async()=>{try{await requireLicensedWrite();const [prepared,list]=await Promise.all([api.prepare(scope),api.discover(scope)]);job.current=prepared.id;const rendered=await rasterizePassbook(prepared.pdf);if(!alive.current)return;
+  const start=setTimeout(()=>{void (async()=>{try{await requireLicensedWrite();document.documentElement.classList.add('pr2-direct-preparing');const [prepared,list]=await Promise.all([api.prepare(scope),api.discover(scope)]);job.current=prepared.id;const rendered=await rasterizePassbook(prepared.pdf);if(!alive.current)return;
    setRaster(rendered.raster);setPreview(rendered.preview);setDevices(list.devices);
    const remembered=list.devices.find(d=>d.id===list.preferences?.deviceId),matches=list.devices.filter(d=>d.profile);
-   if(remembered){setDeviceId(remembered.id);setSettings({...defaults,...list.preferences,acceptRaster:false});}else if(matches.length===1)setDeviceId(matches[0].id);
+   if(remembered){setDeviceId(remembered.id);setSettings({...defaults,...list.preferences,verticalResolution:defaults.verticalResolution,acceptRaster:false});}else if(matches.length===1)setDeviceId(matches[0].id);
    setMessage(list.devices.length?'Choose/check the printer. Graphics preserve the source geometry at 180 dpi; physical alignment requires a real test.':'No USB/COM/LPT printer found. Connect the printer and reopen this dialog.');
-  }catch(e){if(alive.current)setMessage(e instanceof Error?e.message:'Printer Bridge unavailable.');}finally{if(alive.current)setBusy(false);}})();},0);
+  }catch(e){if(alive.current)setMessage(e instanceof Error?e.message:'Printer Bridge unavailable.');}finally{document.documentElement.classList.remove('pr2-direct-preparing');if(alive.current)setBusy(false);}})();},0);
   return()=>{clearTimeout(start);alive.current=false;stop();window.removeEventListener('banksetu-workspace-change',changed);void api.cancel({scope,id:job.current}).catch(()=>{});};
  // The modal is bound to the opening workspace and prepared customer document.
  // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -70,6 +70,11 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
       .union-logo { position:absolute; left:70mm; top:7mm; width:55mm; height:10mm; object-fit:contain; }
       .union-brand { position:absolute; left:70mm; top:7mm; width:55mm; font:bold 4mm/4.5mm Arial,sans-serif; }
       .union-photo { position:absolute; left:161mm; top:28mm; width:30mm; height:38mm; object-fit:cover; }
+      html.pr2-direct-preparing .union-upper,
+      html.pr2-direct-preparing .union-fold,
+      html.pr2-direct-preparing .union-label,
+      html.pr2-direct-preparing .union-logo,
+      html.pr2-direct-preparing .union-brand { display:none!important; }
       .union-edit { display:block; margin:12px auto; }
       @media print {
         @page { size:210mm 215mm; margin:0; }
