@@ -5,7 +5,7 @@ export type Pr2Device={id:string;name:string;transport:string;profile:string|nul
 export type Pr2Settings={profile:string;verticalResolution:number;offsetX:number;offsetY:number;confirmMode:boolean;confirmModel:boolean;acceptRaster:boolean;baud:number;parity:string;dataBits:number;stopBits:number};
 export type Pr2Raster={width:number;height:number;dpi:180;bits:string};
 export type Pr2Outcome={state:string;completed:boolean;message?:string;replayed?:boolean};
-export type Pr2Request={scope:string;id:string;device:Pr2Device;settings:Pr2Settings;raster:Pr2Raster;test?:boolean};
+export type Pr2Request={scope:string;id:string;device:Pr2Device;settings:Pr2Settings;raster:Pr2Raster;rasters?:Pr2Raster[];test?:boolean};
 declare global {interface Window {bankSetuPr2?:{
  platform:string;protocol:1;
  prepare:(scope:string)=>Promise<{id:string;pdf:string}>;
@@ -28,12 +28,16 @@ export function canvasRaster(canvas:HTMLCanvasElement):Pr2Raster{
 export async function rasterizePassbook(pdf:string){
  GlobalWorkerOptions.workerSrc=worker;
  const loading=getDocument({data:Uint8Array.from(atob(pdf),c=>c.charCodeAt(0))});
- try{const doc=await loading.promise;if(doc.numPages!==1)throw Error('Direct PR2 printing requires one passbook page. No pages were resized or omitted.');
-  const page=await doc.getPage(1),viewport=page.getViewport({scale:180/72});
-  if(viewport.width>1736||viewport.height>2105)throw Error('The selected bank template exceeds the supported printer graphics area.');
-  const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-  await page.render({canvas,viewport,background:'white'}).promise;
-  return {raster:canvasRaster(canvas),preview:canvas.toDataURL('image/png')};
+ try{const doc=await loading.promise;if(doc.numPages<1||doc.numPages>10)throw Error('Direct PR2 printing supports 1 to 10 passbook pages per job.');
+  const rasters:Pr2Raster[]=[],previews:string[]=[];
+  for(let pageNo=1;pageNo<=doc.numPages;pageNo++){
+   const page=await doc.getPage(pageNo),viewport=page.getViewport({scale:180/72});
+   if(viewport.width>1736||viewport.height>2105)throw Error(`Page ${pageNo} exceeds the supported printer graphics area.`);
+   const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+   await page.render({canvas,viewport,background:'white'}).promise;
+   rasters.push(canvasRaster(canvas));previews.push(canvas.toDataURL('image/png'));
+  }
+  return {raster:rasters[0],preview:previews[0],rasters,previews};
  }finally{await loading.destroy();}
 }
 export function calibrationRaster(){const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=1100;const c=canvas.getContext('2d')!;c.fillStyle='white';c.fillRect(0,0,1000,1100);c.strokeStyle='black';c.lineWidth=1;
