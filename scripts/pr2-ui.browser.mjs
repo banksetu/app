@@ -30,7 +30,7 @@ try {
   await page.goto('http://127.0.0.1:5198/test-evidence/menu.html');
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();await page.locator('.pb-approved-artwork').waitFor();
   if(platform==='android')await page.evaluate(()=>window.Capacitor={isNativePlatform:()=>true,getPlatform:()=> 'android'});
-  await page.getByRole('button',{name:/Direct Printer Send/}).click();
+  await page.getByRole('button',{name:/Olivetti Mode Print/}).click();
   await page.getByRole('alertdialog').getByText('Please use this button on only Windows EXE mode.',{exact:true}).waitFor();await page.getByRole('button',{name:'OK',exact:true}).click();
   assert.deepEqual(await page.evaluate(()=>window.testCalls.map(x=>x.action)),['searchCustomer']);await page.close();
  }
@@ -101,13 +101,14 @@ try {
    send:async request=>{window.pr2Requests.push(request);return{state:'completed',completed:true,message:'Synthetic device acknowledgement'};},
    cancel:async()=>true,acknowledge:async()=>true,onProgress:()=>()=>{}};
   },pdf.toString('base64'));
-  await page.getByRole('button',{name:/Direct Printer Send/}).click();
+  await page.getByRole('button',{name:/Olivetti Mode Print/}).click();
+  await page.getByRole('button',{name:/Final Print/}).click();
   await page.waitForFunction(()=>document.querySelector('[role="status"]')?.textContent!=='Preparing the active bank template…',null,{timeout:15000}).catch(()=>{});
   const dialogStatus=await page.locator('[role="status"]').textContent();console.log(`PR2 ${bank} preparation: ${dialogStatus}`);
   assert.match(dialogStatus||'',/Choose\/check the printer\./,`PR2 ${bank} preparation failed`);
   await page.getByLabel('I checked that the physical printer').check();await page.getByLabel('The printer configuration sheet').check();
   await page.getByRole('button',{name:'Check printer',exact:true}).click();await page.getByText('PR2 communication confirmed.',{exact:false}).waitFor();
-  await page.getByLabel('I reviewed the graphics proof.',{exact:false}).check();await page.getByRole('button',{name:'Send this passbook',exact:true}).click();
+  await page.getByLabel('I reviewed the graphics proof.',{exact:false}).check();await page.getByRole('button',{name:'Final Print',exact:true}).click();
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
