@@ -12,7 +12,7 @@ const authorize=createLicenseGuard(publicKey.export({format:'jwk'}));
 const signed=claims=>{const payload=JSON.stringify(claims);return {payload,signature:sign('sha256',Buffer.from(payload),privateKey).toString('base64url')};};
 const now=Date.now(),uid='synthetic-user',tenantId='synthetic-tenant',scope=`${uid}:${tenantId}:google-sheet-a`;
 const grant=overrides=>signed({uid,tenantId,role:'client_admin',connectionId:'google-sheet-a',status:'approved',subscriptionStatus:'active',licenseRequired:true,issuedAt:now-1000,expiresAt:now+86400000,...overrides});
-const receipt=overrides=>signed({purpose:'banksetu-license-v1',uid,tenantId,revision:1,state:'active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000,expiresAt:new Date(now+365*86400000).toISOString(),...overrides});
+const receipt=overrides=>signed({purpose:'banksetu-license-v1',uid,tenantId,revision:1,state:'active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000-1000,expiresAt:new Date(now+365*86400000).toISOString(),...overrides});
 const fake=(session,licensed=false,existing=false)=>({read:key=>key===`offline:${uid}`?{offlineSession:session}:{records:existing?[{id:'saved'}]:[],operations:[]},isLicensed:()=>licensed});
 
 test('native customer commits need matching signed workspace and current licensed entitlement',()=>{
@@ -73,7 +73,7 @@ test('licensed SQLite customer and pending operation survive restart and grant r
 test('native authorization persists suspension revision across restart, blocks printing and preserves pending customer/photo data',()=>{
  const {createLicenseAuthority}=require('./license-guard.cjs');
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-authority-test-'));
- const status=(state,revision)=>signed({purpose:'banksetu-license-status-v1',uid,tenantId,revision,state,canWrite:state==='active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000});
+ const status=(state,revision)=>signed({purpose:'banksetu-license-status-v1',uid,tenantId,revision,state,canWrite:state==='active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000-1000});
  try{
   let store=createStore(directory),empty={records:[],operations:[]};
   store.commit(`offline:${uid}`,empty,{...empty,offlineSession:grant({licenseRequired:undefined})});
