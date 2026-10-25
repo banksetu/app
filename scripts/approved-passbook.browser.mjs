@@ -68,7 +68,7 @@ try{
   const value=async(key)=>isAssam?(await field(key).getAttribute('aria-label')).slice(key.length+2):await field(key).innerText();
   assert.equal(await value('nominee'),isAssam?'1':'2');
   assert.equal(await value('accountNo'),customer.accountNo);
-  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');if(mode==='print')assert.match(await value('address4'),/ASSAM/);else assert.equal(await field('address4').locator('path').count(),0);}
+  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.match(await value('address4'),/ASSAM/);}
   else{assert.equal(await page.locator('.union-upper').count(),mode==='quick'?1:0);assert.equal(await page.locator('.pb-approved-artwork').count(),0);}
   const openEdit=async()=>{
    if(isAssam&&mode==='print'){
