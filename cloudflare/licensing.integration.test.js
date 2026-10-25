@@ -83,7 +83,7 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const key=await crypto.subtle.importKey('jwk',publicKey,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
     const signature=Uint8Array.from(atob(receipt.signature.replace(/-/g,'+').replace(/_/g,'/')),char=>char.charCodeAt(0));
     assert(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,signature,new TextEncoder().encode(receipt.payload)));
-    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=5*86400000);assert(claims.validUntil<=Date.parse(first.expiresAt));
+    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=24*60*60*1000);assert(claims.validUntil<=Date.parse(first.expiresAt));
     store.set('tenantSettings/tenant-a',doc('tenantSettings/tenant-a',{spreadsheetId:'existing-sheet',photoFolderId:'existing-folder',bridgeUrl:'existing-bridge'}));
     const registration={bankName:'Synthetic CSP',passbookBank:'Test Bank',branchName:'Test Branch',operatorName:'Synthetic Operator',mobile:'0123456789',address:'Test Address'};
     assert.equal((await call('master','/save-client-registration',registration)).status,403);
