@@ -42,3 +42,10 @@ test('Union final nomination row uses the measured 215/107/79 mm geometry',()=>{
  assert(source.includes('const UNION_DATA_LAST_ANCHOR_MM = 96'));
  assert(source.includes('value("nomination",c.nominee ? "Y" : "",109,100,10)'));
 });
+test('isolated PR2 proof excludes the upper non-printable panel',()=>{
+ const proof=fs.readFileSync(new URL('./pr2-ui.browser.mjs',import.meta.url),'utf8');
+ assert(proof.includes('.union-upper,.union-fold,.union-logo,.union-brand,.union-photo{display:none!important}'));
+ assert(proof.includes("physicalDataOriginMm:bank==='union'?124:108"));
+ assert(proof.includes("physicalDataHeightMm:bank==='union'?79:69"));
+ assert(proof.includes('physicalInkAllowanceMm:4'));
+});

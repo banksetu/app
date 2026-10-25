@@ -57,6 +57,7 @@ try {
    const bankRules=bank==='union'?`
     .union-document{position:absolute!important;left:0!important;top:0!important;width:203.2mm!important;height:215mm!important;margin:0!important;box-shadow:none!important;overflow:hidden!important}
     .union-lower{top:107mm!important;height:108mm!important}.union-fold{top:107mm!important}
+    .union-upper,.union-fold,.union-logo,.union-brand,.union-photo{display:none!important}
    `:`
     .passbook-shell{position:absolute!important;left:0!important;top:0!important;width:206mm!important;height:175mm!important;margin:0!important;box-shadow:none!important;border:0!important;overflow:hidden!important}
     .passbook-cover-space{height:88mm!important}.passbook-print-area{top:88mm!important;width:206mm!important;height:87mm!important}
@@ -87,6 +88,7 @@ try {
   }else{
    assert.equal(await proof.locator('.union-document').getAttribute('aria-label'),'Union Bank complete quick passbook');
    assert.match(await proof.locator('.union-document').innerText(),/BRANCH/);assert.match(await proof.locator('.union-document').innerText(),/Nomination Registered/);
+   assert.doesNotMatch(await proof.locator('.union-document').innerText(),/Passbook safeguards|Cheque book safeguards/,'Union PR2 proof must contain only the measured lower printable panel');
    const placement=await proof.evaluate(()=>{const page=document.querySelector('.union-document').getBoundingClientRect();const first=document.querySelector('[data-field="branchHeading"]').getBoundingClientRect();const last=document.querySelector('[data-field="nomination"]').getBoundingClientRect();return{firstMm:(first.top-page.top)*25.4/96,lastBottomMm:(last.bottom-page.top)*25.4/96};});
    assert.ok(Math.abs(placement.firstMm-124)<.2,`Union data must start 17mm below the 107mm fold; got ${placement.firstMm}mm`);
    assert.ok(placement.lastBottomMm<=215,'Union nomination Y/N line exceeds the 215mm physical sheet');
@@ -109,7 +111,7 @@ try {
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
-  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,paperLengthMm:bank==='union'?215:175,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:108}});await page.close();
+  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,bankProfile:bank,paperLengthMm:bank==='union'?215:175,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:108,physicalDataHeightMm:bank==='union'?79:69,physicalInkAllowanceMm:4}});await page.close();
  }
  // Vite watches this directory. Write every artifact only after both live UI
  // flows finish, otherwise Assam output can reload the Union dialog.

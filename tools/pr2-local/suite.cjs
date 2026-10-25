@@ -30,6 +30,11 @@ async function fullSuite({io,log,approve,fence,resolution=216,passbookType='hori
  if(!await approve('full-suite'))throw Error('Local approval declined');
  await fence();
  const plan=rasterBandsPhysical(sampleRaster||makeSampleRaster(),{profile:'epson-plq20-pr2-v1',verticalResolution:resolution,offsetX:0,offsetY:0});
+ const expectedOrigin=Number(sampleRaster?.physicalDataOriginMm),expectedHeight=Number(sampleRaster?.physicalDataHeightMm),paperLength=Number(sampleRaster?.paperLengthMm),inkAllowance=Number(sampleRaster?.physicalInkAllowanceMm||4);
+ if(Number.isFinite(expectedOrigin)&&Math.abs(plan.physical.topMm-expectedOrigin)>.25)throw Error('Prepared '+(sampleRaster?.bankProfile||'passbook')+' proof starts at '+plan.physical.topMm.toFixed(2)+'mm; required '+expectedOrigin.toFixed(2)+'mm. No paper motion sent.');
+ const measuredEnd=Number.isFinite(expectedOrigin)&&Number.isFinite(expectedHeight)?expectedOrigin+expectedHeight+inkAllowance:Infinity;
+ const physicalEnd=Number.isFinite(paperLength)?paperLength:Infinity;
+ if(plan.physical.bottomMm>Math.min(measuredEnd,physicalEnd)+.25)throw Error('Prepared '+(sampleRaster?.bankProfile||'passbook')+' proof exceeds its measured printable area. No paper motion sent.');
  const lineHeightMm=25.4/6;
  const declaredPaperMm=Number(sampleRaster?.paperLengthMm);
  const pageLines=Number.isFinite(declaredPaperMm)

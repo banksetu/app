@@ -28,6 +28,11 @@ test('declared physical sheet length, not incidental last ink, sets the eject bo
  await fullSuite({...f,sampleRaster:{...makeSampleRaster(),paperLengthMm:215}});
  assert.equal(count(f,[27,81,48,53,49,27,90]),1);
 });
+test('measured bank origin and printable height are verified before any motion',async()=>{
+ const raster={...makeSampleRaster(),bankProfile:'assam',physicalDataOriginMm:108,physicalDataHeightMm:69};
+ const f=fixture([]);await assert.rejects(fullSuite({...f,sampleRaster:raster}),/required 108.00mm/);
+ assert.equal(f.sent.length,0);assert.equal(f.fenced,1);
+});
 test('known 38 command error is cleared once before bank-style setup',async()=>{
  const f=fixture([commandError,aligned,[],ready,aligned,...successReplies().slice(2)]);await fullSuite({...f,resolution:216,passbookType:'horizontal'});
  assert.equal(count(f,[27,108]),1);assert.equal(count(f,[27,76,48,48,48]),1);
