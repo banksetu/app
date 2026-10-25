@@ -2,7 +2,7 @@
 // Epson NPD0841-00 Rev A, sheets 43, 51, 54, 58–66, 73, 76–79, 83.
 // Protocol profiles are deliberately independent from bank/customer templates.
 const PROFILES=Object.freeze({
-  'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20 / PLQ-20M · PR2',model:/\bPLQ[- ]?20(?:M)?\b/i,dpi:180,horizontalGraphicsDpi:180,horizontalReferenceDpi:120,verticalGraphicsDpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
+  'epson-plq20-pr2-v1':Object.freeze({id:'epson-plq20-pr2-v1',name:'Epson PLQ-20/20M, PLQ-35, PLQ-80 · PR2/Olivetti',model:/\bPLQ[- ]?(?:20M?|35|80)\b/i,dpi:180,horizontalGraphicsDpi:180,horizontalReferenceDpi:120,verticalGraphicsDpi:180,maxWidthMm:245,maxHeightMm:297,hardwareVerified:false}),
 });
 // Passbooks must return through the front slot. PR2 ESC O is front output;
 // FF outputs from the rear and is not the Direct Printer Send behavior wanted.

@@ -167,5 +167,11 @@ export default function WordPassbookInfo(props:{customer:Parameters<typeof appro
   const isolated=import.meta.env.VITE_PR2_LOCAL_MASTER_TYPOGRAPHY==='true';
   const requested=isolated?new URLSearchParams(globalThis.location?.search||'').get('pr2Variant')||'A':'A';
   const labelGap=PR2_LABEL_GAPS_PT[requested as keyof typeof PR2_LABEL_GAPS_PT]||PR2_LABEL_GAPS_PT.B;
-  return <WordPassbookArtwork values={wordPassbookValues(props.customer,props.bank)} assamInkBoost pr2MasterTypography={isolated} pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={labelGap} />;
+  const values=wordPassbookValues(props.customer,props.bank);
+  if(isolated)return <WordPassbookArtwork values={values} assamInkBoost pr2MasterTypography pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={labelGap} />;
+  return <>
+    <span className="pb-normal-typography"><WordPassbookArtwork values={values} assamInkBoost /></span>
+    <span className="pb-pr2-typography"><WordPassbookArtwork values={values} assamInkBoost pr2MasterTypography pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={PR2_LABEL_GAPS_PT.B} /></span>
+    <style>{`.pb-normal-typography,.pb-pr2-typography{display:contents}.pb-pr2-typography{display:none}html.pr2-direct-preparing .pb-normal-typography{display:none}html.pr2-direct-preparing .pb-pr2-typography{display:contents}`}</style>
+  </>;
 }

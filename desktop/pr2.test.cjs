@@ -48,7 +48,7 @@ test('permanently silent eject observation is uncertain and never reported compl
 });
 test('absent paper waits for later insertion without printing early',async t=>{
  const notices=[];const f=fixture(t,{paper:[64,64,67],progress:e=>notices.push(e.message)});
- assert.equal((await f.bridge.print(f.request)).completed,true);assert.ok(notices.includes('Please insert your passbook into the printer.'));
+ assert.equal((await f.bridge.print(f.request)).completed,true);assert.ok(notices.includes('Please insert your passbook.'));
 });
 test('aligned paper that fails to feed stops before graphics and fences retry',async t=>{
  const f=fixture(t,{paper:[66,66]});const result=await f.bridge.print(f.request);
@@ -86,7 +86,8 @@ test('stale and shifted USB responses stop before any feed or raster',async t=>{
 });
 test('multiple compatible devices remain separate; default spooler is not selected',async t=>{
  const f=fixture(t,{devices:[device,{...device,id:'second'}]});const list=await f.bridge.discover(scope);assert.equal(list.devices.length,2);assert.equal(list.preferences,undefined);assert.ok(list.devices.every(d=>d.profile));
- await assert.rejects(f.bridge.probe(scope,{...device,name:'EPSON PLQ-35'},settings),/profile/);
+ for(const name of ['EPSON PLQ-35','EPSON PLQ-80'])assert.equal((await f.bridge.probe(scope,{...device,name},settings)).pr2,true);
+ await assert.rejects(f.bridge.probe(scope,{...device,name:'EPSON PLQ-32'},settings),/profile/);
 });
 test('cross-tenant requests, probes, discovery and cancellation are rejected',async t=>{
  const f=fixture(t);await assert.rejects(f.bridge.print({...f.request,scope:'other'}),/authorization/);await assert.rejects(f.bridge.discover('other'),/authorization/);await assert.rejects(f.bridge.probe('other',device,settings),/authorization/);assert.throws(()=>f.bridge.cancel('other',f.request.id),/authorization/);

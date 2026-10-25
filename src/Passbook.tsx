@@ -381,7 +381,10 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
   const [printing, setPrinting] = useState(false);
   const [alignmentOpen, setAlignmentOpen] = useState(false);
+  const [alignmentMode, setAlignmentMode] = useState<"system" | "pr2">("system");
   const [directPrinting, setDirectPrinting] = useState(false);
+  const [directOffset, setDirectOffset] = useState<PrintOffset>({x:0,y:0});
+  const [directTestOnly, setDirectTestOnly] = useState(false);
 
 
 
@@ -908,12 +911,12 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH));
       if (problems.length) { setError(problems.join(' ')); return; }
     }
-    try { await requireLicensedWrite(); setError(""); setMessage(""); setDirectPrinting(true); }
+    try { await requireLicensedWrite(); setError(""); setMessage(""); setAlignmentMode("pr2"); setAlignmentOpen(true); }
     catch (error) { setError(error instanceof Error ? error.message : 'Printing is unavailable.'); }
   };
 
   const directPrintCompleted = async () => {
-    setMessage("PR2 printer acknowledged processing and paper release. Check the physical print.");
+    setMessage("Print completed.");
     try {
       await apiRequest({ action: "markPassbookPrinted", rowNumber });
       setCustomer(previous => previous ? { ...previous, passbookStatus: "Printed" } : previous);
@@ -936,7 +939,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   return (
 
     <div className="passbook-page">
-      {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
+      {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} offset={directOffset} testOnly={directTestOnly} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
 
       <style>{`
 
@@ -2744,7 +2747,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
               className="passbook-button print-button"
 
-              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) setAlignmentOpen(true); else void printPassbook(); }}
+              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) { setAlignmentMode("system"); setAlignmentOpen(true); } else void printPassbook(); }}
 
               disabled={printing}
 
@@ -2778,7 +2781,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
                 ? "Sending to PR2..."
 
-                : "Direct Printer Send"}
+                : "Olivetti Mode Print"}
 
             </button>)}
 
@@ -2807,8 +2810,12 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       {alignmentOpen && alignmentEnabled && <PrintAlignmentPreview
         bankName={alignmentBank}
         sourceSelector={isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
+        printMode={alignmentMode}
         onClose={() => setAlignmentOpen(false)}
-        onPrint={(offset, test, duplex) => printPassbook(offset, test, duplex)}
+        onPrint={(offset, test, duplex) => {
+          if (alignmentMode === "system") return printPassbook(offset, test, duplex);
+          setDirectOffset(offset); setDirectTestOnly(test); setAlignmentOpen(false); setDirectPrinting(true);
+        }}
       />}
     </div>
 
