@@ -1,37 +1,31 @@
 {
-  "latestVersion": "1.0.122",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.122/BankSetu-Setup-1.0.122-x64.exe",
+  "latestVersion": "1.0.123",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.123/BankSetu-Setup-1.0.123-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.122",
-  "releaseTag": "v1.0.122",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.122",
+  "version": "1.0.123",
+  "releaseTag": "v1.0.123",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.123",
   "releaseDate": "2026-10-25",
-  "windowsVersion": "1.0.122",
-  "androidBuild": 1000122,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.122/BankSetu-Setup-1.0.122-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.122/BankSetu-Android-1000122.apk",
+  "windowsVersion": "1.0.123",
+  "androidBuild": 1000123,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.123/BankSetu-Setup-1.0.123-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.123/BankSetu-Android-1000123.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.122",
+      "version": "1.0.123",
       "releaseDate": "2026-10-25",
       "categories": {
         "Improvements": [
-          "Integrate Olivetti PR2 passbook printing.",
-          "Guard floating support portal for server-rendered license tests (72).",
-          "Open existing Bank Setu Support in responsive floating popup (71).",
-          "Fit Union lower fields within 85mm and space letters by 1.5px (70)."
+          "Use tested PR2 bridge for one-click Olivetti printing."
         ]
       }
     },
     "android": {
-      "version": "1.0.122",
+      "version": "1.0.123",
       "releaseDate": "2026-10-25",
       "categories": {
         "Improvements": [
-          "Integrate Olivetti PR2 passbook printing.",
-          "Guard floating support portal for server-rendered license tests (72).",
-          "Open existing Bank Setu Support in responsive floating popup (71).",
-          "Fit Union lower fields within 85mm and space letters by 1.5px (70)."
+          "Use tested PR2 bridge for one-click Olivetti printing."
         ]
       }
     }
