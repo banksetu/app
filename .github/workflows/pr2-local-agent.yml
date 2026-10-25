@@ -1,8 +1,11 @@
 name: Isolated PR2 Local Agent (no deployment)
 on:
+  pull_request:
+    branches: [codex/pr2-review-base-20261021]
+    paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', 'desktop/pr2*', 'desktop/pr2-helper/**', 'src/Passbook.tsx', 'src/WordPassbookInfo.tsx', 'src/wordPassbookGlyphs.ts', 'scripts/pr2*', 'scripts/approved-passbook.browser.mjs', '.github/workflows/pr2-local-agent.yml']
   push:
     branches: [codex/pr2-local-test-20261021]
-    paths: ['tools/pr2-local/**', '.github/workflows/pr2-local-agent.yml']
+    paths: ['tools/pr2-local/**', '!tools/pr2-local/mailbox/**', 'desktop/pr2*', 'desktop/pr2-helper/**', 'src/Passbook.tsx', 'src/WordPassbookInfo.tsx', 'src/wordPassbookGlyphs.ts', 'scripts/pr2*', '.github/workflows/pr2-local-agent.yml']
 permissions:
   contents: read
 jobs:
@@ -14,7 +17,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-      - run: node --test tools/pr2-local/core.test.cjs desktop/pr2.test.cjs
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install chromium
+      - name: Freeze approved Assam layout with synthetic data
+        run: node scripts/pr2-ui.browser.mjs
+      - run: node --test tools/pr2-local/*.test.cjs desktop/pr2.test.cjs
       - run: node tools/pr2-local/build.cjs
       - name: Verify packaged helper handshake only (no printer access)
         run: node -e "const c=require('./build/pr2-local/pr2-native.cjs').nativeClient('./build/pr2-local'); c.handshake().then(()=>c.close()).catch(e=>{c.close();throw e;});"

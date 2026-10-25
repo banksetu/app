@@ -46,9 +46,10 @@ function sourceDocument(selector: string): string {
   </style></head><body><div class="passbook-page">${source.outerHTML}</div></body></html>`;
 }
 
-export default function PrintAlignmentPreview({ bankName, sourceSelector, onClose, onPrint }: {
+export default function PrintAlignmentPreview({ bankName, sourceSelector, printMode="system", onClose, onPrint }: {
   bankName: string;
   sourceSelector: string;
+  printMode?: "system" | "pr2";
   onClose: () => void;
   onPrint: (offset: PrintOffset, test: boolean, duplex: boolean) => void | PrintOutcome | Promise<void | PrintOutcome>;
 }) {
@@ -73,7 +74,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
   };
   return <div className="print-alignment-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="print-alignment-window" role="dialog" aria-modal="true" aria-label={`Print Alignment Preview for ${bankName}`}>
-      <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName})</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
+      <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName}) · {printMode==="pr2"?"Olivetti / PR2":"Normal Print"}</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
       <div className="print-alignment-columns">
         <div className="print-alignment-left">
           <div className="print-alignment-width">A4 Width (21 cm)</div>
@@ -117,7 +118,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
             <div className="print-alignment-saved"><strong>Current Saved Setting ({bankName})</strong><div><span>Left / Right: &nbsp; <b>{mm(saved.x)}</b><br/>Up / Down: &nbsp; <b>{mm(saved.y)}</b></span><button type="button" onClick={() => setOffset(saved)}>Use Saved</button></div></div>
             <p className="print-alignment-tip">ⓘ &nbsp;This adjustment moves the entire passbook layout. It does not change text, mapping or data. It only shifts the print position.</p>
             {error && <p role="alert" className="print-alignment-error">{error}</p>}
-            <label className="print-alignment-duplex"><input type="checkbox" checked={duplex} onChange={event=>setDuplex(event.target.checked)} /> Duplex printing {duplex?"ON":"OFF"}<small>Unsupported printers use the system print-dialog setting.</small></label>
+            {printMode==="system"&&<label className="print-alignment-duplex"><input type="checkbox" checked={duplex} onChange={event=>setDuplex(event.target.checked)} /> Duplex printing {duplex?"ON":"OFF"}<small>Unsupported printers use the system print-dialog setting.</small></label>}
             <div className="print-alignment-final"><button type="button" disabled={busy} onClick={() => void print(true)}>🖨 &nbsp;Test Print<br/><small>(Optional)</small></button><button type="button" disabled={busy} onClick={() => void print(false)}>🖨 &nbsp;Final Print<br/><small>(Use this layout)</small></button></div>
           </div>
         </div>

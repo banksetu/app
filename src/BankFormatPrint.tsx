@@ -13,8 +13,8 @@ type FormatType = "passbook" | "quickPassbook" | "accountOpening";
 type FormatSettings = { bankLogo?:string; bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 
 export default function BankFormatPrint({
-  formatType, customer, onConfigured, onPrint, bankName, allowPrint = true,
-}: { bankName?: string; allowPrint?: boolean; formatType: FormatType; customer: object; onConfigured: (active: boolean) => void; onPrint?: () => void }) {
+  formatType, customer, onConfigured, onPrint, onDirectPrint, bankName, allowPrint = true,
+}: { bankName?: string; allowPrint?: boolean; formatType: FormatType; customer: object; onConfigured: (active: boolean) => void; onPrint?: () => void; onDirectPrint?:()=>void }) {
   const [textPages, setTextPages] = useState<TextTemplatePage[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [settings, setSettings] = useState<FormatSettings | null>(null);
@@ -98,7 +98,7 @@ export default function BankFormatPrint({
         })}
       </section>)}
     </div>
-    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => void requireLicensedWrite().then(()=>onPrint ? onPrint() : window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>Print bank format</button></div>
+    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => void requireLicensedWrite().then(()=>onPrint ? onPrint() : window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>{formatType==="passbook"?"Print Passbook":"Print bank format"}</button>{formatType==="passbook"&&onDirectPrint&&<button type="button" disabled={!allowPrint} onClick={onDirectPrint}>Olivetti Mode Print</button>}</div>
     {error&&<p role="alert" className="bank-format-print-error">{error}</p>}
     <style>{`
       .bank-format-print-wrap { margin: 22px auto; max-width: 100%; overflow-x: auto; }
@@ -116,6 +116,7 @@ export default function BankFormatPrint({
         .bank-format-print-actions { display:none!important; }
         .bank-format-print-wrap { margin:0!important; overflow:visible!important; }
         .bank-format-print-document { margin:0!important; }
+        .custom-bank-document.alignment-print-active .bank-format-print-document { transform:translate(var(--alignment-x,0mm),var(--alignment-y,0mm))!important; transform-origin:top left!important; }
         .bank-format-print, .bank-format-print * { visibility:visible!important; }
         .bank-format-print { position:relative!important; left:auto!important; top:auto!important; margin:0!important; box-shadow:none!important; }
         .bank-format-print:not(:last-child) { break-after:page!important; }
