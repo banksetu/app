@@ -104,7 +104,7 @@ export function wordPassbookProblems(values:ApprovedPassbookValues,quick=false):
   });
 }
 
-export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2MasterTypography=false,pr2MasterFontSizePt=PR2_MASTER_FONT_SIZE_PT,pr2LabelGapPt=WORD_LABEL_GAP_PT,approvedClass=true}:{values:ApprovedPassbookValues;quick?:boolean;assamInkBoost?:boolean;pr2MasterTypography?:boolean;pr2MasterFontSizePt?:number;pr2LabelGapPt?:number;approvedClass?:boolean}) {
+export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2MasterTypography=false,pr2MasterFontSizePt=PR2_MASTER_FONT_SIZE_PT,pr2LabelGapPt=WORD_LABEL_GAP_PT,approvedClass=true,semanticFields=true}:{values:ApprovedPassbookValues;quick?:boolean;assamInkBoost?:boolean;pr2MasterTypography?:boolean;pr2MasterFontSizePt?:number;pr2LabelGapPt?:number;approvedClass?:boolean;semanticFields?:boolean}) {
   // The isolated PR2 proof uses the selected bounded calibration face, 70%
   // glyph width and exactly 1 CSS pixel of tracking. Scale the Courier advance with
   // the face as well as the glyph; otherwise the glyph shrinks while its cell
@@ -153,11 +153,11 @@ export function WordPassbookArtwork({values,quick=false,assamInkBoost=false,pr2M
     ? <path key={index} d={WORD_GLYPHS[char]} vectorEffect={assamInkBoost ? 'non-scaling-stroke' : undefined} transform={`translate(${x+index*advance*compression} ${y}) scale(${unit*activeHorizontalScale*compression} ${-unit})`} /> : null);
   return <svg className={`${approvedClass?'pb-approved-artwork ':''}pb-word-artwork`} xmlns="http://www.w3.org/2000/svg"
     viewBox={`0 ${85*72/25.4} ${206*72/25.4} ${85*72/25.4}`}
-    width="206mm" height="85mm" role="img" aria-label={pr2MasterTypography?`Passbook customer information — PR2 ${fontSize}pt, 65% width, 1px letter spacing, ${(pr2LabelGapPt*25.4/72).toFixed(2)}mm label gap, 3mm data gap`:'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'}
+    width="206mm" height="85mm" role={semanticFields?'img':undefined} aria-label={semanticFields?(pr2MasterTypography?`Passbook customer information — PR2 ${fontSize}pt, 65% width, 1px letter spacing, ${(pr2LabelGapPt*25.4/72).toFixed(2)}mm label gap, 3mm data gap`:'Passbook customer information — Courier New 10.2 pt, 70% width, 1.5px letter spacing'):undefined}
     style={{position:'absolute',left:0,top:0,display:'block',maxWidth:'none',fill:'#000',overflow:'visible',...(assamInkBoost?{stroke:'#000',strokeWidth:pr2MasterTypography?0.07:0.13,strokeLinejoin:'round' as const}: {})}}>
     <title>Passbook information</title>
-    <g aria-label="Passbook labels">{labels.map((label,index)=><g key={index} data-label={label.text}>{text(label.text,activeLabelX(label),label.y,label.compression)}</g>)}</g>
-    {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} data-field={key} aria-label={`${key}: ${values[key]||''}`}>
+    <g aria-label={semanticFields?'Passbook labels':undefined}>{labels.map((label,index)=><g key={index} {...(semanticFields?{'data-label':label.text}:{})}>{text(label.text,activeLabelX(label),label.y,label.compression)}</g>)}</g>
+    {Object.entries(APPROVED_INFO_SLOTS).map(([key,slot])=><g key={key} {...(semanticFields?{'data-field':key,'aria-label':`${key}: ${values[key]||''}`}:{})}>
       <title>{values[key]||''}</title>{text(values[key]||'',activeValueX(key,values[key]||''),slot.y)}
     </g>)}
   </svg>;
@@ -171,7 +171,7 @@ export default function WordPassbookInfo(props:{customer:Parameters<typeof appro
   if(isolated)return <WordPassbookArtwork values={values} assamInkBoost pr2MasterTypography pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={labelGap} />;
   return <>
     <span className="pb-normal-typography"><WordPassbookArtwork values={values} assamInkBoost /></span>
-    <span className="pb-pr2-typography"><WordPassbookArtwork values={values} assamInkBoost pr2MasterTypography pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={PR2_LABEL_GAPS_PT.B} approvedClass={false} /></span>
+    <span className="pb-pr2-typography"><WordPassbookArtwork values={values} assamInkBoost pr2MasterTypography pr2MasterFontSizePt={PR2_MASTER_FONT_SIZE_PT} pr2LabelGapPt={PR2_LABEL_GAPS_PT.B} approvedClass={false} semanticFields={false} /></span>
     <style>{`.pb-normal-typography,.pb-pr2-typography{display:contents}.pb-pr2-typography{display:none}html.pr2-direct-preparing .pb-normal-typography{display:none}html.pr2-direct-preparing .pb-pr2-typography{display:contents}`}</style>
   </>;
 }
