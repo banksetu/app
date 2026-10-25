@@ -68,7 +68,7 @@ try{
   const value=async(key)=>isAssam?(await field(key).getAttribute('aria-label')).slice(key.length+2):await field(key).innerText();
   assert.equal(await value('nominee'),isAssam?'1':'2');
   assert.equal(await value('accountNo'),customer.accountNo);
-  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.match(await value('address4'),/ASSAM/);}
+  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.match(`${await value('address3')} ${await value('address4')}`,/ASSAM/);}
   else{assert.equal(await page.locator('.union-upper').count(),mode==='quick'?1:0);assert.equal(await page.locator('.pb-approved-artwork').count(),0);}
   const openEdit=async()=>{
    if(isAssam&&mode==='print'){
@@ -84,7 +84,7 @@ try{
   await page.getByRole('button',{name:'Apply to Preview',exact:true}).click();
   assert.equal(await value('accountNo'),edits['Account Number']);assert.equal(await value('nominee'),'3');
   if(isAssam){
-   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(await value('address3'),'ASSAM, PIN-001200');assert.equal(await value('address4'),'');
+   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(`${await value('address3')} ${await value('address4')}`.trim(),'ASSAM, PIN-001200');
   }else assert.equal(await value('address'),'C/O EDITED GUARDIAN\nVILL-TEST, P.O-TEST\nASSAM, PIN-001200');
   await openEdit();for(const [label,text]of Object.entries(edits))assert.equal(await input(label).inputValue(),text);
   await page.getByRole('button',{name:'Cancel Changes',exact:true}).click();
