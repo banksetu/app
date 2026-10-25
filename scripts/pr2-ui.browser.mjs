@@ -111,7 +111,7 @@ try {
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
-  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,bankProfile:bank,paperLengthMm:bank==='union'?215:175,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:108,physicalDataHeightMm:bank==='union'?79:69,physicalInkAllowanceMm:4}});await page.close();
+  outputs.push({bank,sourceHtml,raster:{...requests[0].raster,bankProfile:bank,paperLengthMm:bank==='union'?215:175,physicalFoldMm:bank==='union'?107:88,physicalDataOriginMm:bank==='union'?124:108,physicalDataHeightMm:bank==='union'?79:69,physicalOriginInkAllowanceMm:1.5,physicalInkAllowanceMm:4}});await page.close();
  }
  // Vite watches this directory. Write every artifact only after both live UI
  // flows finish, otherwise Assam output can reload the Union dialog.

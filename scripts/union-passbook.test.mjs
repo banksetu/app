@@ -48,4 +48,5 @@ test('isolated PR2 proof excludes the upper non-printable panel',()=>{
  assert(proof.includes("physicalDataOriginMm:bank==='union'?124:108"));
  assert(proof.includes("physicalDataHeightMm:bank==='union'?79:69"));
  assert(proof.includes('physicalInkAllowanceMm:4'));
+ assert(proof.includes('physicalOriginInkAllowanceMm:1.5'));
 });
