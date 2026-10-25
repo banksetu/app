@@ -18,13 +18,13 @@ function harness(){
     if(modules[file])return modules[file];
     const exports={};modules[file]=exports;
     const source=ts.transpileModule(fs.readFileSync(`src/core/${file}.ts`,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023}}).outputText;
-    vm.runInNewContext(source,{...context,exports,require:path=>path.endsWith('firebase')?{auth}:path.endsWith('workerApi')?{callBankSetuWorker:async()=>{calls++;return remote();}}:path.endsWith('.json')?jwk:load(path.replace('./',''))});
+    vm.runInNewContext(source,{...context,exports,require:path=>path.endsWith('firebase')?{auth}:path.endsWith('workerApi')?{callBankSetuWorker:async()=>{calls++;return remote();}}:path.endsWith('licenseClock')?{observeTrustedLicenseTime:async()=>{},verifyTrustedLicenseTime:async()=>{}}:path.endsWith('.json')?jwk:load(path.replace('./',''))});
     return exports;
   }
   const api=load('licenseAccess'),receipts=load('licenseReceipt');
   const response=(state='active',revision=1,extra={})=>{
     const plan=extra.plan||'annual',canWrite=['active','expiring_soon','demo_active'].includes(state),expiresAt=new Clock(now+(plan==='demo'?5:365)*86400000).toISOString();
-    const shared={uid:auth.currentUser.uid,tenantId:session.get('bankSetuTenantId'),revision,state,plan,expiresAt,issuedAt:now,validUntil:now+5*86400000,...extra};
+    const shared={uid:auth.currentUser.uid,tenantId:session.get('bankSetuTenantId'),revision,state,plan,expiresAt,issuedAt:now,validUntil:now+24*60*60*1000,...extra};
     return {view:{state,canWrite,daysRemaining:canWrite?5:0},authorization:signed({purpose:'banksetu-license-status-v1',...shared,canWrite}),receipt:canWrite?signed({purpose:'banksetu-license-v1',...shared}):null};
   };
   const bind=(uid='user-a',tenantId='tenant-a',role='client_admin',flag)=>{auth.currentUser={uid};session.set('bankSetuTenantId',tenantId);api.bindLicenseAccount(uid,{tenantId,role,licenseRequired:flag});};
@@ -49,9 +49,10 @@ test('suspended, revoked, pending and expired / zero days immediately block writ
   assert.equal(h.api.getLicensePermission().canWrite,false);assert.equal(h.values.get('customer-data'),'retained-photo-and-pending-queue');
  }
 });
-test('same-day online checks always use server status rather than cached permission',async()=>{
+test('protected actions reuse the signed 24-hour receipt until a live license update arrives',async()=>{
  const h=harness();h.setRemote(()=>h.response());await h.api.refreshLicensePermission();
- h.setRemote(()=>h.response('suspended',2));await assert.rejects(h.api.requireLicensedWrite());
+ h.setRemote(()=>h.response('suspended',2));await h.api.requireLicensedWrite();
+ await h.api.refreshLicensePermission(true);
  assert.equal(h.calls(),2);assert.equal(h.api.getLicensePermission().canWrite,false);
 });
 test('offline expiry blocks exactly at the boundary; cached claims cannot extend expiry',async()=>{
@@ -69,8 +70,8 @@ test('authorization revision rejects an old signed receipt and renewal securely 
 });
 test('offline outages allow a valid signed receipt; explicit server denial never falls back',async()=>{
  const h=harness();h.setRemote(()=>h.response());await h.api.requireLicensedWrite();
- h.setRemote(()=>{throw Object.assign(new Error('temporary'),{status:503});});await h.api.requireLicensedWrite();
- h.setRemote(()=>{throw Object.assign(new Error('denied'),{status:403});});await assert.rejects(h.api.requireLicensedWrite());
+ h.setRemote(()=>{throw Object.assign(new Error('temporary'),{status:503});});await h.api.refreshLicensePermission(true);assert.equal(h.api.getLicensePermission().canWrite,true);
+ h.setRemote(()=>{throw Object.assign(new Error('denied'),{status:403});});await h.api.refreshLicensePermission(true);assert.equal(h.api.getLicensePermission().canWrite,false);
  h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
 });
 test('account switching rejects in-flight authorizations and prevents cross-tenant receipt reuse',async()=>{
@@ -79,9 +80,9 @@ test('account switching rejects in-flight authorizations and prevents cross-tena
  assert.equal(h.api.getLicensePermission().canWrite,false);assert.equal(h.api.getLicensePermission().uid,'user-b');
  h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
 });
-test('valid five-day demo permits verified tenant workspace writes, then expires',async()=>{
+test('five-day demo still renews its offline write permission every 24 hours',async()=>{
  const h=harness();h.session.set('bankSetuConnectionMode','option-b');h.setRemote(()=>h.response('demo_active',1,{plan:'demo'}));await h.api.requireLicensedWrite();
- assert.equal(h.session.get('bankSetuDemoWorkspace'),'active');h.navigator.onLine=false;h.advance(5*86400000);
+ assert.equal(h.session.get('bankSetuDemoWorkspace'),'active');h.navigator.onLine=false;h.advance(24*60*60*1000);
  await assert.rejects(h.api.requireLicensedWrite());assert.equal(h.session.get('bankSetuDemoWorkspace'),'expired');
 });
 test('route policy blocks every protected route and preserves the specified read-only routes',()=>{
