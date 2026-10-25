@@ -542,7 +542,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: isAssamQuick || isUnion,
+        includePhoto: isAssamQuick || (isUnion && formatType === "quickPassbook"),
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -593,7 +593,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: isAssamQuick || isUnion,
+        includePhoto: isAssamQuick || (isUnion && formatType === "quickPassbook"),
       });
 
       const loaded: Customer = {

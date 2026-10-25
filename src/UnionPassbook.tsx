@@ -118,7 +118,7 @@ export default function UnionPassbook({ customer: c, bankInfo: b = {}, bankLogo 
         {value("openingDate",date(c.accountOpeningDate),61,88,39)}
         {value("nominee",upper(c.nominee),90,93,65)}
         {value("nomination",c.nominee ? "Y" : "",109,100,10)}
-        {photo && <img className="union-photo" src={photo} alt="Customer photograph"/>}
+        {quick && photo && <img className="union-photo" src={photo} alt="Customer photograph"/>}
       </section>
     </article>
     {onEdit && <button type="button" className="passbook-button union-edit" onClick={onEdit}>Temporary Edit</button>}

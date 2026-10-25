@@ -21,17 +21,18 @@ test('quick includes bilingual safeguards, labels and selected logo; values-only
  assert(quick.includes('src="data:image/png;base64,LOGO"'));assert(!print.includes('src="data:image/png;base64,LOGO"'));
  assert.equal((quick.match(/<li>/g)||[]).length,10);
 });
-test('both modes print same customer values, positions and photo without sample personal data',()=>{
+test('both modes print the same customer values while only Quick includes the photo',()=>{
  const fields=html=>[...html.matchAll(/<span data-field="([^"]+)"[^>]*>.*?<\/span>/g)].map(x=>x[0]);
  assert.deepEqual(fields(quick),fields(print));
  for(const html of [quick,print]) {
-  for(const value of ['TEST CUSTOMER','TEST NOMINEE','TEST ADDRESS','05-10-2026','data:image/png;base64,TEST'])assert(html.includes(value));
+  for(const value of ['TEST CUSTOMER','TEST NOMINEE','TEST ADDRESS','05-10-2026'])assert(html.includes(value));
   assert(!/SHOULD NEVER PRINT|Aadhaar|638499|RUBEL|Signature|Seal/.test(html));
  }
+ assert(quick.includes('data:image/png;base64,TEST'));assert(!print.includes('data:image/png;base64,TEST'));
 });
 test('Union search requests photos and keeps values layer visible for printing',()=>{
  const passbook=fs.readFileSync(new URL('../src/Passbook.tsx',import.meta.url),'utf8');
- assert.equal((passbook.match(/includePhoto: isAssamQuick \|\| isUnion/g)||[]).length,2);
+ assert.equal((passbook.match(/includePhoto: isAssamQuick \|\| \(isUnion && formatType === "quickPassbook"\)/g)||[]).length,2);
  assert(passbook.includes('.union-document *'));
  assert(passbook.includes('@page { size: 210mm 215mm; margin: 0; }'));
  assert(passbook.includes('photoPreview: result.photo?.previewDataUrl'));

@@ -21,6 +21,7 @@ const trusted = event => {
 const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{10,250}$/.test(scope)) throw new Error('Invalid workspace scope.');};
 if(primaryInstance)app.whenReady().then(async()=>{
   ipcMain.handle('appearance:set',(event,mode)=>{trusted(event);if(!['light','dark'].includes(mode))throw Error('Invalid appearance.');nativeTheme.themeSource=mode;window.setBackgroundColor(mode==='dark'?'#0b1220':'#f5f7ff');});
+  require('./support-links.cjs').installSupportLinks({ipcMain,trusted,shell});
   if(process.platform==='win32')app.setAppUserModelId('in.banksetu.desktop');
   let dataDirectory;
   const options=directoryOptions();

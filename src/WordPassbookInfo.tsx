@@ -29,9 +29,9 @@ const PR2_MASTER_LETTER_GAP_PT = 0.75;
 // Assam physical proof: keep the layout anchors unchanged while narrowing the
 // glyphs to the requested 65% width.
 const PR2_HORIZONTAL_SCALE = 0.65;
-// Physical proof C established the face size. Keep it fixed and calibrate only
-// the measured ink-edge-to-colon gap; the colon-to-data gap stays exactly 3 mm.
-const PR2_MASTER_FONT_SIZE_PT = 9.5;
+// PR2 only: increase the physically printed face by exactly one CSS pixel
+// (0.75 pt at 96 DPI). Normal and Quick Passbook typography stay unchanged.
+const PR2_MASTER_FONT_SIZE_PT = 10.25;
 const PR2_LABEL_GAPS_PT = Object.freeze({A:0.75*72/25.4,B:1*72/25.4,C:1.25*72/25.4});
 const wordAdvance = WORD_ADVANCE_PT + WORD_LETTER_GAP_PT;
 const leftInk=(value:string)=> (WORD_INK_BOUNDS[value[0]]?.[0] ?? 0)*unit*WORD_HORIZONTAL_SCALE;
