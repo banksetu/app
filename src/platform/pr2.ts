@@ -2,7 +2,7 @@ import {getDocument,GlobalWorkerOptions} from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 export const WINDOWS_PR2_MESSAGE='Please use this button on only Windows EXE mode.';
 export type Pr2Device={id:string;name:string;transport:string;profile:string|null;requiresReview?:boolean};
-export type Pr2Settings={profile:string;verticalResolution:number;offsetX:number;offsetY:number;confirmMode:boolean;confirmModel:boolean;acceptRaster:boolean;baud:number;parity:string;dataBits:number;stopBits:number};
+export type Pr2Settings={profile:string;verticalResolution:number;offsetX:number;offsetY:number;confirmMode:boolean;confirmModel:boolean;acceptRaster:boolean;baud:number;parity:string;dataBits:number;stopBits:number;paperLengthMm?:number;passbookType?:'horizontal'|'vertical'|'document'};
 export type Pr2Raster={width:number;height:number;dpi:180;bits:string};
 export type Pr2Outcome={state:string;completed:boolean;message?:string;replayed?:boolean};
 export type Pr2Request={scope:string;id:string;device:Pr2Device;settings:Pr2Settings;raster:Pr2Raster;rasters?:Pr2Raster[];test?:boolean};

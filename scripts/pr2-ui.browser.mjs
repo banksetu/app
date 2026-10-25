@@ -103,12 +103,10 @@ try {
   },pdf.toString('base64'));
   await page.getByRole('button',{name:/Olivetti Mode Print/}).click();
   await page.getByRole('button',{name:/Final Print/}).click();
-  await page.waitForFunction(()=>document.querySelector('[role="status"]')?.textContent!=='Preparing the active bank template…',null,{timeout:15000}).catch(()=>{});
-  const dialogStatus=await page.locator('[role="status"]').textContent();console.log(`PR2 ${bank} preparation: ${dialogStatus}`);
-  assert.match(dialogStatus||'',/Choose\/check the printer\./,`PR2 ${bank} preparation failed`);
-  await page.getByLabel('I checked that the physical printer').check();await page.getByLabel('The printer configuration sheet').check();
-  await page.getByRole('button',{name:'Check printer',exact:true}).click();await page.getByText('PR2 communication confirmed.',{exact:false}).waitFor();
-  await page.getByLabel('I reviewed the graphics proof.',{exact:false}).check();await page.getByRole('button',{name:'Final Print',exact:true}).click();
+  await page.waitForFunction(()=>window.pr2Requests.length===1,null,{timeout:15000});
+  await page.getByRole('heading',{name:'Print completed',exact:true}).waitFor();
+  assert.equal(await page.getByLabel('I checked that the physical printer').count(),0,'Direct Olivetti printing must not reopen setup checkboxes');
+  assert.equal(await page.getByRole('button',{name:'Check printer',exact:true}).count(),0,'Direct Olivetti printing must not require a second printer check');
   await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
   const requests=await page.evaluate(()=>window.pr2Requests);assert.equal(requests.length,1);assert.equal(requests[0].scope,'synthetic:user:tenant:connection');assert.equal(requests[0].raster.dpi,180);assert.ok(requests[0].raster.bits.length>1000);
   assert.equal(await page.locator(bank==='assam'?'.pb-approved-artwork':'.union-document').first().innerHTML(),original);assert.deepEqual(errors,[]);
