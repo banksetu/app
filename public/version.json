@@ -1,29 +1,33 @@
 {
-  "latestVersion": "1.0.127",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.127/BankSetu-Setup-1.0.127-x64.exe",
+  "latestVersion": "1.0.128",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.128/BankSetu-Setup-1.0.128-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.127",
-  "releaseTag": "v1.0.127",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.127",
+  "version": "1.0.128",
+  "releaseTag": "v1.0.128",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.128",
   "releaseDate": "2026-10-26",
-  "windowsVersion": "1.0.127",
-  "androidBuild": 1000127,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.127/BankSetu-Setup-1.0.127-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.127/BankSetu-Android-1000127.apk",
+  "windowsVersion": "1.0.128",
+  "androidBuild": 1000128,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.128/BankSetu-Setup-1.0.128-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.128/BankSetu-Android-1000128.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.127",
+      "version": "1.0.128",
       "releaseDate": "2026-10-26",
       "categories": {
         "Improvements": [
-          "Fix Windows startup syntax and guard releases (80)."
+          "Add PNB passbook formats and restore offline printing (82)."
         ]
       }
     },
     "android": {
-      "version": "1.0.127",
+      "version": "1.0.128",
       "releaseDate": "2026-10-26",
-      "categories": {}
+      "categories": {
+        "Improvements": [
+          "Add PNB passbook formats and restore offline printing (82)."
+        ]
+      }
     }
   }
 }
