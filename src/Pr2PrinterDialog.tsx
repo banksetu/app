@@ -4,7 +4,7 @@ import {requireLicensedWrite} from './core/licenseAccess';
 import {rasterizePassbook,type Pr2Settings,type Pr2Outcome} from './platform/pr2';
 import type {PrintOffset} from './PrintAlignmentPreview';
 import './Pr2PrinterDialog.css';
-const defaultsFor=(bankName:string):Pr2Settings=>({profile:'epson-plq20-pr2-v1',verticalResolution:/union bank/i.test(bankName)?216:240,offsetX:0,offsetY:0,confirmMode:true,confirmModel:true,acceptRaster:true,baud:9600,parity:'None',dataBits:8,stopBits:1,paperLengthMm:/union bank/i.test(bankName)?215:/assam gramin|agvb|\bagb\b/i.test(bankName)?175:undefined,passbookType:'horizontal'});
+const defaultsFor=(bankName:string):Pr2Settings=>({profile:'epson-plq20-pr2-v1',verticalResolution:/union bank/i.test(bankName)?216:240,offsetX:0,offsetY:0,confirmMode:true,confirmModel:true,acceptRaster:true,baud:9600,parity:'None',dataBits:8,stopBits:1,paperLengthMm:/union bank/i.test(bankName)?215:/punjab national bank|punjab bank|\bpnb\b/i.test(bankName)?190:/assam gramin|agvb|\bagb\b/i.test(bankName)?175:undefined,passbookType:'horizontal'});
 export default function Pr2PrinterDialog({bankName,offset={x:0,y:0},testOnly=false,sourceRoot='.passbook-page',onClose,onComplete}:{bankName:string;offset?:PrintOffset;testOnly?:boolean;sourceRoot?:string;onClose:()=>void;onComplete:(result:Pr2Outcome)=>void}){
  const defaults=defaultsFor(bankName);
  const [scope]=useState(()=>identity()),[message,setMessage]=useState('Preparing the active bank template…'),[busy,setBusy]=useState(true),[done,setDone]=useState(false),[failed,setFailed]=useState(false);
