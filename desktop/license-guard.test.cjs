@@ -4,7 +4,7 @@ const {generateKeyPairSync,sign}=require('node:crypto');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {createLicenseGuard}=require('./license-guard.cjs');
+const {createLicenseGuard,createLicenseAuthority}=require('./license-guard.cjs');
 const {createStore}=require('./store.cjs');
 
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
@@ -71,7 +71,6 @@ test('licensed SQLite customer and pending operation survive restart and grant r
 });
 
 test('native authorization persists suspension revision across restart, blocks printing and preserves pending customer/photo data',()=>{
- const {createLicenseAuthority}=require('./license-guard.cjs');
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-authority-test-'));
  const status=(state,revision)=>signed({purpose:'banksetu-license-status-v1',uid,tenantId,revision,state,canWrite:state==='active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000-1000});
  try{
@@ -90,5 +89,30 @@ test('native authorization persists suspension revision across restart, blocks p
   authority.status(status('active',3),now);authority.acceptReceipt(receipt({revision:3}),now);authority.protectedAction();
   authority.session('another-user');assert.throws(()=>authority.protectedAction());assert.throws(()=>authority.commit(scope,receipt({revision:3})),/invalid|changed/i);
   assert.deepEqual(store.read(scope),data);store.close();
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('native print exempts Master/Admin from the client clock while retaining client anti-rollback enforcement',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'banksetu-master-print-test-'));
+ try{
+  const store=createStore(directory),empty={records:[],operations:[]};
+  const masterGrant=grant({tenantId:`master:${uid}`,role:'master_owner',connectionId:'master-sheet',licenseRequired:undefined,expiresAt:now+8*3600000-1000});
+  store.commit(`offline:${uid}`,empty,{...empty,offlineSession:masterGrant});
+  let verified=0;
+  const missingClock={observe(){},verify(){verified++;throw Error('Protected license time is missing.');}};
+  let authority=createLicenseAuthority(publicKey.export({format:'jwk'}),store,missingClock);
+  authority.session(uid);
+  assert.equal(authority.protectedAction(),false);
+  assert.equal(verified,0);
+
+  store.commit(`offline:${uid}`,store.read(`offline:${uid}`),{...empty,offlineSession:grant()});
+  authority=createLicenseAuthority(publicKey.export({format:'jwk'}),store,missingClock);
+  authority.session(uid);
+  const status=state=>signed({purpose:'banksetu-license-status-v1',uid,tenantId,revision:1,state,canWrite:state==='active',plan:'annual',issuedAt:now-1000,validUntil:now+86400000-1000});
+  authority.status(status('active'),now);
+  authority.acceptReceipt(receipt(),now);
+  assert.throws(()=>authority.protectedAction(),/Protected license time is missing/);
+  assert.equal(verified,1);
+  store.close();
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
