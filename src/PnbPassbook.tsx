@@ -71,24 +71,24 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
       <div className="pnb-dot-matrix" aria-label="Punjab National Bank dot matrix customer data">
         {dot("branchOffice",`BO: ${branch}`,17,30,86)}
         {dot("branchPhone",`Phone(${phone})`,17,34,86)}
-        {dot("micr",`MICR Code: ${micr}`,17,60,70)}
-        {dot("ifsc",`IFSC Code: ${ifsc}`,17,64,70)}
-        {dot("bankContact",`*Contact: Tol Free-${clean(c.pnbTollFree)}, Tolled-${clean(c.pnbTolledPhone)}`,12,75,96)}
-        {dot("principalOfficer",`*Principal Nodal Officer: ${clean(c.pnbPrincipalOfficer)} Ph-${clean(c.pnbPrincipalPhone)} Fax-${clean(c.pnbPrincipalFax)}`,12,79,96)}
-        {dot("modeOfOperation",`Mode of Operation : ${upper(c.pnbModeOfOperation)}`,17,90,75)}
-        {dot("customerNo",`Customer No. : ${upper(c.enrolId)}`,17,94,75)}
-        {dot("aadhaar",`Aadhar No. : ${upper(c.uidaiNo)}`,17,98,75)}
-        {dot("accountNo",`Account No. : ${upper(c.accountNo)}`,17,102,75)}
-        {dot("customerName",upper(c.name),17,106,75)}
-        {dot("openingDate",`Account Open Date : ${date(c.accountOpeningDate)}`,17,110,75)}
-        {dot("guardian",`S/O: ${clean(c.coName)}`,17,114,75)}
-        {dot("address1",upper(lines[0]),17,118,75)}
-        {dot("address2",upper(lines[1]),17,122,75)}
-        {dot("address3",[upper(lines[2]),district,state,country,pin&&`Pin : ${pin}`].filter(Boolean).join("    "),17,126,80)}
-        {dot("nominationSerial",`Nomination Registered at SL. No. : ${clean(c.pnbNominationSerial)}`,17,132,84)}
-        {dot("issueDate",`Date of Issue : ${date(c.pnbIssueDate||c.issueDate)}`,17,136,75)}
-        {dot("dicgc",`Bank depositor is insured by DICGC upto a maximum Rs.${clean(c.pnbDicgcAmount)}`,4,149,101)}
-        {dot("terms","Subject to change from time. (T&C applicable)",4,153,101)}
+        {dot("micr",`MICR Code: ${micr}`,17,57,70)}
+        {dot("ifsc",`IFSC Code: ${ifsc}`,17,61,70)}
+        {dot("bankContact",`*Contact: Tol Free-${clean(c.pnbTollFree)}, Tolled-${clean(c.pnbTolledPhone)}`,12,72,96)}
+        {dot("principalOfficer",`*Principal Nodal Officer: ${clean(c.pnbPrincipalOfficer)} Ph-${clean(c.pnbPrincipalPhone)} Fax-${clean(c.pnbPrincipalFax)}`,12,76,96)}
+        {dot("modeOfOperation",`Mode of Operation : ${upper(c.pnbModeOfOperation)}`,17,86,75)}
+        {dot("customerNo",`Customer No. : ${upper(c.enrolId)}`,17,90,75)}
+        {dot("aadhaar",`Aadhar No. : ${upper(c.uidaiNo)}`,17,94,75)}
+        {dot("accountNo",`Account No. : ${upper(c.accountNo)}`,17,98,75)}
+        {dot("customerName",upper(c.name),17,102,75)}
+        {dot("openingDate",`Account Open Date : ${date(c.accountOpeningDate)}`,17,106,75)}
+        {dot("guardian",`S/O: ${clean(c.coName)}`,17,110,75)}
+        {dot("address1",upper(lines[0]),17,114,75)}
+        {dot("address2",upper(lines[1]),17,118,75)}
+        {dot("address3",[upper(lines[2]),district,state,country,pin&&`Pin : ${pin}`].filter(Boolean).join("    "),17,122,80)}
+        {dot("nominationSerial",`Nomination Registered at SL. No. : ${clean(c.pnbNominationSerial)}`,17,128,84)}
+        {dot("issueDate",`Date of Issue : ${date(c.pnbIssueDate||c.issueDate)}`,17,132,75)}
+        {dot("dicgc",`Bank depositor is insured by DICGC upto a maximum Rs.${clean(c.pnbDicgcAmount)}`,4,143,101)}
+        {dot("terms","Subject to change from time. (T&C applicable)",4,147,101)}
       </div>
     </article>
     {onEdit&&<button type="button" className="passbook-button pnb-edit" onClick={onEdit}>Temporary Edit</button>}

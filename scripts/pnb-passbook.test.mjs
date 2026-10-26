@@ -35,6 +35,16 @@ test('Unavailable data keeps its label and an empty value',()=>{
     assert(html.includes('Bank depositor is insured by DICGC upto a maximum Rs.'));
   }
 });
+test('PNB keeps BO and Phone fixed while lifting the remaining data into the left page',()=>{
+  for(const html of [quick,print]){
+    assert.match(html,/data-field="branchOffice"[^>]*top:30mm/);
+    assert.match(html,/data-field="branchPhone"[^>]*top:34mm/);
+    assert.match(html,/data-field="micr"[^>]*top:57mm/);
+    assert.match(html,/data-field="modeOfOperation"[^>]*top:86mm/);
+    assert.match(html,/data-field="dicgc"[^>]*pnb-dot-left-fit[^>]*top:143mm/);
+    assert.match(html,/data-field="terms"[^>]*pnb-dot-left-fit[^>]*top:147mm/);
+  }
+});
 test('PNB is a built-in bank format',()=>{
   const policy=fs.readFileSync(new URL('../src/bankDocumentPolicy.ts',import.meta.url),'utf8');
   assert(policy.includes('isPnbBank'));
