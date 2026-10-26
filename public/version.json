@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.128",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.128/BankSetu-Setup-1.0.128-x64.exe",
+  "latestVersion": "1.0.129",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.129/BankSetu-Setup-1.0.129-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.128",
-  "releaseTag": "v1.0.128",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.128",
+  "version": "1.0.129",
+  "releaseTag": "v1.0.129",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.129",
   "releaseDate": "2026-10-26",
-  "windowsVersion": "1.0.128",
-  "androidBuild": 1000128,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.128/BankSetu-Setup-1.0.128-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.128/BankSetu-Android-1000128.apk",
+  "windowsVersion": "1.0.129",
+  "androidBuild": 1000129,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.129/BankSetu-Setup-1.0.129-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.129/BankSetu-Android-1000129.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.128",
+      "version": "1.0.129",
       "releaseDate": "2026-10-26",
       "categories": {
         "Improvements": [
-          "Add PNB passbook formats and restore offline printing (82)."
+          "Correct Punjab National Bank selection routing (83)."
         ]
       }
     },
     "android": {
-      "version": "1.0.128",
+      "version": "1.0.129",
       "releaseDate": "2026-10-26",
       "categories": {
         "Improvements": [
-          "Add PNB passbook formats and restore offline printing (82)."
+          "Correct Punjab National Bank selection routing (83)."
         ]
       }
     }
