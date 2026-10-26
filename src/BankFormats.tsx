@@ -7,7 +7,7 @@ import { callBankSetuWorker } from "./workerApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import BankFormatLayoutEditor from "./BankFormatLayoutEditor";
 import type { BankFieldPlacement } from "./bankFormatUtils";
-import { bankKey, isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { bankKey, isAssamBank, isPnbBank, templateMatchesBank } from "./bankDocumentPolicy";
 import { sourceSectionsToPrint } from "./bankFormatUtils";
 import { detectBankPdfLayout } from "./bankPdf";
 
@@ -74,6 +74,7 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
   if (!enabled) return null;
   if (!bankName.trim()) return <section style={panel}><h2>First select a bank</h2><p>Choose Bank for passbook printing in Bank Information.</p></section>;
   if (isAssamBank(bankName)) return <section style={panel}><h2>Assam Gramin Bank formats are ready</h2><p>Passbook, Quick Passbook and Account Opening use the built-in bank formats with your own workspace data. No samples are needed.</p></section>;
+  if (isPnbBank(bankName)) return <section style={panel}><h2>Punjab National Bank formats are ready</h2><p>Passbook Print and Quick Passbook use the built-in PNB formats with your own customer, bank and uploaded-logo data. No sample upload is needed.</p></section>;
 
   const loadPreview = async (formatType: FormatType) => {
     if (!workspace) return;
