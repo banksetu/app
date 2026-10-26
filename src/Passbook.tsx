@@ -2471,7 +2471,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-          {isPnb ? <PnbPassbook customer={p} bankInfo={bankInfo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
+          {isPnb ? <PnbPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
 <div className="passbook-shell" style={isApprovedAssamPrint?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
             {/* HOVER EDIT */}
