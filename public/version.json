@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.125",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.125/BankSetu-Setup-1.0.125-x64.exe",
+  "latestVersion": "1.0.126",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.126/BankSetu-Setup-1.0.126-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.125",
-  "releaseTag": "v1.0.125",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.125",
-  "releaseDate": "2026-10-25",
-  "windowsVersion": "1.0.125",
-  "androidBuild": 1000125,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.125/BankSetu-Setup-1.0.125-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.125/BankSetu-Android-1000125.apk",
+  "version": "1.0.126",
+  "releaseTag": "v1.0.126",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.126",
+  "releaseDate": "2026-10-26",
+  "windowsVersion": "1.0.126",
+  "androidBuild": 1000126,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.126/BankSetu-Setup-1.0.126-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.126/BankSetu-Android-1000126.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.125",
-      "releaseDate": "2026-10-25",
+      "version": "1.0.126",
+      "releaseDate": "2026-10-26",
       "categories": {
         "Improvements": [
-          "Secure 24-hour offline licensing and Windows preferences."
+          "Fix Android offline startup and compact theme toggle."
         ]
       }
     },
     "android": {
-      "version": "1.0.125",
-      "releaseDate": "2026-10-25",
+      "version": "1.0.126",
+      "releaseDate": "2026-10-26",
       "categories": {
         "Improvements": [
-          "Secure 24-hour offline licensing and Windows preferences."
+          "Fix Android offline startup and compact theme toggle."
         ]
       }
     }
