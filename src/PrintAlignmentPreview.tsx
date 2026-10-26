@@ -62,7 +62,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [duplex, setDuplex] = useState(false);
-  const pnb=/^(punjab national bank|punjab bank|pnb)$/i.test(bankName.trim());
+  const pnb=/^(punjab national bank|punjab bank of india|punjab bank|pnb)$/i.test(bankName.trim());
   const paperWidth=pnb?213:210, paperHeight=pnb?190:170;
 
   useEffect(() => { setPreview(sourceDocument(sourceSelector,paperWidth,paperHeight)); }, [sourceSelector,paperWidth,paperHeight]);

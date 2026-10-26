@@ -124,7 +124,7 @@ const PASSBOOK_BANK_OPTIONS = [
 
   "State Bank of India (SBI)",
 
-  "Punjab Bank of India",
+  "Punjab National Bank",
 
   "Canara Bank of India",
 
