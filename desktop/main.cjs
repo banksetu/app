@@ -198,25 +198,31 @@ if(primaryInstance)app.whenReady().then(async()=>{
   window.webContents.on('will-navigate',(event,url)=>{if (!url.startsWith(ORIGIN+'/')) event.preventDefault();});
   const cameraAllowed=(contents,permission,requestingUrl)=>
     permission==='media' && contents===window.webContents &&
-    (requestingUrl===ORIGIN || requestingUr…10976 tokens truncated…pi.getLicensePermission().canWrite,false);
- h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
-});
-test('account switching rejects in-flight authorizations and prevents cross-tenant receipt reuse',async()=>{
- const h=harness();let finish;const prior=h.response();h.setRemote(()=>new Promise(resolve=>finish=resolve));
- const pending=h.api.refreshLicensePermission();h.bind('user-b','tenant-b');finish(prior);await pending;
- assert.equal(h.api.getLicensePermission().canWrite,false);assert.equal(h.api.getLicensePermission().uid,'user-b');
- h.navigator.onLine=false;await assert.rejects(h.api.requireLicensedWrite());
-});
-test('five-day demo still renews its offline write permission every 24 hours',async()=>{
- const h=harness();h.session.set('bankSetuConnectionMode','option-b');h.setRemote(()=>h.response('demo_active',1,{plan:'demo'}));await h.api.requireLicensedWrite();
- assert.equal(h.session.get('bankSetuDemoWorkspace'),'active');h.navigator.onLine=false;h.advance(24*60*60*1000);
- await assert.rejects(h.api.requireLicensedWrite());assert.equal(h.session.get('bankSetuDemoWorkspace'),'expired');
-});
-test('route policy blocks every protected route and preserves the specified read-only routes',()=>{
- const h=harness();
- const source=ts.transpileModule(fs.readFileSync('src/core/licensePolicy.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
- const exports={};vm.runInNewContext(source,{exports});
- for(const page of ['customer-entry','quick-passbook','passbook','bank-formats','search','reports'])assert.equal(exports.canOpenLicensePage(page,true,false),false,page);
- for(const page of ['dashboard','customers','all-customer-data','settings','sync-backup','license-management','support'])assert.equal(exports.canOpenLicensePage(page,true,false),true,page);
- h.api.resetLicensePermission();
-});
+    (requestingUrl===ORIGIN || requestingUrl.startsWith(ORIGIN+'/'));
+  window.webContents.session.setPermissionRequestHandler((contents,permission,callback,details)=>
+    callback(cameraAllowed(contents,permission,details.requestingUrl||contents.getURL())));
+  window.webContents.session.setPermissionCheckHandler((contents,permission,requestingOrigin)=>
+    cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
+    window.on('closed',()=>{window=null;});
+    await window.loadURL(ORIGIN+'/index.html');
+    await appMenu.refreshPrinters();
+    if(page)window.webContents.send('system-notification:open',page);
+  };
+  const notificationFile=path.join(app.getPath('userData'),'background-notifications.enc');
+  const saveSession=value=>{if(value){if(!safeStorage.isEncryptionAvailable())throw Error('Windows credential encryption is unavailable.');fs.writeFileSync(notificationFile,safeStorage.encryptString(JSON.stringify(value)),{mode:0o600});}else{try{fs.unlinkSync(notificationFile);}catch{}}};
+  background=require('./background-notifications.cjs').createBackgroundNotifications({fetch:net.fetch,currentVersion:app.getVersion(),read:()=>JSON.parse(safeStorage.decryptString(fs.readFileSync(notificationFile))),write:saveSession,notify:value=>{
+    if(window&&!window.isDestroyed()&&window.isVisible())return;
+    if(!Notification.isSupported())return;
+    const notice=new Notification({title:value.title,body:value.body,icon:path.join(root,'icon-512.png')});notice.on('click',()=>void openMain(value.page));notice.show();
+  },onRevoked:()=>{if(!window&&!quitting)app.quit();}});
+  const ensureTray=()=>{if(process.platform!=='win32'||tray)return;tray=new Tray(path.join(root,'icon-512.png'));tray.setToolTip('Bank Setu · Background notifications');tray.on('double-click',()=>void openMain());tray.setContextMenu(Menu.buildFromTemplate([{label:'Open Bank Setu',click:()=>void openMain()},{label:'Disable background notifications',click:()=>{background.clear();tray.destroy();tray=null;if(!window)app.quit();}},{type:'separator'},{label:'Quit Bank Setu (stop notifications)',click:()=>{quitting=true;app.quit();}}]));};
+  ipcMain.handle('background:status',event=>{trusted(event);return background.status();});
+  ipcMain.handle('background:bind',(event,value)=>{trusted(event);if(process.platform!=='win32')throw Error('Background notifications are supported on Windows.');background.bind(value);ensureTray();return background.status();});
+  ipcMain.handle('background:clear',event=>{trusted(event);background.clear();if(tray){tray.destroy();tray=null;}return background.status();});
+  if(background.status().enabled)ensureTray();
+  await openMain();
+
+}).catch(error=>{require('electron').dialog.showErrorBox('Bank Setu startup failed',error.message);app.quit();});
+app.on('second-instance',()=>{if(openMain)void openMain();});
+app.on('window-all-closed',()=>{if(quitting||!background?.status().enabled)app.quit();});
+app.on('before-quit',()=>{quitting=true;background?.stop();tray?.destroy();store?.close();});
