@@ -80,7 +80,14 @@ function createLicenseAuthority(publicKey,store,trustedClock){
     trustedClock?.observe(uid,claim.issuedAt);
     receipt=signed;
   };
-  const protectedAction=()=>{trustedClock?.verify(uid);authorize(store,currentScope(),receipt);};
+  const protectedAction=()=>{
+    // Master/Admin workspaces are intentionally license-exempt. The guard
+    // returns true only for licensed client workspaces, so enforce the
+    // anti-rollback clock without permanently blocking exempt printing.
+    const licensed=authorize(store,currentScope(),receipt);
+    if(licensed)trustedClock?.verify(uid);
+    return licensed;
+  };
   const protectedScope=scope=>{if(scope!==currentScope())throw Error("The active signed-in workspace changed.");protectedAction();};
   const commit=(scope,signed)=>{
     if(scope.startsWith('offline:'))return false;

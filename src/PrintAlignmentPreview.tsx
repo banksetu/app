@@ -28,21 +28,22 @@ function savedOffset(bank: string): PrintOffset {
   } catch { return ZERO; }
 }
 
-function sourceDocument(selector: string): string {
+function sourceDocument(selector: string, widthMm=210, heightMm=170): string {
   const source = document.querySelector<HTMLElement>(selector);
   if (!source) return "";
   const base = document.baseURI.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   const styles = Array.from(document.querySelectorAll("style, link[rel='stylesheet']"))
     .map(node => node.outerHTML).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><base href="${base}">${styles}<style>
-    html,body{margin:0!important;padding:0!important;width:210mm!important;height:170mm!important;background:transparent!important;overflow:visible!important}
-    .union-document,.assam-quick-document,.passbook-shell{margin:0!important;box-shadow:none!important;border-radius:0!important}
+    html,body{margin:0!important;padding:0!important;width:${widthMm}mm!important;height:${heightMm}mm!important;background:transparent!important;overflow:visible!important}
+    .union-document,.assam-quick-document,.passbook-shell,.pnb-document{margin:0!important;box-shadow:none!important;border-radius:0!important}
     .union-document{width:210mm!important;height:170mm!important;overflow:visible!important}
     .union-lower,.union-fold{top:85mm!important}.union-lower{height:85mm!important}
     .assam-quick-document{width:210mm!important;height:170mm!important}
     .passbook-shell{width:206mm!important;height:175mm!important;overflow:visible!important}
+    .pnb-document{width:213mm!important;height:190mm!important;overflow:visible!important}
     .passbook-cover-space{height:85mm!important}.passbook-print-area{top:85mm!important;height:85mm!important}
-    .passbook-page{padding:0!important;margin:0!important;min-height:0!important}.preview-edit-button,.assam-quick-edit,.union-edit,.cover-note{display:none!important}
+    .passbook-page{padding:0!important;margin:0!important;min-height:0!important}.preview-edit-button,.assam-quick-edit,.union-edit,.pnb-edit,.cover-note{display:none!important}
   </style></head><body><div class="passbook-page">${source.outerHTML}</div></body></html>`;
 }
 
@@ -61,8 +62,10 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [duplex, setDuplex] = useState(false);
+  const pnb=/^(punjab national bank|punjab bank|pnb)$/i.test(bankName.trim());
+  const paperWidth=pnb?213:210, paperHeight=pnb?190:170;
 
-  useEffect(() => { setPreview(sourceDocument(sourceSelector)); }, [sourceSelector]);
+  useEffect(() => { setPreview(sourceDocument(sourceSelector,paperWidth,paperHeight)); }, [sourceSelector,paperWidth,paperHeight]);
   useEffect(() => { const previous=document.body.style.overflow; document.body.style.overflow="hidden"; return () => {document.body.style.overflow=previous;}; }, []);
   const move = (dx: number, dy: number) => setOffset(current => clean({x:current.x+dx*step,y:current.y+dy*step}));
   const print = async (test: boolean) => {
@@ -77,14 +80,14 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
       <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName}) · {printMode==="pr2"?"Olivetti / PR2":"Normal Print"}</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
       <div className="print-alignment-columns">
         <div className="print-alignment-left">
-          <div className="print-alignment-width">A4 Width (21 cm)</div>
+          <div className="print-alignment-width">Passbook Width ({pnb?"21.3":"21"} cm)</div>
           <div className="print-alignment-measured">
             <div className="print-alignment-measures">
-              <span>Passbook<br/>Height<br/>(17 cm)</span><span>Printable<br/>Data Area<br/>(8.5 cm)</span>
+              <span>Passbook<br/>Height<br/>({pnb?"19":"17"} cm)</span><span>Printable<br/>Data Area<br/>({pnb?"15.3":"8.5"} cm)</span>
             </div>
             <div className="print-alignment-paper">
-              <div className="print-alignment-frame" style={{transform:`scale(${zoom})`}}>
-                {preview ? <iframe title={`${bankName} actual passbook preview`} srcDoc={preview} sandbox="" style={{width:"210mm",height:"170mm",border:0,background:"transparent",transform:`translate(${offset.x}mm,${offset.y}mm)`,transformOrigin:"top left",pointerEvents:"none"}} /> :
+              <div className="print-alignment-frame" style={{width:`${paperWidth}mm`,height:`${paperHeight}mm`,transform:`scale(${zoom})`}}>
+                {preview ? <iframe title={`${bankName} actual passbook preview`} srcDoc={preview} sandbox="" style={{width:`${paperWidth}mm`,height:`${paperHeight}mm`,border:0,background:"transparent",transform:`translate(${offset.x}mm,${offset.y}mm)`,transformOrigin:"top left",pointerEvents:"none"}} /> :
                   <p role="alert">Passbook preview is unavailable.</p>}
               </div>
             </div>
