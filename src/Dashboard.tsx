@@ -993,8 +993,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
         <div className="banksetu-appearance" role="group" aria-label="Appearance">
-          <button type="button" aria-pressed={appearance === 'light'} className={appearance === 'light' ? 'selected' : ''} onClick={() => changeAppearance('light')}><span aria-hidden="true">☀</span> Light</button>
-          <button type="button" aria-pressed={appearance === 'dark'} className={appearance === 'dark' ? 'selected' : ''} onClick={() => changeAppearance('dark')}><span aria-hidden="true">☾</span> Dark</button>
+          <button type="button" className="banksetu-appearance-toggle" data-mode={appearance} aria-label={`Switch to ${appearance === 'dark' ? 'light' : 'dark'} appearance`} aria-pressed={appearance === 'dark'} onClick={() => changeAppearance(appearance === 'dark' ? 'light' : 'dark')}>
+            <span className="banksetu-appearance-sun" aria-hidden="true">☀</span>
+            <span className="banksetu-appearance-moon" aria-hidden="true">☾</span>
+            <span className="banksetu-appearance-thumb" aria-hidden="true" />
+          </button>
         </div>
 
       </aside>

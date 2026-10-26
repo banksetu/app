@@ -39,6 +39,10 @@ type UserProfile = {
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
+// A false Android WebView online signal must still leave enough time for the
+// signed local session to open within the promised 2–3 second startup window.
+const OFFLINE_STARTUP_FALLBACK_MS = 1200;
+const OFFLINE_SESSION_READ_TIMEOUT_MS = 1400;
 
 function getAccessError(profile: UserProfile, authEmail = "", emailVerified = false): string {
   const status = normalize(profile.status);
@@ -199,7 +203,7 @@ function App() {
     sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);
     setTenantWorkspaceReady(true);
     // Offline grant renewal is independent of online workspace readiness.
-    if(master||setup.connectionMode==="option-b")await enrollOfflineSession().catch(()=>undefined);
+    if(master||setup.connectionMode==="option-b")await enrollOfflineSession();
   }, []);
 
   const rejectSession = useCallback(async (message: string) => {
@@ -231,6 +235,23 @@ function App() {
     await refreshLicensePermission(online);
     if(auth.currentUser?.uid!==user.uid)return;
   }, []);
+
+  const resumeVerifiedOfflineSession = useCallback(async (user: User) => {
+    let timeout:ReturnType<typeof setTimeout>|undefined;
+    const claims=await Promise.race([
+      resumeOfflineSession(user.uid),
+      new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error("Saved offline session could not be opened. Please connect your internet to verify the license.")),OFFLINE_SESSION_READ_TIMEOUT_MS);}),
+    ]).finally(()=>clearTimeout(timeout));
+    if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+    applyProfile(claims);
+    await checkLicense(user, claims, false);
+    if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+    verifiedNavigation.current=true;
+    clearTimeout(recoveryTimer.current);
+    setKnownAccount(true);
+    try { localStorage.setItem("bankSetuKnownAccount", "true"); } catch { /* Startup remains available without this hint. */ }
+    setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);setError("");setCheckingSession(false);
+  }, [applyProfile, checkLicense]);
 
   const watchUserProfile = useCallback((user: User) => {
     clearProfileListener();
@@ -331,27 +352,28 @@ function App() {
       // Stop the previous account's sync lifecycle before validating a switched user.
       setIsLoggedIn(false);
       if(!navigator.onLine){
-        void resumeOfflineSession(user.uid).then(async claims=>{
-          if(auth.currentUser?.uid!==user.uid)return;
-          applyProfile(claims);await checkLicense(user, claims, false);setIsLoggedIn(true);setError("");setCheckingSession(false);
-        }).catch(reason=>{setError(reason instanceof Error?reason.message:"Connect to verify your account.");setCheckingSession(false);});
+        void resumeVerifiedOfflineSession(user).catch(reason=>{
+          if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");setCheckingSession(false);
+        });
         return;
       }
       watchUserProfile(user);
       recoveryTimer.current=setTimeout(()=>{
         if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
-        void resumeOfflineSession(user.uid).then(async claims=>{
+        void resumeVerifiedOfflineSession(user).catch(reason=>{
           if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
-          applyProfile(claims);await checkLicense(user, claims, false);verifiedNavigation.current=true;setIsLoggedIn(true);setCheckingSession(false);setError("");
-        }).catch(()=>{/* Never bypass verification for a first login or expired grant. */});
-      },4000);
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
+          setCheckingSession(false);
+        });
+      },OFFLINE_STARTUP_FALLBACK_MS);
     });
 
     return () => {
       clearTimeout(recoveryTimer.current);unsubscribe();
       clearProfileListener();
     };
-  }, [applyProfile, checkLicense, clearProfileListener, watchUserProfile]);
+  }, [clearProfileListener, resumeVerifiedOfflineSession, watchUserProfile]);
 
   useEffect(()=>{
     const reconnect=()=>{if(auth.currentUser)watchUserProfile(auth.currentUser);};

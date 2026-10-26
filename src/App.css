@@ -3793,10 +3793,15 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 .login-pricing-link{display:block;margin:0 auto 16px;border:0;background:transparent;color:#195cac;text-decoration:underline;font:inherit;font-weight:650;cursor:pointer}
 
 /* Personal appearance is paint only; global Master Admin gradients stay intact. */
-.banksetu-sidebar .banksetu-appearance{position:sticky;bottom:2px;flex:none;display:flex;align-self:center;gap:2px;width:max-content;padding:3px;border-radius:12px;background:rgba(5,13,30,.34);border:1px solid #ffffff44;z-index:2;margin-top:auto}
-.banksetu-sidebar .banksetu-appearance button{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px 10px;border:0;border-radius:9px;background:transparent;color:#fff;font-size:12px;cursor:pointer;min-height:34px}
-.banksetu-sidebar .banksetu-appearance button.selected{background:#fff;color:#263047;box-shadow:0 2px 8px #09152a44}
-.banksetu-sidebar .banksetu-appearance button:focus-visible{outline:2px solid #67e8f9;outline-offset:2px}
+.banksetu-sidebar .banksetu-appearance{position:sticky;bottom:0;flex:none;display:flex;align-self:center;width:max-content;padding:0;border:0;background:transparent;z-index:2;margin-top:auto}
+.banksetu-sidebar .banksetu-appearance-toggle{position:relative;display:block;width:72px;height:30px;min-height:30px;padding:0;border:1px solid #ffffff55;border-radius:18px;background:linear-gradient(90deg,#ffbd31 0%,#ff8c3f 49%,#14204d 51%,#07142e 100%);color:#fff;cursor:pointer;box-shadow:0 5px 14px #21134f66;overflow:hidden;transition:filter .2s ease,box-shadow .2s ease}
+.banksetu-sidebar .banksetu-appearance-toggle:hover{filter:brightness(1.06);box-shadow:0 6px 16px #21134f80}
+.banksetu-sidebar .banksetu-appearance-toggle:focus-visible{outline:2px solid #67e8f9;outline-offset:2px}
+.banksetu-appearance-sun,.banksetu-appearance-moon{position:absolute;top:50%;z-index:1;transform:translateY(-52%);font-size:16px;line-height:1;text-shadow:0 1px 3px #30185055;transition:opacity .22s ease}
+.banksetu-appearance-sun{left:7px}.banksetu-appearance-moon{right:8px}
+.banksetu-appearance-toggle[data-mode="light"] .banksetu-appearance-moon,.banksetu-appearance-toggle[data-mode="dark"] .banksetu-appearance-sun{opacity:.52}
+.banksetu-appearance-thumb{position:absolute;top:2px;left:2px;z-index:2;width:24px;height:24px;border-radius:50%;background:linear-gradient(145deg,#fff,#f0edff);box-shadow:0 3px 8px #24195070;transition:transform .26s cubic-bezier(.2,.8,.2,1)}
+.banksetu-appearance-toggle[data-mode="dark"] .banksetu-appearance-thumb{transform:translateX(42px)}
 .banksetu-sidebar{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;padding-bottom:2px!important}
 .banksetu-sidebar nav{min-height:0;overflow-y:auto;overflow-x:hidden;flex:1}
 /* Keep wheel, touch and keyboard scrolling without sidebar scrollbar chrome. */
