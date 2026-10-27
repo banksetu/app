@@ -28,11 +28,13 @@ test('Passbook Print contains only dot-matrix values while Quick Passbook contai
   assert(quick.includes(bankLogo));assert(!print.includes(bankLogo));
   assert(quick.includes('pnb-dot-left-fit'));
 });
-test('Unavailable data keeps its label and an empty value',()=>{
+test('PNB permanent contact and DICGC lines keep their original defaults',()=>{
   for(const html of [quick,print]){
-    assert(html.includes('*Contact: Tol Free-, Tolled-'));
+    assert(html.includes('*Contact: Tol Free-18001802222/18001032222, Tolled-012024790000'));
+    assert(html.includes('*Principal Nodal Officer:  Ph-01123716185 Fax-01123323707'));
     assert(html.includes('Nomination Registered at SL. No. : '));
-    assert(html.includes('Bank depositor is insured by DICGC upto a maximum Rs.'));
+    assert(html.includes('Bank depositor is insured by DICGC upto a maximum Rs.5.00'));
+    assert(html.includes('Subject to change from time. (T&amp;C applicable)'));
   }
 });
 test('PNB keeps BO and Phone fixed while aligning the remaining data inside the left page',()=>{
@@ -44,6 +46,9 @@ test('PNB keeps BO and Phone fixed while aligning the remaining data inside the 
     assert.match(html,/data-field="dicgc"[^>]*pnb-dot-left-fit[^>]*top:129mm/);
     assert.match(html,/data-field="terms"[^>]*pnb-dot-left-fit[^>]*top:133mm/);
   }
+  assert(source.includes('.pnb-dot-matrix,.pnb-dot-line{text-align:left!important}'));
+  assert(source.includes('BankSetuPassbookMono-Bold.ttf'));
+  assert(source.includes('font-weight:700'));
 });
 test('PNB is a built-in bank format',()=>{
   const policy=fs.readFileSync(new URL('../src/bankDocumentPolicy.ts',import.meta.url),'utf8');
