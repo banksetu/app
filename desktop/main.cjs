@@ -205,7 +205,9 @@ if(primaryInstance)app.whenReady().then(async()=>{
     cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
     window.on('closed',()=>{window=null;});
     await window.loadURL(ORIGIN+'/index.html');
-    await appMenu.refreshPrinters();
+    // Offline network printers can make enumeration take seconds. The list is
+    // not needed to display the dashboard, so refresh it after first paint.
+    setImmediate(()=>void appMenu.refreshPrinters());
     if(page)window.webContents.send('system-notification:open',page);
   };
   const notificationFile=path.join(app.getPath('userData'),'background-notifications.enc');

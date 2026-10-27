@@ -41,7 +41,7 @@ jobs:
           if ($installers.Count -ne 1) { throw 'Expected exactly one installer.' }
           if (!(Test-Path desktop-release/latest.yml)) { throw 'Missing Windows update manifest.' }
           if (!(Get-ChildItem desktop-release/*.blockmap)) { throw 'Missing Windows update blockmap.' }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: BankSetu-Windows-SIGNED
           path: |

@@ -1,7 +1,7 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 
 import { startLocalSync, configureConnectionRecovery, resetSyncSession } from "./core/localData";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -13,19 +13,24 @@ import { doc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
-import Dashboard from "./Dashboard";
-import LicenseOnboarding from "./LicenseOnboarding";
 import { getPublicLicenseSettings } from "./publicLicenseSettings";
 import { bindLicenseAccount, resetLicensePermission, refreshLicensePermission, denyLicense, getLicensePermission, subscribeLicensePermission } from "./core/licenseAccess";
 import { requiresTenantLicense } from "./core/licensePolicy";
-import PublicPages from "./PublicPages";
-import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { notifySystem, startNotificationNavigation } from "./platform/systemNotifications";
 import { clearBackgroundNotifications } from "./platform/backgroundNotifications";
 import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPush";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 
 import "./App.css";
+
+const Dashboard = lazy(() => import("./Dashboard"));
+const LicenseOnboarding = lazy(() => import("./LicenseOnboarding"));
+const PublicPages = lazy(() => import("./PublicPages"));
+const SoftwareUpdateNotice = lazy(() => import("./SoftwareUpdateNotice"));
+
+function AppLoading() {
+  return <main className="app-loader"><div className="loader-logo"><img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/></div><p>Loading Bank Setu...</p></main>;
+}
 
 type BankSetuRole = "admin" | "user";
 type UserProfile = {
@@ -501,22 +506,15 @@ function App() {
 
   const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
   if (publicPath === "about" || publicPath === "privacy-policy" || publicPath === "terms") {
-    return <PublicPages />;
+    return <Suspense fallback={<AppLoading/>}><PublicPages /></Suspense>;
   }
 
   if (checkingSession) {
-    return (
-      <main className="app-loader">
-        <div className="loader-logo">
-          <img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/>
-        </div>
-        <p>Loading Bank Setu...</p>
-      </main>
-    );
+    return <AppLoading/>;
   }
 
   if (!isLoggedIn && showLicenseWelcome && licenseWelcome && (pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey))) {
-    return <LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} />;
+    return <Suspense fallback={<AppLoading/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
   }
 
   if (loginSuccess) {
@@ -534,8 +532,10 @@ function App() {
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
-        <SoftwareUpdateNotice />
+        <Suspense fallback={<AppLoading/>}>
+          <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
+          <SoftwareUpdateNotice />
+        </Suspense>
       </div>
     );
   }

@@ -14,7 +14,7 @@ function render(page,blocked){
  const exports={};
  const component=name=>props=>React.createElement('div',{'data-component':name},name==='LicenseNotice'?props.permission.state:undefined);
  const require=path=>{
-  if(path==='react')return {...React,useState:value=>{index++;return React.useState(index===3?page:index===24?true:value);}};
+  if(path==='react')return {...React,lazy:loader=>{const name=String(loader).match(/require\(["']\.\/(.+?)["']\)/)?.[1]||'DeferredPage';return component(name);},useState:value=>{index++;return React.useState(index===3?page:index===24?true:value);}};
   if(path==='react/jsx-runtime')return jsx;
   if(path==='react-dom')return {createPortal:()=>null};
   if(path==='./core/useSyncStatus')return {useSyncStatus:()=>({records:1,pending:1,online:true})};
