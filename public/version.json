@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.134",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.134/BankSetu-Setup-1.0.134-x64.exe",
+  "latestVersion": "1.0.135",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.135/BankSetu-Setup-1.0.135-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.134",
-  "releaseTag": "v1.0.134",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.134",
+  "version": "1.0.135",
+  "releaseTag": "v1.0.135",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.135",
   "releaseDate": "2026-10-27",
-  "windowsVersion": "1.0.134",
-  "androidBuild": 1000134,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.134/BankSetu-Setup-1.0.134-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.134/BankSetu-Android-1000134.apk",
+  "windowsVersion": "1.0.135",
+  "androidBuild": 1000135,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.135/BankSetu-Setup-1.0.135-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.135/BankSetu-Android-1000135.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.134",
+      "version": "1.0.135",
       "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Modernize responsive sidebar icons (89)."
+          "Add PNB parity, anchored support and Central Bank passbooks."
         ]
       }
     },
     "android": {
-      "version": "1.0.134",
+      "version": "1.0.135",
       "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Modernize responsive sidebar icons (89)."
+          "Add PNB parity, anchored support and Central Bank passbooks."
         ]
       }
     }
