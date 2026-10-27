@@ -3779,6 +3779,123 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 @media(prefers-reduced-motion:reduce){.login-page:before,.login-page:after,.login-card,.login-page .banksetu-logo,.login-page .error-message,.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel,.customer-camera-dialog{animation:none!important}.login-page .sign-in,.banksetu-main-workspace button,.banksetu-sidebar button,.banksetu-sidebar,.mobile-menu-button,.match-card,.dashboard-status-row{transition:none!important}}
 @media print{.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel{animation:none!important}}
 
+/* Bank Setu motion system: paint-only transitions keep navigation responsive. */
+@media screen {
+  .banksetu-app-shell{
+    --motion-accent:#1677df;
+    --motion-glow:rgba(22,119,223,.22);
+    --motion-soft:rgba(22,119,223,.10);
+    --motion-ease:cubic-bezier(.2,.8,.2,1);
+  }
+  .banksetu-app-shell[data-appearance="dark"]{
+    --motion-accent:#36d7e7;
+    --motion-glow:rgba(54,215,231,.20);
+    --motion-soft:rgba(54,215,231,.10);
+  }
+  .banksetu-main-workspace>div>section,
+  .banksetu-main-workspace>section,
+  .banksetu-main-workspace .passbook-page,
+  .banksetu-main-workspace .customers-page,
+  .banksetu-main-workspace .all-customer-data,
+  .banksetu-main-workspace .custom-bank-document,
+  .banksetu-main-workspace .aof-module,
+  .banksetu-main-workspace .reports-page,
+  .banksetu-main-workspace .settings-page,
+  .banksetu-main-workspace .license-panel,
+  .banksetu-main-workspace .support-page{
+    animation:banksetu-page-arrive .34s var(--motion-ease) both;
+    transform-origin:50% 0;
+  }
+  .dashboard-stat-card,.dashboard-quick-card,.customer-search-card,.passbook-search-card,
+  .match-card,.customer-preview-section,.dashboard-analytics-card,.sync-card,
+  .license-card,.admin-user-card,.bank-format-print-actions{
+    transition:transform .2s var(--motion-ease),box-shadow .2s ease,border-color .2s ease!important;
+  }
+  .dashboard-stat-card:hover,.dashboard-quick-card:hover,.match-card:hover,
+  .customer-preview-section:hover,.dashboard-analytics-card:hover,.sync-card:hover,
+  .license-card:hover,.admin-user-card:hover{
+    transform:translate3d(0,-3px,0);
+    box-shadow:0 12px 28px var(--motion-glow)!important;
+  }
+  .banksetu-main-workspace button:not(:disabled),.banksetu-sidebar button:not(:disabled),
+  .customer-preview-actions button:not(:disabled),.bank-format-print-actions button:not(:disabled){
+    transition:transform .16s var(--motion-ease),box-shadow .2s ease,filter .2s ease,background-color .2s ease,border-color .2s ease!important;
+  }
+  .banksetu-main-workspace button:not(:disabled):hover,.banksetu-sidebar button:not(:disabled):hover,
+  .customer-preview-actions button:not(:disabled):hover,.bank-format-print-actions button:not(:disabled):hover{
+    transform:translate3d(0,-2px,0);
+    box-shadow:0 8px 18px var(--motion-glow);
+    filter:saturate(1.06);
+  }
+  .banksetu-main-workspace button:not(:disabled):active,.banksetu-sidebar button:not(:disabled):active,
+  .customer-preview-actions button:not(:disabled):active,.bank-format-print-actions button:not(:disabled):active{
+    transform:translate3d(0,0,0) scale(.975);
+  }
+  .banksetu-sidebar .banksetu-nav-item{position:relative;overflow:hidden;transition:transform .18s var(--motion-ease),background-color .2s ease,box-shadow .2s ease!important}
+  .banksetu-sidebar .banksetu-nav-item:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent,var(--motion-soft),transparent);transform:translateX(-105%);transition:transform .36s var(--motion-ease)}
+  .banksetu-sidebar .banksetu-nav-item:hover:before{transform:translateX(105%)}
+  .banksetu-sidebar .banksetu-nav-item:hover{transform:translate3d(3px,0,0)}
+  .customer-preview-overlay,.dashboard-status-overlay,.match-modal-overlay,
+  .banksetu-support-popup-backdrop,.license-modal-backdrop,.customer-camera-overlay,
+  .print-alignment-overlay,.pdf-overlay{
+    animation:banksetu-backdrop-in .2s ease-out both;
+  }
+  .customer-preview-card,.dashboard-status-panel,.match-modal,.banksetu-support-popup,
+  .license-modal,.license-drawer,.customer-camera-dialog,.print-alignment-window,.pdf-dialog{
+    animation:banksetu-popup-arrive .28s var(--motion-ease) both;
+    transform-origin:50% 20%;
+  }
+  .customer-preview-close,.mobile-close-button,.update-close{
+    transition:transform .2s var(--motion-ease),background-color .2s ease!important;
+  }
+  .customer-preview-close:hover,.mobile-close-button:hover,.update-close:hover{transform:rotate(8deg) scale(1.08)}
+  .banksetu-main-workspace :is(input,select,textarea){transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease!important}
+  .banksetu-main-workspace :is(input,select,textarea):focus{box-shadow:0 0 0 3px var(--motion-soft)!important}
+  .status-chip,.customer-preview-status,.license-status-badge{animation:banksetu-chip-arrive .3s var(--motion-ease) both}
+  @keyframes banksetu-page-arrive{from{opacity:0;transform:translate3d(0,14px,0) scale(.992)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+  @keyframes banksetu-popup-arrive{from{opacity:0;transform:translate3d(0,12px,0) scale(.965)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+  @keyframes banksetu-backdrop-in{from{opacity:0}to{opacity:1}}
+  @keyframes banksetu-chip-arrive{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+}
+
+/* Screen-only passbook fitting. The fixed physical canvas and print/PR2 rules stay unchanged. */
+@media screen and (max-width:900px){
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:.84}
+  .pnb-preview,.union-preview,.assam-quick-preview,.bank-format-print-wrap{overflow-x:hidden!important}
+}
+@media screen and (max-width:760px){
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:.70}
+}
+@media screen and (max-width:640px){
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:.57}
+  .passbook-actions,.bank-format-print-actions{display:flex!important;flex-wrap:wrap!important;align-items:stretch!important}
+  .passbook-actions button,.bank-format-print-actions button{flex:1 1 145px;min-height:46px}
+  .bank-format-print-actions span{flex:1 0 100%;text-align:center}
+}
+@media screen and (max-width:520px){
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:.46}
+}
+@media screen and (max-width:420px){
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:.39}
+}
+@media screen and (max-width:360px){
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:.33}
+}
+@media print{
+  .passbook-page :is(.passbook-shell,.pnb-document,.union-document,.assam-quick-document),
+  .custom-bank-document .bank-format-print-document{zoom:1!important;animation:none!important}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .banksetu-main-workspace *,.banksetu-sidebar *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+
 /* Expired/suspended business documents must not reach browser print output. */
 @media print {
   body[data-banksetu-license-write="false"] * { visibility: hidden !important; }

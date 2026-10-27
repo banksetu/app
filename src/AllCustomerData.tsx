@@ -1,5 +1,5 @@
 import { afsmDisplay } from "./core/afsmPolicy";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { getAuth } from "firebase/auth";
 import { localDataFetch, getDataIdToken, getLocalSnapshot, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerListScope, readCustomerListCache, writeCustomerListCache, type CachedCustomer } from "./customerListCache";
@@ -314,9 +314,9 @@ export default function AllCustomerData() {
       <table style={{borderCollapse:"collapse",width:"100%",minWidth:680,textAlign:"left"}}>
         <thead><tr>{["Customer ID","Name","Account Number","Mobile Number","Aadhaar Number","Account Opening Date"].map(label =>
           <th key={label} style={{position:"sticky",top:0,background:"var(--app-dark-surface, #f9e8ee)",padding:10}}>{label}</th>)}</tr></thead>
-        <tbody>{rows.map((customer,index) => <tr key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
+        <tbody>{rows.map((customer,index) => <tr className={index<25?"all-customer-row-enter":undefined} key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
           onKeyDown={event => { if (event.key === "Enter") void open(customer); }}
-          style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee"}}>
+          style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee",...(index<25?{"--customer-row-index":index}:{})} as CSSProperties}>
           <td style={{padding:9}}>{value(customer.enrolId)}</td><td style={{padding:9}}>{value(customer.name)}</td>
           <td style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
             onClick={async event => {event.stopPropagation();try{if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(String(customer.accountNo ?? "")); else await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
@@ -374,6 +374,8 @@ export default function AllCustomerData() {
     </div>}
     <style>{`
       .all-customer-data tbody tr:hover,.all-customer-data tbody tr:focus {background:#fbd9e3!important;outline:2px solid #d17a9c}
+      .all-customer-row-enter {animation:banksetu-customer-row-in .34s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--customer-row-index,0) * 24ms);will-change:transform,opacity}
+      @keyframes banksetu-customer-row-in {from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
       .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:grid;place-items:center;padding:14px;overflow:auto}
       .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:94dvh;overflow:auto;text-align:left}
       .customer-preview-heading {background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px;text-align:left}
@@ -399,7 +401,8 @@ export default function AllCustomerData() {
       .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #d57c99;background:#fff;cursor:pointer}
       .customer-preview-actions button:first-child {background:#d51c57;color:white}
       @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:calc(100% - 112px)}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl{padding:9px 12px}.customer-preview-section dl>div{grid-template-columns:minmax(112px,40%) minmax(0,1fr);gap:9px}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
-      @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}}
+      @media(prefers-reduced-motion:reduce){.all-customer-row-enter{animation:none!important}}
+      @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}.all-customer-row-enter{animation:none!important}}
     `}</style>
   </section>;
 }
