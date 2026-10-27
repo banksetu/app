@@ -25,3 +25,17 @@ test("Windows database startup keeps crash recovery but skips repeated full scan
   assert.match(store, /WHERE typeof\(payload\) != 'text'/);
   assert.match(store, /fs\.unlinkSync\(openMarker\)/);
 });
+
+test("All Customer Data preloads locally, renders bounded pages and shares no account metadata", () => {
+  const list=read("src/AllCustomerData.tsx");
+  const dashboard=read("src/Dashboard.tsx");
+  const cache=read("src/customerListCache.ts");
+  assert.match(list,/const LOCAL_PAGE_SIZE = 200/);
+  assert.match(cache,/customerListCache/);
+  assert.match(cache,/export async function preloadAllCustomerData/);
+  assert.match(dashboard,/preloadAllCustomerData\(\)/);
+  assert.match(list,/querySelectorAll\("\.customer-preview-share-exclude"\)/);
+  assert.match(list,/customer-preview-identity customer-preview-share-exclude/);
+  assert.match(list,/customer-preview-bottom customer-preview-share-exclude/);
+  assert.match(list,/customer-preview-section customer-preview-share-exclude/);
+});
