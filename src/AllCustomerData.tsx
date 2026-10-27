@@ -1,7 +1,8 @@
 import { afsmDisplay } from "./core/afsmPolicy";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAuth } from "firebase/auth";
 import { localDataFetch, getDataIdToken, getLocalSnapshot, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
+import { customerListScope, readCustomerListCache, writeCustomerListCache, type CachedCustomer } from "./customerListCache";
 import { requireLicensedWrite } from "./core/licenseAccess";
 import { getTenantApiUrl } from "./tenantApi";
 import { isAndroid } from "./platform/android/runtime";
@@ -11,7 +12,8 @@ import html2canvas from "html2canvas";
 const nativeShare = registerPlugin<{shareImage(options:{base64:string}):Promise<void>}>("BankSetuShare");
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {copyText?: (text:string)=>Promise<void>;shareImage?: (image:string)=>Promise<{saved:boolean;canceled?:boolean}>}}).bankSetuDesktop;
-type Customer = Record<string, unknown> & { rowNumber?: number; recordId?: string };
+type Customer = CachedCustomer;
+const LOCAL_PAGE_SIZE = 200;
 const value = (item: unknown) => String(item ?? "").trim();
 const title = (key: string) => key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
 const identity = (customer: Customer) => value(customer.recordId || customer.rowNumber || customer.accountNo);
@@ -40,6 +42,11 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   const copy = card.cloneNode(true) as HTMLElement;
   copy.querySelector(".customer-preview-close")?.remove();
   copy.querySelector(".customer-preview-actions")?.remove();
+  if(!forPdf){
+    copy.querySelectorAll(".customer-preview-share-exclude").forEach(node=>node.remove());
+    const subtitle=copy.querySelector(".customer-preview-heading p");
+    if(subtitle)subtitle.textContent="Personal, contact and address information";
+  }
   copy.style.cssText += `;width:${width}px!important;max-height:none!important;overflow:visible!important`;
   host.appendChild(copy);
   document.body.appendChild(host);
@@ -63,10 +70,10 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function snapshot(customer: Customer, card?: HTMLElement | null, forPdf=false): Promise<Blob> {
   if (card) return previewImage(card,forPdf);
-  return new Promise(async (resolve, reject) => {
-    try {
+  return (async () => {
       const fields = visibleFields(customer);
       const width = 920, rowHeight = 34;
       const canvas = document.createElement("canvas");
@@ -98,15 +105,16 @@ export function snapshot(customer: Customer, card?: HTMLElement | null, forPdf=f
           ctx.drawImage(image, width - 155, 15, 95, 95);
         } catch { /* Keep available customer details when remote photo cannot be read. */ }
       }
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not create preview image.")), "image/png");
-    } catch (error) { reject(error); }
-  });
+      return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not create preview image.")), "image/png"));
+  })();
 }
 
 export default function AllCustomerData() {
+  const [scope] = useState(()=>customerListScope());
+  const [cached] = useState(()=>readCustomerListCache(scope));
   const [query, setQuery] = useState("");
   const previewCard = useRef<HTMLDivElement>(null);
-  const [rows, setRows] = useState<Customer[]>([]);
+  const [rows, setRows] = useState<Customer[]>(()=>cached.slice(0,LOCAL_PAGE_SIZE));
   const [selected, setSelected] = useState<Customer | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -116,15 +124,28 @@ export default function AllCustomerData() {
   const page = useRef(0);
   const total = useRef(0);
   const generation = useRef(0);
+  const localMatches = useRef<Customer[]>(cached);
+  const localVisible = useRef(LOCAL_PAGE_SIZE);
 
-  const loadPage = async (replace = false) => {
+  const showLocal = useCallback((customers:Customer[],search=query) => {
+    writeCustomerListCache(scope,customers);
+    const needle=search.trim().toLowerCase();
+    const filtered=needle?customers.filter(customer=>[customer.enrolId,customer.accountNo,customer.name,customer.uidaiNo,customer.aadhaarNo,customer.aadharNo,customer.contact,customer.mobile].some(item=>value(item).toLowerCase().includes(needle))):customers;
+    localMatches.current=filtered;localVisible.current=LOCAL_PAGE_SIZE;
+    setRows(filtered.slice(0,localVisible.current));setMore(filtered.length>localVisible.current);
+  },[query,scope]);
+
+  const loadPage = async (replace = false, quiet = false) => {
+    if(!replace && localVisible.current<localMatches.current.length){
+      localVisible.current+=LOCAL_PAGE_SIZE;setRows(localMatches.current.slice(0,localVisible.current));setMore(localVisible.current<localMatches.current.length);return;
+    }
     if ((loading && !replace) || (!navigator.onLine && !localModeEnabled())) return;
-    setLoading(true);
+    if(!quiet)setLoading(true);
     const id = generation.current;
     try {
       if (localModeEnabled()) {
         const customers = await getActiveLocalCustomers();
-        if (id === generation.current) {setRows(customers);setMore(false);}
+        if (id === generation.current) showLocal(customers);
         return;
       }
       if (replace) {
@@ -149,19 +170,11 @@ export default function AllCustomerData() {
       });
       page.current = current - 1; setMore(page.current > 0);
     } catch (cause) { if (id === generation.current) setError(cause instanceof Error ? cause.message : "Customer list unavailable."); }
-    finally { if (id === generation.current) setLoading(false); }
+    finally { if (id === generation.current&&!quiet) setLoading(false); }
   };
 
   useEffect(() => {
-    let active = true;
-    // The current verified user's local scope supplies an immediate local-first list.
-    if (localModeEnabled()) void getActiveLocalCustomers().then(customers => {
-      if (!active) return;
-      setRows(customers);
-    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });
-    return () => { active = false; generation.current += 1; };
-    // The workspace remounts this page on navigation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { generation.current += 1; };
   }, []);
 
   useEffect(() => {
@@ -171,7 +184,8 @@ export default function AllCustomerData() {
       timer = setTimeout(() => {
         if (!localModeEnabled()) return;
         void getActiveLocalCustomers().then(customers => {
-          if (!query.trim()) setRows(customers);
+          writeCustomerListCache(scope,customers);
+          if (!query.trim()) showLocal(customers,"");
           else {const visible=new Set(customers.map(customer=>value(customer.recordId)));setRows(previous=>previous.filter(row=>visible.has(value(row.recordId))));}
           setSelected(previous => previous && !customers.some(customer=>identity(customer)===identity(previous)) ? null : previous);
         }).catch(() => undefined);
@@ -179,21 +193,25 @@ export default function AllCustomerData() {
     };
     window.addEventListener("banksetu-sync-change", reconcile);
     return () => {clearTimeout(timer);window.removeEventListener("banksetu-sync-change", reconcile);};
-  }, [query]);
+  }, [query,scope,showLocal]);
 
   useEffect(() => {
     const id = ++generation.current;
-    setLoading(false);
     if (!query.trim()) {
-      setError("");
-      if (navigator.onLine || localModeEnabled()) void loadPage(true);
-      else void getLocalSnapshot().then(snapshot => {
-        if (id === generation.current) setRows(snapshot.records.filter(record => !record.deleted).sort((a,b) => b.rowNumber - a.rowNumber).map(record => ({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})));
-      }).catch(cause => { if (id === generation.current) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });
+      void getActiveLocalCustomers().then(customers=>{
+        if(id!==generation.current)return;
+        showLocal(customers,"");setLoading(false);
+        if(!localModeEnabled()&&navigator.onLine)void loadPage(true,customers.length>0);
+      }).catch(()=>getLocalSnapshot().then(snapshot=>{
+        if(id!==generation.current)return;
+        showLocal(snapshot.records.filter(record=>!record.deleted).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})),"");
+      })).catch(cause=>{if(id===generation.current)setError(cause instanceof Error?cause.message:"Local records unavailable.");});
       return;
     }
+    void getActiveLocalCustomers().then(customers=>{if(id===generation.current){showLocal(customers,query);setLoading(false);}}).catch(()=>undefined);
+    if(localModeEnabled()||!navigator.onLine)return;
     const timer = setTimeout(async () => {
-      setLoading(true); setError("");
+      if(!localMatches.current.length)setLoading(true);setError("");
       try {
         const result = await request({action:"searchCustomer",query:query.trim()});
         if (id !== generation.current) return;
@@ -287,7 +305,7 @@ export default function AllCustomerData() {
       <div ref={previewCard} className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
         <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
         <div className="customer-preview-content">
-          <div className="customer-preview-identity">
+          <div className="customer-preview-identity customer-preview-share-exclude">
             {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)
               ? <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" />
               : <div className="customer-preview-photo-placeholder" aria-label="No customer photograph">●</div>}
@@ -309,7 +327,7 @@ export default function AllCustomerData() {
               {([["Mobile Number",selected.contact || selected.mobile],["Email",selected.email]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
             </dl></section>
             {(value(selected.fullAddress || selected.address || selected.postOffice || selected.pinCode)) && <section className="customer-preview-section"><h3>● &nbsp;Address</h3><p className="customer-preview-address">{value(selected.fullAddress || selected.address)}{selected.postOffice && !value(selected.fullAddress).includes(value(selected.postOffice)) ? ` · PO: ${value(selected.postOffice)}` : ""}{selected.pinCode && !value(selected.fullAddress || selected.address).includes(value(selected.pinCode)) ? ` · ${value(selected.pinCode)}` : ""}</p></section>}
-            <div className="customer-preview-bottom">
+            <div className="customer-preview-bottom customer-preview-share-exclude">
               {(value(selected.branch || selected.branchName || selected.ifsc || selected.ifscCode)) && <section className="customer-preview-section"><h3>▤ &nbsp;Branch Details</h3><dl>
                 {([["Branch",selected.branch || selected.branchName],["IFSC",selected.ifsc || selected.ifscCode]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
               </dl></section>}
@@ -317,7 +335,7 @@ export default function AllCustomerData() {
                 {([["A/C Type",selected.accountType || selected.acType || selected.accountCategory],["Open Date",selected.accountOpeningDate],["AOF No.",selected.aofNo]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
               </dl></section>
             </div>
-            {visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).length > 0 && <section className="customer-preview-section"><h3>▤ &nbsp;Additional Details</h3><dl>{visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).map(([key,item]) => <div key={key}><dt>{title(key)}</dt><dd>{value(item)}</dd></div>)}</dl></section>}
+            {visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).length > 0 && <section className="customer-preview-section customer-preview-share-exclude"><h3>▤ &nbsp;Additional Details</h3><dl>{visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).map(([key,item]) => <div key={key}><dt>{title(key)}</dt><dd>{value(item)}</dd></div>)}</dl></section>}
           </div>
           <div className="customer-preview-actions">
             <button type="button" disabled={sharing} onClick={() => void share()}>{sharing ? "Preparing / sharing…" : "Share"}</button>
