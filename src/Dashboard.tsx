@@ -980,17 +980,17 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
         </div>
 
         <nav style={styles.nav}>
-          <NavButton icon="🏠" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
-{!licenseReadOnly && <NavButton icon="👤" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
-{!licenseReadOnly && <NavButton icon="⚡" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
-{!licenseReadOnly && <NavButton icon="🖨" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
-          <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-          <NavButton icon="📋" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
-{!licenseReadOnly && <NavButton icon="🔎" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
-          {!licenseReadOnly && <NavButton icon="📤" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
-          {(licenseReadOnly || userRole === "admin") && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
-{!licenseReadOnly && <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
-          {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
+          <NavButton icon="dashboard" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
+{!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
+{!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
+{!licenseReadOnly && <NavButton icon="printer" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
+          <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
+          <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+{!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
+          {(licenseReadOnly || userRole === "admin") && <NavButton icon="settings" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
+{!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
+          {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="cloud-sync" label="Sync & Backup" active={activePage === "sync-backup"} spinning={syncStatus.syncing} onClick={() => openPage("sync-backup")} />}
         </nav>
         <div className="banksetu-appearance" role="group" aria-label="Appearance">
           <button type="button" className="banksetu-appearance-toggle" data-mode={appearance} aria-label={`Switch to ${appearance === 'dark' ? 'light' : 'dark'} appearance`} aria-pressed={appearance === 'dark'} onClick={() => changeAppearance(appearance === 'dark' ? 'light' : 'dark')}>
@@ -3703,15 +3703,19 @@ function NavButton({
 
   active,
 
+  spinning = false,
+
   onClick,
 
 }: {
 
-  icon: string;
+  icon: MenuIconName;
 
   label: string;
 
   active: boolean;
+
+  spinning?: boolean;
 
   onClick: () => void;
 
@@ -3739,7 +3743,7 @@ function NavButton({
 
     >
 
-      <span>{icon}</span>
+      <span className={`banksetu-nav-icon${spinning ? " is-spinning" : ""}`}><MenuIcon name={icon} /></span>
 
       <span>{label}</span>
 
@@ -3747,6 +3751,25 @@ function NavButton({
 
   );
 
+}
+
+type MenuIconName = "dashboard" | "user-plus" | "book-check" | "printer" | "users-data" | "contact" | "file-search" | "send" | "chart" | "cloud-sync" | "settings";
+
+function MenuIcon({name}:{name:MenuIconName}) {
+  const common={fill:"none",stroke:"currentColor",strokeWidth:1.8,strokeLinecap:"round" as const,strokeLinejoin:"round" as const};
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" {...common}>
+    {name==="dashboard"&&<><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/></>}
+    {name==="user-plus"&&<><circle cx="9" cy="8" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M18 8v6M15 11h6"/></>}
+    {name==="book-check"&&<><path d="M3 5.5A3.5 3.5 0 0 1 6.5 2H11v18H6.5A3.5 3.5 0 0 0 3 23zM21 5.5A3.5 3.5 0 0 0 17.5 2H13v18h4.5a3.5 3.5 0 0 1 3.5 3z"/><path d="m15.5 10 1.5 1.5 3-3"/></>}
+    {name==="printer"&&<><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/><path d="M18 12h.01"/></>}
+    {name==="users-data"&&<><circle cx="8" cy="8" r="3"/><path d="M2.5 17a5.5 5.5 0 0 1 11 0M14 6.5c3.8 0 7 1 7 2.2s-3.2 2.2-7 2.2M21 8.7v6.6c0 1.2-3.2 2.2-7 2.2M21 12c0 1.2-3.2 2.2-7 2.2"/></>}
+    {name==="contact"&&<><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2.5"/><path d="M5.5 17a3.5 3.5 0 0 1 7 0M15 9h3M15 13h3"/></>}
+    {name==="file-search"&&<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7M14 2v6h6"/><circle cx="17" cy="16" r="3.5"/><path d="m19.5 18.5 2.5 2.5"/></>}
+    {name==="send"&&<><path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/></>}
+    {name==="chart"&&<><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 16v-3M12 16V8M17 16v-6"/></>}
+    {name==="cloud-sync"&&<><path d="M17.5 19H7a5 5 0 1 1 1.1-9.9A6 6 0 0 1 19.6 11 4 4 0 0 1 17.5 19Z"/><path d="m9 14-2 2 2 2M7 16h5M15 12l2-2-2-2M17 10h-5"/></>}
+    {name==="settings"&&<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21h-4v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H2.4v-4h.09A1.7 1.7 0 0 0 4.1 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.5 4.1a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V2.4h4v.09A1.7 1.7 0 0 0 15 4.1a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8.5a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1 .4h.09v4H21a1.7 1.7 0 0 0-1.6 1.1Z"/></>}
+  </svg>;
 }
 
 /* =========================
