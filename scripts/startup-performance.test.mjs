@@ -40,4 +40,9 @@ test("All Customer Data preloads locally, renders bounded pages and shares no ac
   assert.match(list,/customer-preview-section customer-preview-share-exclude/);
   assert.match(list,/customer-preview-card \{[^}]*text-align:left/);
   assert.match(list,/customer-preview-section dd \{[^}]*text-align:left/);
+  assert.match(list,/function applyShareCaptureTheme/);
+  assert.match(list,/dataset\.appearance === "dark"/);
+  assert.match(list,/setProperty\(property,item,"important"\)/);
+  assert.match(list,/card:\"#0b1424\"/);
+  assert.match(list,/card:\"#fff2f5\"/);
 });

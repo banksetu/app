@@ -991,7 +991,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {(licenseReadOnly || userRole === "admin") && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
 {!licenseReadOnly && <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
-          {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
         </nav>
         <div className="banksetu-appearance" role="group" aria-label="Appearance">
           <button type="button" className="banksetu-appearance-toggle" data-mode={appearance} aria-label={`Switch to ${appearance === 'dark' ? 'light' : 'dark'} appearance`} aria-pressed={appearance === 'dark'} onClick={() => changeAppearance(appearance === 'dark' ? 'light' : 'dark')}>
@@ -1330,6 +1329,16 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
 
+                {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button
+                  type="button"
+                  className="admin-license-menu-item"
+                  style={styles.adminLicenseMenuItem}
+                  onClick={() => { setAdminMenuOpen(false); openPage("license-management"); }}
+                >
+                  <span style={styles.adminLicenseMenuIcon} aria-hidden="true">🪪</span>
+                  <span><strong style={styles.adminLicenseMenuTitle}>License Management</strong><small style={styles.adminLicenseMenuSubtitle}>Plan, status and renewal</small></span>
+                </button>}
+
                 <button
 
                   type="button"
@@ -1411,7 +1420,12 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
-          {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
+          {activePage === "license-management" && <>
+            <div style={styles.licensePageNavigation}>
+              <button type="button" style={styles.licenseBackButton} onClick={() => openPage("dashboard")}>← Back to Dashboard</button>
+            </div>
+            <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />
+          </>}
           {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
@@ -4272,6 +4286,61 @@ const styles: Record<
 
     cursor: "pointer",
 
+  },
+
+  adminLicenseMenuItem: {
+    width: "100%",
+    padding: "11px 12px",
+    border: "1px solid rgba(62,224,197,0.18)",
+    borderRadius: "10px",
+    background: "linear-gradient(135deg,rgba(57,224,197,0.12),rgba(40,169,232,0.08))",
+    color: "#eaf7fa",
+    textAlign: "left",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "11px",
+    margin: "3px 0",
+  },
+
+  adminLicenseMenuIcon: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "9px",
+    display: "grid",
+    placeItems: "center",
+    flex: "none",
+    background: "rgba(57,224,197,0.13)",
+  },
+
+  adminLicenseMenuTitle: {
+    display: "block",
+    fontSize: "13px",
+    lineHeight: 1.25,
+  },
+
+  adminLicenseMenuSubtitle: {
+    display: "block",
+    marginTop: "2px",
+    color: "#91aab5",
+    fontSize: "10px",
+    lineHeight: 1.25,
+  },
+
+  licensePageNavigation: {
+    display: "flex",
+    justifyContent: "flex-start",
+    marginBottom: "12px",
+  },
+
+  licenseBackButton: {
+    border: "1px solid rgba(53,203,191,0.42)",
+    borderRadius: "10px",
+    padding: "9px 14px",
+    background: "var(--app-dark-surface, #ffffff)",
+    color: "var(--app-dark-text, #123047)",
+    fontWeight: 750,
+    cursor: "pointer",
   },
 
   advancedAdminItem: {

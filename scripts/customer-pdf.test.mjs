@@ -26,3 +26,13 @@ test('invalid image and empty selection fail before producing output',()=>{
  assert.throws(()=>createCustomerPdf([]),/Select at least one/);
  assert.throws(()=>createCustomerPdf([{dataUrl:'data:image/png;base64,dead',width:10,height:10}]),/invalid/);
 });
+test('single customer share and print reuse the visible card without changing All PDF',()=>{
+ const source=fs.readFileSync('src/Customers.tsx','utf8');
+ assert.match(source,/const customerPreviewCard = useRef<HTMLDivElement>\(null\)/);
+ assert.match(source,/snapshot\(customer as unknown as Record<string, unknown>,customerPreviewCard\.current\)/);
+ assert.match(source,/<CustomerPreviewCard customer=\{customer\} cardRef=\{customerPreviewCard\}/);
+ assert.match(source,/Direct single-customer print: keep the on-screen card layout on one A4 page/);
+ assert.match(source,/width:190mm!important/);
+ assert.match(source,/grid-template-columns:minmax\(0,1fr\) minmax\(0,1\.2fr\) 32mm!important/);
+ assert.match(source,/card\.classList\.add\('pdf-capture'\)/,'All PDF must retain its separate compact capture path');
+});

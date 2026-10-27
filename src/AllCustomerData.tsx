@@ -34,6 +34,31 @@ async function request(body: Record<string, unknown>) {
   return response.json();
 }
 
+function applyShareCaptureTheme(card: HTMLElement, dark: boolean) {
+  const important = (element: Element | null, styles: Record<string,string>) => {
+    if (!(element instanceof HTMLElement)) return;
+    Object.entries(styles).forEach(([property,item]) => element.style.setProperty(property,item,"important"));
+  };
+  const palette = dark ? {
+    card:"#0b1424",content:"#101d31",section:"#16243a",heading:"#223550",
+    text:"#f8fafc",muted:"#d9e3f0",border:"#344761",line:"#2d3e57",
+  } : {
+    card:"#fff2f5",content:"#fff9fb",section:"#ffffff",heading:"#fff0f4",
+    text:"#17233b",muted:"#33435d",border:"#efcbd6",line:"#f3dfe5",
+  };
+  card.dataset.shareTheme = dark ? "dark" : "light";
+  important(card,{background:palette.card,color:palette.text});
+  important(card.querySelector(".customer-preview-content"),{background:palette.content,color:palette.text,"border-color":palette.border});
+  important(card.querySelector(".customer-preview-heading"),{color:"#ffffff"});
+  important(card.querySelector(".customer-preview-heading h2"),{color:"#ffffff"});
+  important(card.querySelector(".customer-preview-heading p"),{color:"#ffffff",opacity:"1"});
+  card.querySelectorAll(".customer-preview-section").forEach(section=>important(section,{background:palette.section,color:palette.text,"border-color":palette.border}));
+  card.querySelectorAll(".customer-preview-section h3").forEach(heading=>important(heading,{background:palette.heading,color:palette.text}));
+  card.querySelectorAll(".customer-preview-section dl>div").forEach(row=>important(row,{"border-color":palette.line,color:palette.text}));
+  card.querySelectorAll(".customer-preview-section dt").forEach(label=>important(label,{color:palette.muted}));
+  card.querySelectorAll(".customer-preview-section dd,.customer-preview-address").forEach(item=>important(item,{color:palette.text}));
+}
+
 async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   const width = Math.ceil(card.getBoundingClientRect().width);
   if (!width) throw new Error("Customer preview is not visible. Open it again and retry.");
@@ -46,10 +71,12 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
     copy.querySelectorAll(".customer-preview-share-exclude").forEach(node=>node.remove());
     const subtitle=copy.querySelector(".customer-preview-heading p");
     if(subtitle)subtitle.textContent="Personal, contact and address information";
+    if (copy.classList.contains("customer-preview-card"))
+      applyShareCaptureTheme(copy,document.documentElement.dataset.appearance === "dark");
   }
   copy.style.cssText += `;width:${width}px!important;max-height:none!important;overflow:visible!important`;
   host.appendChild(copy);
-  document.body.appendChild(host);
+  (card.closest(".banksetu-app-shell") || document.body).appendChild(host);
   try {
     await Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,1500))]);
     for (const img of copy.querySelectorAll<HTMLImageElement>("img")) {
