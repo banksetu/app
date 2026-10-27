@@ -27,6 +27,18 @@ test("motion stays paint-only and mobile passbook fitting never changes print ge
   assert.match(css,/@media print[\s\S]*bank-format-print-document\{zoom:1!important;animation:none!important\}/);
 });
 
+test("sidebar uses responsive outline icons and only spins sync while syncing", () => {
+  const dashboard=read("src/Dashboard.tsx");
+  const css=read("src/App.css");
+  for (const icon of ["dashboard","user-plus","book-check","printer","users-data","contact","file-search","send","settings","chart","cloud-sync"])
+    assert.match(dashboard,new RegExp(`NavButton icon="${icon}"`),icon);
+  assert.match(dashboard,/icon="cloud-sync"[^>]*spinning=\{syncStatus\.syncing\}/);
+  assert.doesNotMatch(dashboard,/NavButton icon="[🏠👤⚡🖨📚📋🔎📤⚙📊🔄]/u);
+  assert.match(css,/\.banksetu-nav-item\.active \.banksetu-nav-icon\{[^}]*linear-gradient/s);
+  assert.match(css,/\.banksetu-nav-icon\.is-spinning svg\{animation:banksetu-nav-sync/);
+  assert.match(css,/@media\(max-width:900px\)[^{]*\{[^}]*banksetu-nav-icon/s);
+});
+
 test("Windows first paint does not wait for installed printer enumeration", () => {
   const main = read("desktop/main.cjs");
   assert.doesNotMatch(main, /await appMenu\.refreshPrinters\(\)/);

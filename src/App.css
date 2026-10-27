@@ -3904,9 +3904,16 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 .login-page .banksetu-logo{width:160px!important;height:160px!important;border-radius:0!important;background-size:contain!important;box-shadow:none!important;overflow:visible!important}.login-page .banksetu-logo::after{display:none}
 /* Improve menu legibility uniformly without changing the configured menu colors. */
 .banksetu-sidebar .banksetu-nav-item{min-height:48px!important;font-size:13px!important;font-weight:650!important;display:flex!important;align-items:center!important;gap:10px!important;line-height:1.25!important}
-.banksetu-sidebar .banksetu-nav-item span:first-child{flex:0 0 27px;font-size:25px!important;line-height:1!important;text-align:center}
+.banksetu-sidebar .banksetu-nav-item .banksetu-nav-icon{flex:0 0 34px;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;color:rgba(255,255,255,.82)!important;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.10);line-height:1!important;transition:transform .2s var(--motion-ease,cubic-bezier(.2,.8,.2,1)),color .2s ease,background .2s ease,box-shadow .2s ease,border-color .2s ease!important}
+.banksetu-sidebar .banksetu-nav-icon svg{display:block;width:21px;height:21px;overflow:visible}
+.banksetu-sidebar .banksetu-nav-item:hover .banksetu-nav-icon{color:#fff!important;background:rgba(255,255,255,.14);transform:translateY(-1px)}
+.banksetu-sidebar .banksetu-nav-item.active .banksetu-nav-icon{color:#fff!important;background:linear-gradient(145deg,#10c8e7,#1978f2 58%,#6659ed);border-color:#75e8ff;box-shadow:0 7px 17px rgba(12,117,230,.34);animation:banksetu-nav-icon-select .28s cubic-bezier(.2,.8,.2,1) both}
+.banksetu-sidebar .banksetu-nav-icon.is-spinning svg{animation:banksetu-nav-sync 1s linear infinite}
+@keyframes banksetu-nav-icon-select{from{transform:scale(.86);opacity:.65}to{transform:scale(1);opacity:1}}
+@keyframes banksetu-nav-sync{to{transform:rotate(360deg)}}
 .banksetu-sidebar .banksetu-nav-item span:last-child{min-width:0;text-align:left;overflow-wrap:break-word}
-@media(max-width:350px){.banksetu-sidebar .banksetu-nav-item{font-size:12px!important}}
+@media(max-width:900px){.banksetu-sidebar .banksetu-nav-item .banksetu-nav-icon{flex-basis:32px;width:32px;height:32px;border-radius:9px}.banksetu-sidebar .banksetu-nav-icon svg{width:20px;height:20px}}
+@media(max-width:350px){.banksetu-sidebar .banksetu-nav-item{font-size:12px!important}.banksetu-sidebar .banksetu-nav-item .banksetu-nav-icon{flex-basis:30px;width:30px;height:30px}.banksetu-sidebar .banksetu-nav-icon svg{width:18px;height:18px}}
 .login-pricing-link{display:block;margin:0 auto 16px;border:0;background:transparent;color:#195cac;text-decoration:underline;font:inherit;font-weight:650;cursor:pointer}
 
 /* Personal appearance is paint only; global Master Admin gradients stay intact. */
