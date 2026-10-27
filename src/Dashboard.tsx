@@ -88,8 +88,9 @@ type BankInfo = {
   operatorName: string;
 
   address: string;
-  branchAddress: string; branchPostOffice: string; branchDistrict: string; branchPinCode: string;
-  branchEmail: string; ifsc: string; micr: string; branchCode: string;
+  branchAddress: string; branchPostOffice: string; branchDistrict: string; branchState: string; branchPinCode: string;
+  branchEmail: string; branchPhone: string; ifsc: string; micr: string; branchCode: string;
+  gstin: string; ckyc: string;
 
 };
 
@@ -106,8 +107,8 @@ const emptyBankInfo: BankInfo = {
   operatorName: "",
 
   address: "",
-  branchAddress:"", branchPostOffice:"", branchDistrict:"", branchPinCode:"",
-  branchEmail:"", ifsc:"", micr:"", branchCode:"",
+  branchAddress:"", branchPostOffice:"", branchDistrict:"", branchState:"", branchPinCode:"",
+  branchEmail:"", branchPhone:"", ifsc:"", micr:"", branchCode:"", gstin:"", ckyc:"",
 
 };
 
@@ -120,6 +121,8 @@ const PASSBOOK_BANK_OPTIONS = [
   "State Bank of India (SBI)",
 
   "Punjab National Bank",
+
+  "Central Bank of India",
 
   "Canara Bank of India",
 
@@ -519,9 +522,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       address: bankInfoDraft.address.trim(),
       branchAddress:bankInfoDraft.branchAddress.trim(), branchPostOffice:bankInfoDraft.branchPostOffice.trim(),
-      branchDistrict:bankInfoDraft.branchDistrict.trim(), branchPinCode:bankInfoDraft.branchPinCode.trim(),
-      branchEmail:bankInfoDraft.branchEmail.trim(), ifsc:bankInfoDraft.ifsc.trim(),
-      micr:bankInfoDraft.micr.trim(), branchCode:bankInfoDraft.branchCode.trim(),
+      branchDistrict:bankInfoDraft.branchDistrict.trim(), branchState:bankInfoDraft.branchState.trim(), branchPinCode:bankInfoDraft.branchPinCode.trim(),
+      branchEmail:bankInfoDraft.branchEmail.trim(), branchPhone:bankInfoDraft.branchPhone.trim(), ifsc:bankInfoDraft.ifsc.trim(),
+      micr:bankInfoDraft.micr.trim(), branchCode:bankInfoDraft.branchCode.trim(), gstin:bankInfoDraft.gstin.trim().toUpperCase(), ckyc:bankInfoDraft.ckyc.trim(),
 
     };
 
@@ -543,6 +546,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     if (cleaned.branchPinCode && !/^\d{6}$/.test(cleaned.branchPinCode)) { showMessage("Enter a six-digit Branch PIN Code."); return; }
     if (cleaned.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(cleaned.ifsc)) { showMessage("Enter a valid 11-character IFSC Code."); return; }
     if (cleaned.micr && !/^\d{9}$/.test(cleaned.micr)) { showMessage("Enter a nine-digit MICR Code."); return; }
+    if (cleaned.gstin && !/^[A-Z0-9]{15}$/.test(cleaned.gstin)) { showMessage("Enter a valid 15-character GSTIN."); return; }
     if (cleaned.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.branchEmail)) { showMessage("Enter a valid Branch Email."); return; }
 
     try {
@@ -1771,9 +1775,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
               </label>
 
-              {([['branchAddress','Branch Address'],['branchPostOffice','Branch Post Office'],['branchDistrict','Branch District'],['branchPinCode','Branch PIN Code'],['branchEmail','Branch Email'],['ifsc','IFSC Code'],['micr','MICR Code'],['branchCode','Branch Code']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
+              {([['branchAddress','Branch Address'],['branchPostOffice','Branch Post Office'],['branchDistrict','Branch District'],['branchState','Branch State'],['branchPinCode','Branch PIN Code'],['branchEmail','Branch Email'],['branchPhone','Branch Telephone Number'],['ifsc','IFSC Code'],['micr','MICR Code'],['branchCode','Branch Code']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
                 <span style={styles.bankInfoFieldLabel}>{label}</span>
-                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='branchPinCode'||field==='micr'?'numeric':'text'} maxLength={field==='branchPinCode'?6:field==='micr'?9:field==='ifsc'?11:field==='branchEmail'?254:field==='branchCode'?20:120}/>
+                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='branchPinCode'||field==='micr'||field==='branchPhone'?'numeric':'text'} maxLength={field==='branchPinCode'?6:field==='micr'?9:field==='ifsc'?11:field==='branchEmail'?254:field==='branchCode'?20:field==='branchPhone'?30:120}/>
+              </label>)}
+              {/^(central bank of india|central bank|cbi)$/i.test(bankInfoDraft.passbookBank.trim()) && ([['gstin','GSTIN'],['ckyc','CKYC Number']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
+                <span style={styles.bankInfoFieldLabel}>{label}</span>
+                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='ckyc'?'numeric':'text'} maxLength={field==='gstin'?15:30}/>
               </label>)}
 
             </div>
