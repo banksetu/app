@@ -302,8 +302,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
-  const [supportPopupOpen,setSupportPopupOpen]=useState(false);
-  useEffect(()=>{if(!supportPopupOpen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSupportPopupOpen(false);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[supportPopupOpen]);
+
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
@@ -420,6 +419,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [bankLogo, setBankLogo] = useState("");
   const [bankInfo, setBankInfo] = useState<BankInfo>(emptyBankInfo);
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
+  const [supportPopupOpen,setSupportPopupOpen]=useState(false);
+  useEffect(()=>{if(!supportPopupOpen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSupportPopupOpen(false);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[supportPopupOpen]);
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
   const canManageBankSettings = (!licenseReadOnly || accountRole === "client_admin" && licensePermission.state === "pending") && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
