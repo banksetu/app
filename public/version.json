@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.132",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.132/BankSetu-Setup-1.0.132-x64.exe",
+  "latestVersion": "1.0.133",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.133/BankSetu-Setup-1.0.133-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.132",
-  "releaseTag": "v1.0.132",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.132",
+  "version": "1.0.133",
+  "releaseTag": "v1.0.133",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.133",
   "releaseDate": "2026-10-27",
-  "windowsVersion": "1.0.132",
-  "androidBuild": 1000132,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.132/BankSetu-Setup-1.0.132-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.132/BankSetu-Android-1000132.apk",
+  "windowsVersion": "1.0.133",
+  "androidBuild": 1000133,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.133/BankSetu-Setup-1.0.133-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.133/BankSetu-Android-1000133.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.132",
+      "version": "1.0.133",
       "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Improve customer preview sharing, printing, and license navigation."
+          "Restore responsive motion and mobile passbook previews."
         ]
       }
     },
     "android": {
-      "version": "1.0.132",
+      "version": "1.0.133",
       "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Improve customer preview sharing, printing, and license navigation."
+          "Restore responsive motion and mobile passbook previews."
         ]
       }
     }
