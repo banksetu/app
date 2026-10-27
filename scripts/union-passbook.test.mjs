@@ -32,7 +32,7 @@ test('both modes print the same customer values while only Quick includes the ph
 });
 test('Union search requests photos and keeps values layer visible for printing',()=>{
  const passbook=fs.readFileSync(new URL('../src/Passbook.tsx',import.meta.url),'utf8');
- assert.equal((passbook.match(/includePhoto: isAssamQuick \|\| \(\(isUnion \|\| isPnb\) && formatType === "quickPassbook"\)/g)||[]).length,2);
+ assert.equal((passbook.match(/includePhoto: isAssamQuick \|\| \(\(isUnion \|\| isPnb \|\| isCentral\) && formatType === "quickPassbook"\)/g)||[]).length,2);
  assert(passbook.includes('.union-document *'));
  assert(passbook.includes('@page { size: 210mm 215mm; margin: 0; }'));
  assert(passbook.includes('photoPreview: result.photo?.previewDataUrl'));

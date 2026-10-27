@@ -3900,7 +3900,7 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 @media print {
   body[data-banksetu-license-write="false"] * { visibility: hidden !important; }
 }
-.banksetu-floating-support{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(140deg,#00bdea,#2265ed 53%,#7a3be6);box-shadow:0 12px 26px #123d9a66;touch-action:none;user-select:none}.banksetu-floating-support:hover,.banksetu-floating-support:focus-visible{box-shadow:0 15px 31px #1833a879}.banksetu-floating-support svg{pointer-events:none}@media(max-width:700px){.banksetu-floating-support{right:9px;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
+.banksetu-floating-support{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(140deg,#00bdea,#2265ed 53%,#7a3be6);box-shadow:0 12px 26px #123d9a66;touch-action:none;user-select:none}.banksetu-floating-support:hover,.banksetu-floating-support:focus-visible{transform:none;box-shadow:0 15px 31px #1833a879}.banksetu-floating-support svg{pointer-events:none}@media(max-width:700px){.banksetu-floating-support{right:9px;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
 .login-page .banksetu-logo{width:160px!important;height:160px!important;border-radius:0!important;background-size:contain!important;box-shadow:none!important;overflow:visible!important}.login-page .banksetu-logo::after{display:none}
 /* Improve menu legibility uniformly without changing the configured menu colors. */
 .banksetu-sidebar .banksetu-nav-item{min-height:48px!important;font-size:13px!important;font-weight:650!important;display:flex!important;align-items:center!important;gap:10px!important;line-height:1.25!important}

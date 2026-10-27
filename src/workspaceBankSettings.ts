@@ -1,6 +1,7 @@
 export type SavedBankInfo = { bankName:string; passbookBank:string; branchName:string; cspCode:string; operatorName:string; address:string;
-  branchAddress:string; branchPostOffice:string; branchDistrict:string; branchPinCode:string; branchEmail:string; ifsc:string; micr:string; branchCode:string };
-const fields = ["bankName","passbookBank","branchName","cspCode","operatorName","address","branchAddress","branchPostOffice","branchDistrict","branchPinCode","branchEmail","ifsc","micr","branchCode"] as const;
+  branchAddress:string; branchPostOffice:string; branchDistrict:string; branchState:string; branchPinCode:string; branchEmail:string; branchPhone:string;
+  ifsc:string; micr:string; branchCode:string; gstin:string; ckyc:string };
+const fields = ["bankName","passbookBank","branchName","cspCode","operatorName","address","branchAddress","branchPostOffice","branchDistrict","branchState","branchPinCode","branchEmail","branchPhone","ifsc","micr","branchCode","gstin","ckyc"] as const;
 const canonicalPassbookBank = (value:string) => /^punjab bank of india$/i.test(value.trim()) ? "Punjab National Bank" : value;
 export function restoreWorkspaceBankSettings(data:Record<string,unknown>) {
   const nested = data.bankInfo && typeof data.bankInfo === "object" ? data.bankInfo as Record<string,unknown> : {};

@@ -45,6 +45,18 @@ test('license navigation moves from the sidebar to the profile menu without chan
  assert.match(dashboard,/setAdminMenuOpen\(false\); openPage\("license-management"\);/);
  assert.match(dashboard,/← Back to Dashboard/);
  assert.match(dashboard,/onClick=\{\(\) => openPage\("dashboard"\)\}/);
+ const license=dashboard.indexOf('className="admin-license-menu-item"');
+ const logout=dashboard.indexOf('↪ Logout',license);
+ assert(license>dashboard.indexOf('Advanced Administrator Control')&&logout>license,'License Management must be the final profile action immediately above Logout');
+});
+test('floating support position is temporary and returns to its bottom-right home',()=>{
+ const support=fs.readFileSync('src/FloatingSupportButton.tsx','utf8');
+ assert.match(support,/const returnDelayMs=5000/);
+ assert.match(support,/localStorage\.removeItem\(storageKey\)/);
+ assert.doesNotMatch(support,/localStorage\.setItem\(storageKey/);
+ assert.match(support,/window\.addEventListener\('resize',snapHome\)/);
+ assert.match(support,/window\.visualViewport\?\.addEventListener\('resize',snapHome\)/);
+ assert.match(support,/returnHomeLater\(\)/);
 });
 test('valid license retains protected menu access',()=>{
  const html=render('passbook',false);

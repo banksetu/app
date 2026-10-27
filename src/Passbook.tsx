@@ -19,7 +19,8 @@ import { getTenantApiUrl } from "./tenantApi";
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
 import PnbPassbook from "./PnbPassbook";
-import { isPnbBank } from "./bankDocumentPolicy";
+import CentralBankPassbook from "./CentralBankPassbook";
+import { isCentralBank, isPnbBank } from "./bankDocumentPolicy";
 import WordPassbookInfo, { wordPassbookProblems, wordPassbookValues } from "./WordPassbookInfo";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
@@ -419,9 +420,10 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isPnb = isPnbBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isCentral = isCentralBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isApprovedAssamPrint = formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
-  const alignmentEnabled = isUnion || isPnb || isAssamBank(alignmentBank);
+  const alignmentEnabled = isUnion || isPnb || isCentral || isAssamBank(alignmentBank);
 
 
   const [query, setQuery] = useState("");
@@ -609,7 +611,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: isAssamQuick || ((isUnion || isPnb) && formatType === "quickPassbook"),
+        includePhoto: isAssamQuick || ((isUnion || isPnb || isCentral) && formatType === "quickPassbook"),
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -661,7 +663,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: isAssamQuick || ((isUnion || isPnb) && formatType === "quickPassbook"),
+        includePhoto: isAssamQuick || ((isUnion || isPnb || isCentral) && formatType === "quickPassbook"),
       });
 
       let loaded: Customer = {
@@ -2081,6 +2083,11 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
           }
 
+          .central-bank-document,
+          .central-bank-document * {
+            visibility: visible !important;
+          }
+
           .union-document {
 
             position: fixed !important;
@@ -2272,9 +2279,19 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
             .pnb-document { position:absolute!important; left:0!important; top:0!important; width:213mm!important; height:190mm!important; margin:0!important; transform:scale(${210/213})!important; transform-origin:top left!important; overflow:visible!important; }
           }
         ` : ""}
+        ${isCentral ? `
+          @page { size: 190mm 173mm; margin: 0; }
+          @media print {
+            html, body { width:190mm!important; height:173mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:190mm!important; height:173mm!important; padding:0!important; overflow:visible!important; }
+            .central-preview { width:190mm!important; height:173mm!important; padding:0!important; overflow:visible!important; }
+            .central-bank-document { position:absolute!important; left:0!important; top:0!important; width:190mm!important; height:173mm!important; margin:0!important; overflow:hidden!important; }
+          }
+        ` : ""}
         @media print {
           .passbook-page.alignment-print-active .union-document,
           .passbook-page.alignment-print-active .assam-quick-document,
+          .passbook-page.alignment-print-active .central-bank-document,
           .passbook-page.alignment-print-active .passbook-shell {
             transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) !important;
           }
@@ -2497,7 +2514,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-          {isPnb ? <PnbPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
+          {isCentral ? <CentralBankPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isPnb ? <PnbPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
 <div className="passbook-shell" style={isApprovedAssamPrint?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
             {/* HOVER EDIT */}
@@ -2865,7 +2882,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-            {!isAssamQuick && !(isPnb && formatType === "quickPassbook") && (<button
+            {!isAssamQuick && !((isPnb || isCentral) && formatType === "quickPassbook") && (<button
 
               type="button"
 
@@ -2911,7 +2928,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
       {alignmentOpen && alignmentEnabled && <PrintAlignmentPreview
         bankName={alignmentBank}
-        sourceSelector={isPnb ? ".passbook-page .pnb-document" : isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
+        sourceSelector={isCentral ? ".passbook-page .central-bank-document" : isPnb ? ".passbook-page .pnb-document" : isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
         printMode={alignmentMode}
         onClose={() => setAlignmentOpen(false)}
         onPrint={(offset, test, duplex) => {

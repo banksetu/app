@@ -7,7 +7,7 @@ import { doc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { bankTemplateValue, mergeAccountOpeningPrintMap, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
 import { getTenantApiUrl } from "./tenantApi";
-import { templateMatchesBank } from "./bankDocumentPolicy";
+import { isCentralBank, templateMatchesBank } from "./bankDocumentPolicy";
 
 type FormatType = "passbook" | "quickPassbook" | "accountOpening";
 type FormatSettings = { bankLogo?:string; bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
@@ -29,8 +29,8 @@ export default function BankFormatPrint({
       const snapshot = await getDocFromServer(doc(db, "tenantSettings", tenantId));
       const data = snapshot.data();
       const selected = (data?.bankFormats?.[formatType] || {}) as FormatSettings;
-      if (bankName && !templateMatchesBank(selected, bankName)) throw new Error("Upload this selected bank\'s sample in Bank Formats first.");
-      if (!selected.fileId) throw new Error("No saved sample found. Upload this document sample in Bank Formats.");
+      if (bankName && !templateMatchesBank(selected, bankName)) throw new Error(isCentralBank(bankName) && formatType === "accountOpening" ? "Please upload your Account Opening PDF sample." : "Upload this selected bank's sample in Bank Formats first.");
+      if (!selected.fileId) throw new Error(isCentralBank(bankName || "") && formatType === "accountOpening" ? "Please upload your Account Opening PDF sample." : "No saved sample found. Upload this document sample in Bank Formats.");
       if (formatType !== "accountOpening" && (!Array.isArray(selected.fieldMap) || selected.fieldMap.length === 0)) throw new Error("Your sample is saved. Its PRINT mapping is missing: Bank Formats → Edit field layout → कहाँ print करें → Save print layout. Reading sections are saved separately.");
       const apiUrl = String(data?.apiUrl || getTenantApiUrl() || "");
       const user = auth.currentUser;

@@ -5,7 +5,8 @@ import type { CSSProperties } from "react";
 export type PassbookBankInfo = {
   bankName?: string; passbookBank?: string; branchName?: string; address?: string;
   ifsc?: string; micr?: string; branchCode?: string; branchEmail?: string; branchPhone?: string;
-  branchAddress?: string; branchPostOffice?: string; branchDistrict?: string; branchPinCode?: string;
+  branchAddress?: string; branchPostOffice?: string; branchDistrict?: string; branchState?: string; branchPinCode?: string;
+  gstin?: string; ckyc?: string;
 };
 
 export function isAssamBank(value: string = "") {

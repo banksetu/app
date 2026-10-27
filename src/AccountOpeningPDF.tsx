@@ -306,7 +306,7 @@ function EditableField({
 
 
 
-export default function AccountOpeningPDF() {
+export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin Bank"}:{bankLogo?:string;bankName?:string}={}) {
 
 
   const [query, setQuery] = useState("");
@@ -511,6 +511,7 @@ export default function AccountOpeningPDF() {
   const address = makeAddress(c);
 
   const maskedAadhaar = maskAadhaar(c.uidaiNo);
+  const selectedBankLogo = safe(bankLogo) || (/assam gramin/i.test(bankName) ? "/assam-gramin-bank-logo.jpg" : "");
 
 
 
@@ -890,6 +891,8 @@ export default function AccountOpeningPDF() {
           margin: 0 auto 1mm;
 
         }
+
+        .bank-logo-placeholder { height: 23mm; }
 
 
 
@@ -1805,15 +1808,15 @@ export default function AccountOpeningPDF() {
 
               <section className="paper">
 
-                <img
+                {selectedBankLogo ? <img
 
                   className="bank-logo"
 
-                  src="/assam-gramin-bank-logo.jpg"
+                  src={selectedBankLogo}
 
-                  alt="Assam Gramin Bank"
+                  alt={`${safe(bankName) || "Bank"} logo`}
 
-                />
+                /> : <div className="bank-logo bank-logo-placeholder" aria-hidden="true" />}
 
 
 
