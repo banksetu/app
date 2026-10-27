@@ -22,6 +22,7 @@ test("motion stays paint-only and mobile passbook fitting never changes print ge
   assert.match(css,/data-appearance="dark"[^}]*--motion-accent:#36d7e7/s);
   assert.match(css,/@keyframes banksetu-page-arrive/);
   assert.match(css,/@keyframes banksetu-popup-arrive/);
+  assert.doesNotMatch(css,/\.dashboard-stat-card[^\{]*\{[^}]*transition:[^}]*background-color/s);
   assert.match(css,/@media screen and \(max-width:420px\)[\s\S]*zoom:\.39/);
   assert.match(css,/@media print[\s\S]*bank-format-print-document\{zoom:1!important;animation:none!important\}/);
 });
