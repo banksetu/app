@@ -7,7 +7,7 @@ import { callBankSetuWorker } from "./workerApi";
 import { loadGoogleIdentity, requestGoogleToken } from "./googleIdentity";
 import BankFormatLayoutEditor from "./BankFormatLayoutEditor";
 import type { BankFieldPlacement } from "./bankFormatUtils";
-import { bankKey, isAssamBank, isPnbBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { bankKey, isAssamBank, isCentralBank, isPnbBank, templateMatchesBank } from "./bankDocumentPolicy";
 import { sourceSectionsToPrint } from "./bankFormatUtils";
 import { detectBankPdfLayout } from "./bankPdf";
 
@@ -75,6 +75,8 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
   if (!bankName.trim()) return <section style={panel}><h2>First select a bank</h2><p>Choose Bank for passbook printing in Bank Information.</p></section>;
   if (isAssamBank(bankName)) return <section style={panel}><h2>Assam Gramin Bank formats are ready</h2><p>Passbook, Quick Passbook and Account Opening use the built-in bank formats with your own workspace data. No samples are needed.</p></section>;
   if (isPnbBank(bankName)) return <section style={panel}><h2>Punjab National Bank formats are ready</h2><p>Passbook Print and Quick Passbook use the built-in PNB formats with your own customer, bank and uploaded-logo data. No sample upload is needed.</p></section>;
+  const central = isCentralBank(bankName);
+  const visibleFormats = central ? formats.filter(item => item.id === "accountOpening") : formats;
 
   const loadPreview = async (formatType: FormatType) => {
     if (!workspace) return;
@@ -249,21 +251,21 @@ export default function BankFormats({ enabled, canManage, bankName }: { enabled:
     <section style={panel}>
       <p style={eyebrow}>BANK FORMATS</p>
       <h1 style={{ margin: "6px 0", fontSize: 22 }}>{workspace?.bankName || "Client bank"} formats</h1>
-      <p style={copy}>Upload and preview samples stored in this workspace's Google Drive. Upload three blank PDF samples, up to 5 MB each. Fillable fields and recognizable text labels are detected automatically. Scanned samples need field positions set once.</p>
+      <p style={copy}>{central ? "Central Bank Passbook Print and Quick Passbook use the built-in reserved layouts. Please upload your Account Opening PDF sample; its reading sections stay separate from every other bank." : "Upload and preview samples stored in this workspace's Google Drive. Upload three blank PDF samples, up to 5 MB each. Fillable fields and recognizable text labels are detected automatically. Scanned samples need field positions set once."}</p>
       {workspace?.googleEmail && <p style={{ ...copy, marginTop: 4 }}>Connected Drive: {workspace.googleEmail}</p>}
       <button style={secondaryButton} disabled={Boolean(busy) || !workspace?.apiUrl} onClick={() => void testConnection()}>
         {busy === "connection-test" ? "Testing…" : "Test workspace connection"}
       </button>
       {connectionCheck && <p role="status" style={{ color: "var(--app-dark-text, #176b54)", fontSize: 13 }}>{connectionCheck}</p>}
       <div style={grid}>
-        {formats.map((item) => {
+        {visibleFormats.map((item) => {
           const sample = workspace?.formats[item.id];
           const filePreview = previews[item.id];
           return (
             <article key={item.id} style={card}>
               <h2 style={{ margin: 0, fontSize: 17 }}>{item.title}</h2>
               <p style={copy}>{item.description}</p>
-              {sample ? <p style={{ ...copy, color: "var(--app-dark-text, #245d52)", wordBreak: "break-word" }}>{sample.fileName}</p> : <p style={copy}>No sample uploaded yet.</p>}
+              {sample ? <p style={{ ...copy, color: "var(--app-dark-text, #245d52)", wordBreak: "break-word" }}>{sample.fileName}</p> : <p style={copy}>{central ? "Please upload your Account Opening PDF sample." : "No sample uploaded yet."}</p>}
               {canManage && (
                 <label style={uploadLabel}>
                   {busy === `upload:${item.id}` ? "Uploading…" : sample ? "Replace sample" : "Upload sample"}
