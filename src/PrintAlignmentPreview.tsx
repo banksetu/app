@@ -28,14 +28,16 @@ function savedOffset(bank: string): PrintOffset {
   } catch { return ZERO; }
 }
 
-function sourceDocument(selector: string, widthMm=210, heightMm=170): string {
+function sourceDocument(selector: string, widthMm=210, heightMm=170, a4=false): string {
   const source = document.querySelector<HTMLElement>(selector);
   if (!source) return "";
   const base = document.baseURI.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   const styles = Array.from(document.querySelectorAll("style, link[rel='stylesheet']"))
     .map(node => node.outerHTML).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><base href="${base}">${styles}<style>
-    html,body{margin:0!important;padding:0!important;width:${widthMm}mm!important;height:${heightMm}mm!important;background:transparent!important;overflow:visible!important}
+    html,body{margin:0!important;padding:0!important;width:${a4?210:widthMm}mm!important;height:${a4?297:heightMm}mm!important;background:white!important;overflow:visible!important}
+    .alignment-a4-sheet{position:relative;width:210mm;height:297mm;background:white;overflow:visible}
+    .alignment-a4-sheet>.passbook-page{position:absolute;left:0;top:0;transform:scale(${a4&&widthMm>210?210/widthMm:1});transform-origin:top left}
     .union-document,.assam-quick-document,.passbook-shell,.pnb-document{margin:0!important;box-shadow:none!important;border-radius:0!important}
     .union-document{width:210mm!important;height:170mm!important;overflow:visible!important}
     .union-lower,.union-fold{top:85mm!important}.union-lower{height:85mm!important}
@@ -44,7 +46,7 @@ function sourceDocument(selector: string, widthMm=210, heightMm=170): string {
     .pnb-document{width:213mm!important;height:190mm!important;overflow:visible!important}
     .passbook-cover-space{height:85mm!important}.passbook-print-area{top:85mm!important;height:85mm!important}
     .passbook-page{padding:0!important;margin:0!important;min-height:0!important}.preview-edit-button,.assam-quick-edit,.union-edit,.pnb-edit,.cover-note{display:none!important}
-  </style></head><body><div class="passbook-page">${source.outerHTML}</div></body></html>`;
+  </style></head><body>${a4?'<div class="alignment-a4-sheet">':''}<div class="passbook-page">${source.outerHTML}</div>${a4?'</div>':''}</body></html>`;
 }
 
 export default function PrintAlignmentPreview({ bankName, sourceSelector, printMode="system", onClose, onPrint }: {
@@ -65,7 +67,9 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
   const pnb=/^(punjab national bank|punjab bank of india|punjab bank|pnb)$/i.test(bankName.trim());
   const paperWidth=pnb?213:210, paperHeight=pnb?190:170;
 
-  useEffect(() => { setPreview(sourceDocument(sourceSelector,paperWidth,paperHeight)); }, [sourceSelector,paperWidth,paperHeight]);
+  const pnbA4NormalPrint=pnb&&printMode==="system";
+  const canvasWidth=pnbA4NormalPrint?210:paperWidth, canvasHeight=pnbA4NormalPrint?297:paperHeight;
+  useEffect(() => { setPreview(sourceDocument(sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint)); }, [sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint]);
   useEffect(() => { const previous=document.body.style.overflow; document.body.style.overflow="hidden"; return () => {document.body.style.overflow=previous;}; }, []);
   const move = (dx: number, dy: number) => setOffset(current => clean({x:current.x+dx*step,y:current.y+dy*step}));
   const print = async (test: boolean) => {
@@ -80,14 +84,14 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
       <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName}) · {printMode==="pr2"?"Olivetti / PR2":"Normal Print"}</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
       <div className="print-alignment-columns">
         <div className="print-alignment-left">
-          <div className="print-alignment-width">Passbook Width ({pnb?"21.3":"21"} cm)</div>
+          <div className="print-alignment-width">{pnbA4NormalPrint?"A4 Normal Print Preview (21 × 29.7 cm)":`Passbook Width (${pnb?"21.3":"21"} cm)`}</div>
           <div className="print-alignment-measured">
             <div className="print-alignment-measures">
-              <span>Passbook<br/>Height<br/>({pnb?"19":"17"} cm)</span><span>Printable<br/>Data Area<br/>({pnb?"15.3":"8.5"} cm)</span>
+              <span>{pnbA4NormalPrint?<>A4<br/>Height<br/>(29.7 cm)</>:<>Passbook<br/>Height<br/>({pnb?"19":"17"} cm)</>}</span><span>{pnbA4NormalPrint?<>Passbook<br/>on A4<br/>(21.3 × 19 cm)</>:<>Printable<br/>Data Area<br/>({pnb?"15.3":"8.5"} cm)</>}</span>
             </div>
             <div className="print-alignment-paper">
-              <div className="print-alignment-frame" style={{width:`${paperWidth}mm`,height:`${paperHeight}mm`,transform:`scale(${zoom})`}}>
-                {preview ? <iframe title={`${bankName} actual passbook preview`} srcDoc={preview} sandbox="" style={{width:`${paperWidth}mm`,height:`${paperHeight}mm`,border:0,background:"transparent",transform:`translate(${offset.x}mm,${offset.y}mm)`,transformOrigin:"top left",pointerEvents:"none"}} /> :
+              <div className="print-alignment-frame" style={{width:`${canvasWidth}mm`,height:`${canvasHeight}mm`,transform:`scale(${zoom})`}}>
+                {preview ? <iframe title={`${bankName} actual passbook preview`} srcDoc={preview} sandbox="" style={{width:`${canvasWidth}mm`,height:`${canvasHeight}mm`,border:0,background:"white",transform:`translate(${offset.x}mm,${offset.y}mm)`,transformOrigin:"top left",pointerEvents:"none"}} /> :
                   <p role="alert">Passbook preview is unavailable.</p>}
               </div>
             </div>

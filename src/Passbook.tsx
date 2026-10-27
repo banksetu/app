@@ -809,6 +809,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
   const printPassbook = async (offset?: PrintOffset, test = false, duplex = false): Promise<PrintOutcome | void> => {
+    let alignedPage: HTMLElement | null = null;
     if (formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) {
       setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
     }
@@ -876,6 +877,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       if (offset) {
         const page = document.querySelector<HTMLElement>(".passbook-page");
         if (!page) throw new Error("Passbook print layout is unavailable.");
+        alignedPage = page;
         page.style.setProperty("--alignment-x", `${offset.x}mm`);
         page.style.setProperty("--alignment-y", `${offset.y}mm`);
         page.classList.add("alignment-print-active");
@@ -959,6 +961,10 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       if (offset) throw err instanceof Error ? err : new Error("Passbook could not be printed.");
 
     } finally {
+
+      alignedPage?.classList.remove("alignment-print-active");
+      alignedPage?.style.removeProperty("--alignment-x");
+      alignedPage?.style.removeProperty("--alignment-y");
 
       setPrinting(false);
 
@@ -2068,6 +2074,13 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
           }
 
+          .pnb-document,
+          .pnb-document * {
+
+            visibility: visible !important;
+
+          }
+
           .union-document {
 
             position: fixed !important;
@@ -2250,11 +2263,24 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
             .union-fold { top:107mm!important; }
           }
         ` : ""}
+        ${isPnb ? `
+          @page { size: A4 portrait; margin: 0; }
+          @media print {
+            html, body { width:210mm!important; height:297mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:210mm!important; height:297mm!important; padding:0!important; overflow:visible!important; }
+            .pnb-preview { width:210mm!important; height:297mm!important; padding:0!important; overflow:visible!important; }
+            .pnb-document { position:absolute!important; left:0!important; top:0!important; width:213mm!important; height:190mm!important; margin:0!important; transform:scale(${210/213})!important; transform-origin:top left!important; overflow:visible!important; }
+          }
+        ` : ""}
         @media print {
           .passbook-page.alignment-print-active .union-document,
           .passbook-page.alignment-print-active .assam-quick-document,
           .passbook-page.alignment-print-active .passbook-shell {
             transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) !important;
+          }
+          .passbook-page.alignment-print-active .pnb-document {
+            transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) scale(${210/213}) !important;
+            transform-origin: top left !important;
           }
         }
       `}</style>

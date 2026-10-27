@@ -35,14 +35,14 @@ test('Unavailable data keeps its label and an empty value',()=>{
     assert(html.includes('Bank depositor is insured by DICGC upto a maximum Rs.'));
   }
 });
-test('PNB keeps BO and Phone fixed while lifting the remaining data into the left page',()=>{
+test('PNB keeps BO and Phone fixed while aligning the remaining data inside the left page',()=>{
   for(const html of [quick,print]){
     assert.match(html,/data-field="branchOffice"[^>]*top:30mm/);
     assert.match(html,/data-field="branchPhone"[^>]*top:34mm/);
-    assert.match(html,/data-field="micr"[^>]*top:57mm/);
-    assert.match(html,/data-field="modeOfOperation"[^>]*top:86mm/);
-    assert.match(html,/data-field="dicgc"[^>]*pnb-dot-left-fit[^>]*top:143mm/);
-    assert.match(html,/data-field="terms"[^>]*pnb-dot-left-fit[^>]*top:147mm/);
+    assert.match(html,/data-field="micr"[^>]*top:49mm/);
+    assert.match(html,/data-field="modeOfOperation"[^>]*top:75mm/);
+    assert.match(html,/data-field="dicgc"[^>]*pnb-dot-left-fit[^>]*top:129mm/);
+    assert.match(html,/data-field="terms"[^>]*pnb-dot-left-fit[^>]*top:133mm/);
   }
 });
 test('PNB is a built-in bank format',()=>{
@@ -55,4 +55,6 @@ test('PNB temporary fields and alignment renderer are connected to Passbook menu
   for(const value of ['<PnbPassbook','PNB_EDIT_FIELDS','pnbNominationSerial','pnbPrincipalOfficer','.passbook-page .pnb-document'])assert(passbook.includes(value));
   assert(passbook.includes('(isUnion || isPnb) && formatType === "quickPassbook"'));
   assert(passbook.includes('bankLogo={bankLogo}'));
+  assert(passbook.includes('@page { size: A4 portrait; margin: 0; }'));
+  assert(passbook.includes('.pnb-document *'));
 });

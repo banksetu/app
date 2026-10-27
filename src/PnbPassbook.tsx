@@ -27,8 +27,14 @@ const date = (value?: string) => {
 const at = (left:number, top:number, width:number):CSSProperties => ({position:"absolute",left:`${left}mm`,top:`${top}mm`,width:`${width}mm`});
 const addressLines = (customer:PnbPassbookCustomer) => {
   const supplied=clean(customer.fullAddress).split(/\r?\n/).map(clean).filter(Boolean);
-  if (supplied.length) return supplied.slice(0,3);
-  return [customer.address,customer.postOffice].map(clean).filter(Boolean).slice(0,3);
+  const source=supplied.length ? supplied.join(" ") : [customer.address,customer.postOffice].map(clean).filter(Boolean).join(" ");
+  const words=source.split(/\s+/).filter(Boolean), lines:string[]=[];
+  for(const word of words){
+    const last=lines.at(-1) || "";
+    if(!last || `${last} ${word}`.length>62) lines.push(word);
+    else lines[lines.length-1]=`${last} ${word}`;
+  }
+  return lines.slice(0,3);
 };
 
 function PnbStationery({photo,bankLogo}:{photo:string;bankLogo?:string}) {
@@ -60,10 +66,10 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
       .pnb-document *{box-sizing:border-box}.pnb-document[data-mode="passbook"]{background:linear-gradient(90deg,#fbf8ed 0%,#fffdf6 47.7%,#e8e2d3 49.75%,#d5cdbd 50%,#e9e3d5 50.25%,#fffdf7 52.3%,#faf6ea 100%);border:1px solid #b9aa8c;border-radius:4mm 5mm 5mm 4mm;box-shadow:0 2mm 5mm #291c0d28,0 .5mm 0 #fff inset}
       .pnb-document[data-mode="passbook"]::before{content:"";position:absolute;inset:2mm;border:1px solid #d8ccb5;border-radius:3mm 4mm 4mm 3mm;pointer-events:none;z-index:1}
       .pnb-document[data-mode="passbook"]::after{content:"";position:absolute;right:.9mm;top:5mm;bottom:5mm;width:1.2mm;border-right:.25mm solid #aa9b7d;border-radius:50%;box-shadow:.65mm 0 #e7dfcf;pointer-events:none;z-index:1}
-      .pnb-dot-line{position:absolute;display:block;font:400 2.65mm/3.55mm "Courier New",monospace;color:#747474;white-space:pre;letter-spacing:.08mm;transform:scaleX(.72);transform-origin:left top;width:138.888%;z-index:3}
+      .pnb-dot-line{position:absolute;display:block;font:600 2.65mm/3.55mm "Courier New",monospace;color:#505050;white-space:pre;letter-spacing:.08mm;transform:scaleX(.72);transform-origin:left top;width:138.888%;z-index:3}
       .pnb-dot-left-fit{transform:scaleX(.58);width:172.413%}
       .pnb-stationery{position:absolute;inset:0;z-index:0}.pnb-stationery-template{display:block;width:100%;height:100%;object-fit:fill}.pnb-uploaded-logo{position:absolute;left:18mm;top:8mm;width:68mm;height:22mm;object-fit:contain;object-position:left center}.pnb-customer-photo{position:absolute;left:110.7mm;top:90.4mm;width:28.5mm;height:37.4mm;object-fit:cover}
-      .pnb-edit{display:block;margin:12px auto 0}@media print{@page{size:213mm 190mm;margin:0}.pnb-preview{padding:0;overflow:visible}.pnb-document,.pnb-document[data-mode="passbook"]{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent;print-color-adjust:exact;-webkit-print-color-adjust:exact}.pnb-document[data-mode="passbook"]::before,.pnb-document[data-mode="passbook"]::after{display:none!important}.pnb-edit{display:none!important}}
+      .pnb-edit{display:block;margin:12px auto 0}@media print{.pnb-preview{padding:0;overflow:visible}.pnb-document,.pnb-document[data-mode="passbook"]{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent;print-color-adjust:exact;-webkit-print-color-adjust:exact}.pnb-document[data-mode="passbook"]::before,.pnb-document[data-mode="passbook"]::after{display:none!important}.pnb-edit{display:none!important}}
       html.pr2-direct-preparing .pnb-stationery{display:none!important}
     `}</style>
     <article className="pnb-document" data-mode={formatType} aria-label={quick?"Punjab National Bank complete quick passbook":"Punjab National Bank dot matrix data only"}>
@@ -71,24 +77,24 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
       <div className="pnb-dot-matrix" aria-label="Punjab National Bank dot matrix customer data">
         {dot("branchOffice",`BO: ${branch}`,17,30,86)}
         {dot("branchPhone",`Phone(${phone})`,17,34,86)}
-        {dot("micr",`MICR Code: ${micr}`,17,57,70)}
-        {dot("ifsc",`IFSC Code: ${ifsc}`,17,61,70)}
-        {dot("bankContact",`*Contact: Tol Free-${clean(c.pnbTollFree)}, Tolled-${clean(c.pnbTolledPhone)}`,12,72,96)}
-        {dot("principalOfficer",`*Principal Nodal Officer: ${clean(c.pnbPrincipalOfficer)} Ph-${clean(c.pnbPrincipalPhone)} Fax-${clean(c.pnbPrincipalFax)}`,12,76,96)}
-        {dot("modeOfOperation",`Mode of Operation : ${upper(c.pnbModeOfOperation)}`,17,86,75)}
-        {dot("customerNo",`Customer No. : ${upper(c.enrolId)}`,17,90,75)}
-        {dot("aadhaar",`Aadhar No. : ${upper(c.uidaiNo)}`,17,94,75)}
-        {dot("accountNo",`Account No. : ${upper(c.accountNo)}`,17,98,75)}
-        {dot("customerName",upper(c.name),17,102,75)}
-        {dot("openingDate",`Account Open Date : ${date(c.accountOpeningDate)}`,17,106,75)}
-        {dot("guardian",`S/O: ${clean(c.coName)}`,17,110,75)}
-        {dot("address1",upper(lines[0]),17,114,75)}
-        {dot("address2",upper(lines[1]),17,118,75)}
-        {dot("address3",[upper(lines[2]),district,state,country,pin&&`Pin : ${pin}`].filter(Boolean).join("    "),17,122,80)}
-        {dot("nominationSerial",`Nomination Registered at SL. No. : ${clean(c.pnbNominationSerial)}`,17,128,84)}
-        {dot("issueDate",`Date of Issue : ${date(c.pnbIssueDate||c.issueDate)}`,17,132,75)}
-        {dot("dicgc",`Bank depositor is insured by DICGC upto a maximum Rs.${clean(c.pnbDicgcAmount)}`,4,143,101)}
-        {dot("terms","Subject to change from time. (T&C applicable)",4,147,101)}
+        {dot("micr",`MICR Code: ${micr}`,17,49,70)}
+        {dot("ifsc",`IFSC Code: ${ifsc}`,17,53,70)}
+        {dot("bankContact",`*Contact: Tol Free-${clean(c.pnbTollFree)}, Tolled-${clean(c.pnbTolledPhone)}`,12,62,96)}
+        {dot("principalOfficer",`*Principal Nodal Officer: ${clean(c.pnbPrincipalOfficer)} Ph-${clean(c.pnbPrincipalPhone)} Fax-${clean(c.pnbPrincipalFax)}`,12,66,96)}
+        {dot("modeOfOperation",`Mode of Operation : ${upper(c.pnbModeOfOperation)}`,17,75,75)}
+        {dot("customerNo",`Customer No. : ${upper(c.enrolId)}`,17,79,75)}
+        {dot("aadhaar",`Aadhar No. : ${upper(c.uidaiNo)}`,17,83,75)}
+        {dot("accountNo",`Account No. : ${upper(c.accountNo)}`,17,87,75)}
+        {dot("customerName",upper(c.name),17,91,75)}
+        {dot("openingDate",`Account Open Date : ${date(c.accountOpeningDate)}`,17,95,75)}
+        {dot("guardian",`S/O: ${clean(c.coName)}`,17,99,75)}
+        {dot("address1",upper(lines[0]),17,103,82)}
+        {dot("address2",upper(lines[1]),17,107,82)}
+        {dot("address3",[upper(lines[2]),district,state,country,pin&&`Pin : ${pin}`].filter(Boolean).join("    "),17,111,82)}
+        {dot("nominationSerial",`Nomination Registered at SL. No. : ${clean(c.pnbNominationSerial)}`,17,117,84)}
+        {dot("issueDate",`Date of Issue : ${date(c.pnbIssueDate||c.issueDate)}`,17,121,75)}
+        {dot("dicgc",`Bank depositor is insured by DICGC upto a maximum Rs.${clean(c.pnbDicgcAmount)}`,4,129,101)}
+        {dot("terms","Subject to change from time. (T&C applicable)",4,133,101)}
       </div>
     </article>
     {onEdit&&<button type="button" className="passbook-button pnb-edit" onClick={onEdit}>Temporary Edit</button>}
