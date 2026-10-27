@@ -3809,7 +3809,7 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
   .dashboard-stat-card,.dashboard-quick-card,.customer-search-card,.passbook-search-card,
   .match-card,.customer-preview-section,.dashboard-analytics-card,.sync-card,
   .license-card,.admin-user-card,.bank-format-print-actions{
-    transition:transform .2s var(--motion-ease),box-shadow .2s ease,border-color .2s ease,background-color .2s ease!important;
+    transition:transform .2s var(--motion-ease),box-shadow .2s ease,border-color .2s ease!important;
   }
   .dashboard-stat-card:hover,.dashboard-quick-card:hover,.match-card:hover,
   .customer-preview-section:hover,.dashboard-analytics-card:hover,.sync-card:hover,
