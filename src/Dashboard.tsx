@@ -1229,6 +1229,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             <button
               type="button"
+              className="dashboard-sync-button"
               style={{ ...styles.dashboardSyncButton, opacity: syncStatus.syncing ? 0.65 : 1 }}
               onClick={syncDashboard}
               disabled={syncStatus.syncing}
@@ -2654,6 +2655,22 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
               padding-left: 0 !important;
 
               border-left: none !important;
+
+              flex-direction: column-reverse !important;
+
+              align-items: center !important;
+
+              gap: 6px !important;
+
+            }
+
+            .dashboard-sync-button {
+
+              width: 42px !important;
+
+              height: 42px !important;
+
+              flex: 0 0 42px !important;
 
             }
 
