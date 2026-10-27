@@ -9,7 +9,7 @@ import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerAnalytics } from "./core/dashboardAnalytics";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -44,25 +44,20 @@ import type {
 
 } from "react";
 
-import CustomerEntry from "./CustomerEntry";
-
-import Settings from "./Settings";
-import AdvancedAdmin from "./AdvancedAdmin";
-import MasterClients from "./MasterClients";
 import LicenseManagement from "./LicenseManagement";
 import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
-import BankFormats from "./BankFormats";
-
-
-import SelectedBankDocument from "./SelectedBankDocument";
-
-import Customers from "./Customers";
-import FormsSendToBranch from "./FormsSendToBranch";
-import AllCustomerData from "./AllCustomerData";
-
-import Reports from "./Reports";
+const CustomerEntry = lazy(() => import("./CustomerEntry"));
+const Settings = lazy(() => import("./Settings"));
+const AdvancedAdmin = lazy(() => import("./AdvancedAdmin"));
+const MasterClients = lazy(() => import("./MasterClients"));
+const BankFormats = lazy(() => import("./BankFormats"));
+const SelectedBankDocument = lazy(() => import("./SelectedBankDocument"));
+const Customers = lazy(() => import("./Customers"));
+const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
+const AllCustomerData = lazy(() => import("./AllCustomerData"));
+const Reports = lazy(() => import("./Reports"));
 
 
 
@@ -1404,6 +1399,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         {/* PAGE CONTENT */}
 
+        <Suspense fallback={<div role="status" style={{...styles.pageContent,minHeight:180,display:"grid",placeItems:"center",fontWeight:800}}>Opening page…</div>}>
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
           {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
@@ -1473,6 +1469,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           )}
 
         </div>
+        </Suspense>
 
       </section>
 
