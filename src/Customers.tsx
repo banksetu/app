@@ -17,6 +17,7 @@ import {
   useRef,
 
   type FormEvent,
+  type Ref,
 
 } from "react";
 
@@ -228,6 +229,7 @@ export default function Customers() {
   const [pdfTo, setPdfTo] = useState("");
   const [pdfSearch, setPdfSearch] = useState("");
   const [pdfSelected, setPdfSelected] = useState<Set<string>>(new Set());
+  const customerPreviewCard = useRef<HTMLDivElement>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfIncomplete, setPdfIncomplete] = useState(false);
   const pdfGenerating = useRef(false);
@@ -556,7 +558,8 @@ export default function Customers() {
     if (!customer) return;
     try {
       await requireLicensedWrite();
-      const blob = await snapshot(customer as unknown as Record<string, unknown>);
+      if (!customerPreviewCard.current) throw new Error("Customer preview is unavailable. Open it again and retry.");
+      const blob = await snapshot(customer as unknown as Record<string, unknown>,customerPreviewCard.current);
       const name = "BankSetu-customer-preview.png";
       if (isAndroid()) {
         const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",")[1]);reader.onerror=reject;reader.readAsDataURL(blob);});
@@ -1906,6 +1909,47 @@ export default function Customers() {
         .pdf-results{max-height:210px;overflow:auto;background:#fff;border:1px solid #dce8f5;border-radius:8px}.pdf-results label{display:block;padding:9px;border-bottom:1px solid #e8eef5}.pdf-results input{margin-right:8px}
         .pdf-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}.pdf-actions button{border:0;border-radius:8px;padding:12px 18px;cursor:pointer}.pdf-actions button:last-child{background:#1469e7;color:white}.pdf-actions button:disabled{opacity:.5;cursor:not-allowed}
         @media(max-width:650px){.pdf-dialog{padding:16px}.pdf-layout{grid-template-columns:1fr}.pdf-modes{grid-template-columns:1fr 1fr}.pdf-mode{padding:10px;font-size:13px}}
+
+        /* Direct single-customer print: keep the on-screen card layout on one A4 page.
+           This is intentionally separate from the compact All PDF capture. */
+        @media print {
+          @page { size: A4 portrait; margin: 10mm; }
+          html,body { width:210mm!important; min-height:297mm!important; margin:0!important; padding:0!important; background:#fff!important; }
+          body * { visibility:hidden!important; }
+          .customer-preview,.customer-preview * { visibility:visible!important; }
+          .customer-preview {
+            position:absolute!important;
+            top:0!important;
+            left:0!important;
+            width:190mm!important;
+            min-height:0!important;
+            max-height:277mm!important;
+            overflow:hidden!important;
+            margin:0!important;
+            padding:7mm!important;
+            border:1px solid #d8dee8!important;
+            border-radius:4mm!important;
+            box-shadow:none!important;
+            background:#fff!important;
+            color:#111827!important;
+            break-inside:avoid!important;
+            page-break-inside:avoid!important;
+          }
+          .customer-preview .customer-preview-heading { margin-bottom:7mm!important; padding-bottom:3mm!important; border-bottom:2px solid #1f2937!important; background:#fff!important; color:#111827!important; }
+          .customer-preview .customer-preview-heading h2 { color:#111827!important; font-size:18pt!important; }
+          .customer-preview .customer-grid { display:grid!important; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) 32mm!important; gap:6mm!important; align-items:start!important; overflow:visible!important; }
+          .customer-preview .info-column { min-width:0!important; text-align:left!important; }
+          .customer-preview .info-row { display:grid!important; grid-template-columns:31mm 3mm minmax(0,1fr)!important; gap:1mm!important; margin-bottom:3mm!important; align-items:start!important; font-size:9pt!important; line-height:1.35!important; text-align:left!important; }
+          .customer-preview .info-label,.customer-preview .info-colon { color:#374151!important; }
+          .customer-preview .info-value { color:#111827!important; text-align:left!important; overflow-wrap:anywhere!important; }
+          .customer-preview .photo-section { display:flex!important; flex-direction:column!important; align-items:center!important; }
+          .customer-preview .photo-box { width:30mm!important; height:36mm!important; border:1px solid #374151!important; background:#f3f4f6!important; }
+          .customer-preview .photo-label { color:#374151!important; font-size:8pt!important; }
+          .customer-preview .customer-status-strip { display:grid!important; grid-template-columns:repeat(3,minmax(0,1fr))!important; gap:4mm!important; margin-top:6mm!important; padding-top:4mm!important; border-top:1px solid #d1d5db!important; background:#fff!important; color:#111827!important; text-align:left!important; }
+          .customer-preview .status-item { display:grid!important; grid-template-columns:auto minmax(0,1fr)!important; gap:2mm!important; text-align:left!important; }
+          .customer-preview .status-item span { color:#374151!important; font-size:8pt!important; }
+          .customer-preview .status-item strong { color:#111827!important; font-size:9pt!important; text-align:left!important; }
+        }
       `}</style>
 
       {/* =============================================
@@ -2013,7 +2057,7 @@ export default function Customers() {
               <small>Output: one A4 PDF preview with the existing customer layout. The PDF has five customer sections per A4 page. Preview, save and print controls appear after generation.</small>
             </div>
           </div>
-          <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfGenerating.current)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfGenerating.current?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
+          <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfLoading)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfLoading?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
         </div>
       </div>}
 
@@ -2172,7 +2216,7 @@ export default function Customers() {
           </div>
 
           <div style={{padding:"12px",background:"var(--app-dark-surface, white)",color:"var(--app-dark-text, #18354d)",borderRadius:8}}><strong>Form Send to Branch</strong>: {afsmDisplay(customer as unknown as Record<string,unknown>)}</div>
-          <CustomerPreviewCard customer={customer} />
+          <CustomerPreviewCard customer={customer} cardRef={customerPreviewCard} />
 
           {/* =========================================
 
@@ -2287,9 +2331,9 @@ function previewCustomer(value: Record<string, unknown>): Customer {
   };
 }
 
-function CustomerPreviewCard({customer}:{customer:Customer}) {
+function CustomerPreviewCard({customer,cardRef}:{customer:Customer;cardRef?:Ref<HTMLDivElement>}) {
   return (
-          <div className="customer-preview">
+          <div ref={cardRef} className="customer-preview">
 
             <div className="customer-preview-heading">
 
