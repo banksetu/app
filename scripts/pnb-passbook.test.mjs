@@ -84,5 +84,5 @@ test('PNB reuses the Assam account-opening layout, extraction and tenant logo wi
   assert(entry.includes('if (!usesAssamAccountOpeningLayout(bankName))'));
   assert(localData.includes('const scope = identity();'));
   assert(localData.includes('networkFetch(verifiedUrl'));
-  assert(appsScript.includes('const sheet =\n    getSheet(authUser);'));
+  assert.match(appsScript,/const sheet =\r?\n    getSheet\(authUser\);/);
 });
