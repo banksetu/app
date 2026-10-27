@@ -57,9 +57,11 @@ test('PNB is a built-in bank format',()=>{
 });
 test('PNB temporary fields and alignment renderer are connected to Passbook menu',()=>{
   const passbook=fs.readFileSync(new URL('../src/Passbook.tsx',import.meta.url),'utf8');
+  const pr2=fs.readFileSync(new URL('../desktop/pr2-ipc.cjs',import.meta.url),'utf8');
   for(const value of ['<PnbPassbook','PNB_EDIT_FIELDS','pnbNominationSerial','pnbPrincipalOfficer','.passbook-page .pnb-document'])assert(passbook.includes(value));
   assert(passbook.includes('(isUnion || isPnb) && formatType === "quickPassbook"'));
   assert(passbook.includes('bankLogo={bankLogo}'));
   assert(passbook.includes('@page { size: A4 portrait; margin: 0; }'));
   assert(passbook.includes('.pnb-document *'));
+  assert(pr2.includes('.passbook-page .pnb-document'),'PR2 must recognize the loaded PNB document');
 });
