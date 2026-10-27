@@ -38,4 +38,6 @@ test("All Customer Data preloads locally, renders bounded pages and shares no ac
   assert.match(list,/customer-preview-identity customer-preview-share-exclude/);
   assert.match(list,/customer-preview-bottom customer-preview-share-exclude/);
   assert.match(list,/customer-preview-section customer-preview-share-exclude/);
+  assert.match(list,/customer-preview-card \{[^}]*text-align:left/);
+  assert.match(list,/customer-preview-section dd \{[^}]*text-align:left/);
 });
