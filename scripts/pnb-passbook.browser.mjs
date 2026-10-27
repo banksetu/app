@@ -32,6 +32,10 @@ try{
   for(const [label,value] of Object.entries(values))await fill(page,label,value);
   await page.getByRole('button',{name:'Apply to Preview',exact:true}).click();
   await page.locator('.pnb-document').screenshot({path:`../PNB_${mode==='quick'?'Quick_Passbook':'Passbook_Print'}_Menu_Preview.png`});
+  if(mode==='passbook'){
+   const book=await page.locator('.pnb-document').boundingBox();
+   if(book)await page.screenshot({path:'../PNB_Passbook_Font_11px_Spacing_0_5px.png',clip:{x:book.x+6,y:book.y+90,width:405,height:445}});
+  }
   await page.close();
  }
 }finally{await browser?.close();await server.close();fs.rmSync('test-evidence/pnb-menu.html',{force:true});fs.rmSync('test-evidence/pnb-menu.tsx',{force:true});}

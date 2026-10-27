@@ -1467,12 +1467,12 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           {bankSettingsReady && activePage === "passbook" && !licenseReadOnly && (
 
-            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} onOpenBankInformation={canManageBankSettings?openBankInfoEditor:undefined} />
+            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} bankLogo={bankLogo} onOpenBankInformation={canManageBankSettings?openBankInfoEditor:undefined} />
 
           )}
 
           {bankSettingsReady && activePage === "quick-passbook" && !licenseReadOnly && (
-            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} />
+            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} bankLogo={bankLogo} />
           )}
 
           {bankSettingsReady && activePage === "bank-formats" && !licenseReadOnly && accountRole === "client_admin" && (
@@ -1480,7 +1480,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           )}
 
           {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
-          {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} />}
+          {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} bankLogo={bankLogo} />}
 
           {activePage === "reports" && !licenseReadOnly && (
 

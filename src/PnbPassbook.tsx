@@ -22,7 +22,7 @@ const date = (value?: string) => {
   const raw = clean(value);
   const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return `${iso[3].padStart(2,"0")}-${iso[2].padStart(2,"0")}-${iso[1]}`;
-  const normal = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  const normal = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   return normal ? `${normal[1].padStart(2,"0")}-${normal[2].padStart(2,"0")}-${normal[3]}` : raw;
 };
 const at = (left:number, top:number, width:number):CSSProperties => ({position:"absolute",left:`${left}mm`,top:`${top}mm`,width:`${width}mm`});
@@ -74,7 +74,7 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
       .pnb-document[data-mode="passbook"]::before{content:"";position:absolute;inset:2mm;border:1px solid #d8ccb5;border-radius:3mm 4mm 4mm 3mm;pointer-events:none;z-index:1}
       .pnb-document[data-mode="passbook"]::after{content:"";position:absolute;right:.9mm;top:5mm;bottom:5mm;width:1.2mm;border-right:.25mm solid #aa9b7d;border-radius:50%;box-shadow:.65mm 0 #e7dfcf;pointer-events:none;z-index:1}
       .pnb-dot-matrix,.pnb-dot-line{text-align:left!important}
-      .pnb-dot-line{position:absolute;display:block;font-family:"Bank Setu PNB Dot Matrix","Courier New",monospace;font-size:2.65mm;font-style:normal;font-weight:700;line-height:3.55mm;color:#343434;white-space:pre;letter-spacing:.08mm;transform:scaleX(.72);transform-origin:left top;width:138.888%;z-index:3}
+      .pnb-dot-line{position:absolute;display:block;font-family:"Bank Setu PNB Dot Matrix","Courier New",monospace;font-size:11px;font-style:normal;font-weight:700;line-height:3.55mm;color:#343434;white-space:pre;letter-spacing:.5px;transform:scaleX(.72);transform-origin:left top;width:138.888%;z-index:3}
       .pnb-dot-left-fit{transform:scaleX(.58);width:172.413%}
       .pnb-stationery{position:absolute;inset:0;z-index:0}.pnb-stationery-template{display:block;width:100%;height:100%;object-fit:fill}.pnb-uploaded-logo{position:absolute;left:18mm;top:8mm;width:68mm;height:22mm;object-fit:contain;object-position:left center}.pnb-customer-photo{position:absolute;left:110.7mm;top:90.4mm;width:28.5mm;height:37.4mm;object-fit:cover}
       .pnb-edit{display:block;margin:12px auto 0}@media print{.pnb-preview{padding:0;overflow:visible}.pnb-document,.pnb-document[data-mode="passbook"]{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent;print-color-adjust:exact;-webkit-print-color-adjust:exact}.pnb-document[data-mode="passbook"]::before,.pnb-document[data-mode="passbook"]::after{display:none!important}.pnb-edit{display:none!important}}

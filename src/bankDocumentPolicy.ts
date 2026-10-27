@@ -3,6 +3,7 @@ export const bankKey = (name = "") => name.trim().toLowerCase().replace(/\s+/g, 
 export const isAssamBank = (name = "") => /^(assam gramin(?: vikas)? bank|agvb|agb)$/.test(bankKey(name));
 export const isUnionBank = (name = "") => /union bank(?: of india)?/.test(bankKey(name));
 export const isPnbBank = (name = "") => /^(punjab national bank|punjab bank of india|punjab bank|pnb)$/.test(bankKey(name));
+export const usesAssamAccountOpeningLayout = (name = "") => isAssamBank(name) || isPnbBank(name);
 
 export function bankDocumentMode(name: string) {
   const key = bankKey(name);

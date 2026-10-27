@@ -10,5 +10,5 @@ export default function SelectedBankDocument({ formatType, bankInfo, bankLogo, o
   const mode = bankDocumentMode(bank);
   if (mode === "select") return <section role="status" className="bank-selection-required" style={{padding:24,background:"white",borderRadius:12,color:"#34344c"}}><h2>First select a bank</h2><p>Choose Bank for passbook printing in Bank Information, then save it.</p></section>;
   if (mode === "custom" || (isUnionBank(bank) && formatType === "accountOpening")) return <CustomBankDocument key={bank + formatType} formatType={formatType} bankInfo={bankInfo} />;
-  return formatType === "accountOpening" ? <AccountOpeningPDF /> : <Passbook formatType={formatType} bankInfo={bankInfo} bankLogo={bankLogo} onOpenBankInformation={onOpenBankInformation} />;
+  return formatType === "accountOpening" ? <AccountOpeningPDF bankLogo={bankLogo} bankName={bank} /> : <Passbook formatType={formatType} bankInfo={bankInfo} bankLogo={bankLogo} onOpenBankInformation={onOpenBankInformation} />;
 }
