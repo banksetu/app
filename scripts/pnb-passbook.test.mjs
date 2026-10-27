@@ -49,6 +49,8 @@ test('PNB keeps BO and Phone fixed while aligning the remaining data inside the 
   assert(source.includes('.pnb-dot-matrix,.pnb-dot-line{text-align:left!important}'));
   assert(source.includes('BankSetuPassbookMono-Bold.ttf'));
   assert(source.includes('font-weight:700'));
+  assert(source.includes('font-size:11px'));
+  assert(source.includes('letter-spacing:.5px'));
 });
 test('PNB is a built-in bank format',()=>{
   const policy=fs.readFileSync(new URL('../src/bankDocumentPolicy.ts',import.meta.url),'utf8');
@@ -59,9 +61,28 @@ test('PNB temporary fields and alignment renderer are connected to Passbook menu
   const passbook=fs.readFileSync(new URL('../src/Passbook.tsx',import.meta.url),'utf8');
   const pr2=fs.readFileSync(new URL('../desktop/pr2-ipc.cjs',import.meta.url),'utf8');
   for(const value of ['<PnbPassbook','PNB_EDIT_FIELDS','pnbNominationSerial','pnbPrincipalOfficer','.passbook-page .pnb-document'])assert(passbook.includes(value));
-  assert(passbook.includes('(isUnion || isPnb) && formatType === "quickPassbook"'));
+  assert(passbook.includes('(isUnion || isPnb || isCentral) && formatType === "quickPassbook"'));
   assert(passbook.includes('bankLogo={bankLogo}'));
   assert(passbook.includes('@page { size: A4 portrait; margin: 0; }'));
   assert(passbook.includes('.pnb-document *'));
   assert(pr2.includes('.passbook-page .pnb-document'),'PR2 must recognize the loaded PNB document');
+});
+test('PNB reuses the Assam account-opening layout, extraction and tenant logo without changing field mapping',()=>{
+  const policy=fs.readFileSync(new URL('../src/bankDocumentPolicy.ts',import.meta.url),'utf8');
+  const selected=fs.readFileSync(new URL('../src/SelectedBankDocument.tsx',import.meta.url),'utf8');
+  const dashboard=fs.readFileSync(new URL('../src/Dashboard.tsx',import.meta.url),'utf8');
+  const accountOpening=fs.readFileSync(new URL('../src/AccountOpeningPDF.tsx',import.meta.url),'utf8');
+  const entry=fs.readFileSync(new URL('../src/CustomerEntry.tsx',import.meta.url),'utf8');
+  const localData=fs.readFileSync(new URL('../src/core/localData.ts',import.meta.url),'utf8');
+  const appsScript=fs.readFileSync(new URL('../apps-script/Code.gs',import.meta.url),'utf8');
+  assert(policy.includes('usesAssamAccountOpeningLayout'));
+  assert(selected.includes('<AccountOpeningPDF bankLogo={bankLogo} bankName={bank} />'));
+  assert.equal((dashboard.match(/<SelectedBankDocument[^>]*bankLogo=\{bankLogo\}/g)||[]).length,3);
+  assert(accountOpening.includes('src={selectedBankLogo}'));
+  assert(entry.includes('const usesAssamLayout = usesAssamAccountOpeningLayout(bankName)'));
+  assert(entry.includes('const bankSpecific = usesAssamLayout'));
+  assert(entry.includes('if (!usesAssamAccountOpeningLayout(bankName))'));
+  assert(localData.includes('const scope = identity();'));
+  assert(localData.includes('networkFetch(verifiedUrl'));
+  assert(appsScript.includes('const sheet =\n    getSheet(authUser);'));
 });
