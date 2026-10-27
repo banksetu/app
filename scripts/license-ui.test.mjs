@@ -34,9 +34,17 @@ test('read-only dashboard removes protected menus and blocks already selected ro
   const html=render(page,true);
   for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF Sample'])assert(!html.includes(label),label);
   assert(!html.includes('data-component="CustomerEntry"'));assert(!html.includes('data-component="SelectedBankDocument"'));assert(!html.includes('data-component="BankFormats"'));
-  for(const label of ['Dashboard','All Customer Data','Customers','Settings','Sync &amp; Backup','License Management'])assert(html.includes(label),label);
+  for(const label of ['Dashboard','All Customer Data','Customers','Settings','Sync &amp; Backup'])assert(html.includes(label),label);
   assert(html.includes('suspended'));
  }
+});
+test('license navigation moves from the sidebar to the profile menu without changing its route',()=>{
+ const dashboard=fs.readFileSync('src/Dashboard.tsx','utf8');
+ assert.doesNotMatch(dashboard,/<NavButton icon="🪪" label="License Management"/);
+ assert.match(dashboard,/className="admin-license-menu-item"/);
+ assert.match(dashboard,/setAdminMenuOpen\(false\); openPage\("license-management"\);/);
+ assert.match(dashboard,/← Back to Dashboard/);
+ assert.match(dashboard,/onClick=\{\(\) => openPage\("dashboard"\)\}/);
 });
 test('valid license retains protected menu access',()=>{
  const html=render('passbook',false);
