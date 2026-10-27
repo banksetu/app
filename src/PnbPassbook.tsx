@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { PassbookBankInfo } from "./AssamQuickPassbook";
 
 const pnbStationeryTemplate = new URL("./assets/pnb-passbook-blank-template.webp", import.meta.url).href;
+const pnbDotMatrixFont = `${(import.meta as ImportMeta & {env?:{BASE_URL?:string}}).env?.BASE_URL ?? "/"}fonts/BankSetuPassbookMono-Bold.ttf`;
 
 export type PnbPassbookCustomer = {
   enrolId?: string; accountNo?: string; name?: string; coName?: string;
@@ -54,6 +55,11 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
   const phone=clean(c.pnbBranchPhone)||clean(b.branchPhone);
   const micr=clean(c.pnbMicr)||clean(b.micr);
   const ifsc=clean(c.pnbIfsc)||clean(b.ifsc);
+  const tollFree=clean(c.pnbTollFree)||"18001802222/18001032222";
+  const tolledPhone=clean(c.pnbTolledPhone)||"012024790000";
+  const principalPhone=clean(c.pnbPrincipalPhone)||"01123716185";
+  const principalFax=clean(c.pnbPrincipalFax)||"01123323707";
+  const dicgcAmount=clean(c.pnbDicgcAmount)||"5.00";
   const lines=addressLines(c);
   const district=upper(c.pnbDistrict);
   const state=upper(c.pnbState);
@@ -62,11 +68,13 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
   const dot=(field:string,text:string,left:number,top:number,width:number)=><span data-field={field} className={`pnb-dot-line${field==="dicgc"||field==="terms"?" pnb-dot-left-fit":""}`} style={at(left,top,width)}>{text}</span>;
   return <div className="pnb-preview">
     <style>{`
+      @font-face{font-family:"Bank Setu PNB Dot Matrix";src:url("${pnbDotMatrixFont}") format("truetype");font-style:normal;font-weight:700;font-display:block}
       .pnb-preview{overflow-x:auto;padding:16px 10px 22px;color:#222}.pnb-document{position:relative;width:213mm;height:190mm;margin:auto;background:#fff;overflow:hidden;box-shadow:0 4px 24px #0002;color:#171717}
       .pnb-document *{box-sizing:border-box}.pnb-document[data-mode="passbook"]{background:linear-gradient(90deg,#fbf8ed 0%,#fffdf6 47.7%,#e8e2d3 49.75%,#d5cdbd 50%,#e9e3d5 50.25%,#fffdf7 52.3%,#faf6ea 100%);border:1px solid #b9aa8c;border-radius:4mm 5mm 5mm 4mm;box-shadow:0 2mm 5mm #291c0d28,0 .5mm 0 #fff inset}
       .pnb-document[data-mode="passbook"]::before{content:"";position:absolute;inset:2mm;border:1px solid #d8ccb5;border-radius:3mm 4mm 4mm 3mm;pointer-events:none;z-index:1}
       .pnb-document[data-mode="passbook"]::after{content:"";position:absolute;right:.9mm;top:5mm;bottom:5mm;width:1.2mm;border-right:.25mm solid #aa9b7d;border-radius:50%;box-shadow:.65mm 0 #e7dfcf;pointer-events:none;z-index:1}
-      .pnb-dot-line{position:absolute;display:block;font:600 2.65mm/3.55mm "Courier New",monospace;color:#505050;white-space:pre;letter-spacing:.08mm;transform:scaleX(.72);transform-origin:left top;width:138.888%;z-index:3}
+      .pnb-dot-matrix,.pnb-dot-line{text-align:left!important}
+      .pnb-dot-line{position:absolute;display:block;font-family:"Bank Setu PNB Dot Matrix","Courier New",monospace;font-size:2.65mm;font-style:normal;font-weight:700;line-height:3.55mm;color:#343434;white-space:pre;letter-spacing:.08mm;transform:scaleX(.72);transform-origin:left top;width:138.888%;z-index:3}
       .pnb-dot-left-fit{transform:scaleX(.58);width:172.413%}
       .pnb-stationery{position:absolute;inset:0;z-index:0}.pnb-stationery-template{display:block;width:100%;height:100%;object-fit:fill}.pnb-uploaded-logo{position:absolute;left:18mm;top:8mm;width:68mm;height:22mm;object-fit:contain;object-position:left center}.pnb-customer-photo{position:absolute;left:110.7mm;top:90.4mm;width:28.5mm;height:37.4mm;object-fit:cover}
       .pnb-edit{display:block;margin:12px auto 0}@media print{.pnb-preview{padding:0;overflow:visible}.pnb-document,.pnb-document[data-mode="passbook"]{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent;print-color-adjust:exact;-webkit-print-color-adjust:exact}.pnb-document[data-mode="passbook"]::before,.pnb-document[data-mode="passbook"]::after{display:none!important}.pnb-edit{display:none!important}}
@@ -79,8 +87,8 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
         {dot("branchPhone",`Phone(${phone})`,17,34,86)}
         {dot("micr",`MICR Code: ${micr}`,17,49,70)}
         {dot("ifsc",`IFSC Code: ${ifsc}`,17,53,70)}
-        {dot("bankContact",`*Contact: Tol Free-${clean(c.pnbTollFree)}, Tolled-${clean(c.pnbTolledPhone)}`,12,62,96)}
-        {dot("principalOfficer",`*Principal Nodal Officer: ${clean(c.pnbPrincipalOfficer)} Ph-${clean(c.pnbPrincipalPhone)} Fax-${clean(c.pnbPrincipalFax)}`,12,66,96)}
+        {dot("bankContact",`*Contact: Tol Free-${tollFree}, Tolled-${tolledPhone}`,12,62,96)}
+        {dot("principalOfficer",`*Principal Nodal Officer: ${clean(c.pnbPrincipalOfficer)} Ph-${principalPhone} Fax-${principalFax}`,12,66,96)}
         {dot("modeOfOperation",`Mode of Operation : ${upper(c.pnbModeOfOperation)}`,17,75,75)}
         {dot("customerNo",`Customer No. : ${upper(c.enrolId)}`,17,79,75)}
         {dot("aadhaar",`Aadhar No. : ${upper(c.uidaiNo)}`,17,83,75)}
@@ -93,7 +101,7 @@ export default function PnbPassbook({customer:c,bankInfo:b={},bankLogo,formatTyp
         {dot("address3",[upper(lines[2]),district,state,country,pin&&`Pin : ${pin}`].filter(Boolean).join("    "),17,111,82)}
         {dot("nominationSerial",`Nomination Registered at SL. No. : ${clean(c.pnbNominationSerial)}`,17,117,84)}
         {dot("issueDate",`Date of Issue : ${date(c.pnbIssueDate||c.issueDate)}`,17,121,75)}
-        {dot("dicgc",`Bank depositor is insured by DICGC upto a maximum Rs.${clean(c.pnbDicgcAmount)}`,4,129,101)}
+        {dot("dicgc",`Bank depositor is insured by DICGC upto a maximum Rs.${dicgcAmount}`,4,129,101)}
         {dot("terms","Subject to change from time. (T&C applicable)",4,133,101)}
       </div>
     </article>
