@@ -62,7 +62,7 @@ import pdfWorker from
 
 import { auth, db } from "./firebase";
 import { doc, getDocFromServer } from "firebase/firestore";
-import { templateMatchesBank, usesAssamAccountOpeningLayout } from "./bankDocumentPolicy";
+import { isCentralBank, templateMatchesBank, usesAssamAccountOpeningLayout } from "./bankDocumentPolicy";
 import { extractBankCustomer } from "./bankPdf";
 
 
@@ -1178,7 +1178,8 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
           const settings = await getDocFromServer(doc(db, "tenantSettings", tenantId));
           const sample = settings.data()?.bankFormats?.accountOpening;
           if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
-        }
+          else if (isCentralBank(bankName)) throw new Error("Please upload your Account Opening PDF sample before using Central Bank customer autofill.");
+        } else if (isCentralBank(bankName)) throw new Error("Please upload your Account Opening PDF sample before using Central Bank customer autofill.");
       }
       const bankSpecific = usesAssamLayout
         ? Object.fromEntries(Object.entries(parseCustomerPdf(text)).filter(([, value]) => String(value || "").trim()))
