@@ -71,11 +71,12 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
     copy.querySelectorAll(".customer-preview-share-exclude").forEach(node=>node.remove());
     const subtitle=copy.querySelector(".customer-preview-heading p");
     if(subtitle)subtitle.textContent="Personal, contact and address information";
-    applyShareCaptureTheme(copy,document.documentElement.dataset.appearance === "dark");
+    if (copy.classList.contains("customer-preview-card"))
+      applyShareCaptureTheme(copy,document.documentElement.dataset.appearance === "dark");
   }
   copy.style.cssText += `;width:${width}px!important;max-height:none!important;overflow:visible!important`;
   host.appendChild(copy);
-  document.body.appendChild(host);
+  (card.closest(".banksetu-app-shell") || document.body).appendChild(host);
   try {
     await Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,1500))]);
     for (const img of copy.querySelectorAll<HTMLImageElement>("img")) {
