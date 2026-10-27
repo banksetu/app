@@ -1329,16 +1329,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                   onClick={() => { setAdminMenuOpen(false); setMenuThemeModalOpen(true); }}
                 >🌈 Menu Color</button>}
 
-                {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button
-                  type="button"
-                  className="admin-license-menu-item"
-                  style={styles.adminLicenseMenuItem}
-                  onClick={() => { setAdminMenuOpen(false); openPage("license-management"); }}
-                >
-                  <span style={styles.adminLicenseMenuIcon} aria-hidden="true">🪪</span>
-                  <span><strong style={styles.adminLicenseMenuTitle}>License Management</strong><small style={styles.adminLicenseMenuSubtitle}>Plan, status and renewal</small></span>
-                </button>}
-
                 <button
 
                   type="button"
@@ -1379,6 +1369,16 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                     {accountRole === "client_admin" ? "⚙️ Workspace Settings" : "🛡️ Advanced Administrator Control"}
                   </button>
                 )}
+
+                {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button
+                  type="button"
+                  className="admin-license-menu-item"
+                  style={styles.adminLicenseMenuItem}
+                  onClick={() => { setAdminMenuOpen(false); openPage("license-management"); }}
+                >
+                  <span style={styles.adminLicenseMenuIcon} aria-hidden="true">🪪</span>
+                  <span><strong style={styles.adminLicenseMenuTitle}>License Management</strong><small style={styles.adminLicenseMenuSubtitle}>Plan, status and renewal</small></span>
+                </button>}
 
                 <button
 
