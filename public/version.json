@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.131",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.131/BankSetu-Setup-1.0.131-x64.exe",
+  "latestVersion": "1.0.132",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.132/BankSetu-Setup-1.0.132-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.131",
-  "releaseTag": "v1.0.131",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.131",
+  "version": "1.0.132",
+  "releaseTag": "v1.0.132",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.132",
   "releaseDate": "2026-10-27",
-  "windowsVersion": "1.0.131",
-  "androidBuild": 1000131,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.131/BankSetu-Setup-1.0.131-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.131/BankSetu-Android-1000131.apk",
+  "windowsVersion": "1.0.132",
+  "androidBuild": 1000132,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.132/BankSetu-Setup-1.0.132-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.132/BankSetu-Android-1000132.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.131",
+      "version": "1.0.132",
       "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Release PNB PR2, customer performance, privacy, and security updates."
+          "Improve customer preview sharing, printing, and license navigation."
         ]
       }
     },
     "android": {
-      "version": "1.0.131",
+      "version": "1.0.132",
       "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Release PNB PR2, customer performance, privacy, and security updates."
+          "Improve customer preview sharing, printing, and license navigation."
         ]
       }
     }
