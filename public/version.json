@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.129",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.129/BankSetu-Setup-1.0.129-x64.exe",
+  "latestVersion": "1.0.130",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.130/BankSetu-Setup-1.0.130-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.129",
-  "releaseTag": "v1.0.129",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.129",
-  "releaseDate": "2026-10-26",
-  "windowsVersion": "1.0.129",
-  "androidBuild": 1000129,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.129/BankSetu-Setup-1.0.129-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.129/BankSetu-Android-1000129.apk",
+  "version": "1.0.130",
+  "releaseTag": "v1.0.130",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.130",
+  "releaseDate": "2026-10-27",
+  "windowsVersion": "1.0.130",
+  "androidBuild": 1000130,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.130/BankSetu-Setup-1.0.130-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.130/BankSetu-Android-1000130.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.129",
-      "releaseDate": "2026-10-26",
+      "version": "1.0.130",
+      "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Correct Punjab National Bank selection routing (83)."
+          "Fix PNB print alignment and mobile header controls (84)."
         ]
       }
     },
     "android": {
-      "version": "1.0.129",
-      "releaseDate": "2026-10-26",
+      "version": "1.0.130",
+      "releaseDate": "2026-10-27",
       "categories": {
         "Improvements": [
-          "Correct Punjab National Bank selection routing (83)."
+          "Fix PNB print alignment and mobile header controls (84)."
         ]
       }
     }
