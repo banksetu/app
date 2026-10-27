@@ -13,6 +13,9 @@ test('packaged protocol serves app and assets, rejects missing or escaped paths'
  const handle=createAppProtocol(root);
  for(const pathname of ['/','/index.html']){const r=await handle({url:'banksetu://app'+pathname});assert.equal(r.status,200);assert.match(await r.text(),/Bank Setu/);}
  assert.match((await handle({url:'banksetu://app/main.js'})).headers.get('content-type'),/javascript/);
+ const index=await handle({url:'banksetu://app/index.html'});
+ assert.equal(index.headers.get('x-content-type-options'),'nosniff');
+ assert.match(index.headers.get('content-security-policy'),/frame-ancestors 'none'/);
  assert.equal((await handle({url:'banksetu://app/print.ttf'})).headers.get('content-type'),'font/ttf');
  assert.equal((await handle({url:'banksetu://app/missing.js'})).status,404);
  assert.equal((await handle({url:'banksetu://evil/index.html'})).status,403);
