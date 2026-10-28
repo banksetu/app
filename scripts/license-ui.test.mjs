@@ -57,6 +57,8 @@ test('floating support position is temporary and returns to its bottom-right hom
  assert.match(support,/window\.addEventListener\('resize',snapHome\)/);
  assert.match(support,/window\.visualViewport\?\.addEventListener\('resize',snapHome\)/);
  assert.match(support,/returnHomeLater\(\)/);
+ assert.match(support,/window\.innerWidth<700\?2:12\+configuredSafeBottom/);
+ assert.match(support,/window\.innerWidth<700\?2:12/);
 });
 test('valid license retains protected menu access',()=>{
  const html=render('passbook',false);
