@@ -25,6 +25,8 @@ test('Central Bank quick passbook recreates the full 19 x 17.3 cm stationery as 
   assert(quick.includes('Our Loan Products to meet your requirements'));
   assert(quick.includes('data:image/png;base64,LOGO'));
   assert(quick.includes('data:image/png;base64,PHOTO'));
+  assert.equal((quick.match(/class="central-warning"/g)||[]).length,2);
+  assert.equal((quick.match(/<span>/g)||[]).length>=6,true);
   assert(!source.includes('central-bank-passbook-template'));
   assert(source.includes('font-size:1.95mm'));
   assert(source.includes('font:400 10px/3.25mm'));
@@ -42,9 +44,13 @@ test('Central Bank physical passbook print omits stationery, logo, photograph an
   assert(!print.includes('class="central-upper"'));
   assert(!print.includes('class="central-logo"'));
   assert(!print.includes('class="central-photo"'));
+  assert(!print.includes('class="central-manager"'));
   assert(!print.includes('data:image/png;base64,LOGO'));
   assert(!print.includes('data:image/png;base64,PHOTO'));
   assert(print.includes('central-lower'));
+  assert(print.includes('BRANCH ADDRESS AND TEL NO.:'));
+  assert(print.includes('NAME AND ADDRESS OF ACCOUNT HOLDER/S:'));
+  assert(source.includes('.central-bank-document[data-mode="passbook"]{background:transparent}'));
 });
 
 test('Central Bank is built in for passbooks but uses its own uploaded account-opening sample',async()=>{
