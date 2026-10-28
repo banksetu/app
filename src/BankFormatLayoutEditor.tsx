@@ -3,6 +3,7 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { extractBankCustomer } from "./bankPdf";
 import { useEffect, useRef, useState } from "react";
 import { BANK_TEMPLATE_FIELD_OPTIONS, BANK_PRINT_FIELD_OPTIONS, renderBankSamplePages, type BankFieldPlacement } from "./bankFormatUtils";
+import ModalPortal from "./ModalPortal";
 
 export default function BankFormatLayoutEditor({
   mode = "print", onModeChange, sampleUrl, mimeType, initialMap, initialWidth, initialHeight, onSave, onClose,
@@ -87,7 +88,7 @@ export default function BankFormatLayoutEditor({
   const previewWidth = Math.min(900, Math.max(320, 600 * aspect)) * zoom;
   const previewHeight = previewWidth / aspect;
 
-  return <div style={overlay} role="dialog" aria-modal="true" aria-label="Bank format field mapping">
+  return <ModalPortal><div style={overlay} role="dialog" aria-modal="true" aria-label="Bank format field mapping">
     <section style={dialog}>
       <header style={header}><div><h2 style={{ margin: 0 }}>{mode === "extraction" ? "PDF से डेटा पढ़ने के sections चुनें" : "फॉर्म में print की जगह चुनें"}</h2><p style={help}>{mode === "extraction" ? "Field चुनें, फिर उसकी value के चारों ओर box खींचें। Label और पास के columns को box में न लें। छोटे sections के लिए Zoom बढ़ाएँ। Account Opening में पहचाने labels से नया text template बनेगा।" : "Field चुनकर उसकी print position पर क्लिक करें।"}</p></div><button type="button" style={quiet} onClick={onClose}>Close</button></header>
       {onModeChange && <div style={toolbar}><button type="button" style={quiet} disabled={mode==="extraction"} onClick={async ()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||await confirmAction("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("extraction");}}>1. डेटा कहाँ से पढ़ें</button><button type="button" style={quiet} disabled={mode==="print"} onClick={async ()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||await confirmAction("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("print");}}>2. कहाँ print करें</button><span>Switch करने से पहले Save करें।</span></div>}
@@ -128,11 +129,11 @@ export default function BankFormatLayoutEditor({
       {error && <p role="alert" style={{ color: "var(--app-dark-text, #a22)" }}>{error}</p>}
       <footer style={footer}><span style={help}>Map each PDF page separately (up to 10 pages).</span><button type="button" style={saveButton} disabled={saving || testing} onClick={() => void save()}>{saving ? "Saving…" : mode === "extraction" ? "Save reading sections" : "Save print layout"}</button></footer>
     </section>
-  </div>;
+  </div></ModalPortal>;
 }
 
-const overlay: React.CSSProperties = { position: "fixed", inset: 0, zIndex: 10000, padding: 20, background: "rgba(10,20,30,.72)", overflow: "auto" };
-const dialog: React.CSSProperties = { maxWidth: 1020, margin: "20px auto", padding: 20, borderRadius: 16, background: "var(--app-dark-surface, white)", color: "var(--app-dark-text, #17202a)", boxShadow: "0 20px 80px rgba(0,0,0,.3)" };
+const overlay: React.CSSProperties = { position: "fixed", inset: 0, zIndex: 2147482000, padding: "max(20px, env(safe-area-inset-top, 0px)) 20px max(20px, env(safe-area-inset-bottom, 0px))", background: "rgba(10,20,30,.72)", overflow: "auto", boxSizing:"border-box" };
+const dialog: React.CSSProperties = { maxWidth: 1020, margin: "0 auto", maxHeight:"calc(100dvh - 40px)", overflow:"auto", padding: 20, borderRadius: 16, background: "var(--app-dark-surface, white)", color: "var(--app-dark-text, #17202a)", boxShadow: "0 20px 80px rgba(0,0,0,.3)", boxSizing:"border-box" };
 const header: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 20, alignItems: "start" };
 const toolbar: React.CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, margin: "16px 0" };
 const canvas: React.CSSProperties = { position: "relative", margin: "0 auto", backgroundSize: "100% 100%", backgroundRepeat: "no-repeat", border: "1px solid #ccd3dc", cursor: "crosshair", overflow: "hidden" };
