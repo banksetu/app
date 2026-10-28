@@ -3,13 +3,12 @@ import { afsmDisplay } from "./core/afsm";
 import { identity } from "./core/localData";
 import { snapshot } from "./AllCustomerData";
 import { isAndroid, printAndroidPdf } from "./platform/android/runtime";
-import { customerPdfBuilder, customersPerPdfPage } from "./core/customerPdf";
+import { createFastCustomerPdf, customersPerPdfPage } from "./core/customerPdf";
 import PdfDocumentPreview from "./PdfDocumentPreview";
 import { classifyRecovery } from "./core/recovery";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getActiveLocalCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
 
   useEffect,
@@ -615,33 +614,13 @@ export default function Customers() {
       await requireLicensedWrite();
       const batchScope=localModeEnabled()?identity():null;
       const batchIds=records.map(record=>String(record.recordId||""));
-      const builder=customerPdfBuilder();
-      for(let index=0;index<records.length;index++){
-        if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
-        const item=previewCustomer(records[index]);
-        const host=document.createElement('div');host.style.cssText='position:fixed;top:0;left:0;width:1100px;z-index:-1;pointer-events:none';
-        host.innerHTML=renderToStaticMarkup(<CustomerPreviewCard customer={item}/>);
-        document.body.appendChild(host);
-        try{
-          const card=host.querySelector<HTMLElement>('.customer-preview');
-          if(!card)throw Error('Customer preview layout is unavailable.');
-          card.classList.add('pdf-capture');
-          card.style.cssText+=';width:1100px!important;max-height:none!important;overflow:visible!important';
-          const image=await snapshot(item as unknown as Record<string,unknown>,card,true);
-          const size=card.getBoundingClientRect();
-          const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Customer PDF image could not be read.'));reader.readAsDataURL(image);});
-          builder.add({dataUrl,width:size.width,height:card.scrollHeight});
-        }finally{host.remove();}
-        setPdfProgress(index+1);
-        if(index%customersPerPdfPage===customersPerPdfPage-1)await new Promise(resolve=>setTimeout(resolve,0));
-      }
+      const file=await createFastCustomerPdf(records,{cancelled:()=>pdfCancelled.current,progress:done=>setPdfProgress(done)});
       if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
-      const file=builder.finish();if(file.size<1000)throw Error('PDF output is empty. Retry generation.');
       await requireLicensedWrite();
       if(batchScope&&identity()!==batchScope)throw Error("Workspace changed. Generate the PDF again.");
-      setPdfBlob(file);setPdfCount(builder.count);
+      setPdfBlob(file);setPdfCount(records.length);
       if(batchScope&&batchIds.every(Boolean))setAfsmBatch({scope:batchScope,ids:batchIds,operationId:crypto.randomUUID()});
-      setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/customersPerPdfPage)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
+      setMessage(`${records.length} customer records in ${Math.ceil(records.length/customersPerPdfPage)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
       recordSafeRecovery('pdf','generate','verified');
     }catch(reason){
       recordSafeRecovery(classifyRecovery(reason),'generate','attention');
@@ -2315,20 +2294,6 @@ export default function Customers() {
 
   );
 
-}
-
-function previewCustomer(value: Record<string, unknown>): Customer {
-  const field = (key: string) => String(value[key] ?? "");
-  return {
-    ...emptyCustomer, afsmStatus:field("afsmStatus"),afsmSentAt:field("afsmSentAt"), enrolId:field("enrolId"), accountNo:field("accountNo"), name:field("name"),
-    coName:field("coName") || field("fatherName"), status:field("status"), gender:field("gender"),
-    contact:field("contact") || field("mobile"), accountOpeningDate:field("accountOpeningDate"),
-    address:field("address"), nominee:field("nominee"), postOffice:field("postOffice"),
-    passbookStatus:field("passbookStatus"), uidaiNo:field("uidaiNo"), dbtStatus:field("dbtStatus"),
-    purposeOfAdvance:field("purposeOfAdvance"), fullAddress:field("fullAddress"),
-    pinCode:field("pinCode"), pan:field("pan"), aofNo:field("aofNo"),
-    photoPreview:field("photoPreview") || field("photoDataUrl"),
-  };
 }
 
 function CustomerPreviewCard({customer,cardRef}:{customer:Customer;cardRef?:Ref<HTMLDivElement>}) {
