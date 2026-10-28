@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { auth } from "./firebase";
 import type { PrintOutcome } from "./platform/print";
+import ModalPortal from "./ModalPortal";
 
 export type PrintOffset = { x: number; y: number };
 const ZERO: PrintOffset = { x: 0, y: 0 };
@@ -70,7 +71,6 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
   const pnbA4NormalPrint=pnb&&printMode==="system";
   const canvasWidth=pnbA4NormalPrint?210:paperWidth, canvasHeight=pnbA4NormalPrint?297:paperHeight;
   useEffect(() => { setPreview(sourceDocument(sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint)); }, [sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint]);
-  useEffect(() => { const previous=document.body.style.overflow; document.body.style.overflow="hidden"; return () => {document.body.style.overflow=previous;}; }, []);
   const move = (dx: number, dy: number) => setOffset(current => clean({x:current.x+dx*step,y:current.y+dy*step}));
   const print = async (test: boolean) => {
     if (busy) return;
@@ -79,7 +79,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
     catch (cause) { setError(cause instanceof Error ? cause.message : "Print could not be started."); }
     finally { setBusy(false); }
   };
-  return <div className="print-alignment-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+  return <ModalPortal><div className="print-alignment-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="print-alignment-window" role="dialog" aria-modal="true" aria-label={`Print Alignment Preview for ${bankName}`}>
       <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName}) · {printMode==="pr2"?"Olivetti / PR2":"Normal Print"}</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
       <div className="print-alignment-columns">
@@ -132,8 +132,8 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
       </div>
     </section>
     <style>{`
-      .print-alignment-overlay{position:fixed;inset:0;z-index:5000;background:#2229;display:grid;place-items:center;padding:12px;overflow-y:auto;overscroll-behavior:contain;color:#272b32;font-family:Arial,sans-serif}
-      .print-alignment-window{width:min(1536px,98vw);max-height:96dvh;background:#f6f5f5;border-radius:13px;box-shadow:0 24px 70px #0007;overflow:auto}
+      .print-alignment-overlay{position:fixed;inset:0;z-index:2147482000;background:#2229;display:flex;align-items:flex-start;justify-content:center;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain;color:#272b32;font-family:Arial,sans-serif;box-sizing:border-box}
+      .print-alignment-window{width:min(1536px,98vw);max-height:calc(100dvh - 24px);background:#f6f5f5;border-radius:13px;box-shadow:0 24px 70px #0007;overflow:auto;flex:none}
       .print-alignment-window>header{background:linear-gradient(105deg,#c50f43,#df204a);color:white;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:clamp(18px,2vw,29px)}
       .print-alignment-window>header button{border:0;background:none;color:white;font-size:36px;line-height:1;cursor:pointer}
       .print-alignment-columns{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(360px,1fr);gap:16px;padding:14px}
@@ -173,5 +173,5 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
       @media(max-width:540px){.print-alignment-overlay{padding:0}.print-alignment-window{width:100%;max-height:100dvh;border-radius:0}.print-alignment-window>header{padding:12px;font-size:18px}.print-alignment-columns{padding:8px;gap:8px}.print-alignment-paper{max-height:48dvh}.print-alignment-control-row{flex-wrap:wrap}.print-alignment-measures{width:65px;font-size:12px}.print-alignment-panel{padding:10px}.print-alignment-arrows output{min-width:95px}.print-alignment-arrows button{width:45px;height:45px}.print-alignment-inputs{grid-template-columns:1fr}.print-alignment-actions button,.print-alignment-final button{font-size:14px}.print-alignment-measured{width:100%}}
       @media print{.print-alignment-overlay{display:none!important}}
     `}</style>
-  </div>;
+  </div></ModalPortal>;
 }
