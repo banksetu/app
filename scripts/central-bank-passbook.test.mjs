@@ -53,6 +53,26 @@ test('Central Bank physical passbook print omits stationery, logo, photograph an
   assert(source.includes('.central-bank-document[data-mode="passbook"]{background:transparent}'));
 });
 
+test('Central Bank data-only passbook is wired to the Olivetti PR2 path at 190 x 173 mm',()=>{
+  const passbook=fs.readFileSync(new URL('../src/Passbook.tsx',import.meta.url),'utf8');
+  const dialog=fs.readFileSync(new URL('../src/Pr2PrinterDialog.tsx',import.meta.url),'utf8');
+  const ipc=fs.readFileSync(new URL('../desktop/pr2-ipc.cjs',import.meta.url),'utf8');
+  assert(passbook.includes('isCentral ? ".passbook-page .central-bank-document"'));
+  assert(passbook.includes('Olivetti Mode Print'));
+  assert(dialog.includes('/central bank of india|central bank|\\bcbi\\b/i.test(bankName)?173'));
+  assert(ipc.includes('.passbook-page .central-bank-document'));
+  assert(source.includes('html.pr2-direct-preparing .central-upper'));
+});
+
+test('viewport dialogs escape optimized page transforms through the shared body portal',()=>{
+  const components=['PrintAlignmentPreview.tsx','Pr2PrinterDialog.tsx','BankFormatLayoutEditor.tsx','CustomerExcelExport.tsx','CustomerCamera.tsx','SoftwareUpdateNotice.tsx','AdminUsers.tsx','Customers.tsx','AccountOpeningPDF.tsx'];
+  for(const file of components)assert(fs.readFileSync(new URL(`../src/${file}`,import.meta.url),'utf8').includes('ModalPortal'),file);
+  const portal=fs.readFileSync(new URL('../src/ModalPortal.tsx',import.meta.url),'utf8');
+  assert.match(portal,/createPortal\(children, document\.body\)/);
+  const alignment=fs.readFileSync(new URL('../src/PrintAlignmentPreview.tsx',import.meta.url),'utf8');
+  assert.match(alignment,/align-items:flex-start/);assert.match(alignment,/safe-area-inset-top/);
+});
+
 test('Central Bank is built in for passbooks but uses its own uploaded account-opening sample',async()=>{
   const policy=await import('../src/bankDocumentPolicy.ts');
   assert.equal(policy.bankDocumentMode('Central Bank of India'),'builtin');
