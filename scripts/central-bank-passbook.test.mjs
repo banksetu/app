@@ -3,16 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import * as jsxRuntime from 'react/jsx-runtime';
 import ts from 'typescript';
-import vm from 'node:vm';
 
 const source=fs.readFileSync(new URL('../src/CentralBankPassbook.tsx',import.meta.url),'utf8');
-const compiled=ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
-const module={exports:{}};
-const require=(id)=>id==='react/jsx-runtime'?jsxRuntime:id==='react'?React:{};
-vm.runInNewContext(compiled,{module,exports:module.exports,require},{filename:'CentralBankPassbook.js'});
-const CentralBankPassbook=module.exports.default;
+const compiled=new URL('../src/.central-bank-test-render.mjs',import.meta.url);
+fs.writeFileSync(compiled,ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText);
+let CentralBankPassbook;
+try { CentralBankPassbook=(await import(compiled.href)).default; } finally { fs.rmSync(compiled); }
 
 const customer={customerId:'CIF-0091',accountNo:'5901891316',name:'SYNTHETIC CUSTOMER',coName:'SYNTHETIC GUARDIAN',fullAddress:'321 TEST VILLAGE, BADARPUR, ASSAM 788806',accountOpeningDate:'2026-10-27',photoPreview:'data:image/png;base64,PHOTO',accountType:'SAVINGS',modeOfOperation:'SELF',operatingInstruction:'SINGLY'};
 const bankInfo={passbookBank:'Central Bank of India',branchName:'BADARPUR',branchState:'ASSAM',branchAddress:'MODAK COMPLEX, ST ROAD BADARPUR',branchDistrict:'KARIMGANJ',branchPinCode:'788806',branchPhone:'268644',gstin:'18AAACC2498P3Z0',ckyc:'CKYC-001',micr:'788016789',ifsc:'CBIN0283594'};
@@ -29,6 +26,9 @@ test('Central Bank quick passbook recreates the full 19 x 17.3 cm stationery as 
   assert(quick.includes('data:image/png;base64,LOGO'));
   assert(quick.includes('data:image/png;base64,PHOTO'));
   assert(!source.includes('central-bank-passbook-template'));
+  assert(source.includes('font-size:1.78mm'));
+  assert(source.includes('font:400 9px/3.55mm'));
+  assert(source.includes('letter-spacing:.55px'));
 });
 
 test('Central Bank lower data is mapped from the selected tenant bank and customer',()=>{
