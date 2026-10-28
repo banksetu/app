@@ -26,7 +26,7 @@ test('AFSM real A4 PDF for 1,20,21,40,55,100: first-page-only heading, continuou
 test('bank setup and empty selection fail clearly; menu and legacy batch confirmation use common service',()=>{
  assert.throws(()=>makeAfsmPdf('',[{name:'One'}]),/Bank Information/);assert.throws(()=>makeAfsmPdf('SBI',[]),/Select/);
  const menu=fs.readFileSync('src/Dashboard.tsx','utf8');assert(menu.indexOf('label="Account Opening PDF Sample"')<menu.indexOf('label="Forms Send to Branch"'));assert(menu.indexOf('label="Forms Send to Branch"')<menu.indexOf('label="Settings"'));
- const customers=fs.readFileSync('src/Customers.tsx','utf8');assert(customers.includes('records.map(record=>String(record.recordId'));assert(customers.includes('<AfsmConfirmation'));assert(customers.includes('customerPdfBuilder()'));
+ const customers=fs.readFileSync('src/Customers.tsx','utf8');assert(customers.includes('records.map(record=>String(record.recordId'));assert(customers.includes('<AfsmConfirmation'));assert(customers.includes('createFastCustomerPdf(records'));
 });
 test('AFSM header uses selected tenant bank, right-aligned CSP on date row and first-page-only header',async()=>{
  const dashboard=fs.readFileSync('src/Dashboard.tsx','utf8');assert(dashboard.includes('<FormsSendToBranch bankName={bankInfo.passbookBank} cspCode={bankInfo.cspCode} />'));assert(!dashboard.includes('<FormsSendToBranch bankName={bankInfo.bankName}'));

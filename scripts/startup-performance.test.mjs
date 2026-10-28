@@ -53,7 +53,7 @@ test("Windows database startup keeps crash recovery but skips repeated full scan
   assert.match(store, /fs\.unlinkSync\(openMarker\)/);
 });
 
-test("All Customer Data preloads locally, renders bounded pages and shares no account metadata", () => {
+test("All Customer Data preloads locally, keeps its popup visible and shares everything except account/additional details", () => {
   const list=read("src/AllCustomerData.tsx");
   const dashboard=read("src/Dashboard.tsx");
   const cache=read("src/customerListCache.ts");
@@ -62,9 +62,14 @@ test("All Customer Data preloads locally, renders bounded pages and shares no ac
   assert.match(cache,/export async function preloadAllCustomerData/);
   assert.match(dashboard,/preloadAllCustomerData\(\)/);
   assert.match(list,/querySelectorAll\("\.customer-preview-share-exclude"\)/);
-  assert.match(list,/customer-preview-identity customer-preview-share-exclude/);
-  assert.match(list,/customer-preview-bottom customer-preview-share-exclude/);
+  assert.doesNotMatch(list,/customer-preview-identity customer-preview-share-exclude/);
+  assert.doesNotMatch(list,/customer-preview-bottom customer-preview-share-exclude/);
+  assert.match(list,/customer-preview-section customer-preview-share-exclude"><h3>▦ &nbsp;Account Details/);
   assert.match(list,/customer-preview-section customer-preview-share-exclude/);
+  assert.match(list,/align-items:flex-start;justify-content:center/);
+  assert.match(list,/max-height:none;overflow:visible/);
+  assert.match(list,/previewOverlay\.current\?\.scrollTo\(\{top:0,left:0\}\)/);
+  assert.match(list,/createPortal\(<div ref=\{previewOverlay\}/);
   assert.match(list,/customer-preview-card \{[^}]*text-align:left/);
   assert.match(list,/customer-preview-section dd \{[^}]*text-align:left/);
   assert.match(list,/function applyShareCaptureTheme/);

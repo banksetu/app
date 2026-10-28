@@ -26,11 +26,11 @@ try{
  await desktop.close();
 
  const mobile=await browser.newPage({viewport:{width:390,height:800}});await mobile.goto('http://127.0.0.1:5202/test-evidence/floating-support.html');await mobile.waitForTimeout(100);
- const mobileHome=await rect(mobile);assert(Math.abs(mobileHome.right-381)<2&&Math.abs(mobileHome.bottom-728)<2,'mobile starts at its existing bottom-right safe position');
+ const mobileHome=await rect(mobile);assert(Math.abs(mobileHome.right-388)<2&&Math.abs(mobileHome.bottom-798)<2,'mobile starts two pixels inside the bottom-right corner');
  await mobile.getByLabel('Keyboard field').focus();await mobile.setViewportSize({width:390,height:500});await mobile.waitForTimeout(100);
  keyboard=await rect(mobile);assert(Math.abs(keyboard.y-mobileHome.y)<2,'opening a mobile keyboard does not push the support icon upward');
- await mobile.setViewportSize({width:390,height:800});await mobile.waitForTimeout(100);home=await rect(mobile);assert(Math.abs(home.right-381)<2&&Math.abs(home.bottom-728)<2,'closing the keyboard restores the same home position');
- await mobile.getByLabel('Keyboard field').blur();await mobile.setViewportSize({width:390,height:650});await mobile.waitForTimeout(100);home=await rect(mobile);assert(Math.abs(home.right-381)<2&&Math.abs(home.bottom-578)<2,'ordinary mobile resize locks to the new bottom-right corner');
+ await mobile.setViewportSize({width:390,height:800});await mobile.waitForTimeout(100);home=await rect(mobile);assert(Math.abs(home.right-388)<2&&Math.abs(home.bottom-798)<2,'closing the keyboard restores the same home position');
+ await mobile.getByLabel('Keyboard field').blur();await mobile.setViewportSize({width:390,height:650});await mobile.waitForTimeout(100);home=await rect(mobile);assert(Math.abs(home.right-388)<2&&Math.abs(home.bottom-648)<2,'ordinary mobile resize locks two pixels inside the new bottom-right corner');
  await mobile.close();
 }finally{
  await browser?.close();await server.close();

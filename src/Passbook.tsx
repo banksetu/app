@@ -988,8 +988,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
       if (problems.length) { setError(problems.join(' ')); return; }
     }
-    try { await requireLicensedWrite(); setError(""); setMessage(""); setAlignmentMode("pr2"); setAlignmentOpen(true); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Printing is unavailable.'); }
+    setError(""); setMessage(""); setAlignmentMode("pr2"); setAlignmentOpen(true);
   };
 
   const directPrintCompleted = async () => {
@@ -1015,7 +1014,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
   return (
 
-    <div className="passbook-page">
+    <div className="passbook-page" data-print-root="active">
       {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} offset={directOffset} testOnly={directTestOnly} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
 
       <style>{`

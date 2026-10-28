@@ -11,6 +11,7 @@ import {
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import "./AdminUsers.css";
+import ModalPortal from "./ModalPortal";
 
 type UserStatus =
   | "pending"
@@ -590,7 +591,7 @@ function AdminUsers({ embedded = false }: Props) {
         👥 Users
       </button>
 
-      {open && (
+      {open && <ModalPortal>
         <div
           className="admin-users-overlay"
           role="dialog"
@@ -598,7 +599,7 @@ function AdminUsers({ embedded = false }: Props) {
         >
           {panel}
         </div>
-      )}
+      </ModalPortal>}
     </>
   );
 }

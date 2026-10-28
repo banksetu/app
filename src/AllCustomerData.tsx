@@ -1,5 +1,6 @@
 import { afsmDisplay } from "./core/afsmPolicy";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { getAuth } from "firebase/auth";
 import { localDataFetch, getDataIdToken, getLocalSnapshot, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerListScope, readCustomerListCache, writeCustomerListCache, type CachedCustomer } from "./customerListCache";
@@ -69,8 +70,6 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   copy.querySelector(".customer-preview-actions")?.remove();
   if(!forPdf){
     copy.querySelectorAll(".customer-preview-share-exclude").forEach(node=>node.remove());
-    const subtitle=copy.querySelector(".customer-preview-heading p");
-    if(subtitle)subtitle.textContent="Personal, contact and address information";
     if (copy.classList.contains("customer-preview-card"))
       applyShareCaptureTheme(copy,document.documentElement.dataset.appearance === "dark");
   }
@@ -141,6 +140,7 @@ export default function AllCustomerData() {
   const [cached] = useState(()=>readCustomerListCache(scope));
   const [query, setQuery] = useState("");
   const previewCard = useRef<HTMLDivElement>(null);
+  const previewOverlay = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<Customer[]>(()=>cached.slice(0,LOCAL_PAGE_SIZE));
   const [selected, setSelected] = useState<Customer | null>(null);
   const [error, setError] = useState("");
@@ -203,6 +203,15 @@ export default function AllCustomerData() {
   useEffect(() => {
     return () => { generation.current += 1; };
   }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    const frame = requestAnimationFrame(() => {
+      previewOverlay.current?.scrollTo({top:0,left:0});
+      previewCard.current?.scrollTo({top:0,left:0});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selected]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -328,11 +337,11 @@ export default function AllCustomerData() {
       {loading && <p role="status">Loading customers…</p>}
       {!query.trim() && more && <button type="button" disabled={loading} onClick={() => void loadPage()}>Load more customers</button>}
     </div>
-    {selected && <div className="customer-preview-overlay" role="presentation" onClick={() => setSelected(null)}>
+    {selected && createPortal(<div ref={previewOverlay} className="customer-preview-overlay" data-print-root="active" role="presentation" onClick={() => setSelected(null)}>
       <div ref={previewCard} className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
         <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
         <div className="customer-preview-content">
-          <div className="customer-preview-identity customer-preview-share-exclude">
+          <div className="customer-preview-identity">
             {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)
               ? <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" />
               : <div className="customer-preview-photo-placeholder" aria-label="No customer photograph">●</div>}
@@ -354,11 +363,11 @@ export default function AllCustomerData() {
               {([["Mobile Number",selected.contact || selected.mobile],["Email",selected.email]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
             </dl></section>
             {(value(selected.fullAddress || selected.address || selected.postOffice || selected.pinCode)) && <section className="customer-preview-section"><h3>● &nbsp;Address</h3><p className="customer-preview-address">{value(selected.fullAddress || selected.address)}{selected.postOffice && !value(selected.fullAddress).includes(value(selected.postOffice)) ? ` · PO: ${value(selected.postOffice)}` : ""}{selected.pinCode && !value(selected.fullAddress || selected.address).includes(value(selected.pinCode)) ? ` · ${value(selected.pinCode)}` : ""}</p></section>}
-            <div className="customer-preview-bottom customer-preview-share-exclude">
+            <div className="customer-preview-bottom">
               {(value(selected.branch || selected.branchName || selected.ifsc || selected.ifscCode)) && <section className="customer-preview-section"><h3>▤ &nbsp;Branch Details</h3><dl>
                 {([["Branch",selected.branch || selected.branchName],["IFSC",selected.ifsc || selected.ifscCode]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
               </dl></section>}
-              <section className="customer-preview-section"><h3>▦ &nbsp;Account Details</h3><dl><div><dt>Form Send to Branch</dt><dd>{afsmDisplay(selected)}</dd></div>
+              <section className="customer-preview-section customer-preview-share-exclude"><h3>▦ &nbsp;Account Details</h3><dl><div><dt>Form Send to Branch</dt><dd>{afsmDisplay(selected)}</dd></div>
                 {([["A/C Type",selected.accountType || selected.acType || selected.accountCategory],["Open Date",selected.accountOpeningDate],["AOF No.",selected.aofNo]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
               </dl></section>
             </div>
@@ -371,19 +380,19 @@ export default function AllCustomerData() {
           </div>
         </div>
       </div>
-    </div>}
+    </div>,document.body)}
     <style>{`
       .all-customer-data tbody tr:hover,.all-customer-data tbody tr:focus {background:#fbd9e3!important;outline:2px solid #d17a9c}
       .all-customer-row-enter {animation:banksetu-customer-row-in .34s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--customer-row-index,0) * 24ms);will-change:transform,opacity}
       @keyframes banksetu-customer-row-in {from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
-      .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:grid;place-items:center;padding:14px;overflow:auto}
-      .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:94dvh;overflow:auto;text-align:left}
-      .customer-preview-heading {background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px;text-align:left}
+      .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:flex;align-items:flex-start;justify-content:center;padding:max(14px,env(safe-area-inset-top,0px)) 14px max(14px,env(safe-area-inset-bottom,0px));overflow:auto;overscroll-behavior:contain}
+      .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:none;overflow:visible;text-align:left;flex:none}
+      .customer-preview-heading {position:sticky;top:0;z-index:2;background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px;text-align:left;border-radius:20px 20px 0 0}
       .customer-preview-heading h2 {color:white;margin:0;font-size:clamp(21px,3.5vw,30px)}.customer-preview-heading p{margin:3px 0 0;font-size:15px}
       .customer-preview-avatar {width:52px;height:52px;flex:none;border-radius:50%;background:white;color:#ee2160;display:grid;place-items:center;font-size:34px}
       .customer-preview-close {margin-left:auto;background:transparent;border:0;color:white;font-size:30px;cursor:pointer}
       .customer-preview-content {margin:16px 20px 20px;padding:20px;border:1px solid #ffd5df;border-radius:14px;background:#fff9fb}
-      .customer-preview-identity {display:flex;gap:24px;align-items:flex-start;position:relative;margin-bottom:20px;text-align:left}
+      .customer-preview-identity {display:grid;grid-template-columns:132px minmax(0,1fr) auto;gap:24px;align-items:start;position:relative;margin-bottom:20px;text-align:left}
       .customer-preview-identity>img,.customer-preview-photo-placeholder {width:132px;height:146px;object-fit:cover;border-radius:10px;flex:none;background:#dfe5ec}
       .customer-preview-photo-placeholder {display:grid;place-items:center;color:#8090a0;font-size:60px}
       .customer-preview-account {min-width:0;flex:1}.customer-preview-name {font-weight:800;font-size:clamp(24px,4vw,32px);line-height:1.1;overflow-wrap:anywhere}
@@ -394,13 +403,19 @@ export default function AllCustomerData() {
       .customer-preview-status {background:#d9f8e8;border:1px solid #8ce7b7;color:#078350;border-radius:13px;padding:7px 14px;font-weight:700;white-space:nowrap}
       .customer-preview-sections {display:grid;gap:14px;text-align:left}.customer-preview-section {border:1px solid #f8d4df;border-radius:12px;background:white;overflow:hidden;box-shadow:0 2px 8px #e483a21a;text-align:left}
       .customer-preview-section h3 {color:#12254d;background:#fff0f4;margin:0;padding:11px 17px;font-size:18px;text-align:left}
-      .customer-preview-section dl {margin:0;padding:10px 18px}.customer-preview-section dl>div {display:grid;grid-template-columns:minmax(145px,36%) minmax(0,1fr);gap:12px;align-items:start;padding:5px 0;line-height:1.45;overflow-wrap:anywhere;border-bottom:1px solid #f6e8ed;text-align:left}
+      .customer-preview-section dl {margin:0;padding:10px 18px}.customer-preview-section dl>div {display:grid;grid-template-columns:minmax(145px,36%) minmax(0,1fr);gap:12px;align-items:start;min-height:30px;padding:5px 0;line-height:1.4;overflow-wrap:anywhere;border-bottom:1px solid #f6e8ed;text-align:left}
       .customer-preview-section dl>div:last-child {border-bottom:0}.customer-preview-section dt {font-weight:700;text-align:left}.customer-preview-section dt::after {content:":";float:right;padding-right:5px}.customer-preview-section dd {margin:0;text-align:left;min-width:0;overflow-wrap:anywhere}.customer-preview-address {margin:0;padding:14px 18px;line-height:1.55;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}
       .customer-preview-bottom {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.customer-preview-bottom>.customer-preview-section:only-child{grid-column:1/-1}
       .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
       .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #d57c99;background:#fff;cursor:pointer}
       .customer-preview-actions button:first-child {background:#d51c57;color:white}
-      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:calc(100% - 112px)}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl{padding:9px 12px}.customer-preview-section dl>div{grid-template-columns:minmax(112px,40%) minmax(0,1fr);gap:9px}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-content,
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section,
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-bottom {background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section h3 {background:#233249!important;color:#f8fafc!important}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay :is(.customer-preview-name,.customer-preview-account-label,.customer-preview-account-value,.customer-preview-section dt,.customer-preview-section dd,.customer-preview-address) {color:#f8fafc!important}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section dl>div {border-color:#2d3e57!important}
+      @media(max-width:650px){.customer-preview-overlay{padding:max(2px,env(safe-area-inset-top,0px)) 2px max(2px,env(safe-area-inset-bottom,0px))}.customer-preview-card{width:100%;border-radius:12px}.customer-preview-heading{padding:14px;gap:10px;border-radius:12px 12px 0 0}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{grid-template-columns:100px minmax(0,1fr);gap:12px}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:none}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{grid-column:1/-1;justify-self:start}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl{padding:9px 12px}.customer-preview-section dl>div{grid-template-columns:minmax(112px,40%) minmax(0,1fr);gap:9px}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
       @media(prefers-reduced-motion:reduce){.all-customer-row-enter{animation:none!important}}
       @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}.all-customer-row-enter{animation:none!important}}
     `}</style>

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
+import ModalPortal from "./ModalPortal";
 
 
 
@@ -517,7 +518,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
   return (
 
-    <div className="aof-module">
+    <div className="aof-module" data-print-root="active">
 
       <style>{`
 
@@ -1724,7 +1725,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
       </form>
 
-      {showMatchModal && customerMatches.length > 1 && (
+      {showMatchModal && customerMatches.length > 1 && <ModalPortal>
         <div
           className="match-modal-backdrop"
           role="dialog"
@@ -1787,7 +1788,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
             </div>
           </div>
         </div>
-      )}
+      </ModalPortal>}
 
 
       {error ? <div className="notice error">{error}</div> : null}

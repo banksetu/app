@@ -5,10 +5,10 @@ const margin=8;
 const returnDelayMs=5000;
 function safeBottom(){
   const configuredSafeBottom=Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'))||0;
-  return (window.innerWidth<700?72:12)+configuredSafeBottom;
+  return window.innerWidth<700?2:12+configuredSafeBottom;
 }
 function home(size=54,height=window.innerHeight):Position{
-  return {x:Math.max(margin,window.innerWidth-size-(window.innerWidth<700?9:12)),y:Math.max(margin,height-size-safeBottom())};
+  return {x:Math.max(margin,window.innerWidth-size-(window.innerWidth<700?2:12)),y:Math.max(margin,height-size-safeBottom())};
 }
 function clamp(position:Position,size=54,height=window.innerHeight):Position{
   return {x:Math.max(margin,Math.min(position.x,window.innerWidth-size-margin)),y:Math.max(margin,Math.min(position.y,height-size-safeBottom()))};

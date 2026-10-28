@@ -32,7 +32,8 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   assert.equal(snapshot.options.webPreferences.javascript,false);
   assert.equal(preview.options.webPreferences.nodeIntegration,false);
   assert.equal(preview.options.webPreferences.plugins,true);
-  assert(decodeURIComponent(snapshot.url).includes('Customer snapshot'));
+  assert(Buffer.from(snapshot.url.split(',')[1],'base64').toString().includes('Customer snapshot'));
+  assert.equal(preview.options.show,false,'a loading shell is prepared before showing the preview');
   assert.equal(pdfOptions[0].preferCSSPageSize,true);
   const previewEvent={sender:preview.webContents,senderFrame:preview.webContents.mainFrame};
   const settings={paper:'document',landscape:false,duplex:true,scale:100,copies:1,pageRanges:'1-2, 4',deviceName:'test-printer'};
@@ -80,6 +81,15 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   windows.at(-1).close();await Promise.all([first,second]);
   const third=handlers.get('print:preview')(nextEvent,'<html/>');await new Promise(resolve=>setImmediate(resolve));
   windows.at(-1).close();await third;next.close();
+});
+
+test('print capture scopes the snapshot to the active printable module and opens a progress shell first',()=>{
+ const source=require('node:fs').readFileSync(require.resolve('./print-preview.cjs'),'utf8');
+ assert.match(source,/\[data-print-root="active"\]/);
+ assert.match(source,/body\.replaceChildren\(selected\)/);
+ assert.match(source,/Preparing print preview/);
+ assert.match(source,/getPrintersAsync\(\).*\.then/);
+ assert.doesNotMatch(source,/encodeURIComponent\(html\)/);
 });
 
 test('native print IPC rejects suspended entitlement before creating a PDF or printer window',async()=>{

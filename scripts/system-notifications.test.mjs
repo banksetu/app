@@ -20,3 +20,15 @@ test('Windows native notifications use the bridge; user setting disables deliver
  globalThis.__device='electron';tenant='tenant-c';notifySystem(event);await tick();assert.equal(sent.length,3);
  localStorage.getItem=()=> 'off';notifySystem({...event,key:'another'});await tick();assert.equal(sent.length,3);
 });
+test('Android background delivery has an OS-visible payload and persistent token refresh',()=>{
+ const worker=fs.readFileSync('cloudflare/worker.js','utf8');
+ const registration=fs.readFileSync('android/app/src/main/java/in/banksetu/android/BankSetuPushRegistration.java','utf8');
+ const refreshWorker=fs.readFileSync('android/app/src/main/java/in/banksetu/android/BankSetuPushRefreshWorker.java','utf8');
+ assert.match(worker,/notification:\{title:event\.title,body:event\.body\}/);
+ assert.match(worker,/ttl:"604800s"/);
+ assert.match(worker,/PUSH_RETENTION_MS = 30 \* 86400000/);
+ assert.match(registration,/enqueueUniquePeriodicWork/);
+ assert.match(registration,/7,TimeUnit\.DAYS/);
+ assert.match(refreshWorker,/FirebaseMessaging\.getInstance\(\)\.getToken/);
+ assert.match(refreshWorker,/refreshBlocking/);
+});

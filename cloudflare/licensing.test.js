@@ -62,9 +62,10 @@ test('prices are exact paise and upgrade credit is bounded',()=>{
   assert.throws(()=>validatePricing({...pricing,lifetimePaise:-1}));
 });
 test('inquiry validates size and fields without accepting arbitrary pricing',()=>{
-  const input={name:'Person',mobile:'9876543210',email:'',bankName:'Bank CSP',location:'',message:'',plan:'annual',requestId:'01234567-89ab-4cde-8fab-0123456789ab',quotedPaise:1};
+  const input={name:'Person',mobile:'9876543210',email:'person@example.test',bankName:'Bank CSP',location:'',message:'',plan:'annual',requestId:'01234567-89ab-4cde-8fab-0123456789ab',quotedPaise:1};
   assert(!('quotedPaise' in validateInquiry(input)));
   assert.throws(()=>validateInquiry({...input,mobile:'123'}));
+  assert.throws(()=>validateInquiry({...input,email:''}));
   assert.throws(()=>validateInquiry({...input,message:'x'.repeat(501)}));
 });
 

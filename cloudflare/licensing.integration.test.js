@@ -59,6 +59,15 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert.equal((await call('client','/presence-heartbeat',{})).status,403,'pending clients remain blocked from operations');
     assert.equal((await call('master','/create-client',{})).status,400);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
+    const inquiryId='11234567-89ab-4cde-8fab-0123456789ab';
+    store.set('tenants/inquiry-tenant',doc('tenants/inquiry-tenant',{tenantId:'inquiry-tenant',status:'active',ownerUid:'inquiry-client'}));
+    store.set('users/inquiry-client',doc('users/inquiry-client',{role:'client_admin',tenantId:'inquiry-tenant',email:'inquiry@example.test',status:'approved',subscriptionStatus:'active'}));
+    store.set(`licenseRequests/${inquiryId}`,doc(`licenseRequests/${inquiryId}`,{id:inquiryId,kind:'inquiry',requestedPlan:'demo',tenantId:'inquiry-tenant',clientUid:'inquiry-client',email:'inquiry@example.test',onboardingStage:'client_created',status:'pending',paymentStatus:'not_paid'}));
+    const inquiryApproval=await call('master','/license-admin-decision',{requestId:inquiryId,action:'approve',plan:'demo'});
+    assert.equal(inquiryApproval.status,200,JSON.stringify(inquiryApproval.body));
+    assert.equal(inquiryApproval.body.license.plan,'demo');
+    assert.equal(Date.parse(inquiryApproval.body.license.expiresAt)-Date.parse(inquiryApproval.body.license.activatedAt),5*86400000,'inquiry Demo remains exactly five days');
+    assert.equal((await call('master','/license-admin-decision',{requestId:inquiryId,action:'approve',plan:'demo'})).body.repeated,true);
     const id='01234567-89ab-4cde-8fab-0123456789ab';
     const deniedAssignment=await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true});
     assert.equal(deniedAssignment.status,403,JSON.stringify(deniedAssignment.body));

@@ -71,13 +71,14 @@ jobs:
           const script = await getJson('Apps Script', 'https://script.google.com/macros/s/AKfycbxq3oN4nwfOQfiPs3NgaeBzxoWU2-JPFSZ4o-J5WLZrCF7wyflJwdPjyJ_QjFRHFBIT/exec?action=status');
           assert.equal(script.success, true);
           assert.equal(script.tenantIsolationVersion, 'v2', 'Apps Script is not deployed with tenant isolation v2');
+          assert.equal(script.licenseInquiryEmailVersion, 1, 'Apps Script is not deployed with protected license inquiry email v1');
 
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
             '## Production smoke checks passed',
             `Verified published commit: ${hostingCommit} (contains source ${process.env.FRONTEND_COMMIT})`,
             'Firebase Hosting: live commit verified',
             'Cloudflare Worker: health endpoint verified',
-            'Apps Script: tenant isolation v2 verified',
+            'Apps Script: tenant isolation v2 and license inquiry email v1 verified',
             '',
           ].join('\n'));
           NODE
