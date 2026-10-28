@@ -289,6 +289,8 @@ async function putDocument(env, path, fields) {
 
 const pushTokenPattern = /^[A-Za-z0-9_:\-]{80,4096}$/;
 const pushDevicePattern = /^[a-f0-9-]{36}$/;
+const PUSH_RETENTION_MS = 30 * 86400000;
+const SYNC_PUSH_COOLDOWN_MS = 5 * 60000;
 export function validatePushRegistration(body) {
   if (!pushDevicePattern.test(String(body.deviceId || "")) || !pushTokenPattern.test(String(body.token || ""))) return false;
   return body.platform === "android";
@@ -337,7 +339,8 @@ async function preparePushJob(env, tenantId, event) {
   } }) });
   const seen = new Set();
   const deviceIds = rows.filter(row => {const record=licenseFields(row.document), key=record.uid+":"+record.token;if(seen.has(key))return false;seen.add(key);return true;}).map(row=>row.document?.name?.split("/").pop()).filter(id=>pushDevicePattern.test(id||""));
-  return deviceIds.length ? { tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date().toISOString() } : null;
+  const now=Date.now();
+  return deviceIds.length ? { tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date(now).toISOString(), expiresAt:new Date(now+PUSH_RETENTION_MS) } : null;
 }
 
 export async function drainQueuedPush(env, tenantId, eventDocId) {
@@ -354,6 +357,10 @@ export async function drainQueuedPush(env, tenantId, eventDocId) {
   }
   if (!doc) return;
   const id = doc.name.split("/").pop(), job = licenseFields(doc), now = Date.now();
+  if (Date.parse(job.expiresAt || "") <= now) {
+    await licenseCommit(env,[{delete:doc.name,currentDocument:{updateTime:doc.updateTime}}]).catch(()=>undefined);
+    return;
+  }
   if (Number(job.leaseUntil || 0) > now) return;
   if (!Array.isArray(job.deviceIds) || !job.event || !job.tenantId) return;
   try { await licenseCommit(env, [licenseWrite(env, "pendingPushEvents", id, {...job, leaseUntil:now + 60_000}, {updateTime:doc.updateTime})]); }
@@ -379,9 +386,12 @@ export async function drainQueuedPush(env, tenantId, eventDocId) {
     let result;
     try { result = await fetch("https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(env.FIREBASE_PROJECT_ID) + "/messages:send", {
       method:"POST", headers:{authorization:"Bearer " + await serviceAccessToken(env),"content-type":"application/json"}, signal:AbortSignal.timeout(5000),
-      body:JSON.stringify({message:{token:record.token,...(record.scopedData===true?{}:{notification:{title:event.title,body:event.body}}),
+      // A notification payload lets Android display this while the WebView and
+      // app process are stopped. Text is deliberately generic: customer data
+      // and other private fields never leave the normal sync channel.
+      body:JSON.stringify({message:{token:record.token,notification:{title:event.title,body:event.body},
         data:{page:event.page||"license-management",category:event.category||"license",eventId:event.id,uid:record.uid,tenantId:job.tenantId,title:event.title,body:event.body},
-        android:{priority:"HIGH",ttl:"86400s",...(record.scopedData===true?{}:{notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}})}
+        android:{priority:"HIGH",ttl:"604800s",notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}}
       }})
     }); } catch { break; } // Keep this recipient queued for the next invocation.
     if (!result.ok) {
@@ -404,6 +414,27 @@ export async function sendTenantPush(env, tenantId, event) {
     catch(error){if(![409,412].includes(error.status))throw error;}
     await drainQueuedPush(env, tenantId, id);
   } catch(error){console.warn("Bank Setu push delivery queued/unavailable",error instanceof Error?error.message:"unknown");}
+}
+
+export async function handleSyncPushEvent(request,env,actor) {
+  const role=String(actor.profile?.role||"").toLowerCase(),tenantId=String(actor.profile?.tenantId||"");
+  if(!["client_admin","client_user"].includes(role)||!tenantId)return json({error:"A verified client workspace is required."},403);
+  const body=await request.json().catch(()=>({})),eventId=String(body.eventId||""),action=String(body.action||"");
+  if(!/^[a-f0-9-]{36}$/i.test(eventId)||!["saveCustomer","updateCustomer","deleteCustomer"].includes(action))return json({error:"Invalid sync notification."},400);
+  const now=Date.now(),stateId=await pushEventId("sync-state",tenantId),state=await licenseDoc(env,"/pushSyncSignals/"+stateId),current=licenseFields(state);
+  if(Number(current.lastNotifiedAt||0)>now-SYNC_PUSH_COOLDOWN_MS)return json({success:true,suppressed:true});
+  const event={id:"sync:"+Math.floor(now/SYNC_PUSH_COOLDOWN_MS),title:"New customer data available",body:"Customer changes from another device are ready to sync.",category:"sync",page:"sync-backup"};
+  const job=await preparePushJob(env,tenantId,event);
+  if(!job)return json({success:true,queued:false});
+  const queueId=await pushEventId(tenantId,event.id);
+  try{
+    await licenseCommit(env,[
+      licenseWrite(env,"pushSyncSignals",stateId,{tenantId,lastNotifiedAt:now,updatedAt:new Date(now).toISOString()},state?{updateTime:state.updateTime}:{exists:false}),
+      licenseWrite(env,"pendingPushEvents",queueId,job,{exists:false}),
+    ]);
+  }catch(error){if(![409,412].includes(error.status))throw error;return json({success:true,suppressed:true});}
+  await drainQueuedPush(env,tenantId,queueId);
+  return json({success:true,queued:true});
 }
 
 const LICENSE_INQUIRY_EMAIL = "banksetu2026@gmail.com";
@@ -485,7 +516,7 @@ export async function deliverScheduledNotices(env) {
       const id = await pushEventId(tenantId,event.id);
       if (await licenseDoc(env,"/pushEventClaims/"+id)) continue;
       const at = new Date().toISOString(), job = await preparePushJob(env,tenantId,event);
-      const writes = [licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at},{exists:false})];
+      const writes = [licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at,expiresAt:new Date(Date.now()+PUSH_RETENTION_MS)},{exists:false})];
       if(event.category!=="update")writes.push(licenseWrite(env,"licenseAudit",id,{tenantId,action:view.state.includes("expired")?"expired":view.state==="expiring_soon"?"expiry_warning":"activated",actorUid:"system",at,plan:license.plan},{exists:false}));
       if(job)writes.push(licenseWrite(env,"pendingPushEvents",id,job,{exists:false}));
       try{await licenseCommit(env,writes);}catch(error){if(![409,412].includes(error.status))throw error;}
@@ -503,6 +534,19 @@ async function purgeExpiredPushDevices(env) {
   for (const row of rows) {
     const id = row.document?.name?.split('/').pop();
     if (id && pushDevicePattern.test(id)) await firestoreRequest(env, `/pushDevices/${id}`, { method: "DELETE" });
+  }
+}
+
+export async function purgeExpiredPushArtifacts(env) {
+  // Bounded cleanup keeps the free-tier database small without ever scanning
+  // or touching customer/sync collections.
+  const now={timestampValue:new Date().toISOString()};
+  for(const collectionId of ["pendingPushEvents","pushEventClaims"]){
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{
+      from:[{collectionId}],where:{fieldFilter:{field:{fieldPath:"expiresAt"},op:"LESS_THAN_OR_EQUAL",value:now}},limit:2
+    }})}).catch(()=>[]);
+    const writes=rows.map(row=>row.document).filter(Boolean).map(document=>({delete:document.name,currentDocument:{updateTime:document.updateTime}}));
+    if(writes.length)await licenseCommit(env,writes);
   }
 }
 
@@ -1800,7 +1844,7 @@ async function licensePublicKey(env) {
 export default {
   async scheduled(_event, env) {
     const results=await Promise.allSettled([supportMedia.purgeExpired(env),(async()=>{
-      await purgeExpiredPushDevices(env);await deliverScheduledNotices(env);await drainQueuedPush(env);await drainLicenseInquiryEmails(env);
+      await purgeExpiredPushDevices(env);await purgeExpiredPushArtifacts(env);await deliverScheduledNotices(env);await drainQueuedPush(env);await drainLicenseInquiryEmails(env);
     })()]);
     const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
   },
@@ -1832,7 +1876,7 @@ export default {
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
-        "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
+        "/push-register", "/push-unregister", "/push-sync-event", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -1858,6 +1902,8 @@ export default {
         ? await handleLicensing(request, env, actor, route, context)
         : route.startsWith('/support-media-')
         ? await handleSupportMedia(request,env,actor,route)
+        : route === "/push-sync-event"
+        ? await handleSyncPushEvent(request,env,actor)
         : route.startsWith("/push-")
         ? await handlePushRegistration(request, env, actor, route)
         : migratedRoutes.includes(route)

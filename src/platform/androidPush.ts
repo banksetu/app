@@ -58,3 +58,19 @@ export async function unregisterAndroidPush() {
   lastAccount = '';
   localStorage.removeItem(accountKey);
 }
+
+export async function signalCustomerSync(eventId:string,action:string) {
+  // A change made on desktop/web should wake signed-in Android devices. The
+  // normal Google Sheet/Drive sync is already committed before this is called;
+  // notification failure is intentionally non-fatal and stores no customer data.
+  if (Capacitor.getPlatform() === 'android' || !worker || !navigator.onLine || !/^[a-f0-9-]{36}$/i.test(eventId)) return;
+  if (!['saveCustomer','updateCustomer','deleteCustomer'].includes(action)) return;
+  const user=auth.currentUser;
+  if(!user)return;
+  try {
+    await fetch(`${worker}/push-sync-event`,{
+      method:'POST',headers:{authorization:`Bearer ${await user.getIdToken()}`,'content-type':'application/json'},
+      body:JSON.stringify({eventId,action}),signal:AbortSignal.timeout(5000),
+    });
+  } catch { /* Customer sync succeeded already; the next event can retry notifications. */ }
+}

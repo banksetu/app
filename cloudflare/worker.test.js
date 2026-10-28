@@ -62,7 +62,7 @@ test("rejects an unconfigured website origin", async () => {
 });
 
 test("requires Firebase sign-in before account and tenant setup actions", async () => {
-  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/push-register", "/push-unregister"]) {
+  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/push-register", "/push-unregister", "/push-sync-event"]) {
     const response = await worker.fetch(new Request(`https://worker.example${path}`, {
       method: "POST",
       headers: { origin: "https://banksetu-app.web.app", "content-type": "application/json" },
