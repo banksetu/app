@@ -3781,6 +3781,10 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 
 /* Bank Setu motion system: paint-only transitions keep navigation responsive. */
 @media screen {
+  /* Legacy inline dialogs must not inherit a fixed-position containing block
+     from the optimized page-entry animation. */
+  .banksetu-main-workspace:has([role="dialog"]) > section,
+  .banksetu-main-workspace:has([role="dialog"]) > div{animation:none!important;transform:none!important}
   .banksetu-app-shell{
     --motion-accent:#1677df;
     --motion-glow:rgba(22,119,223,.22);
