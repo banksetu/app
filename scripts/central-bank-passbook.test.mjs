@@ -26,9 +26,9 @@ test('Central Bank quick passbook recreates the full 19 x 17.3 cm stationery as 
   assert(quick.includes('data:image/png;base64,LOGO'));
   assert(quick.includes('data:image/png;base64,PHOTO'));
   assert(!source.includes('central-bank-passbook-template'));
-  assert(source.includes('font-size:1.78mm'));
-  assert(source.includes('font:400 9px/3.55mm'));
-  assert(source.includes('letter-spacing:.55px'));
+  assert(source.includes('font-size:1.95mm'));
+  assert(source.includes('font:400 10px/3.25mm'));
+  assert(source.includes('letter-spacing:.3px'));
 });
 
 test('Central Bank lower data is mapped from the selected tenant bank and customer',()=>{
