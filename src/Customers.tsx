@@ -8,6 +8,7 @@ import PdfDocumentPreview from "./PdfDocumentPreview";
 import { classifyRecovery } from "./core/recovery";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import ModalPortal from "./ModalPortal";
 import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getActiveLocalCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
 import {
 
@@ -636,7 +637,7 @@ export default function Customers() {
 
   return (
 
-    <div className="customers-page">
+    <div className="customers-page" data-print-root="active">
 
       <style>{`
 
@@ -2019,7 +2020,7 @@ export default function Customers() {
 
       </form>
 
-      {pdfOpen && <div className="match-modal-backdrop" role="presentation" onMouseDown={event => { if(event.target === event.currentTarget && !pdfLoading) setPdfOpen(false); }}>
+      {pdfOpen && <ModalPortal><div className="match-modal-backdrop" role="presentation" onMouseDown={event => { if(event.target === event.currentTarget && !pdfLoading) setPdfOpen(false); }}>
         <div className="pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
           <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
           {error && <p role="alert">{error}</p>}
@@ -2038,9 +2039,9 @@ export default function Customers() {
           </div>
           <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfLoading)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfLoading?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
         </div>
-      </div>}
+      </div></ModalPortal>}
 
-      {showMatchModal && customerMatches.length > 1 && (
+      {showMatchModal && customerMatches.length > 1 && <ModalPortal>
         <div
           className="match-modal-backdrop"
           role="dialog"
@@ -2132,7 +2133,7 @@ export default function Customers() {
             </div>
           </div>
         </div>
-      )}
+      </ModalPortal>}
 
       {/* =============================================
 
