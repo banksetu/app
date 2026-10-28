@@ -87,16 +87,16 @@ export default function CentralBankPassbook({customer:c,bankInfo:b={},bankLogo="
       .central-preview{overflow-x:auto;padding:16px 8px 22px;color:#202b32}
       .central-bank-document{position:relative;width:190mm;height:173mm;margin:auto;overflow:hidden;background:linear-gradient(#eef5f6 0 49.7%,#fffaf5 50.3% 100%);box-shadow:0 4px 24px #0002;border:.2mm solid #87959b;font-family:"Noto Sans Devanagari","Nirmala UI","Mangal",Arial,sans-serif;color:#202b32}
       .central-bank-document *{box-sizing:border-box;text-align:left}
-      .central-upper{position:absolute;inset:0 0 auto 0;height:86mm;background:linear-gradient(180deg,#f1f7f8,#e8f1f3);font-size:1.78mm;line-height:3.18mm;color:#30383b}
+      .central-upper{position:absolute;inset:0 0 auto 0;height:86mm;background:linear-gradient(180deg,#f1f7f8,#e8f1f3);font-size:1.95mm;line-height:3.62mm;color:#30383b}
       .central-compliance{position:absolute;left:49mm;top:5.2mm;width:92mm;height:8.2mm;border:.28mm solid #3f4d53;padding:.35mm 1mm;text-align:center!important;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:3mm}
-      .central-compliance *{text-align:center!important}.central-compliance b{font-size:1.62mm;font-weight:650}.central-compliance span{font:400 1.72mm/2.65mm Arial,sans-serif}
-      .central-products{position:absolute;top:15.2mm;width:79mm}.central-products h2{margin:0 0 .8mm;font-size:2.45mm;line-height:3.3mm;font-weight:700}.central-products ul{margin:0;padding-left:3.7mm}.central-products li{margin:0;padding-left:.35mm;line-height:3.18mm}.central-products-hi{left:10mm}.central-products-en{left:99mm;width:81mm;font-family:Arial,sans-serif;font-size:1.82mm;line-height:3.18mm}.central-products-en h2{font-size:2.45mm}.central-warning{position:absolute;left:0;top:52.2mm;width:100%;min-height:11.8mm;border:.28mm solid #3f4d53;padding:1.05mm 1.8mm;font-size:1.72mm;line-height:2.75mm;font-weight:400}
+      .central-compliance *{text-align:center!important}.central-compliance b{font-size:1.78mm;font-weight:650}.central-compliance span{font:400 1.9mm/2.75mm Arial,sans-serif}
+      .central-products{position:absolute;top:15.2mm;width:74mm}.central-products h2{margin:0 0 .8mm;font-size:2.65mm;line-height:3.45mm;font-weight:700}.central-products ul{margin:0;padding-left:3.7mm}.central-products li{margin:0;padding-left:.35mm;line-height:3.62mm}.central-products-hi{left:10mm;width:67mm}.central-products-hi li{line-height:4.05mm}.central-products-en{left:99mm;width:74mm;font-family:Arial,sans-serif;font-size:2mm;line-height:3.62mm}.central-products-en h2{font-size:2.65mm}.central-warning{position:absolute;left:0;top:52.2mm;width:74mm;min-height:11.8mm;border:.28mm solid #3f4d53;padding:1.05mm 1.8mm;font-size:1.9mm;line-height:2.9mm;font-weight:400}
       .central-fold{position:absolute;left:0;top:85.2mm;width:100%;height:1.6mm;background:#d9d4ce;border-top:.2mm dashed #899498;border-bottom:.2mm solid #c4c0ba}
-      .central-lower{position:absolute;left:0;top:86mm;width:190mm;height:87mm;font:400 9px/3.55mm "Courier New",monospace;letter-spacing:.55px;color:#4a4a48}
-      .central-value,.central-label{position:absolute;display:block;white-space:pre-wrap;overflow-wrap:anywhere;transform:scaleX(.84);transform-origin:left top;width:119.05%}.central-label{font-weight:400;white-space:pre}.central-value{font-weight:400}.central-contact{font-size:8.5px;transform:scaleX(.8);width:125%}
+      .central-lower{position:absolute;left:0;top:86mm;width:190mm;height:87mm;font:400 10px/3.25mm "Courier New",monospace;letter-spacing:.3px;color:#4a4a48}
+      .central-value,.central-label{position:absolute;display:block;white-space:pre-wrap;overflow-wrap:anywhere;transform:scaleX(.82);transform-origin:left top;width:121.95%}.central-label{font-weight:400;white-space:pre}.central-value{font-weight:400}.central-contact{font-size:9.5px;transform:scaleX(.8);width:125%}
       .central-logo{position:absolute;left:9.5mm;top:93.5mm;width:39mm;height:12.2mm;display:flex;align-items:center}.central-logo img{width:100%;height:100%;object-fit:contain;object-position:left center}.central-logo div{border:.25mm solid #344b57;width:100%;height:100%;padding:1.2mm 1.5mm;display:flex;flex-direction:column;justify-content:center;font-family:Arial,sans-serif}.central-logo b{font-size:1.8mm}.central-logo strong{font-size:2.4mm}.central-logo small{font-size:1.25mm;letter-spacing:.08mm}
       .central-photo{position:absolute;left:60.2mm;top:112.5mm;width:26.5mm;height:34mm;border:.3mm solid #37474f;object-fit:cover;padding:.35mm;background:#fff}
-      .central-manager{position:absolute;left:145mm;top:158.5mm;width:38mm;text-align:center!important;color:#4a4a48;font-family:"Noto Sans Devanagari","Nirmala UI","Mangal",Arial,sans-serif;line-height:3.3mm}.central-manager *{display:block;text-align:center!important}.central-manager span{font-size:2.15mm;font-weight:600}.central-manager b{font:700 2.2mm/3.3mm Arial,sans-serif}
+      .central-manager{position:absolute;left:145mm;top:158.5mm;width:38mm;text-align:center!important;color:#4a4a48;font-family:"Noto Sans Devanagari","Nirmala UI","Mangal",Arial,sans-serif;line-height:3.3mm}.central-manager *{display:block;text-align:center!important}.central-manager span{font-size:2.3mm;font-weight:600}.central-manager b{font:700 2.35mm/3.3mm Arial,sans-serif}
       .central-edit{display:block;margin:12px auto 0}
       @media print{@page{size:190mm 173mm;margin:0}.central-preview{padding:0;overflow:visible}.central-bank-document{margin:0;box-shadow:none;border:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}.central-bank-document[data-mode="passbook"]{background:transparent}.central-edit{display:none!important}}
       html.pr2-direct-preparing .central-upper,html.pr2-direct-preparing .central-fold,html.pr2-direct-preparing .central-logo,html.pr2-direct-preparing .central-photo,html.pr2-direct-preparing .central-manager{display:none!important}
@@ -104,24 +104,24 @@ export default function CentralBankPassbook({customer:c,bankInfo:b={},bankLogo="
     <article className="central-bank-document" data-mode={formatType} aria-label={quick?"Central Bank of India complete quick passbook":"Central Bank of India passbook values only"}>
       {quick&&<CentralStationery bankLogo={bankLogo} photo={photo}/>} 
       <section className="central-lower">
-        <span className="central-value" data-field="branchTitle" style={at(55,7.2,58)}>{branchTitle}</span>
-        <span className="central-value" data-field="accountNo" style={at(55,12.3,64)}>ACCOUNT NO: {upper(c.accountNo)}</span>
-        <span className="central-value" data-field="gstin" style={at(55,17.3,66)}>GSTIN: {upper(b.gstin)}</span>
-        <span className="central-value" data-field="ckyc" style={at(55,22.3,66)}>CKYC NO: {upper(b.ckyc)}</span>
-        <span className="central-label" style={at(9.5,28.5,48)}>BRANCH ADDRESS AND TEL NO.:</span>
-        <span className="central-value" data-field="branchAddress" style={{...at(9.5,33,48),lineHeight:"4mm"}}>{upper(branchAddress(b))}</span>
-        <span className="central-value" data-field="branchPhone" style={at(9.5,47,48)}>TEL: {upper(b.branchPhone)}</span>
-        <span className="central-value" data-field="micr" style={at(9.5,57,48)}>MICR CODE: {upper(b.micr)}</span>
-        <span className="central-value" data-field="ifsc" style={at(9.5,62,48)}>IFSC CODE: {upper(b.ifsc)}</span>
-        <span className="central-value" data-field="openingDate" style={at(9.5,67,48)}>{date(c.accountOpeningDate)}</span>
-        <span className="central-label" style={at(91,28.5,88)}>NAME AND ADDRESS OF ACCOUNT HOLDER/S:</span>
-        <span className="central-value" data-field="name" style={at(91,33,88)}>{upper(c.name)}</span>
-        <span className="central-value" data-field="address" style={{...at(91,39,88),lineHeight:"4mm",maxHeight:"13mm",overflow:"hidden"}}>{careOf&&`C/O: ${careOf}\n`}{upper(customerAddress(c))}</span>
-        <span className="central-value" data-field="cif" style={at(91,53,72)}>CIF: {cif}</span>
-        <span className="central-value" data-field="accountType" style={at(91,58,72)}>A/C TYPE: {accountType}</span>
-        <span className="central-value" data-field="mode" style={at(91,63,72)}>MODE: {mode}</span>
-        <span className="central-value" data-field="operating" style={at(91,68,72)}>OPERATING: {operating}</span>
-        <span className="central-label central-contact" style={at(58,75,112)}>Toll Free: 18003030  WhatsApp Banking: 7900123123</span>
+        <span className="central-value" data-field="branchTitle" style={at(55,7,58)}>{branchTitle}</span>
+        <span className="central-value" data-field="accountNo" style={at(55,11.6,64)}>ACCOUNT NO: {upper(c.accountNo)}</span>
+        <span className="central-value" data-field="gstin" style={at(55,16.2,66)}>GSTIN: {upper(b.gstin)}</span>
+        <span className="central-value" data-field="ckyc" style={at(55,20.8,66)}>CKYC NO: {upper(b.ckyc)}</span>
+        <span className="central-label" style={at(9.5,27.8,48)}>BRANCH ADDRESS AND TEL NO.:</span>
+        <span className="central-value" data-field="branchAddress" style={{...at(9.5,32,48),lineHeight:"3.5mm"}}>{upper(branchAddress(b))}</span>
+        <span className="central-value" data-field="branchPhone" style={at(9.5,45.5,48)}>TEL: {upper(b.branchPhone)}</span>
+        <span className="central-value" data-field="micr" style={at(9.5,55.5,48)}>MICR CODE: {upper(b.micr)}</span>
+        <span className="central-value" data-field="ifsc" style={at(9.5,60,48)}>IFSC CODE: {upper(b.ifsc)}</span>
+        <span className="central-value" data-field="openingDate" style={at(9.5,64.5,48)}>{date(c.accountOpeningDate)}</span>
+        <span className="central-label" style={at(91,27.8,88)}>NAME AND ADDRESS OF ACCOUNT HOLDER/S:</span>
+        <span className="central-value" data-field="name" style={at(91,32,88)}>{upper(c.name)}</span>
+        <span className="central-value" data-field="address" style={{...at(91,37.2,88),lineHeight:"3.5mm",maxHeight:"13mm",overflow:"hidden"}}>{careOf&&`C/O: ${careOf}\n`}{upper(customerAddress(c))}</span>
+        <span className="central-value" data-field="cif" style={at(91,51.8,72)}>CIF: {cif}</span>
+        <span className="central-value" data-field="accountType" style={at(91,56.3,72)}>A/C TYPE: {accountType}</span>
+        <span className="central-value" data-field="mode" style={at(91,60.8,72)}>MODE: {mode}</span>
+        <span className="central-value" data-field="operating" style={at(91,65.3,72)}>OPERATING: {operating}</span>
+        <span className="central-label central-contact" style={at(58,73.5,112)}>Toll Free: 18003030  WhatsApp Banking: 7900123123</span>
       </section>
     </article>
     {onEdit&&<button type="button" className="passbook-button central-edit" onClick={onEdit}>Temporary Edit</button>}
