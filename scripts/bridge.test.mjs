@@ -94,7 +94,20 @@ test('current client bridge advertises tenant isolation and license enforcement'
  context.Session={getEffectiveUser:()=>({getEmail:()=>user.email})};
  const status=context.doGet({parameter:{action:'status'}});
  assert.equal(status.tenantIsolationVersion,'v3');
+ assert.equal(status.licenseInquiryEmailVersion,0);
  assert.equal(status.licenseEnforcementVersion,2);
+});
+test('Master bridge sends a protected inquiry email and closes the outbox job',()=>{
+ const {context}=bridge();const id='01234567-89ab-4cde-8fab-0123456789ab';let sent=null,patch=null;
+ context.getBankSetuScriptProperty=()=>'';
+ const stringValue=value=>({stringValue:value});
+ const outbox={name:`projects/test/databases/(default)/documents/licenseNotificationOutbox/${id}`,updateTime:'2026-10-28T00:00:00.000Z',fields:{kind:stringValue('license_inquiry'),requestId:stringValue(id),recipient:stringValue('banksetu2026@gmail.com'),status:stringValue('sending'),leaseUntil:{integerValue:String(Date.now()+60000)}}};
+ const inquiry={fields:{kind:stringValue('inquiry'),status:stringValue('pending'),name:stringValue('Test Client'),email:stringValue('client@example.test'),mobile:stringValue('9876543210'),bankName:stringValue('Test Bank CSP'),requestedPlan:stringValue('demo'),location:stringValue('Assam'),message:stringValue('Please contact me')}};
+ context.UrlFetchApp={fetch:(url,options={})=>{if(options.method==='patch'){patch=JSON.parse(options.payload);return{getResponseCode:()=>200,getContentText:()=>'{"ok":true}'}}const value=String(url).includes('licenseNotificationOutbox')?outbox:inquiry;return{getResponseCode:()=>200,getContentText:()=>JSON.stringify(value)}}};
+ context.MailApp={getRemainingDailyQuota:()=>10,sendEmail:value=>{sent=value;}};
+ const result=context.notifyLicenseInquiry({notificationId:id,accessToken:'x'.repeat(80)});
+ assert.equal(result.success,true);assert.equal(sent.to,'banksetu2026@gmail.com');assert.match(sent.subject,/New Bank Setu license inquiry/);
+ assert.equal(patch.fields.status.stringValue,'sent');assert.equal(patch.fields.active.booleanValue,false);
 });
 test('authenticated POST capability probe is tenant-bound and never reads or modifies customer rows',()=>{
  const {context,rows}=bridge();const before=JSON.stringify(rows);

@@ -406,6 +406,63 @@ export async function sendTenantPush(env, tenantId, event) {
   } catch(error){console.warn("Bank Setu push delivery queued/unavailable",error instanceof Error?error.message:"unknown");}
 }
 
+const LICENSE_INQUIRY_EMAIL = "banksetu2026@gmail.com";
+
+async function deliverLicenseInquiryEmail(env, notificationId) {
+  if (!/^[a-f0-9-]{36}$/i.test(String(notificationId || "")) || !env.BANKSETU_APPS_SCRIPT_URL) return;
+  let document = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`);
+  if (!document) return;
+  let record = licenseFields(document), now = Date.now();
+  if (record.status === "sent" || record.status === "cancelled") return;
+  if (record.status === "sending" && Number(record.leaseUntil || 0) > now) return;
+  if (Number(record.nextAttemptAt || 0) > now) return;
+  try {
+    await licenseCommit(env, [licenseWrite(env, "licenseNotificationOutbox", notificationId, {
+      ...record, status: "sending", leaseUntil: now + 60_000, attempts: Number(record.attempts || 0) + 1, updatedAt: new Date(now).toISOString(),
+    }, { updateTime: document.updateTime })]);
+  } catch (error) { if ([409, 412].includes(error.status)) return; throw error; }
+  document = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`);
+  record = licenseFields(document);
+  if (!document || record.status !== "sending") return;
+  try {
+    const response = await fetch(env.BANKSETU_APPS_SCRIPT_URL, {
+      method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(12_000),
+      body: JSON.stringify({ action: "notifyLicenseInquiry", notificationId, accessToken: await serviceAccessToken(env) }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.success !== true) throw new Error(result.message || "Inquiry email service did not confirm delivery.");
+    const latest = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`);
+    if (licenseFields(latest).status !== "sent") throw new Error("Inquiry email delivery was not recorded.");
+  } catch (error) {
+    const latest = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`).catch(() => null), current = licenseFields(latest);
+    if (latest && current.status !== "sent") {
+      const delay = Math.min(6 * 60 * 60_000, 60_000 * Math.pow(2, Math.min(8, Number(current.attempts || 1) - 1)));
+      await licenseCommit(env, [licenseWrite(env, "licenseNotificationOutbox", notificationId, {
+        ...current, status: "pending", leaseUntil: 0, nextAttemptAt: Date.now() + delay,
+        lastError: String(error instanceof Error ? error.message : "Email delivery failed").slice(0, 240), updatedAt: new Date().toISOString(),
+      }, { updateTime: latest.updateTime })]).catch(() => undefined);
+    }
+    console.warn("Bank Setu inquiry email queued for retry", error instanceof Error ? error.message : "unknown");
+  }
+}
+
+async function drainLicenseInquiryEmails(env) {
+  // Query only live jobs so an ever-growing history of sent notifications can
+  // never crowd a pending inquiry out of the cron batch.
+  const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+    from: [{ collectionId: "licenseNotificationOutbox" }],
+    where: { fieldFilter: { field: { fieldPath: "active" }, op: "EQUAL", value: { booleanValue: true } } },
+    limit: 50,
+  } }) }).catch(() => []);
+  const now = Date.now();
+  const candidate = rows.map(row => row.document).filter(Boolean).find(document => {
+    const item = licenseFields(document);
+    return item.kind === "license_inquiry" && item.status !== "sent" && item.status !== "cancelled"
+      && Number(item.nextAttemptAt || 0) <= now && (item.status !== "sending" || Number(item.leaseUntil || 0) <= now);
+  });
+  if (candidate) await deliverLicenseInquiryEmail(env, candidate.name.split("/").pop());
+}
+
 export async function deliverScheduledNotices(env) {
   // Resume one license per tick. Never scan every tenant in one Free invocation.
   const state = await licenseDoc(env, "/appSettings/pushSweep"), sweep = licenseFields(state);
@@ -623,7 +680,7 @@ async function handleLicensing(request, env, actor, route, context) {
     if (!challengeResult.success || challengeResult.hostname !== "banksetu-app.web.app") return json({ error: "Verification failed. Please retry." }, 403);
     const id = inquiry.requestId;
     const existing = await licenseDoc(env, `/licenseRequests/${id}`);
-    if (existing) return json({ success: true, referenceId: id });
+    if (existing) return json({ success: true });
     const ip = request.headers.get("CF-Connecting-IP") || "";
     if (!ip) return json({ error: "Request verification is unavailable." }, 503);
     const rateKey = await crypto.subtle.importKey("raw", encoder.encode(env.LICENSE_TURNSTILE_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -633,11 +690,19 @@ async function handleLicensing(request, env, actor, route, context) {
     const nowMs = Date.now();
     if (rateDocs.some(doc => nowMs - Number(licenseFields(doc).lastRequestMs || 0) < 15 * 60_000)) return json({ error: "Please wait 15 minutes before sending another request." }, 429);
     const now = new Date(nowMs).toISOString();
-    const writes = [licenseWrite(env, "licenseRequests", id, { ...inquiry, kind: "inquiry", status: "pending", paymentStatus: "not_paid", createdAt: now, updatedAt: now, quotedPaise: null, quoteRequiresConfirmation: true })];
+    const requestRecord = { ...inquiry, requestedPlan: inquiry.plan, kind: "inquiry", onboardingStage: "client_creation_required", status: "pending", paymentStatus: "not_paid", createdAt: now, updatedAt: now, quotedPaise: null, quoteRequiresConfirmation: true };
+    const writes = [
+      licenseWrite(env, "licenseRequests", id, requestRecord),
+      licenseWrite(env, "licenseNotificationOutbox", id, {
+        kind: "license_inquiry", requestId: id, recipient: LICENSE_INQUIRY_EMAIL, status: "pending", attempts: 0,
+        active: true, leaseUntil: 0, nextAttemptAt: nowMs, createdAt: now, updatedAt: now,
+      }, { exists: false }),
+    ];
     rateIds.forEach((key, index) => writes.push(licenseWrite(env, "licenseRequestLimits", key, { lastRequestMs: nowMs }, rateDocs[index] ? { updateTime: rateDocs[index].updateTime } : { exists: false })));
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "Another request was just received. Please wait before retrying." }, 429); throw error; }
-    return json({ success: true, referenceId: id });
+    context?.waitUntil(deliverLicenseInquiryEmail(env, id));
+    return json({ success: true });
   }
   if (!actor) return json({ error: "Sign in is required." }, 401);
   if(route==="/license-my-requests"){
@@ -891,7 +956,50 @@ async function handleLicensing(request, env, actor, route, context) {
     if (item.status !== "pending") return json({ error: "Request is not pending." }, 409);
     const action = String(body.action || "");
     if (!["approve", "reject"].includes(action)) return json({ error: "Invalid decision." }, 400);
-    if (item.kind === "inquiry") return json({ error: "First create or associate the client using the existing Master Admin provisioning flow; then assign a license to the verified tenant." }, 409);
+    if (item.kind === "inquiry") {
+      const now = new Date().toISOString();
+      if (action === "reject") {
+        await licenseCommit(env, [
+          licenseWrite(env, "licenseRequests", id, { ...item, status: "rejected", onboardingStage: "rejected", paymentStatus: "rejected", decidedAt: now, decidedBy: actor.uid, updatedAt: now }, { updateTime: requestDoc.updateTime }),
+          licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: "inquiry_rejected", requestId: id, tenantId: String(item.tenantId || ""), actorUid: actor.uid, at: now }),
+        ]);
+        return json({ success: true, status: "rejected" });
+      }
+      const tenantId = String(item.tenantId || ""), clientUid = String(item.clientUid || "");
+      const tenantDoc = /^[a-zA-Z0-9_-]{1,128}$/.test(tenantId) ? await licenseDoc(env, `/tenants/${tenantId}`) : null;
+      const clientDoc = clientUid ? await licenseDoc(env, `/users/${encodeURIComponent(clientUid)}`) : null;
+      const tenant = licenseFields(tenantDoc), client = licenseFields(clientDoc);
+      if (!tenantDoc || tenant.status !== "active" || tenant.ownerUid !== clientUid || !clientDoc || client.role !== "client_admin" || client.tenantId !== tenantId || String(client.email || "").toLowerCase() !== String(item.email || "").toLowerCase() || item.onboardingStage !== "client_created") return json({ error: "Create and link the Client Admin before approving this inquiry." }, 409);
+      if (await licenseDoc(env, `/tenantLicenses/${tenantId}`)) return json({ error: "This client already has a license. Refresh License Management." }, 409);
+      // Master Admin may choose a different final entitlement while reviewing
+      // an inquiry; the submitted value remains preserved in the audit trail.
+      const selectedPlan = String(body.plan || item.requestedPlan || item.plan || "");
+      if (!["demo", "annual", "lifetime"].includes(selectedPlan)) return json({ error: "Select Demo, Annual or Lifetime before approval." }, 400);
+      const startAt = licenseStartDate(body.startDate);
+      if (startAt === null) return json({ error: "Select a valid India activation date." }, 400);
+      const durationMonths = body.durationMonths === undefined ? 12 : Number(body.durationMonths);
+      let license, paidPaise = 0;
+      if (selectedPlan === "demo") {
+        const activatedAt = startAt || now;
+        license = { tenantId, plan: "demo", status: Date.parse(activatedAt) > Date.now() ? "scheduled" : "active", demoOnly: false, activatedAt, expiresAt: new Date(Date.parse(activatedAt) + 5 * 86400000).toISOString(), paidPaise: 0, revision: 1, updatedAt: now, lastRequestId: id };
+      } else {
+        if (body.paymentConfirmed !== true) return json({ error: "Master Admin must confirm payment before approval." }, 400);
+        const configured = selectedPlan === "annual" ? settings.pricing.annualPaise : settings.pricing.lifetimePaise;
+        if (!configured || !settings.pricing[selectedPlan === "annual" ? "annualAvailable" : "lifetimeAvailable"]) return json({ error: "The selected paid plan is not available." }, 409);
+        paidPaise = body.paidPaise === undefined ? configured : Number(body.paidPaise);
+        if (!Number.isSafeInteger(paidPaise) || paidPaise <= 0 || paidPaise > 100_000_000 || selectedPlan === "annual" && (!Number.isInteger(durationMonths) || durationMonths < 1 || durationMonths > 120)) return json({ error: "Confirm the paid amount and valid duration." }, 400);
+        license = transitionLicense(null, { kind: selectedPlan, id, quotedPaise: paidPaise, startAt, durationMonths }, now, settings.pricing);
+        license.tenantId = tenantId; license.graceDays = settings.pricing.graceDays;
+      }
+      const decided = { ...item, requestedPlan: selectedPlan, status: "approved", onboardingStage: "approved", paymentStatus: selectedPlan === "demo" ? "not_required" : "payment_confirmed", decidedAt: now, decidedBy: actor.uid, updatedAt: now, quotedPaise: selectedPlan === "demo" ? 0 : paidPaise };
+      await licenseCommit(env, [
+        licenseWrite(env, "licenseRequests", id, decided, { updateTime: requestDoc.updateTime }),
+        licenseWrite(env, "tenantLicenses", tenantId, license, { exists: false }),
+        licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: selectedPlan === "demo" ? "inquiry_demo_activated" : "inquiry_approved", requestId: id, tenantId, actorUid: actor.uid, at: now, plan: selectedPlan, paidPaise, activatedAt: license.activatedAt, expiresAt: license.expiresAt, paymentStatus: decided.paymentStatus }),
+      ]);
+      context?.waitUntil(sendTenantPush(env, tenantId, { id, title: selectedPlan === "demo" ? "Bank Setu demo activated" : "Bank Setu license approved", body: selectedPlan === "demo" ? "Your five-day Demo is ready. Sign in to complete setup." : "Your Bank Setu license is ready. Sign in to complete setup." }));
+      return json({ success: true, status: "approved", tenantId, license });
+    }
     const tenantId = String(item.tenantId || "");
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)) return json({ error: "Invalid tenant." }, 400);
     const tenantDoc = await licenseDoc(env, `/tenants/${tenantId}`);
@@ -1043,8 +1151,17 @@ async function handleMasterOperation(request, env, actor, route) {
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
     const bankName = String(body.bankName || "").trim();
+    const inquiryId = String(body.inquiryId || "").trim();
     if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !bankName || bankName.length > 120 || password.length < 8 || password.length > 128) {
       return json({ error: "Enter a valid client name, email, bank name and password (at least 8 characters)." }, 400);
+    }
+    let inquiryDoc = null, inquiry = {};
+    if (inquiryId) {
+      if (!/^[a-f0-9-]{36}$/i.test(inquiryId)) return json({ error: "Select a valid pending inquiry." }, 400);
+      inquiryDoc = await licenseDoc(env, `/licenseRequests/${inquiryId}`);
+      inquiry = licenseFields(inquiryDoc);
+      if (!inquiryDoc || inquiry.kind !== "inquiry" || inquiry.status !== "pending" || inquiry.onboardingStage !== "client_creation_required" || inquiry.tenantId) return json({ error: "This inquiry is no longer waiting for client creation." }, 409);
+      if (String(inquiry.email || "").trim().toLowerCase() !== email) return json({ error: "Use the same verified email address submitted with this inquiry." }, 409);
     }
     const setup = await firestoreRequest(env, "/appSettings/googleSetup").catch(() => null);
     const setupData = decodeFields(setup?.fields || {});
@@ -1058,14 +1175,18 @@ async function handleMasterOperation(request, env, actor, route) {
     const tenantId = crypto.randomUUID().replaceAll("-", "");
     try {
       const now = new Date().toISOString();
-      const docs = [
-        [firestoreDocumentName(env, `/licenseAudit/${crypto.randomUUID()}`), {action:"client_created",tenantId,actorUid:actor.uid,at:now}],
+      const documents = [
+        [firestoreDocumentName(env, `/licenseAudit/${crypto.randomUUID()}`), {action:"client_created",tenantId,actorUid:actor.uid,at:now,...(inquiryId?{requestId:inquiryId}:{})}],
         [firestoreDocumentName(env, `/tenants/${tenantId}`), { tenantId, clientId: tenantId, ownerUid: newUid, name, email, bankName, maxUsers: 2, clientUserCount: 0, status: "active", createdAt: now, createdBy: actor.uid }],
         [firestoreDocumentName(env, `/tenantSettings/${tenantId}`), { tenantId, bankName, apiUrl: String(setupData.apiUrl), spreadsheetId: "", photoFolderId: "", bankInfo: {}, bankLogo: "", updatedAt: now, updatedBy: actor.uid }],
         [firestoreDocumentName(env, `/users/${newUid}`), { name, email, role: "client_admin", tenantId, clientId: tenantId, parentClientUid: actor.uid, bankName, maxUsers: 2, status: "approved", subscriptionStatus: "active", licenseRequired: true, createdAt: now, createdBy: actor.uid }],
       ];
-      await firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes: docs.map(([docName, fields]) => ({ update: { name: docName, fields: encodeFields(fields) }, currentDocument: { exists: false } })) }) });
-      return json({ success: true, uid: newUid, tenantId, role: "client_admin" });
+      const writes = documents.map(([docName, fields]) => ({ update: { name: docName, fields: encodeFields(fields) }, currentDocument: { exists: false } }));
+      if (inquiryDoc) writes.push(licenseWrite(env, "licenseRequests", inquiryId, {
+        ...inquiry, name, email, bankName, tenantId, clientUid: newUid, onboardingStage: "client_created", updatedAt: now, linkedBy: actor.uid,
+      }, { updateTime: inquiryDoc.updateTime }));
+      await firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes }) });
+      return json({ success: true, uid: newUid, tenantId, inquiryId: inquiryId || null, role: "client_admin" });
     } catch (error) {
       await authDelete(env, newUid).catch(() => undefined);
       throw error;
@@ -1679,7 +1800,7 @@ async function licensePublicKey(env) {
 export default {
   async scheduled(_event, env) {
     const results=await Promise.allSettled([supportMedia.purgeExpired(env),(async()=>{
-      await purgeExpiredPushDevices(env);await deliverScheduledNotices(env);await drainQueuedPush(env);
+      await purgeExpiredPushDevices(env);await deliverScheduledNotices(env);await drainQueuedPush(env);await drainLicenseInquiryEmails(env);
     })()]);
     const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
   },

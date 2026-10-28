@@ -20,6 +20,10 @@ test('manifest, legal pages, and tenant-free static content are packaged', () =>
   for (const path of ['privacy-policy/index.html','terms/index.html','license-request/index.html','client-bridge/Code.gs']) assert.ok(read(`portfolio-dist/${path}`).length > 200);
   const requestPage=read('portfolio-dist/license-request/index.html');
   assert.match(requestPage,/Contact Master Admin/);
+  assert.match(requestPage,/Email Address[\s\S]*required/);
+  assert.match(requestPage,/Demo · 5 Days/);
+  assert.match(requestPage,/Thank you for submitting your inquiry/);
+  assert.doesNotMatch(requestPage,/Reference ID:/);
   assert.doesNotMatch(requestPage,/CustomerEntry|signInWithEmailAndPassword/);
   const json = read('portfolio/content/site.json');
   const screenshots=JSON.parse(json).screenshots;

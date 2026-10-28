@@ -134,6 +134,17 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // Public inquiries and their email outbox are written/read only by the
+    // authenticated Cloudflare Worker. Reference IDs and delivery metadata
+    // are never exposed through the Firebase client SDK.
+    match /licenseRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /licenseNotificationOutbox/{notificationId} {
+      allow read, write: if false;
+    }
+
     match /tenantSettings/{tenantId} {
       allow get: if sameTenant(tenantId);
       allow list: if false;

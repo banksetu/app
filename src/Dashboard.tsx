@@ -45,6 +45,7 @@ import type {
 } from "react";
 
 import LicenseManagement from "./LicenseManagement";
+import type { ClientInquiryPrefill } from "./MasterClients";
 import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
@@ -420,6 +421,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
+  const [clientInquiryPrefill,setClientInquiryPrefill]=useState<ClientInquiryPrefill|null>(null);
   const canManageBankSettings = (!licenseReadOnly || accountRole === "client_admin" && licensePermission.state === "pending") && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
 
   const [bankInfoDraft, setBankInfoDraft] =
@@ -1356,7 +1358,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
 
                 {userRole === "admin" && accountRole !== "client_admin" && (
-                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientCreateOpen(true); }}>
+                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientInquiryPrefill(null); setClientCreateOpen(true); }}>
                     ＋ Create Client Admin
                   </button>
                 )}
@@ -1428,7 +1430,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
             <div style={styles.licensePageNavigation}>
               <button type="button" style={styles.licenseBackButton} onClick={() => openPage("dashboard")}>← Back to Dashboard</button>
             </div>
-            <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />
+            <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} onCreateClient={inquiry=>{setClientInquiryPrefill(inquiry);setClientCreateOpen(true);}} />
           </>}
           {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
@@ -2013,13 +2015,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setClientCreateOpen(false); }}>
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) {setClientCreateOpen(false);setClientInquiryPrefill(null);} }}>
           <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>Create Client Admin</h2>
-              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => setClientCreateOpen(false)}>×</button>
+              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => {setClientCreateOpen(false);setClientInquiryPrefill(null);}}>×</button>
             </div>
-            <MasterClients enabled />
+            <MasterClients enabled initial={clientInquiryPrefill} onCreated={client=>{setClientCreateOpen(false);setClientInquiryPrefill(null);openPage("license-management");window.dispatchEvent(new CustomEvent("banksetu-inquiry-client-created",{detail:client}));}} />
           </div>
         </div>
       )}

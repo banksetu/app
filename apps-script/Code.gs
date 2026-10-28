@@ -79,6 +79,7 @@ function doGet(e) {
         masterConnectionId: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? masterLocalConnectionId() : "",
         tenantIsolationVersion: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? "v3" : "v2",
         licenseEnforcementVersion: 2,
+        licenseInquiryEmailVersion: !getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") ? 1 : 0,
         syncProtectionVersion: 1,
         afsmVersion: 1,
         photoIndexVersion: 1,
@@ -137,6 +138,13 @@ function doPost(e) {
       cleanValue(
         request.idToken
       );
+
+    // This server-to-server action is available only on the Master bridge.
+    // The supplied OAuth token must be able to read the exact protected
+    // Firestore outbox document; public/client Firebase tokens cannot do so.
+    if (action === "notifyLicenseInquiry") {
+      return notifyLicenseInquiry(request);
+    }
 
     if (!idToken) {
       return jsonResponse({
@@ -290,6 +298,73 @@ function doPost(e) {
         getErrorMessage(error)
     });
   }
+}
+
+function licenseNotificationDocument(collection, id, accessToken) {
+  const url = "https://firestore.googleapis.com/v1/projects/" +
+    encodeURIComponent(FIREBASE_PROJECT_ID) + "/databases/(default)/documents/" +
+    encodeURIComponent(collection) + "/" + encodeURIComponent(id);
+  const response = UrlFetchApp.fetch(url, {
+    method: "get", headers: { Authorization: "Bearer " + accessToken }, muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) throw new Error("Protected license notification could not be verified.");
+  return JSON.parse(response.getContentText() || "{}");
+}
+
+function licenseNotificationNumber(document, field) {
+  try {
+    const value = document.fields[field] || {};
+    return Number(value.integerValue !== undefined ? value.integerValue : value.doubleValue || 0);
+  } catch (error) { return 0; }
+}
+
+function escapeLicenseEmail(value) {
+  return cleanValue(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function notifyLicenseInquiry(request) {
+  if (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID")) throw new Error("License notifications use only the protected Master bridge.");
+  const notificationId = cleanValue(request.notificationId);
+  const accessToken = cleanValue(request.accessToken);
+  if (!/^[a-f0-9-]{36}$/i.test(notificationId) || accessToken.length < 40 || accessToken.length > 8192) throw new Error("Invalid protected license notification.");
+  const outbox = licenseNotificationDocument("licenseNotificationOutbox", notificationId, accessToken);
+  const requestDocument = licenseNotificationDocument("licenseRequests", notificationId, accessToken);
+  const recipient = firestoreString(outbox, "recipient").toLowerCase();
+  const status = firestoreString(outbox, "status").toLowerCase();
+  if (firestoreString(outbox, "kind") !== "license_inquiry" || firestoreString(outbox, "requestId") !== notificationId || recipient !== "banksetu2026@gmail.com") throw new Error("License notification scope mismatch.");
+  if (status === "sent") return jsonResponse({ success: true, repeated: true });
+  if (status !== "sending" || licenseNotificationNumber(outbox, "leaseUntil") < Date.now()) throw new Error("License notification is not actively leased.");
+  if (firestoreString(requestDocument, "kind") !== "inquiry" || firestoreString(requestDocument, "status") !== "pending") throw new Error("Pending license inquiry was not found.");
+  if (MailApp.getRemainingDailyQuota() < 1) throw new Error("Master email quota is temporarily exhausted.");
+  const name = firestoreString(requestDocument, "name");
+  const email = firestoreString(requestDocument, "email");
+  const mobile = firestoreString(requestDocument, "mobile");
+  const bankName = firestoreString(requestDocument, "bankName");
+  const location = firestoreString(requestDocument, "location");
+  const plan = firestoreString(requestDocument, "requestedPlan") || firestoreString(requestDocument, "plan");
+  const message = firestoreString(requestDocument, "message");
+  if (!name || !email || !mobile || !bankName || ["demo", "annual", "lifetime", "undecided"].indexOf(plan) === -1) throw new Error("Stored license inquiry is incomplete.");
+  const subject = "New Bank Setu license inquiry — " + bankName;
+  const lines = [
+    "A client submitted a new Bank Setu license inquiry.", "", "Name: " + name, "Email: " + email,
+    "Mobile / WhatsApp: " + mobile, "Bank / CSP: " + bankName, "Preferred plan: " + plan,
+    "Location: " + (location || "Not supplied"), "Message: " + (message || "Not supplied"), "",
+    "Open Bank Setu → License Management to create the client and approve or reject this request."
+  ];
+  const row = function (label, value) { return "<tr><th align=\"left\" style=\"padding:6px 12px 6px 0\">" + escapeLicenseEmail(label) + "</th><td style=\"padding:6px 0\">" + escapeLicenseEmail(value || "Not supplied") + "</td></tr>"; };
+  MailApp.sendEmail({
+    to: recipient, subject: subject, body: lines.join("\n"), name: "Bank Setu",
+    htmlBody: "<h2>New Bank Setu license inquiry</h2><table>" + row("Name", name) + row("Email", email) + row("Mobile / WhatsApp", mobile) + row("Bank / CSP", bankName) + row("Preferred plan", plan) + row("Location", location) + row("Message", message) + "</table><p>Open <strong>Bank Setu → License Management</strong> to create the client and approve or reject this request.</p>"
+  });
+  const updateUrl = "https://firestore.googleapis.com/v1/" + outbox.name +
+    "?updateMask.fieldPaths=status&updateMask.fieldPaths=active&updateMask.fieldPaths=sentAt&updateMask.fieldPaths=leaseUntil&updateMask.fieldPaths=lastError&currentDocument.updateTime=" + encodeURIComponent(outbox.updateTime);
+  const sentAt = new Date().toISOString();
+  const update = UrlFetchApp.fetch(updateUrl, {
+    method: "patch", contentType: "application/json", headers: { Authorization: "Bearer " + accessToken }, muteHttpExceptions: true,
+    payload: JSON.stringify({ fields: { status: { stringValue: "sent" }, active: { booleanValue: false }, sentAt: { stringValue: sentAt }, leaseUntil: { integerValue: "0" }, lastError: { stringValue: "" } } })
+  });
+  if (update.getResponseCode() !== 200) throw new Error("Email sent but delivery receipt could not be recorded.");
+  return jsonResponse({ success: true, sentAt: sentAt });
 }
 
 
