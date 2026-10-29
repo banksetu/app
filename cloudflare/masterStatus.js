@@ -9,15 +9,28 @@ export function dayStart(now,zone) {
  for(let i=0;i<3;i++){const p=Object.fromEntries(formatter.formatToParts(new Date(instant)).map(p=>[p.type,p.value]));const local=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);instant=midnight-(local-instant);}
  return new Date(instant).toISOString();
 }
-export async function masterUsage(env,tokenProvider,firestoreRequest,decodeFields) {
+export function monitoringError(response,data,principal) {
+ const status=String(data?.error?.status||'');
+ const message=String(data?.error?.message||'').replace(/\s+/g,' ').trim();
+ const reason=String(data?.error?.details?.find?.(detail=>detail?.reason)?.reason||'');
+ if(status==='SERVICE_DISABLED'||reason==='SERVICE_DISABLED')return `Cloud Monitoring API is disabled for this Firebase project. Enable monitoring.googleapis.com.`;
+ if(response.status===403||status==='PERMISSION_DENIED'||reason==='IAM_PERMISSION_DENIED')return `Cloud Monitoring denied ${principal}. Grant that exact service account the Monitoring Viewer role.`;
+ const safeMessage=message.slice(0,240);
+ return `Cloud Monitoring request failed (${response.status}${status?` ${status}`:''})${safeMessage?`: ${safeMessage}`:'.'}`;
+}
+export async function masterUsage(env,tokenProvider,firestoreRequest,decodeFields,{force=false}={}) {
  const now=Date.now(),checkedAt=new Date(now).toISOString();
- if(cached&&now-cached.time<300000)return cached.value;
+ // Normal page loads reuse metrics for five minutes. A deliberate refresh bypasses
+ // stale provider errors, while a short guard prevents accidental request bursts.
+ if(cached&&now-cached.time<(force?10000:300000))return cached.value;
+ let monitoringPrincipal='the Firebase service account';
+ try{monitoringPrincipal=JSON.parse(env.FIREBASE_SERVICE_ACCOUNT||'{}').client_email||monitoringPrincipal;}catch{}
  const token=await tokenProvider(env);
  const monitor=async(type,mode='gauge')=>{
   const params=new URLSearchParams({'filter':`metric.type="${type}"`,'interval.startTime':mode==='delta'?dayStart(now,'America/Los_Angeles'):new Date(now-86400000*2).toISOString(),'interval.endTime':checkedAt,'pageSize':'1000'});
   if(mode==='delta'){params.set('aggregation.alignmentPeriod','86400s');params.set('aggregation.perSeriesAligner','ALIGN_SUM');}
   const response=await fetch(`https://monitoring.googleapis.com/v3/projects/${env.FIREBASE_PROJECT_ID}/timeSeries?${params}`,{headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
-  const data=await response.json();if(!response.ok)throw new Error(response.status===403?'Monitoring Viewer permission is required.':'Cloud Monitoring API is unavailable.');
+  const data=await response.json();if(!response.ok)throw new Error(monitoringError(response,data,monitoringPrincipal));
   if(data.nextPageToken)throw new Error('Monitoring result exceeded one page; totals were not estimated.');
   if(!data.timeSeries?.length)throw new Error('No monitoring sample is available yet.');
   const points=data.timeSeries.flatMap(series=>mode==='delta'?series.points||[]:(series.points||[]).slice(0,1));
@@ -30,7 +43,7 @@ export async function masterUsage(env,tokenProvider,firestoreRequest,decodeField
   measured(async()=>{const result=await monitor('firestore.googleapis.com/document/read_count','delta');return quotaResult(result.used,50000,{sampledAt:result.sampledAt,reset:'America/Los_Angeles',estimated:true});}),
   measured(async()=>{const result=await monitor('firestore.googleapis.com/document/write_count','delta');return quotaResult(result.used,20000,{sampledAt:result.sampledAt,reset:'America/Los_Angeles',estimated:true});}),
   measured(async()=>{
-   if(!env.CLOUDFLARE_ANALYTICS_TOKEN||!env.CLOUDFLARE_ACCOUNT_ID)throw new Error('Cloudflare Analytics read token is not configured.');
+   if(!env.CLOUDFLARE_ANALYTICS_TOKEN||!env.CLOUDFLARE_ACCOUNT_ID)throw new Error('Add the CLOUDFLARE_ANALYTICS_TOKEN Worker secret with Account Analytics Read permission.');
    const start=dayStart(now,'UTC');const query='query($account:String!,$start:Time!,$end:Time!){viewer{accounts(filter:{accountTag:$account}){workersInvocationsAdaptive(limit:1,filter:{datetime_geq:$start,datetime_leq:$end}){sum{requests}}}}}';
    const response=await fetch('https://api.cloudflare.com/client/v4/graphql',{method:'POST',headers:{authorization:`Bearer ${env.CLOUDFLARE_ANALYTICS_TOKEN}`,'content-type':'application/json'},body:JSON.stringify({query,variables:{account:env.CLOUDFLARE_ACCOUNT_ID,start,end:checkedAt}}),signal:AbortSignal.timeout(10000)});
    const data=await response.json();if(!response.ok||data.errors?.length)throw new Error('Cloudflare Analytics permission/query failed.');

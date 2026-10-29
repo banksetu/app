@@ -50,7 +50,8 @@ test('Central Bank physical passbook print omits stationery, logo, photograph an
   assert(print.includes('central-lower'));
   assert(print.includes('BRANCH ADDRESS AND TEL NO.:'));
   assert(print.includes('NAME AND ADDRESS OF ACCOUNT HOLDER/S:'));
-  assert(source.includes('.central-bank-document[data-mode="passbook"]{background:transparent}'));
+  assert(source.includes('.central-bank-document[data-mode="passbook"]{background:#fff}'));
+  assert(print.includes('data-print-paper'));
 });
 
 test('Central Bank data-only passbook is wired to the Olivetti PR2 path at 190 x 173 mm',()=>{
@@ -62,6 +63,15 @@ test('Central Bank data-only passbook is wired to the Olivetti PR2 path at 190 x
   assert(dialog.includes('/central bank of india|central bank|\\bcbi\\b/i.test(bankName)?173'));
   assert(ipc.includes('.passbook-page .central-bank-document'));
   assert(source.includes('html.pr2-direct-preparing .central-upper'));
+});
+
+test('Central Bank paper stays visible in dark appearance and Windows sync progress keeps rotating',()=>{
+  const appCss=fs.readFileSync(new URL('../src/App.css',import.meta.url),'utf8');
+  assert.match(appCss,/data-appearance="dark"\] \.central-bank-document/);
+  assert.match(appCss,/\.central-bank-document\{[\s\S]*color-scheme:light/);
+  assert.match(appCss,/\.banksetu-sync-spinning\{display:inline-block;animation:banksetu-sync-rotate 1s linear infinite\}/);
+  assert.match(appCss,/\.banksetu-nav-icon\.is-spinning svg\{animation:banksetu-nav-sync 1s linear infinite\}/);
+  assert(!appCss.includes('.banksetu-main-workspace *,.banksetu-sidebar *{animation-duration:.001ms'));
 });
 
 test('viewport dialogs escape optimized page transforms through the shared body portal',()=>{

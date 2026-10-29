@@ -1279,7 +1279,8 @@ async function handleMasterOperation(request, env, actor, route) {
   }
   if(route === "/master-system-status") {
     if(!isMasterActor(actor))return json({error:"Master Admin permission is required."},403);
-    return json(await masterUsage(env,serviceAccessToken,firestoreRequest,decodeFields));
+    const body=await request.json().catch(()=>({}));
+    return json(await masterUsage(env,serviceAccessToken,firestoreRequest,decodeFields,{force:body.force===true}));
   }
   if (route === "/get-offline-session") {
     if(isMasterActor(actor)) {

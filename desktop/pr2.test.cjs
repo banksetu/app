@@ -100,6 +100,10 @@ test('multiple compatible devices remain separate; default spooler is not select
  for(const name of ['EPSON PLQ-35','EPSON PLQ-80'])assert.equal((await f.bridge.probe(scope,{...device,name},settings)).pr2,true);
  await assert.rejects(f.bridge.probe(scope,{...device,name:'EPSON PLQ-32'},settings),/profile/);
 });
+test('read-only printer discovery safely retries one interrupted helper before printing',async t=>{
+ let attempts=0;const f=fixture(t);const bridge=createBridge({directory:f.directory,authorize:s=>assert.equal(s,scope),transport:()=>{attempts++;if(attempts===1)return {async handshake(){throw Error('Printer detection stopped before any print data was sent.');},close(){}};return f.io;}});
+ const list=await bridge.discover(scope);assert.equal(attempts,2);assert.equal(list.devices.length,1);assert.equal(f.writes.length,0);
+});
 test('cross-tenant requests, probes, discovery and cancellation are rejected',async t=>{
  const f=fixture(t);await assert.rejects(f.bridge.print({...f.request,scope:'other'}),/authorization/);await assert.rejects(f.bridge.discover('other'),/authorization/);await assert.rejects(f.bridge.probe('other',device,settings),/authorization/);assert.throws(()=>f.bridge.cancel('other',f.request.id),/authorization/);
 });
@@ -127,7 +131,10 @@ test('native RPC preserves zero bytes and escapes without text conversion',async
  const f=nativeFixture(t);await f.client.handshake();const bytes=Buffer.from([0,27,0,255,13,10,0]);await f.client.write(bytes);assert.deepEqual(Buffer.from(f.received[1].data,'base64'),bytes);
 });
 test('native timeout terminates helper and never retries the write',async t=>{
- const f=nativeFixture(t,false);await assert.rejects(f.client.rpc('read',{count:3},5),/interrupted/);assert.equal(f.killed(),true);assert.equal(f.received.length,1);await assert.rejects(f.client.handshake(),/closed/);
+ const f=nativeFixture(t,false);await assert.rejects(f.client.rpc('read',{count:3},5),/timed out.*Do not resend/);assert.equal(f.killed(),true);assert.equal(f.received.length,1);await assert.rejects(f.client.handshake(),/closed/);
+});
+test('native discovery timeout is clearly safe to retry because no print data was sent',async t=>{
+ const f=nativeFixture(t,false);await assert.rejects(f.client.rpc('list',{},5),/detection timed out before any print data was sent/);assert.equal(f.killed(),true);assert.equal(f.received[0].op,'list');
 });
 test('damaged or mismatched bundled helper fails before process launch',t=>{
  const f=nativeFixture(t);fs.writeFileSync(path.join(f.directory,'BankSetu.Pr2Bridge.exe'),'changed');assert.throws(()=>require('./pr2-native.cjs').nativeClient(f.directory,{spawnProcess:()=>assert.fail('must not spawn')}),/damaged/);

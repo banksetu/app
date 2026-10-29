@@ -3639,7 +3639,6 @@ body{margin:0!important;overflow-x:hidden!important;color:var(--bs-text)!importa
 .banksetu-floating-support .banksetu-support-badge{position:absolute;top:-5px;right:-4px;margin:0}
 body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dialog[open]) .banksetu-floating-support{display:none}
 @media(max-width:700px){.banksetu-floating-support{right:2px;bottom:2px;width:48px;height:48px}}
-@media(prefers-reduced-motion:reduce){.banksetu-floating-support{transition:none}.banksetu-floating-support:hover{transform:none}}
 .banksetu-main-workspace{flex:1!important;width:auto!important;min-width:0!important;min-height:100vh!important;margin:0!important;padding:18px 24px 42px!important;border-radius:0!important;background:var(--bs-bg)!important;color:var(--bs-text)!important;box-sizing:border-box!important;overflow:visible!important}
 /* No purple footer/strip can show below the dashboard. */
 .banksetu-main-workspace::after{display:none!important}
@@ -3776,7 +3775,6 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 .banksetu-main-workspace button:active,.banksetu-sidebar button:active{transform:scale(.98)}
 .match-modal,.dashboard-status-panel,.customer-camera-dialog{animation:login-enter .18s ease-out both}
 .match-card,.dashboard-status-row{transition:background-color .17s ease,transform .17s ease}
-@media(prefers-reduced-motion:reduce){.login-page:before,.login-page:after,.login-card,.login-page .banksetu-logo,.login-page .error-message,.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel,.customer-camera-dialog{animation:none!important}.login-page .sign-in,.banksetu-main-workspace button,.banksetu-sidebar button,.banksetu-sidebar,.mobile-menu-button,.match-card,.dashboard-status-row{transition:none!important}}
 @media print{.banksetu-main-workspace>section,.dashboard-stat-card,.dashboard-quick-card,.match-modal,.dashboard-status-panel{animation:none!important}}
 
 /* Bank Setu motion system: paint-only transitions keep navigation responsive. */
@@ -3896,9 +3894,19 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
   .custom-bank-document .bank-format-print-document{zoom:1!important;animation:none!important}
 }
 
-@media(prefers-reduced-motion:reduce){
-  .banksetu-main-workspace *,.banksetu-sidebar *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+/* A passbook is physical paper. App appearance must never recolour the
+   Central Bank preview or the document captured by the PR2 bridge. */
+html[data-appearance="dark"] .central-bank-document,
+.banksetu-app-shell[data-appearance="dark"] .central-bank-document{
+  background:#fff!important;color:#4a4a48!important;color-scheme:light!important;
+  border-color:#87959b!important;
 }
+html[data-appearance="dark"] .central-bank-document[data-mode="quickPassbook"],
+.banksetu-app-shell[data-appearance="dark"] .central-bank-document[data-mode="quickPassbook"]{
+  background:linear-gradient(#eef5f6 0 49.7%,#fffaf5 50.3% 100%)!important;
+}
+html[data-appearance="dark"] .central-bank-document :is(h1,h2,h3,h4,h5,h6,p,span,li,b,strong,small),
+.banksetu-app-shell[data-appearance="dark"] .central-bank-document :is(h1,h2,h3,h4,h5,h6,p,span,li,b,strong,small){color:inherit!important}
 
 /* Expired/suspended business documents must not reach browser print output. */
 @media print {
