@@ -85,8 +85,8 @@ export default function CentralBankPassbook({customer:c,bankInfo:b={},bankLogo="
   return <div className="central-preview">
     <style>{`
       .central-preview{overflow-x:auto;padding:16px 8px 22px;color:#202b32}
-      .central-bank-document{position:relative;width:190mm;height:173mm;margin:auto;overflow:hidden;background:linear-gradient(#eef5f6 0 49.7%,#fffaf5 50.3% 100%);box-shadow:0 4px 24px #0002;border:.2mm solid #87959b;font-family:"Noto Sans Devanagari","Nirmala UI","Mangal",Arial,sans-serif;color:#202b32}
-      .central-bank-document[data-mode="passbook"]{background:transparent}
+      .central-bank-document{position:relative;width:190mm;height:173mm;margin:auto;overflow:hidden;background:linear-gradient(#eef5f6 0 49.7%,#fffaf5 50.3% 100%);box-shadow:0 4px 24px #0002;border:.2mm solid #87959b;font-family:"Noto Sans Devanagari","Nirmala UI","Mangal",Arial,sans-serif;color:#202b32;color-scheme:light;forced-color-adjust:none}
+      .central-bank-document[data-mode="passbook"]{background:#fff}
       .central-bank-document *{box-sizing:border-box;text-align:left}
       .central-upper{position:absolute;inset:0 0 auto 0;height:86mm;background:linear-gradient(180deg,#f1f7f8,#e8f1f3);font-size:1.95mm;line-height:3.62mm;color:#30383b}
       .central-compliance{position:absolute;left:49mm;top:5.2mm;width:92mm;height:8.2mm;border:.28mm solid #3f4d53;padding:.35mm 1mm;text-align:center!important;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:3mm}
@@ -99,10 +99,10 @@ export default function CentralBankPassbook({customer:c,bankInfo:b={},bankLogo="
       .central-photo{position:absolute;left:60.2mm;top:112.5mm;width:26.5mm;height:34mm;border:.3mm solid #37474f;object-fit:cover;padding:.35mm;background:#fff}
       .central-manager{position:absolute;left:145mm;top:158.5mm;width:38mm;text-align:center!important;color:#4a4a48;font-family:"Noto Sans Devanagari","Nirmala UI","Mangal",Arial,sans-serif;line-height:3.3mm}.central-manager *{display:block;text-align:center!important}.central-manager span{font-size:2.3mm;font-weight:600}.central-manager b{font:700 2.35mm/3.3mm Arial,sans-serif}
       .central-edit{display:block;margin:12px auto 0}
-      @media print{@page{size:190mm 173mm;margin:0}.central-preview{padding:0;overflow:visible}.central-bank-document{margin:0;box-shadow:none;border:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}.central-bank-document[data-mode="passbook"]{background:transparent}.central-edit{display:none!important}}
+      @media print{@page{size:190mm 173mm;margin:0}.central-preview{padding:0;overflow:visible}.central-bank-document{margin:0;box-shadow:none;border:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}.central-bank-document[data-mode="passbook"]{background:#fff}.central-edit{display:none!important}}
       html.pr2-direct-preparing .central-upper,html.pr2-direct-preparing .central-fold,html.pr2-direct-preparing .central-logo,html.pr2-direct-preparing .central-photo,html.pr2-direct-preparing .central-manager{display:none!important}
     `}</style>
-    <article className="central-bank-document" data-mode={formatType} aria-label={quick?"Central Bank of India complete quick passbook":"Central Bank of India passbook values only"}>
+    <article className="central-bank-document" data-print-paper data-mode={formatType} aria-label={quick?"Central Bank of India complete quick passbook":"Central Bank of India passbook values only"}>
       {quick&&<CentralStationery bankLogo={bankLogo} photo={photo}/>} 
       <section className="central-lower">
         <span className="central-value" data-field="branchTitle" style={at(55,7,58)}>{branchTitle}</span>

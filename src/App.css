@@ -3898,7 +3898,25 @@ body:has([role="dialog"]:not([hidden])) .banksetu-floating-support,body:has(dial
 
 @media(prefers-reduced-motion:reduce){
   .banksetu-main-workspace *,.banksetu-sidebar *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  /* Sync rotation is live progress feedback, not decorative motion.  Keep both
+     Windows indicators moving even when Windows requests reduced animation. */
+  .banksetu-sync-spinning{animation:banksetu-sync-rotate 2s linear infinite!important}
+  .banksetu-sidebar .banksetu-nav-icon.is-spinning svg{animation:banksetu-nav-sync 2s linear infinite!important}
 }
+
+/* A passbook is physical paper. App appearance must never recolour the
+   Central Bank preview or the document captured by the PR2 bridge. */
+html[data-appearance="dark"] .central-bank-document,
+.banksetu-app-shell[data-appearance="dark"] .central-bank-document{
+  background:#fff!important;color:#4a4a48!important;color-scheme:light!important;
+  border-color:#87959b!important;
+}
+html[data-appearance="dark"] .central-bank-document[data-mode="quickPassbook"],
+.banksetu-app-shell[data-appearance="dark"] .central-bank-document[data-mode="quickPassbook"]{
+  background:linear-gradient(#eef5f6 0 49.7%,#fffaf5 50.3% 100%)!important;
+}
+html[data-appearance="dark"] .central-bank-document :is(h1,h2,h3,h4,h5,h6,p,span,li,b,strong,small),
+.banksetu-app-shell[data-appearance="dark"] .central-bank-document :is(h1,h2,h3,h4,h5,h6,p,span,li,b,strong,small){color:inherit!important}
 
 /* Expired/suspended business documents must not reach browser print output. */
 @media print {
