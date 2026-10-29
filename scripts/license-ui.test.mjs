@@ -14,7 +14,7 @@ function render(page,blocked){
  const exports={};
  const component=name=>props=>React.createElement('div',{'data-component':name},name==='LicenseNotice'?props.permission.state:undefined);
  const require=path=>{
-  if(path==='react')return {...React,lazy:loader=>{const name=String(loader).match(/require\(["']\.\/(.+?)["']\)/)?.[1]||'DeferredPage';return component(name);},useState:value=>{index++;return React.useState(index===3?page:index===24?true:value);}};
+  if(path==='react')return {...React,lazy:loader=>{const name=String(loader).match(/require\(["']\.\/(.+?)["']\)/)?.[1]||'DeferredPage';return component(name);},useState:value=>{index++;return React.useState(index===4?page:index===25?true:value);}};
   if(path==='react/jsx-runtime')return jsx;
   if(path==='react-dom')return {createPortal:()=>null};
   if(path==='./core/useSyncStatus')return {useSyncStatus:()=>({records:1,pending:1,online:true})};
@@ -47,7 +47,7 @@ test('license navigation moves from the sidebar to the profile menu without chan
  assert.match(dashboard,/onClick=\{\(\) => openPage\("dashboard"\)\}/);
  const license=dashboard.indexOf('className="admin-license-menu-item"');
  const logout=dashboard.indexOf('↪ Logout',license);
- assert(license>dashboard.indexOf('Advanced Administrator Control')&&logout>license,'License Management must be the final profile action immediately above Logout');
+ assert(license>dashboard.indexOf('Advanced Administrator Control')&&logout>license,'License Management must remain immediately above the final Logout action');
 });
 test('floating support position is temporary and returns to its bottom-right home',()=>{
  const support=fs.readFileSync('src/FloatingSupportButton.tsx','utf8');

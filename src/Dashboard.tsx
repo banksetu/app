@@ -4,6 +4,7 @@ import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import SlideNotifications from "./SlideNotifications";
+import LicenseInquiryAlert from "./LicenseInquiryAlert";
 import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
@@ -285,6 +286,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // compatibility. It has the same global appearance permissions as the
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
+  const [licenseInquiryCount,setLicenseInquiryCount]=useState(0);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
   useLayoutEffect(()=>{
@@ -902,6 +904,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     <main className="banksetu-app-shell" data-appearance={appearance} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
       <SlideNotifications />
+      <LicenseInquiryAlert enabled={canControlGlobalDashboard} onCount={setLicenseInquiryCount} openLicense={()=>openPage("license-management")}/>
 
       {mobileMenuOpen && (
 
@@ -1383,26 +1386,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                   onClick={() => { setAdminMenuOpen(false); openPage("license-management"); }}
                 >
                   <span style={styles.adminLicenseMenuIcon} aria-hidden="true">🪪</span>
-                  <span><strong style={styles.adminLicenseMenuTitle}>License Management</strong><small style={styles.adminLicenseMenuSubtitle}>Plan, status and renewal</small></span>
+                  <span><strong style={styles.adminLicenseMenuTitle}>License Management{licenseInquiryCount>0?` (${licenseInquiryCount})`:''}</strong><small style={styles.adminLicenseMenuSubtitle}>{licenseInquiryCount>0?`${licenseInquiryCount} inquiry request(s) waiting`:'Plan, status and renewal'}</small></span>
                 </button>}
 
-                <button
-
-                  type="button"
-
-                  style={
-
-                    styles.adminMenuItemDanger
-
-                  }
-
-                  onClick={onLogout}
-
-                >
-
-                  ↪ Logout
-
-                </button>
+                <button type="button" style={styles.adminMenuItemDanger} onClick={onLogout}>↪ Logout</button>
 
               </div>
 
