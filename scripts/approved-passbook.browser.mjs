@@ -18,12 +18,19 @@ const mocks={
  './platform/print':`export async function printCurrentDocument(){window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
 };
 const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if(importer?.endsWith('/src/Passbook.tsx')&&mocks[source])return '\0test:'+source;if(importer?.endsWith('/src/PrintAlignmentPreview.tsx')&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
+const openPassbookPage=async(page,url)=>{
+ for(let attempt=0;attempt<2;attempt++){
+  await page.goto(url,{waitUntil:'domcontentloaded'});
+  try{await page.locator('.passbook-search-input').waitFor({state:'visible',timeout:15000});return;}
+  catch(error){if(attempt)throw error;await page.waitForTimeout(500);}
+ }
+};
 let browser;
 try{
  await server.listen();
  browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--use-gl=angle','--use-angle=swiftshader']});
  const page=await browser.newPage({viewport:{width:1300,height:1000}});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5197/test-evidence/menu.html');
+ await openPassbookPage(page,'http://127.0.0.1:5197/test-evidence/menu.html');
  await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();
  await page.locator('.pb-approved-artwork').waitFor();
  assert.equal(await page.locator('[data-field="branchName"]').getAttribute('aria-label'),'branchName: TEST BRANCH');
@@ -60,7 +67,7 @@ try{
  for(const bank of ['assam','union'])for(const mode of ['print','quick']){
   const page=await browser.newPage({viewport:{width:1300,height:1100}});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(`http://127.0.0.1:5197/test-evidence/menu.html?bank=${bank}&mode=${mode}`);
+  await openPassbookPage(page,`http://127.0.0.1:5197/test-evidence/menu.html?bank=${bank}&mode=${mode}`);
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();
   const isAssam=bank==='assam';
   await page.locator(isAssam?'.pb-approved-artwork':'.union-document').waitFor();
@@ -101,7 +108,7 @@ try{
   console.log(`PASS: ${bank} ${mode}: bank selection, default nominee, all temporary edits, cancel, no customer write, alignment preview`);
  }
  const other=await browser.newPage();
- await other.goto('http://127.0.0.1:5197/test-evidence/menu.html?tenant=second&mode=quick');
+ await openPassbookPage(other,'http://127.0.0.1:5197/test-evidence/menu.html?tenant=second&mode=quick');
  await other.locator('.passbook-search-input').fill(customer.accountNo);await other.getByRole('button',{name:'Search',exact:true}).click();
  await other.locator('.pb-approved-artwork').waitFor();
  assert.equal(await other.locator('[data-field="branchName"]').getAttribute('aria-label'),'branchName: SECOND BRANCH');
