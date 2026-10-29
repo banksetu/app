@@ -57,3 +57,24 @@ test('single customer share and print reuse the visible card while All PDF uses 
  assert.doesNotMatch(source,/renderToStaticMarkup\(<CustomerPreviewCard/);
  assert.doesNotMatch(source,/card\.classList\.add\('pdf-capture'\)/);
 });
+
+test('mobile customer preview stays compact and share omits only the status strip',()=>{
+ const source=fs.readFileSync('src/Customers.tsx','utf8');
+ assert.match(source,/grid-template-columns: minmax\(0, 1fr\) 88px/);
+ assert.match(source,/grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+ assert.match(source,/\.customer-preview \.status-item \{[\s\S]*?flex-direction: column/);
+ assert.match(source,/\.customer-preview \.status-item strong \{[\s\S]*?white-space: nowrap/);
+ assert.match(source,/customer-status-strip customer-preview-share-exclude/);
+ const capture=fs.readFileSync('src/AllCustomerData.tsx','utf8');
+ assert.match(capture,/querySelectorAll\("\.customer-preview-share-exclude"\)\.forEach\(node=>node\.remove\(\)\)/);
+});
+
+test('customer work reports progress through compact mobile slide notifications',()=>{
+ const customers=fs.readFileSync('src/Customers.tsx','utf8');
+ const notices=fs.readFileSync('src/SlideNotifications.tsx','utf8');
+ for(const value of ['Searching customer','Preparing share','Preparing print','Rendering PDF'])assert(customers.includes(value),value);
+ assert.match(notices,/@media\(max-width:600px\)/);
+ assert.match(notices,/width:min\(292px,calc\(100vw - 18px\)\)/);
+ assert.match(notices,/env\(safe-area-inset-top,0px\)/);
+ assert.match(notices,/z-index:6000/);
+});
