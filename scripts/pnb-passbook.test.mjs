@@ -86,3 +86,25 @@ test('PNB reuses the Assam account-opening layout, extraction and tenant logo wi
   assert(localData.includes('networkFetch(verifiedUrl'));
   assert.match(appsScript,/const sheet =\r?\n    getSheet\(authUser\);/);
 });
+
+test('Assam and PNB account-opening nomination relationship is blank and temporarily editable',()=>{
+  const accountOpening=fs.readFileSync(new URL('../src/AccountOpeningPDF.tsx',import.meta.url),'utf8');
+  assert(accountOpening.includes('const [nomineeRelationship, setNomineeRelationship] = useState("")'));
+  assert(accountOpening.includes('value={nomineeRelationship}'));
+  assert(accountOpening.includes('onChange={setNomineeRelationship}'));
+  assert(accountOpening.includes('className="bold nominee-relationship-cell"'));
+  assert(!accountOpening.includes('<td className="bold">MOTHER</td>'));
+  assert.equal((accountOpening.match(/setNomineeRelationship\(""\)/g)||[]).length,3);
+  assert(accountOpening.includes('.editable-value.empty'));
+  assert(accountOpening.includes('.edit-pencil { display: none !important; }'));
+});
+
+test('shared account-opening footer uses only the selected Assam or PNB bank name',()=>{
+  const accountOpening=fs.readFileSync(new URL('../src/AccountOpeningPDF.tsx',import.meta.url),'utf8');
+  assert(accountOpening.includes('const authorizedOfficialBankName = isPnbBank(bankName)'));
+  assert(accountOpening.includes('? "Punjab National Bank"'));
+  assert(accountOpening.includes(': "Assam Gramin Vikas Bank"'));
+  assert(accountOpening.includes('{authorizedOfficialBankName}'));
+  assert.equal((accountOpening.match(/Assam Gramin Vikas Bank/g)||[]).length,1);
+  assert.equal((accountOpening.match(/Punjab National Bank/g)||[]).length,1);
+});
