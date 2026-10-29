@@ -18,6 +18,8 @@ test("motion stays paint-only and mobile passbook fitting never changes print ge
   assert.match(list,/all-customer-row-enter/);
   assert.match(list,/index<25/);
   assert.match(list,/banksetu-customer-row-in/);
+  assert.match(list,/animation-delay:calc\(var\(--customer-row-index,0\) \* 55ms\)/);
+  assert.doesNotMatch(list,/@media\(prefers-reduced-motion:reduce\).*all-customer-row-enter/);
   assert.match(css,/--motion-accent:#1677df/);
   assert.match(css,/data-appearance="dark"[^}]*--motion-accent:#36d7e7/s);
   assert.match(css,/@keyframes banksetu-page-arrive/);

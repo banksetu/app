@@ -2507,7 +2507,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           .dashboard-count-transition { display:inline-block; animation:banksetu-count-enter .2s ease-out; }
           @keyframes banksetu-count-enter { from { opacity:.5; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
-          @media (prefers-reduced-motion:reduce) { .dashboard-count-transition { animation:none; } }
 
           @media (max-width: 620px) {
 

@@ -96,10 +96,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: c67c1c38d8481b01e9b9fbca5cb0f9b5
           LICENSE_TURNSTILE_SITE_KEY: ${{ secrets.LICENSE_TURNSILE_SITE_KEY }}
           LICENSE_TURNSTILE_SECRET: ${{ secrets.LICENSE_TURNSILE_SECRET }}
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
         run: |
           set -euo pipefail
           printf '%s' "$LICENSE_TURNSTILE_SITE_KEY" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SITE_KEY --config cloudflare/wrangler.toml
           printf '%s' "$LICENSE_TURNSTILE_SECRET" | npx --yes wrangler@4.146.0 secret put LICENSE_TURNSTILE_SECRET --config cloudflare/wrangler.toml
+          if [ -n "$CLOUDFLARE_ANALYTICS_TOKEN" ]; then
+            printf '%s' "$CLOUDFLARE_ANALYTICS_TOKEN" | npx --yes wrangler@4.146.0 secret put CLOUDFLARE_ANALYTICS_TOKEN --config cloudflare/wrangler.toml
+          else
+            echo '::warning::Add CLOUDFLARE_ANALYTICS_TOKEN with Account Analytics Read permission to activate the Master usage card.'
+          fi
 
       # `secret put` publishes a new Worker version without the command-line
       # RELEASE_COMMIT override. Deploy last so health identifies live code.

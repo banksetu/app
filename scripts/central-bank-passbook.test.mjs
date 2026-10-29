@@ -69,8 +69,9 @@ test('Central Bank paper stays visible in dark appearance and Windows sync progr
   const appCss=fs.readFileSync(new URL('../src/App.css',import.meta.url),'utf8');
   assert.match(appCss,/data-appearance="dark"\] \.central-bank-document/);
   assert.match(appCss,/\.central-bank-document\{[\s\S]*color-scheme:light/);
-  assert.match(appCss,/@media\(prefers-reduced-motion:reduce\)[\s\S]*\.banksetu-sync-spinning\{animation:banksetu-sync-rotate 2s linear infinite!important\}/);
-  assert.match(appCss,/\.banksetu-nav-icon\.is-spinning svg\{animation:banksetu-nav-sync 2s linear infinite!important\}/);
+  assert.match(appCss,/\.banksetu-sync-spinning\{display:inline-block;animation:banksetu-sync-rotate 1s linear infinite\}/);
+  assert.match(appCss,/\.banksetu-nav-icon\.is-spinning svg\{animation:banksetu-nav-sync 1s linear infinite\}/);
+  assert(!appCss.includes('.banksetu-main-workspace *,.banksetu-sidebar *{animation-duration:.001ms'));
 });
 
 test('viewport dialogs escape optimized page transforms through the shared body portal',()=>{

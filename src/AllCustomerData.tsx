@@ -1,3 +1,4 @@
+35549 src/AllCustomerData.tsx
 import { afsmDisplay } from "./core/afsmPolicy";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -383,8 +384,8 @@ export default function AllCustomerData() {
     </div>,document.body)}
     <style>{`
       .all-customer-data tbody tr:hover,.all-customer-data tbody tr:focus {background:#fbd9e3!important;outline:2px solid #d17a9c}
-      .all-customer-row-enter {animation:banksetu-customer-row-in .34s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--customer-row-index,0) * 24ms);will-change:transform,opacity}
-      @keyframes banksetu-customer-row-in {from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+      .all-customer-row-enter {animation:banksetu-customer-row-in .52s cubic-bezier(.16,.82,.24,1) both;animation-delay:calc(var(--customer-row-index,0) * 55ms);will-change:transform,opacity}
+      @keyframes banksetu-customer-row-in {0%{opacity:0;transform:translate3d(0,24px,0) scale(.985)}68%{opacity:1;transform:translate3d(0,-2px,0) scale(1.002)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
       .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:flex;align-items:flex-start;justify-content:center;padding:max(14px,env(safe-area-inset-top,0px)) 14px max(14px,env(safe-area-inset-bottom,0px));overflow:auto;overscroll-behavior:contain}
       .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:none;overflow:visible;text-align:left;flex:none}
       .customer-preview-heading {position:sticky;top:0;z-index:2;background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px;text-align:left;border-radius:20px 20px 0 0}
@@ -416,7 +417,6 @@ export default function AllCustomerData() {
       body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay :is(.customer-preview-name,.customer-preview-account-label,.customer-preview-account-value,.customer-preview-section dt,.customer-preview-section dd,.customer-preview-address) {color:#f8fafc!important}
       body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section dl>div {border-color:#2d3e57!important}
       @media(max-width:650px){.customer-preview-overlay{padding:max(2px,env(safe-area-inset-top,0px)) 2px max(2px,env(safe-area-inset-bottom,0px))}.customer-preview-card{width:100%;border-radius:12px}.customer-preview-heading{padding:14px;gap:10px;border-radius:12px 12px 0 0}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{grid-template-columns:100px minmax(0,1fr);gap:12px}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:none}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{grid-column:1/-1;justify-self:start}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl{padding:9px 12px}.customer-preview-section dl>div{grid-template-columns:minmax(112px,40%) minmax(0,1fr);gap:9px}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
-      @media(prefers-reduced-motion:reduce){.all-customer-row-enter{animation:none!important}}
       @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}.all-customer-row-enter{animation:none!important}}
     `}</style>
   </section>;
