@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.138",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.138/BankSetu-Setup-1.0.138-x64.exe",
+  "latestVersion": "1.0.139",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.139/BankSetu-Setup-1.0.139-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.138",
-  "releaseTag": "v1.0.138",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.138",
-  "releaseDate": "2026-10-29",
-  "windowsVersion": "1.0.138",
-  "androidBuild": 1000138,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.138/BankSetu-Setup-1.0.138-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.138/BankSetu-Android-1000138.apk",
+  "version": "1.0.139",
+  "releaseTag": "v1.0.139",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.139",
+  "releaseDate": "2026-10-30",
+  "windowsVersion": "1.0.139",
+  "androidBuild": 1000139,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.139/BankSetu-Setup-1.0.139-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.139/BankSetu-Android-1000139.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.138",
-      "releaseDate": "2026-10-29",
+      "version": "1.0.139",
+      "releaseDate": "2026-10-30",
       "categories": {
         "Improvements": [
-          "Merge verified Bank Setu draft release work."
+          "Merge PR 92: licensing, passbook, support and Android push."
         ]
       }
     },
     "android": {
-      "version": "1.0.138",
-      "releaseDate": "2026-10-29",
+      "version": "1.0.139",
+      "releaseDate": "2026-10-30",
       "categories": {
         "Improvements": [
-          "Merge verified Bank Setu draft release work."
+          "Merge PR 92: licensing, passbook, support and Android push."
         ]
       }
     }
