@@ -17,6 +17,7 @@ on:
       - apps-script/Code.gs
       - desktop/**
       - scripts/license-ui.test.mjs
+      - scripts/support-rules.test.mjs
       - scripts/pnb-passbook.test.mjs
       - scripts/central-bank-passbook.test.mjs
       - .github/workflows/publish-app-release.yml
