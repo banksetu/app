@@ -18,9 +18,9 @@ const c1=env.authenticatedContext("c1").firestore(),c2=env.authenticatedContext(
 await assertSucceeds(getDoc(doc(c1,"supportConversations","c1")));
 await assertFails(getDoc(doc(c2,"supportConversations","c1")));
 await assertSucceeds(getDoc(doc(master,"supportConversations","c1")));
-await assertSucceeds(setDoc(doc(c1,"supportConversations","c1"),{clientUid:"c1",clientName:"Client 1",clientEmail:"c1@test",tenantId:"t1",lastMessage:"new",updatedAt:serverTimestamp(),unreadForMaster:true,unreadForClient:false}));
+await assertFails(setDoc(doc(c1,"supportConversations","c1"),{clientUid:"c1",clientName:"Client 1",clientEmail:"c1@test",tenantId:"t1",lastMessage:"new",updatedAt:serverTimestamp(),unreadForMaster:true,unreadForClient:false}));
 await assertFails(setDoc(doc(c2,"supportConversations","c1"),{clientUid:"c1",clientName:"Bad",clientEmail:"",tenantId:"t1",lastMessage:"bad",updatedAt:serverTimestamp(),unreadForMaster:true,unreadForClient:false}));
-await assertSucceeds(addDoc(collection(c1,"supportConversations","c1","messages"),{text:"Need help",senderUid:"c1",senderRole:"client_admin",clientUid:"c1",tenantId:"t1",createdAt:serverTimestamp()}));
+await assertFails(addDoc(collection(c1,"supportConversations","c1","messages"),{text:"Need help",senderUid:"c1",senderRole:"client_admin",clientUid:"c1",tenantId:"t1",createdAt:serverTimestamp()}));
 await assertFails(addDoc(collection(c2,"supportConversations","c1","messages"),{text:"Cross tenant",senderUid:"c2",senderRole:"client_user",clientUid:"c1",tenantId:"t1",createdAt:serverTimestamp()}));
 const globalVisible=query(collection(c1,"supportAnnouncements"),where("global","==",true),limit(50));
 const personalVisible=query(collection(c1,"supportAnnouncements"),where("recipientUids","array-contains","c1"),limit(50));
