@@ -3,7 +3,7 @@ import {pathToFileURL} from 'node:url';
 
 // Frontend-only and desktop-only releases reuse the last verified backend.
 // Keep this list aligned with deploy-cloudflare.yml's push path filter.
-const backendPaths=['src/core/afsmPdf.ts','src/core/localData.ts','apps-script/Code.gs','src/core/photoState.ts','scripts/generate-sw.mjs','cloudflare','firestore.rules','scripts/enforce-client-licenses.mjs','scripts/verify-backend-release-gate.mjs','.github/workflows/deploy-cloudflare.yml'];
+const backendPaths=['src/core/afsmPdf.ts','src/core/localData.ts','apps-script/Code.gs','src/core/photoState.ts','scripts/generate-sw.mjs','cloudflare','firestore.rules','scripts/enforce-client-licenses.mjs','scripts/support-rules.test.mjs','scripts/verify-backend-release-gate.mjs','.github/workflows/deploy-cloudflare.yml'];
 export function backendSourceCommit(run=execFileSync){
  return run('git',['log','--first-parent','-1','--format=%H','--',...backendPaths],{encoding:'utf8'}).trim();
 }
