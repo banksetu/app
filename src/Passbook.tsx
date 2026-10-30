@@ -2,7 +2,6 @@ import Pr2PrinterDialog from "./Pr2PrinterDialog";
 import { windowsPr2, WINDOWS_PR2_MESSAGE } from "./platform/pr2";
 import { showMessage } from "./uiDialogs";
 import { localDataFetch, getDataIdToken } from "./core/localData";
-import { requireLicensedWrite } from "./core/licenseAccess";
 import {
 
   useState,
@@ -23,6 +22,8 @@ import CentralBankPassbook from "./CentralBankPassbook";
 import { isCentralBank, isPnbBank } from "./bankDocumentPolicy";
 import WordPassbookInfo, { wordPassbookProblems, wordPassbookValues } from "./WordPassbookInfo";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
+import { savedPrintOffset } from "./printAlignmentStorage";
+import PrintAlignmentChoice from "./PrintAlignmentChoice";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
   RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
@@ -467,6 +468,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
   const [printing, setPrinting] = useState(false);
   const [alignmentOpen, setAlignmentOpen] = useState(false);
+  const [alignmentChoice, setAlignmentChoice] = useState<"system" | "pr2" | null>(null);
   const [alignmentMode, setAlignmentMode] = useState<"system" | "pr2">("system");
   const [directPrinting, setDirectPrinting] = useState(false);
   const [directOffset, setDirectOffset] = useState<PrintOffset>({x:0,y:0});
@@ -872,7 +874,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
     try {
-      await requireLicensedWrite();
+      // printCurrentDocument owns the shared license gate. Keeping a second
+      // verification here made every normal passbook print repeat the same
+      // signed-receipt work before the preview could open.
 
       if (isApprovedAssamPrint || isAssamQuick) {
         const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
@@ -1007,7 +1011,22 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
       if (problems.length) { setError(problems.join(' ')); return; }
     }
-    setError(""); setMessage(""); setAlignmentMode("pr2"); setAlignmentOpen(true);
+    setError(""); setMessage("");
+    if (alignmentEnabled) setAlignmentChoice("pr2");
+    else { setDirectOffset({x:0,y:0}); setDirectTestOnly(false); setDirectPrinting(true); }
+  };
+
+  const adjustChosenAlignment=()=>{
+    if(!alignmentChoice)return;
+    setAlignmentMode(alignmentChoice);setAlignmentChoice(null);setAlignmentOpen(true);
+  };
+
+  const skipChosenAlignment=()=>{
+    if(!alignmentChoice)return;
+    const mode=alignmentChoice,offset=savedPrintOffset(alignmentBank);
+    setAlignmentChoice(null);
+    if(mode==="system")void printPassbook(offset,false,false);
+    else {setDirectOffset(offset);setDirectTestOnly(false);setDirectPrinting(true);}
   };
 
   const directPrintCompleted = async () => {
@@ -2902,7 +2921,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
               className="passbook-button print-button"
 
-              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) { setAlignmentMode("system"); setAlignmentOpen(true); } else void printPassbook(); }}
+              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) setAlignmentChoice("system"); else void printPassbook(); }}
 
               disabled={printing}
 
@@ -2972,6 +2991,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           setDirectOffset(offset); setDirectTestOnly(test); setAlignmentOpen(false); setDirectPrinting(true);
         }}
       />}
+      {alignmentChoice&&alignmentEnabled&&<PrintAlignmentChoice bankName={alignmentBank} mode={alignmentChoice} saved={savedPrintOffset(alignmentBank)} onClose={()=>setAlignmentChoice(null)} onAdjust={adjustChosenAlignment} onSkip={skipChosenAlignment}/>}
     </div>
 
   );

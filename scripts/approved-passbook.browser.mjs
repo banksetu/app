@@ -17,7 +17,7 @@ const mocks={
  './tenantApi':`export function getTenantApiUrl(){return '/synthetic-bridge';}`,
  './platform/print':`export async function printCurrentDocument(){window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
 };
-const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if(importer?.endsWith('/src/Passbook.tsx')&&mocks[source])return '\0test:'+source;if(importer?.endsWith('/src/PrintAlignmentPreview.tsx')&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
+const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if(importer?.endsWith('/src/Passbook.tsx')&&mocks[source])return '\0test:'+source;if((importer?.endsWith('/src/PrintAlignmentPreview.tsx')||importer?.endsWith('/src/printAlignmentStorage.ts'))&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
 const openPassbookPage=async(page,url)=>{
  for(let attempt=0;attempt<2;attempt++){
   await page.goto(url,{waitUntil:'domcontentloaded'});
@@ -48,6 +48,8 @@ try{
  assert.equal(await page.locator('svg>g').first().innerHTML(),labels);
  assert.deepEqual(await page.evaluate(()=>window.testCalls.map(x=>x.action)),['searchCustomer']);
  await page.getByRole('button',{name:'Print Passbook',exact:false}).click();
+ await page.getByRole('dialog',{name:/Choose print alignment/}).waitFor();
+ await page.getByRole('button',{name:/Yes · Adjust Alignment/}).click();
  const frame=page.frameLocator('iframe');await frame.locator('.pb-approved-artwork path').first().waitFor();
  assert.equal(await frame.locator('.pb-approved-artwork path').count(),await page.locator('.passbook-shell .pb-approved-artwork path').count());
  await page.getByRole('button',{name:/Test Print/}).click();
@@ -56,12 +58,13 @@ try{
  await page.getByRole('button',{name:/Final Print/}).click();
  await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
  assert.equal(await page.locator('.status-chip').innerText(),'Printed');
+ await page.getByRole('button',{name:'Print Passbook',exact:false}).click();await page.getByRole('button',{name:/No · Open Print Preview/}).click();await page.waitForFunction(()=>window.printCount===3);
  await page.emulateMedia({media:'print'});await page.pdf({path:'test-evidence/menu-print.pdf',preferCSSPageSize:true,printBackground:true});
  await page.emulateMedia({media:'screen'});
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.locator('[data-field="holder"] path').count(),'A MUCH LONGER CUSTOMER NAME FOR TEST'.replaceAll(' ','').length);
- await page.evaluate(()=>window.blockTestLicense=true);await page.getByRole('button',{name:/Print Passbook/}).click();await page.getByRole('button',{name:/Test Print/}).click();await page.getByRole('alert').filter({hasText:'License suspended'}).waitFor();
- assert.equal(await page.evaluate(()=>window.printCount),2);assert.deepEqual(errors,[]);
+ await page.evaluate(()=>window.blockTestLicense=true);await page.getByRole('button',{name:/Print Passbook/}).click();await page.getByRole('button',{name:/Yes · Adjust Alignment/}).click();await page.getByRole('button',{name:/Test Print/}).click();await page.getByRole('alert').filter({hasText:'License suspended'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.printCount),3);assert.deepEqual(errors,[]);
  console.log('PASS: real Passbook menu search → bank/customer mapping → temporary edit → alignment iframe → test print without status mutation → accepted final print → mobile fixed artwork → suspended license blocked.');
  await page.close();
  for(const bank of ['assam','union'])for(const mode of ['print','quick']){
@@ -103,6 +106,7 @@ try{
   }
   // The normal alignment preview must contain the same edited renderer.
   await page.getByRole('button',{name:/Print Passbook/}).click();
+  await page.getByRole('button',{name:/Yes · Adjust Alignment/}).click();
   await page.frameLocator('iframe').locator(isAssam?'.pb-approved-artwork':'.union-document').waitFor();
   assert.deepEqual(errors,[]);await page.close();
   console.log(`PASS: ${bank} ${mode}: bank selection, default nominee, all temporary edits, cancel, no customer write, alignment preview`);

@@ -1,20 +1,32 @@
 const fs=require('node:fs');
 const path=require('node:path');
+const crypto=require('node:crypto');
 
 // Freeze the current print document before React restores screen-only state.
 // Replace canvas content so bank samples and customer photographs survive.
 function capturePrintDocument() {
-  const copy=document.documentElement.cloneNode(true);
+  const roots=[...document.querySelectorAll('[data-print-root="active"]')];
+  const visible=roots.filter(node=>node.getClientRects().length&&getComputedStyle(node).display!=='none').at(-1);
+  let copy,sourceScope,copyScope;
+  if(visible){
+    copy=document.documentElement.cloneNode(false);
+    const head=document.head.cloneNode(true),body=document.body.cloneNode(false),selected=visible.cloneNode(true);
+    body.replaceChildren(selected);copy.append(head,body);sourceScope=visible;copyScope=selected;
+    body.className='banksetu-print-snapshot';
+    body.setAttribute('data-appearance',document.documentElement.dataset.appearance||'light');
+  }else{
+    copy=document.documentElement.cloneNode(true);sourceScope=document;copyScope=copy;
+  }
   copy.querySelectorAll('script').forEach(node=>node.remove());
-  const controls=[...document.querySelectorAll('input,textarea,select')];
-  copy.querySelectorAll('input,textarea,select').forEach((node,index)=>{
+  const controls=[...sourceScope.querySelectorAll('input,textarea,select')];
+  copyScope.querySelectorAll('input,textarea,select').forEach((node,index)=>{
     const original=controls[index];
     if(node.tagName==='TEXTAREA')node.textContent=original.value;
     else if(node.tagName==='SELECT') [...node.options].forEach(option=>{option.selected=option.value===original.value;if(option.selected)option.setAttribute('selected','');else option.removeAttribute('selected');});
     else {node.setAttribute('value',original.value);if(original.checked)node.setAttribute('checked','');else node.removeAttribute('checked');}
   });
-  const canvases=[...document.querySelectorAll('canvas')];
-  copy.querySelectorAll('canvas').forEach((node,index)=>{
+  const canvases=[...sourceScope.querySelectorAll('canvas')];
+  copyScope.querySelectorAll('canvas').forEach((node,index)=>{
     const image=document.createElement('img');
     try {image.src=canvases[index].toDataURL();} catch {return;}
     image.className=node.className;image.style.cssText=node.style.cssText;
@@ -31,25 +43,10 @@ function capturePrintDocument() {
   });
   const base=document.createElement('base');base.href=document.baseURI;
   copy.querySelector('head').prepend(base);
-  // Only the active printable module is needed in the isolated print window.
-  // Copying the dashboard, sidebar, hidden dialogs and cached customer pages
-  // made large bank documents take minutes and multiplied embedded image data.
-  const roots=[...document.querySelectorAll('[data-print-root="active"]')];
-  const visible=roots.filter(node=>node.getClientRects().length&&getComputedStyle(node).display!=='none').at(-1);
-  if(visible){
-    const copies=[...copy.querySelectorAll('[data-print-root="active"]')];
-    const selected=copies[roots.indexOf(visible)];
-    if(selected){
-      const body=copy.querySelector('body');
-      copy.querySelectorAll('body style').forEach(style=>copy.querySelector('head').append(style));
-      body.replaceChildren(selected);
-      body.className='banksetu-print-snapshot';
-      body.setAttribute('data-appearance',document.documentElement.dataset.appearance||'light');
-    }
-  }
+  copy.querySelectorAll('body style').forEach(style=>copy.querySelector('head').append(style));
   return '<!doctype html>'+copy.outerHTML;
 }
-const installPrintScript='window.bankSetuPrintJob=async(options={})=>{window.dispatchEvent(new Event("beforeprint"));try{await Promise.race([Promise.all([document.fonts?.ready,...[...document.images].filter(image=>!image.complete).map(image=>image.decode?image.decode().catch(()=>{}):Promise.resolve())]),new Promise(resolve=>setTimeout(resolve,1500))]);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const html=('
+const installPrintScript='window.bankSetuPrintJob=async(options={})=>{window.dispatchEvent(new Event("beforeprint"));try{const roots=[...document.querySelectorAll(\'[data-print-root="active"]\')],active=roots.filter(node=>node.getClientRects().length&&getComputedStyle(node).display!==\'none\').at(-1),images=active?[...active.querySelectorAll("img")]:[...document.images];await Promise.race([Promise.all([document.fonts?.ready,...images.filter(image=>!image.complete).map(image=>image.decode?image.decode().catch(()=>{}):Promise.resolve())]),new Promise(resolve=>setTimeout(resolve,750))]);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const html=('
   +capturePrintDocument.toString()+')();return await window.bankSetuPrint.preview(html,{...options,appearance:document.documentElement.dataset.appearance||document.querySelector(".banksetu-app-shell")?.dataset.appearance||"light"});}finally{window.dispatchEvent(new Event("afterprint"));}};window.print=()=>{void window.bankSetuPrintJob().catch(error=>alert("Print preview failed: "+error.message));};';
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -81,7 +78,16 @@ function preparingHtml(appearance="light"){
   return '<!doctype html><html data-appearance="'+appearance+'"><head><meta charset="utf-8"><title>Bank Setu · Preparing Print</title><style>html{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#e8eaed;font:16px system-ui;color:#202124}.box{width:min(420px,calc(100vw - 40px));padding:28px;border-radius:16px;background:white;box-shadow:0 18px 60px #0003;text-align:center}.spinner{width:38px;height:38px;margin:0 auto 18px;border:4px solid #cbd5e1;border-top-color:#1967d2;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}html[data-appearance=dark] body{background:#0b1220;color:#f8fafc}html[data-appearance=dark] .box{background:#172338}</style></head><body><div class="box"><div class="spinner"></div><h2>Preparing print preview…</h2><p>Bank Setu is rendering only the active document. You can cancel by closing this window.</p></div></body></html>';
 }
 function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getParentWindow=()=>parentWindow,authorize=()=>{},getDefaultPrinter=()=>""}) {
-  const sources=new Set(),previews=new Map(),active=new Map();
+  const sources=new Set(),previews=new Map(),active=new Map(),pdfCache=new Map();
+  let printerCache={at:0,value:[],task:null};
+  const getPrinters=contents=>{
+    if(Date.now()-printerCache.at<30000)return Promise.resolve(printerCache.value);
+    if(printerCache.task)return printerCache.task;
+    printerCache.task=contents.getPrintersAsync().catch(()=>[]).then(value=>{printerCache={at:Date.now(),value,task:null};return value;});
+    return printerCache.task;
+  };
+  const cachedPdf=key=>{const item=pdfCache.get(key);if(!item||Date.now()-item.at>120000){pdfCache.delete(key);return null;}return item;};
+  const rememberPdf=(key,pdf,documentSize)=>{pdfCache.set(key,{at:Date.now(),pdf,documentSize});while(pdfCache.size>8)pdfCache.delete(pdfCache.keys().next().value);};
   function attach(source){
     // Cache Electron objects while alive: BrowserWindow.webContents throws after close.
     const contents=source.webContents;
@@ -134,7 +140,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
       preview.once('closed',cleanup);
       await preview.loadURL('data:text/html;charset=utf-8;base64,'+Buffer.from(preparingHtml(requested?.appearance)).toString('base64'));
       preview.show?.();
-      const printersTask=snapshotContents.getPrintersAsync().catch(()=>[]).then(printers=>{
+      const printersTask=getPrinters(snapshotContents).then(printers=>{
         state.printers=printers;
         if(!state.closed&&!preview.isDestroyed()&&state.ready)void preview.webContents.executeJavaScript(`window.bankSetuSetPrinters(${JSON.stringify(printers)},${JSON.stringify(getDefaultPrinter())})`).catch(()=>{});
         return printers;
@@ -142,10 +148,12 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
       await snapshot.loadURL('data:text/html;charset=utf-8;base64,'+Buffer.from(html).toString('base64'));
       if(state.closed)return completion;
       const initial={paper:'document',landscape:false,scale:100,pageRanges:'',duplex:requested?.duplex===true};
-      const pdf=await snapshotContents.printToPDF(pdfOptions(initial));
+      const cacheKey=crypto.createHash('sha256').update(html).update(JSON.stringify(initial)).digest('hex'),cached=cachedPdf(cacheKey);
+      const pdf=cached?.pdf||await snapshotContents.printToPDF(pdfOptions(initial));
       if(state.closed)return completion;
-      const box=/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/.exec(pdf.toString('latin1'));
-      const documentSize=box?{width:Math.round(Number(box[1])*25400/72),height:Math.round(Number(box[2])*25400/72)}:undefined;
+      const box=cached?null:/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/.exec(pdf.toString('latin1'));
+      const documentSize=cached?.documentSize||(box?{width:Math.round(Number(box[1])*25400/72),height:Math.round(Number(box[2])*25400/72)}:undefined);
+      if(!cached)rememberPdf(cacheKey,pdf,documentSize);
       state.documentSize=documentSize;
       await preview.loadURL('data:text/html;charset=utf-8;base64,'+Buffer.from(previewHtml(pdf,state.printers,requested?.appearance,getDefaultPrinter())).toString('base64'));
       state.ready=true;

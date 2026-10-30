@@ -1,34 +1,13 @@
-import { useEffect, useState } from "react";
-import { auth } from "./firebase";
+import { useMemo, useState } from "react";
 import type { PrintOutcome } from "./platform/print";
 import ModalPortal from "./ModalPortal";
+import { printAlignmentStorageKey, savedPrintOffset, type PrintOffset } from "./printAlignmentStorage";
 
-export type PrintOffset = { x: number; y: number };
+export type { PrintOffset } from "./printAlignmentStorage";
 const ZERO: PrintOffset = { x: 0, y: 0 };
 const bounded = (number: number) => Number.isFinite(number) ? Math.max(-30, Math.min(30, Math.round(number * 2) / 2)) : 0;
 const clean = (offset: PrintOffset): PrintOffset => ({ x: bounded(offset.x), y: bounded(offset.y) });
 const mm = (number: number) => `${number > 0 ? "+" : ""}${number} mm`;
-const bankId = (name: string) => /union bank/i.test(name) ? "union-bank" :
-  /assam gramin|^agvb$|^agb$/i.test(name) ? "assam-gramin-bank" :
-  name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
-
-function storageKey(bank: string) {
-  const tenant = sessionStorage.getItem("bankSetuTenantId");
-  const role = sessionStorage.getItem("bankSetuAccountRole");
-  const scope = tenant || (["master_owner", "admin"].includes(role || "") && auth.currentUser?.uid ? `master:${auth.currentUser.uid}` : "");
-  if (!scope) throw new Error("A verified workspace is required to save bank alignment.");
-  return `banksetu:print-alignment:v1:${scope}:${bankId(bank)}`;
-}
-
-function savedOffset(bank: string): PrintOffset {
-  try {
-    const raw = localStorage.getItem(storageKey(bank));
-    if (!raw) return ZERO;
-    const parsed = JSON.parse(raw) as PrintOffset;
-    return clean({ x: Number(parsed.x), y: Number(parsed.y) });
-  } catch { return ZERO; }
-}
-
 function sourceDocument(selector: string, widthMm=210, heightMm=170, a4=false): string {
   const source = document.querySelector<HTMLElement>(selector);
   if (!source) return "";
@@ -57,11 +36,10 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
   onClose: () => void;
   onPrint: (offset: PrintOffset, test: boolean, duplex: boolean) => void | PrintOutcome | Promise<void | PrintOutcome>;
 }) {
-  const [offset, setOffset] = useState<PrintOffset>(() => savedOffset(bankName));
-  const [saved, setSaved] = useState<PrintOffset>(() => savedOffset(bankName));
+  const [offset, setOffset] = useState<PrintOffset>(() => savedPrintOffset(bankName));
+  const [saved, setSaved] = useState<PrintOffset>(() => savedPrintOffset(bankName));
   const [step, setStep] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [duplex, setDuplex] = useState(false);
@@ -70,7 +48,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
 
   const pnbA4NormalPrint=pnb&&printMode==="system";
   const canvasWidth=pnbA4NormalPrint?210:paperWidth, canvasHeight=pnbA4NormalPrint?297:paperHeight;
-  useEffect(() => { setPreview(sourceDocument(sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint)); }, [sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint]);
+  const preview=useMemo(()=>sourceDocument(sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint),[sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint]);
   const move = (dx: number, dy: number) => setOffset(current => clean({x:current.x+dx*step,y:current.y+dy*step}));
   const print = async (test: boolean) => {
     if (busy) return;
@@ -120,7 +98,7 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, printM
             </div>
             <div className="print-alignment-actions">
               <button type="button" className="reset" onClick={() => setOffset(ZERO)}>↶ &nbsp;Reset<br/><small>(to default)</small></button>
-              <button type="button" className="save" onClick={() => {try {localStorage.setItem(storageKey(bankName),JSON.stringify(offset));setSaved(offset);setError("");} catch (cause) {setError(cause instanceof Error?cause.message:"Could not save alignment.");}}}>▣ &nbsp;Save for this Bank<br/><small>({bankName})</small></button>
+              <button type="button" className="save" onClick={() => {try {localStorage.setItem(printAlignmentStorageKey(bankName),JSON.stringify(offset));setSaved(offset);setError("");} catch (cause) {setError(cause instanceof Error?cause.message:"Could not save alignment.");}}}>▣ &nbsp;Save for this Bank<br/><small>({bankName})</small></button>
             </div>
             <div className="print-alignment-saved"><strong>Current Saved Setting ({bankName})</strong><div><span>Left / Right: &nbsp; <b>{mm(saved.x)}</b><br/>Up / Down: &nbsp; <b>{mm(saved.y)}</b></span><button type="button" onClick={() => setOffset(saved)}>Use Saved</button></div></div>
             <p className="print-alignment-tip">ⓘ &nbsp;This adjustment moves the entire passbook layout. It does not change text, mapping or data. It only shifts the print position.</p>
