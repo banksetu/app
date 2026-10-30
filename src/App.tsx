@@ -1,8 +1,16 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
+
 import { startLocalSync, configureConnectionRecovery, resetSyncSession } from "./core/localData";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, type User } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+  type User,
+} from "firebase/auth";
 import { doc, onSnapshot, type Unsubscribe } from "firebase/firestore";
+
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
 import { getPublicLicenseSettings } from "./publicLicenseSettings";
@@ -14,63 +22,536 @@ import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPu
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 import LoginExperience from "./LoginExperience";
 import LoginTransition from "./LoginTransition";
+
 import "./App.css";
 
 const Dashboard = lazy(() => import("./Dashboard"));
 const LicenseOnboarding = lazy(() => import("./LicenseOnboarding"));
 const PublicPages = lazy(() => import("./PublicPages"));
 const SoftwareUpdateNotice = lazy(() => import("./SoftwareUpdateNotice"));
-function AppLoading() { return <main className="app-loader"><div className="loader-logo"><img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/></div><p>Loading Bank Setu...</p></main>; }
+
+function AppLoading() {
+  return <main className="app-loader"><div className="loader-logo"><img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/></div><p>Loading Bank Setu...</p></main>;
+}
 
 type BankSetuRole = "admin" | "user";
-type UserProfile = { role?: string; status?: string; subscriptionStatus?: string; email?: string; tenantId?: string; licenseRequired?: boolean; };
+type UserProfile = {
+  role?: string;
+  status?: string;
+  subscriptionStatus?: string;
+  email?: string;
+  tenantId?: string;
+  licenseRequired?: boolean;
+};
+
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
+// A false Android WebView online signal must still leave enough time for the
+// signed local session to open within the promised 2–3 second startup window.
 const OFFLINE_STARTUP_FALLBACK_MS = 1200;
 const OFFLINE_SESSION_READ_TIMEOUT_MS = 1400;
+
 function getAccessError(profile: UserProfile, authEmail = "", emailVerified = false): string {
-  const status = normalize(profile.status); const subscriptionStatus = normalize(profile.subscriptionStatus); const role = normalize(profile.role); const tenantId = String(profile.tenantId || "").trim();
-  if (status === "blocked") return "Your Bank Setu account has been blocked by the administrator.";
-  if (status !== "approved") return "Your registration is pending administrator approval.";
-  if (subscriptionStatus !== "active") return "Your subscription is inactive. Please contact the administrator.";
-  if (["client_admin", "client_user"].includes(role) && !tenantId) return "This account is not assigned to a client workspace. Contact the Bank Setu administrator.";
-  if (["user"].includes(role) && !tenantId) return "This account is not assigned to a client workspace. Contact the Bank Setu administrator.";
-  if (tenantId && !["client_admin", "client_user"].includes(role)) return "This account cannot use a client workspace. Contact the Bank Setu administrator.";
-  if (role === "admin" && (normalize(authEmail) !== MASTER_OWNER_EMAIL || !emailVerified)) return "This administrator account is not the verified Master Admin. Contact the Bank Setu owner.";
+  const status = normalize(profile.status);
+  const subscriptionStatus = normalize(profile.subscriptionStatus);
+  const role = normalize(profile.role);
+  const tenantId = String(profile.tenantId || "").trim();
+
+  if (status === "blocked") {
+    return "Your Bank Setu account has been blocked by the administrator.";
+  }
+
+  if (status !== "approved") {
+    return "Your registration is pending administrator approval.";
+  }
+
+  if (subscriptionStatus !== "active") {
+    return "Your subscription is inactive. Please contact the administrator.";
+  }
+
+  // Legacy `user` profiles without a tenant must never inherit the historical
+  // master spreadsheet. Operational client accounts are always tenant-bound.
+  if (["client_admin", "client_user"].includes(role) && !tenantId) {
+    return "This account is not assigned to a client workspace. Contact the Bank Setu administrator.";
+  }
+  if (["user"].includes(role) && !tenantId) {
+    return "This account is not assigned to a client workspace. Contact the Bank Setu administrator.";
+  }
+  if (tenantId && !["client_admin", "client_user"].includes(role)) {
+    return "This account cannot use a client workspace. Contact the Bank Setu administrator.";
+  }
+  // Legacy `admin` access points to the shared Master Sheet. Keep it only for
+  // the verified Bank Setu owner account; old client admins must be migrated.
+  if (role === "admin" && (normalize(authEmail) !== MASTER_OWNER_EMAIL || !emailVerified)) {
+    return "This administrator account is not the verified Master Admin. Contact the Bank Setu owner.";
+  }
+
   return "";
 }
 
 function App() {
-  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [showPassword, setShowPassword] = useState(false); const [loading, setLoading] = useState(false); const [checkingSession, setCheckingSession] = useState(true); const [error, setError] = useState(""); const [successMessage, setSuccessMessage] = useState(""); const [resetLoading, setResetLoading] = useState(false); const [loginSuccess, setLoginSuccess] = useState(false); const [isLoggedIn, setIsLoggedIn] = useState(false); const [userRole, setUserRole] = useState<BankSetuRole>("user"); const [accountRole, setAccountRole] = useState("user");
-  const [licenseWelcome, setLicenseWelcome] = useState<Awaited<ReturnType<typeof getPublicLicenseSettings>>>(null); const [showLicenseWelcome, setShowLicenseWelcome] = useState(true); const [pricingRequested,setPricingRequested]=useState(false);
-  const licensePermission = useSyncExternalStore(subscribeLicensePermission, getLicensePermission); const licenseReadOnly = !licensePermission.canWrite; const licenseWarning = licensePermission.warning; const lastNativeLicense=useRef<{tenantId:string;state:string;revision:number}|null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<BankSetuRole>("user");
+  const [accountRole, setAccountRole] = useState("user");
+  const [licenseWelcome, setLicenseWelcome] = useState<Awaited<ReturnType<typeof getPublicLicenseSettings>>>(null);
+  const [showLicenseWelcome, setShowLicenseWelcome] = useState(true);
+  const [pricingRequested,setPricingRequested]=useState(false);
+  const licensePermission = useSyncExternalStore(subscribeLicensePermission, getLicensePermission);
+  const licenseReadOnly = !licensePermission.canWrite;
+  const licenseWarning = licensePermission.warning;
+  const lastNativeLicense=useRef<{tenantId:string;state:string;revision:number}|null>(null);
   useEffect(()=>startNotificationNavigation(),[]);
-  useEffect(()=>{ if(!isLoggedIn)return; void registerAndroidPush(); const resume=()=>{if(document.visibilityState==='visible')void registerAndroidPush();}; document.addEventListener('visibilitychange',resume); return()=>document.removeEventListener('visibilitychange',resume); },[isLoggedIn]);
-  useEffect(()=>{ if(!isLoggedIn)return; let prior=navigator.onLine; const changed=()=>{if(prior===navigator.onLine)return;prior=navigator.onLine;notifySystem({key:`network:${prior?'online':'offline'}`,title:prior?'Internet restored':'Internet connection lost',body:prior?'Bank Setu will resume sync.':'Saved local changes will sync after reconnection.',page:'sync-backup',category:'network',cooldownMs:10*60_000});}; window.addEventListener('online',changed);window.addEventListener('offline',changed);return()=>{window.removeEventListener('online',changed);window.removeEventListener('offline',changed);}; },[isLoggedIn]);
-  useEffect(()=>{ if(!isLoggedIn||!licensePermission.tenantId)return; const {state,plan,revision,daysRemaining}=licensePermission; const previous=lastNativeLicense.current; lastNativeLicense.current={tenantId:licensePermission.tenantId,state,revision}; const demo=plan==='demo'; const alert=state==='suspended'||state==='revoked'?{title:'License access paused',body:`Bank Setu license ${state}. Open License Management.`}:state==='expired'||state==='demo_expired'?{title:demo?'Demo expired':'License expired',body:'Customer changes are paused. Open License Management.'}:state==='expiring_soon'||demo&&state==='demo_active'&&daysRemaining!==null&&daysRemaining<=2?{title:demo?'Demo ending soon':'License expiring soon',body:`${daysRemaining} day(s) remaining. Review renewal options.`}:state==='active'&&previous?.tenantId===licensePermission.tenantId&&(previous.state!=='active'||previous.revision!==revision)?{title:'License activated or renewed',body:'Bank Setu license permissions are active.'}:null; if(alert)notifySystem({key:`license:${state}:${revision}:${daysRemaining&&daysRemaining<=2?'soon':''}`,title:alert.title,body:alert.body,page:'license-management',category:'license',cooldownMs:24*60*60_000}); },[isLoggedIn,licensePermission]);
+  useEffect(()=>{
+    if(!isLoggedIn)return;
+    void registerAndroidPush();
+    const resume=()=>{if(document.visibilityState==='visible')void registerAndroidPush();};
+    document.addEventListener('visibilitychange',resume);
+    return()=>document.removeEventListener('visibilitychange',resume);
+  },[isLoggedIn]);
+  useEffect(()=>{
+    if(!isLoggedIn)return;
+    let prior=navigator.onLine;
+    const changed=()=>{if(prior===navigator.onLine)return;prior=navigator.onLine;notifySystem({key:`network:${prior?'online':'offline'}`,title:prior?'Internet restored':'Internet connection lost',body:prior?'Bank Setu will resume sync.':'Saved local changes will sync after reconnection.',page:'sync-backup',category:'network',cooldownMs:10*60_000});};
+    window.addEventListener('online',changed);window.addEventListener('offline',changed);return()=>{window.removeEventListener('online',changed);window.removeEventListener('offline',changed);};
+  },[isLoggedIn]);
+  useEffect(()=>{
+    if(!isLoggedIn||!licensePermission.tenantId)return;
+    const {state,plan,revision,daysRemaining}=licensePermission;
+    const previous=lastNativeLicense.current;
+    lastNativeLicense.current={tenantId:licensePermission.tenantId,state,revision};
+    const demo=plan==='demo';
+    const alert=state==='suspended'||state==='revoked'?{title:'License access paused',body:`Bank Setu license ${state}. Open License Management.`}:state==='expired'||state==='demo_expired'?{title:demo?'Demo expired':'License expired',body:'Customer changes are paused. Open License Management.'}:state==='expiring_soon'||demo&&state==='demo_active'&&daysRemaining!==null&&daysRemaining<=2?{title:demo?'Demo ending soon':'License expiring soon',body:`${daysRemaining} day(s) remaining. Review renewal options.`}:state==='active'&&previous?.tenantId===licensePermission.tenantId&&(previous.state!=='active'||previous.revision!==revision)?{title:'License activated or renewed',body:'Bank Setu license permissions are active.'}:null;
+    if(alert)notifySystem({key:`license:${state}:${revision}:${daysRemaining&&daysRemaining<=2?'soon':''}`,title:alert.title,body:alert.body,page:'license-management',category:'license',cooldownMs:24*60*60_000});
+  },[isLoggedIn,licensePermission]);
   const [knownAccount, setKnownAccount] = useState(() => { try { return localStorage.getItem("bankSetuKnownAccount") === "true"; } catch { return false; } });
-  const loginAttemptRef = useRef(false); const activeProfile = useRef<UserProfile | null>(null); const verifiedNavigation = useRef(false); const recoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined); const ownerBootstrapAttemptRef = useRef(false); const profileUnsubscribeRef = useRef<Unsubscribe | null>(null); const workspaceRequestRef = useRef(0); const licenseUnsubscribeRef = useRef<Unsubscribe | null>(null);
-  useEffect(() => { void getPublicLicenseSettings().then(settings => { if (settings) setLicenseWelcome(settings); }).catch(() => {}); }, []);
-  const clearProfileListener = useCallback(() => { licenseUnsubscribeRef.current?.();licenseUnsubscribeRef.current=null; if (profileUnsubscribeRef.current) { profileUnsubscribeRef.current(); profileUnsubscribeRef.current = null; } }, []);
-  const applyProfile = useCallback((profile: UserProfile) => { const normalizedRole = normalize(profile.role); const previous=activeProfile.current; const workspaceOwner=sessionStorage.getItem("bankSetuWorkspaceOwner"); const nextOwner=`${auth.currentUser?.uid||""}:${profile.tenantId||"master"}`; if(workspaceOwner!==nextOwner || (!previous && sessionStorage.getItem("bankSetuWorkspaceReady")!=="true") || (previous && (previous.role!==profile.role || previous.tenantId!==profile.tenantId))){ setTenantWorkspaceReady(false);sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");sessionStorage.removeItem("bankSetuMasterLocalEnabled"); } sessionStorage.setItem("bankSetuWorkspaceOwner",nextOwner); activeProfile.current=profile; bindLicenseAccount(auth.currentUser?.uid || "", profile); setAccountRole(normalizedRole || "user"); sessionStorage.setItem("bankSetuAccountRole", normalizedRole || "user"); const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole) ? "admin" : "user"; setUserRole(role); sessionStorage.setItem("bankSetuRole", role); if (!["master_owner","admin"].includes(normalizedRole) && typeof profile.tenantId === "string" && profile.tenantId.trim()) sessionStorage.setItem("bankSetuTenantId", profile.tenantId.trim()); else sessionStorage.removeItem("bankSetuTenantId"); return role; }, []);
-  const prepareClientWorkspace = useCallback(async (signal?:AbortSignal) => { const profile=activeProfile.current;const user=auth.currentUser;if(!profile||!user)return;const requestId=++workspaceRequestRef.current;const role=normalize(profile.role);if(!["master_owner","admin","client_admin","client_user"].includes(role))return;const stillCurrent=()=>requestId===workspaceRequestRef.current&&auth.currentUser?.uid===user.uid&&activeProfile.current?.role===profile.role&&activeProfile.current?.tenantId===profile.tenantId;if(sessionStorage.getItem("bankSetuWorkspaceReady")!=="true"){try{await resumeOfflineSession(user.uid,{role,tenantId:String(profile.tenantId||""),demoOnly:false});}catch{}}if(signal?.aborted||!stillCurrent())return;const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string;workspaceStatus?:string;dataApiReady?:boolean;spreadsheetId?:string;photoFolderId?:string;connectionMode?:string;connectionId?:string}>("/get-google-setup",{},signal);if(signal?.aborted||!stillCurrent())return;const master=["master_owner","admin"].includes(role);const ready=master?setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl:setup.workspaceStatus==="active"&&setup.dataApiReady&&setup.apiUrl&&setup.spreadsheetId&&setup.photoFolderId;if(!ready){if((!master&&setup.workspaceStatus!=="active")||(setup.apiUrl&&setup.apiUrl!==sessionStorage.getItem("bankSetuBridgeUrl")))setTenantWorkspaceReady(false);throw new Error("Google connection unavailable; local data retained and reconnect will retry.");}if(master)sessionStorage.setItem("bankSetuMasterLocalEnabled","true");else sessionStorage.removeItem("bankSetuMasterLocalEnabled");sessionStorage.setItem("bankSetuConnectionMode",master?"master-local":setup.connectionMode||"oauth");sessionStorage.setItem("bankSetuConnectionId",String(master?setup.masterConnectionId:setup.connectionId||setup.spreadsheetId));sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);setTenantWorkspaceReady(true);if(master||setup.connectionMode==="option-b")await enrollOfflineSession(); }, []);
-  const rejectSession = useCallback(async (message: string) => { clearTimeout(recoveryTimer.current);verifiedNavigation.current=true;setTenantWorkspaceReady(false);if(auth.currentUser) await clearOfflineSession(auth.currentUser.uid).catch(()=>undefined);clearProfileListener();activeProfile.current=null;resetLicensePermission();sessionStorage.removeItem("bankSetuRole");sessionStorage.removeItem("bankSetuTenantId");sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");setTenantWorkspaceReady(false);setUserRole("user");setAccountRole("user");setIsLoggedIn(false);setLoginSuccess(false);setError(message);if(auth.currentUser){try{await signOut(auth);}catch(signOutError){console.error("Sign out after access rejection failed:",signOutError);}} }, [clearProfileListener]);
-  const checkLicense = useCallback(async (user: User, profile: UserProfile, online: boolean) => {if(auth.currentUser?.uid!==user.uid)return;bindLicenseAccount(user.uid,profile);await refreshLicensePermission(online);if(auth.currentUser?.uid!==user.uid)return;}, []);
-  const resumeVerifiedOfflineSession = useCallback(async (user: User) => {let timeout:ReturnType<typeof setTimeout>|undefined;const claims=await Promise.race([resumeOfflineSession(user.uid),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error("Saved offline session could not be opened. Please connect your internet to verify the license.")),OFFLINE_SESSION_READ_TIMEOUT_MS);})]).finally(()=>clearTimeout(timeout));if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;applyProfile(claims);await checkLicense(user,claims,false);if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;verifiedNavigation.current=true;clearTimeout(recoveryTimer.current);setKnownAccount(true);try{localStorage.setItem("bankSetuKnownAccount","true");}catch{}setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);setError("");setCheckingSession(false);},[applyProfile,checkLicense]);
-  const watchUserProfile = useCallback((user: User) => {clearProfileListener();const userRef=doc(db,"users",user.uid);profileUnsubscribeRef.current=onSnapshot(userRef,{includeMetadataChanges:true},async(snapshot)=>{if(auth.currentUser?.uid!==user.uid)return;if(navigator.onLine&&snapshot.metadata.fromCache)return;const existingProfile=snapshot.exists()?snapshot.data() as UserProfile:null;const mayBootstrapOwner=normalize(user.email)===MASTER_OWNER_EMAIL&&user.emailVerified&&!ownerBootstrapAttemptRef.current&&(!existingProfile||normalize(existingProfile.role)==="admin");if(mayBootstrapOwner){ownerBootstrapAttemptRef.current=true;setError("Setting up the verified Bank Setu Master Admin account…");try{await callBankSetuWorker("/bootstrap-master-owner",{});return;}catch(bootstrapError:unknown){const code=String((bootstrapError as {code?:string}).code||"");if(!(existingProfile&&code.endsWith("already-exists"))){await rejectSession(bootstrapError instanceof Error?bootstrapError.message:"Unable to set up the Master Admin account.");setCheckingSession(false);return;}}}if(!snapshot.exists()){await rejectSession("Your Bank Setu profile was not found. Please contact the administrator.");setCheckingSession(false);return;}const profile=existingProfile as UserProfile;const previousTenant=activeProfile.current?.tenantId;applyProfile(profile);if(requiresTenantLicense(profile)&&profile.tenantId&&(!licenseUnsubscribeRef.current||previousTenant!==profile.tenantId)){licenseUnsubscribeRef.current?.();licenseUnsubscribeRef.current=onSnapshot(doc(db,"tenantLicenses",profile.tenantId),{includeMetadataChanges:true},snapshot=>{if(auth.currentUser?.uid!==user.uid||activeProfile.current?.tenantId!==profile.tenantId||snapshot.metadata.fromCache)return;denyLicense("checking","Verifying the latest license authorization…");void checkLicense(user,activeProfile.current!,navigator.onLine);},()=>{denyLicense("unverified","License permissions could not be verified. Existing records remain accessible.");});}const accessError=getAccessError(profile,user.email||"",user.emailVerified);if(accessError){await rejectSession(accessError);setCheckingSession(false);return;}verifiedNavigation.current=true;clearTimeout(recoveryTimer.current);await checkLicense(user,profile,navigator.onLine);if(auth.currentUser?.uid!==user.uid)return;setKnownAccount(true);try{localStorage.setItem("bankSetuKnownAccount","true");}catch{}setError("");setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);setCheckingSession(false);},async(snapshotError)=>{console.error("Profile listener error:",snapshotError);await rejectSession("Unable to verify your account permissions.");setCheckingSession(false);});},[applyProfile,checkLicense,clearProfileListener,rejectSession]);
-  useEffect(()=>{const unsubscribe=onAuthStateChanged(auth,(user)=>{clearTimeout(recoveryTimer.current);verifiedNavigation.current=false;activeProfile.current=null;resetLicensePermission();sessionStorage.removeItem("bankSetuLicenseRequired");sessionStorage.removeItem("bankSetuDemoWorkspace");sessionStorage.removeItem("bankSetuWorkspaceOwner");sessionStorage.setItem("bankSetuLicenseReadOnly","true");workspaceRequestRef.current++;setTenantWorkspaceReady(false);resetSyncSession();if(!user){activeProfile.current=null;ownerBootstrapAttemptRef.current=false;clearProfileListener();sessionStorage.removeItem("bankSetuRole");sessionStorage.removeItem("bankSetuTenantId");sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");setTenantWorkspaceReady(false);setIsLoggedIn(false);setUserRole("user");setAccountRole("user");setLoginSuccess(false);setCheckingSession(false);return;}setCheckingSession(true);setIsLoggedIn(false);if(!navigator.onLine){void resumeVerifiedOfflineSession(user).catch(reason=>{if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;setLoginSuccess(false);setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");setCheckingSession(false);});return;}watchUserProfile(user);recoveryTimer.current=setTimeout(()=>{if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;void resumeVerifiedOfflineSession(user).catch(reason=>{if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;setLoginSuccess(false);setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");setCheckingSession(false);});},OFFLINE_STARTUP_FALLBACK_MS);});return()=>{clearTimeout(recoveryTimer.current);unsubscribe();clearProfileListener();};},[clearProfileListener,resumeVerifiedOfflineSession,watchUserProfile]);
-  useEffect(()=>{const reconnect=()=>{if(auth.currentUser)watchUserProfile(auth.currentUser);};window.addEventListener("online",reconnect);return()=>window.removeEventListener("online",reconnect);},[watchUserProfile]);
-  useEffect(()=>{if(!isLoggedIn)return;configureConnectionRecovery(prepareClientWorkspace);if(licenseReadOnly){void prepareClientWorkspace().catch(()=>{});return()=>configureConnectionRecovery(undefined);}const stop=startLocalSync();return()=>{stop();configureConnectionRecovery(undefined);};},[isLoggedIn,licenseReadOnly,prepareClientWorkspace]);
-  useEffect(()=>{const refresh=()=>{const user=auth.currentUser,profile=activeProfile.current;if(user&&profile)void checkLicense(user,profile,navigator.onLine);};const refreshIfDue=()=>{const current=getLicensePermission();if(!current.canWrite||current.validUntil<=Date.now())refresh();};window.addEventListener("banksetu-license-updated",refresh);window.addEventListener("online",refresh);const focus=()=>{if(document.visibilityState==="visible")refreshIfDue();};document.addEventListener("visibilitychange",focus);return()=>{window.removeEventListener("online",refresh);window.removeEventListener("banksetu-license-updated",refresh);document.removeEventListener("visibilitychange",focus);};},[checkLicense]);
-  const handleForgotPassword=async()=>{setError("");setSuccessMessage("");const cleanEmail=email.trim();if(!cleanEmail){setError("Please enter your email address first.");return;}try{setResetLoading(true);await sendPasswordResetEmail(auth,cleanEmail);setSuccessMessage("Password reset link sent. Please check your email inbox or spam folder.");}catch(error:unknown){const err=error as {code?:string};console.error("Password reset error:",err);if(err.code==="auth/invalid-email")setError("Please enter a valid email address.");else if(err.code==="auth/too-many-requests")setError("Too many requests. Please try again later.");else if(err.code==="auth/network-request-failed")setError("Internet connection problem. Please try again.");else setError("Unable to send the password reset email. Please try again.");}finally{setResetLoading(false);}};
-  const handleLogin=async(e:React.FormEvent)=>{e.preventDefault();setError("");setSuccessMessage("");loginAttemptRef.current=true;if(!email.trim()||!password.trim()){setError("Please enter your email and password.");setLoginSuccess(false);loginAttemptRef.current=false;return;}try{setLoading(true);setLoginSuccess(true);await signInWithEmailAndPassword(auth,email.trim(),password);}catch(error:unknown){const err=error as {code?:string};console.error("Login error:",err);setLoginSuccess(false);if(err.code==="auth/user-disabled")setError("Your Bank Setu account has been blocked by the administrator.");else if(err.code==="auth/invalid-credential")setError("Invalid email or password.");else if(err.code==="auth/too-many-requests")setError("Too many login attempts. Please try again later.");else if(err.code==="auth/network-request-failed")setError("Internet connection problem. Please try again.");else if(err.code==="permission-denied")setError("Bank Setu could not verify your account permissions.");else setError(`Login failed: ${err.code||"unknown-error"}`);}finally{loginAttemptRef.current=false;setLoading(false);}};
-  const handleLogout=async()=>{try{await clearBackgroundNotifications();await unregisterAndroidPush();clearProfileListener();workspaceRequestRef.current++;activeProfile.current=null;setTenantWorkspaceReady(false);resetSyncSession();await signOut(auth);sessionStorage.removeItem("bankSetuRole");sessionStorage.removeItem("bankSetuTenantId");sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");setTenantWorkspaceReady(false);setIsLoggedIn(false);setUserRole("user");setAccountRole("user");setEmail("");setPassword("");setError("");setSuccessMessage("");setLoginSuccess(false);}catch(err){console.error("Logout error:",err);}};
-  const publicPath=window.location.pathname.split("/").filter(Boolean).join("/");
-  if(publicPath==="about"||publicPath==="privacy-policy"||publicPath==="terms")return <Suspense fallback={<AppLoading/>}><PublicPages/></Suspense>;
-  if(checkingSession)return <AppLoading/>;
-  if(!isLoggedIn&&showLicenseWelcome&&licenseWelcome&&(pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey)))return <Suspense fallback={<AppLoading/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={()=>{setShowLicenseWelcome(false);setPricingRequested(false);}}/></Suspense>;
-  if(loginSuccess)return <LoginTransition/>;
-  if(isLoggedIn)return <div className={`banksetu-session banksetu-role-${userRole}`}><Suspense fallback={<AppLoading/>}><Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"}/><SoftwareUpdateNotice/></Suspense></div>;
-  return <LoginExperience email={email} password={password} showPassword={showPassword} loading={loading} resetLoading={resetLoading} error={error} successMessage={successMessage} pricingAvailable={Boolean(licenseWelcome)} onEmailChange={setEmail} onPasswordChange={setPassword} onTogglePassword={()=>setShowPassword(!showPassword)} onForgotPassword={handleForgotPassword} onSubmit={handleLogin} onPricing={()=>{setPricingRequested(true);setShowLicenseWelcome(true);}}/>;
+
+
+  const loginAttemptRef = useRef(false);
+  const activeProfile = useRef<UserProfile | null>(null);
+  const verifiedNavigation = useRef(false);
+  const recoveryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const ownerBootstrapAttemptRef = useRef(false);
+  const profileUnsubscribeRef = useRef<Unsubscribe | null>(null);
+  const workspaceRequestRef = useRef(0);
+  const licenseUnsubscribeRef = useRef<Unsubscribe | null>(null);
+
+  useEffect(() => {
+    void getPublicLicenseSettings().then(settings => {
+      if (settings) setLicenseWelcome(settings);
+    }).catch(() => { /* Existing login stays available during a backend outage. */ });
+  }, []);
+
+  const clearProfileListener = useCallback(() => {
+    licenseUnsubscribeRef.current?.();licenseUnsubscribeRef.current=null;
+    if (profileUnsubscribeRef.current) {
+      profileUnsubscribeRef.current();
+      profileUnsubscribeRef.current = null;
+    }
+  }, []);
+
+  const applyProfile = useCallback((profile: UserProfile) => {
+    const normalizedRole = normalize(profile.role);
+    const previous=activeProfile.current;
+    const workspaceOwner=sessionStorage.getItem("bankSetuWorkspaceOwner");
+    const nextOwner=`${auth.currentUser?.uid||""}:${profile.tenantId||"master"}`;
+    if(workspaceOwner!==nextOwner || (!previous && sessionStorage.getItem("bankSetuWorkspaceReady")!=="true") || (previous && (previous.role!==profile.role || previous.tenantId!==profile.tenantId))){
+      setTenantWorkspaceReady(false);sessionStorage.removeItem("bankSetuConnectionId");sessionStorage.removeItem("bankSetuBridgeUrl");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+    }
+    sessionStorage.setItem("bankSetuWorkspaceOwner",nextOwner);
+    activeProfile.current=profile;
+    bindLicenseAccount(auth.currentUser?.uid || "", profile);
+    setAccountRole(normalizedRole || "user");
+    sessionStorage.setItem("bankSetuAccountRole", normalizedRole || "user");
+    const role: BankSetuRole = ["admin", "master_owner", "client_admin"].includes(normalizedRole)
+      ? "admin"
+      : "user";
+    setUserRole(role);
+    sessionStorage.setItem("bankSetuRole", role);
+    if (!["master_owner","admin"].includes(normalizedRole) && typeof profile.tenantId === "string" && profile.tenantId.trim()) {
+      sessionStorage.setItem("bankSetuTenantId", profile.tenantId.trim());
+    } else {
+      sessionStorage.removeItem("bankSetuTenantId");
+    }
+    return role;
+  }, []);
+
+  const prepareClientWorkspace = useCallback(async (signal?:AbortSignal) => {
+    const profile=activeProfile.current;const user=auth.currentUser;
+    if(!profile||!user)return;
+    const requestId=++workspaceRequestRef.current;
+    const role=normalize(profile.role);
+    if(!["master_owner","admin","client_admin","client_user"].includes(role))return;
+    const stillCurrent=()=>requestId===workspaceRequestRef.current && auth.currentUser?.uid===user.uid && activeProfile.current?.role===profile.role && activeProfile.current?.tenantId===profile.tenantId;
+    if(sessionStorage.getItem("bankSetuWorkspaceReady")!=="true"){
+      try{await resumeOfflineSession(user.uid,{role,tenantId:String(profile.tenantId||""),demoOnly:false});}catch{/* First use needs a verified connection. */}
+    }
+    if(signal?.aborted||!stillCurrent())return;
+    const setup=await callBankSetuWorker<{masterLocalReady?:boolean;masterConnectionId?:string;apiUrl?:string;workspaceStatus?:string;dataApiReady?:boolean;spreadsheetId?:string;photoFolderId?:string;connectionMode?:string;connectionId?:string}>("/get-google-setup",{},signal);
+    if(signal?.aborted||!stillCurrent())return;
+    const master=["master_owner","admin"].includes(role);
+    const ready=master?setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl:setup.workspaceStatus==="active"&&setup.dataApiReady&&setup.apiUrl&&setup.spreadsheetId&&setup.photoFolderId;
+    if(!ready){
+      if((!master&&setup.workspaceStatus!=="active")||(setup.apiUrl&&setup.apiUrl!==sessionStorage.getItem("bankSetuBridgeUrl")))setTenantWorkspaceReady(false);
+      throw new Error("Google connection unavailable; local data retained and reconnect will retry.");
+    }
+    if(master)sessionStorage.setItem("bankSetuMasterLocalEnabled","true");else sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+    sessionStorage.setItem("bankSetuConnectionMode",master?"master-local":setup.connectionMode||"oauth");
+    sessionStorage.setItem("bankSetuConnectionId",String(master?setup.masterConnectionId:setup.connectionId||setup.spreadsheetId));
+    sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);
+    setTenantWorkspaceReady(true);
+    if(master||setup.connectionMode==="option-b")await enrollOfflineSession();
+  }, []);
+
+  const rejectSession = useCallback(async (message: string) => {
+    clearTimeout(recoveryTimer.current);verifiedNavigation.current=true;setTenantWorkspaceReady(false);
+    if(auth.currentUser) await clearOfflineSession(auth.currentUser.uid).catch(()=>undefined);
+    clearProfileListener();activeProfile.current=null;resetLicensePermission();
+    sessionStorage.removeItem("bankSetuRole");
+    sessionStorage.removeItem("bankSetuTenantId");
+    sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+    setTenantWorkspaceReady(false);
+    setUserRole("user");
+    setAccountRole("user");
+    setIsLoggedIn(false);
+    setLoginSuccess(false);
+    setError(message);
+
+    if (auth.currentUser) {
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error("Sign out after access rejection failed:", signOutError);
+      }
+    }
+  }, [clearProfileListener]);
+
+  const checkLicense = useCallback(async (user: User, profile: UserProfile, online: boolean) => {
+    if(auth.currentUser?.uid!==user.uid)return;
+    bindLicenseAccount(user.uid,profile);
+    await refreshLicensePermission(online);
+    if(auth.currentUser?.uid!==user.uid)return;
+  }, []);
+
+  const resumeVerifiedOfflineSession = useCallback(async (user: User) => {
+    let timeout:ReturnType<typeof setTimeout>|undefined;
+    const claims=await Promise.race([
+      resumeOfflineSession(user.uid),
+      new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error("Saved offline session could not be opened. Please connect your internet to verify the license.")),OFFLINE_SESSION_READ_TIMEOUT_MS);}),
+    ]).finally(()=>clearTimeout(timeout));
+    if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+    applyProfile(claims);
+    await checkLicense(user, claims, false);
+    if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+    verifiedNavigation.current=true;
+    clearTimeout(recoveryTimer.current);
+    setKnownAccount(true);
+    try { localStorage.setItem("bankSetuKnownAccount", "true"); } catch { /* Startup remains available without this hint. */ }
+    setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);setError("");setCheckingSession(false);
+  }, [applyProfile, checkLicense]);
+
+  const watchUserProfile = useCallback((user: User) => {
+    clearProfileListener();
+
+    const userRef = doc(db, "users", user.uid);
+    profileUnsubscribeRef.current = onSnapshot(
+      userRef,
+      { includeMetadataChanges: true },
+      async (snapshot) => {
+        if(auth.currentUser?.uid!==user.uid)return;
+        if(navigator.onLine && snapshot.metadata.fromCache)return;
+        const existingProfile = snapshot.exists() ? snapshot.data() as UserProfile : null;
+        const mayBootstrapOwner = normalize(user.email) === MASTER_OWNER_EMAIL &&
+          user.emailVerified &&
+          !ownerBootstrapAttemptRef.current &&
+          (!existingProfile || normalize(existingProfile.role) === "admin");
+        if (mayBootstrapOwner) {
+          ownerBootstrapAttemptRef.current = true;
+          setError("Setting up the verified Bank Setu Master Admin account…");
+          try {
+            await callBankSetuWorker("/bootstrap-master-owner", {});
+            return;
+          } catch (bootstrapError: unknown) {
+            const code = String((bootstrapError as { code?: string }).code || "");
+            if (!(existingProfile && code.endsWith("already-exists"))) {
+              await rejectSession(bootstrapError instanceof Error
+                ? bootstrapError.message
+                : "Unable to set up the Master Admin account.");
+              setCheckingSession(false);
+              return;
+            }
+          }
+        }
+        if (!snapshot.exists()) {
+          await rejectSession(
+            "Your Bank Setu profile was not found. Please contact the administrator."
+          );
+          setCheckingSession(false);
+          return;
+        }
+
+        const profile = existingProfile as UserProfile;
+        const previousTenant=activeProfile.current?.tenantId;
+        applyProfile(profile);
+        if(requiresTenantLicense(profile) && profile.tenantId && (!licenseUnsubscribeRef.current||previousTenant!==profile.tenantId)){
+          licenseUnsubscribeRef.current?.();
+          licenseUnsubscribeRef.current=onSnapshot(doc(db,"tenantLicenses",profile.tenantId),{includeMetadataChanges:true},snapshot=>{
+            if(auth.currentUser?.uid!==user.uid||activeProfile.current?.tenantId!==profile.tenantId||snapshot.metadata.fromCache)return;
+            denyLicense("checking","Verifying the latest license authorization…");
+            void checkLicense(user,activeProfile.current!,navigator.onLine);
+          },()=>{denyLicense("unverified","License permissions could not be verified. Existing records remain accessible.");});
+        }
+
+        const accessError = getAccessError(profile, user.email || "", user.emailVerified);
+        if (accessError) {
+          await rejectSession(accessError);
+          setCheckingSession(false);
+          return;
+        }
+
+        verifiedNavigation.current=true;clearTimeout(recoveryTimer.current);
+        await checkLicense(user, profile, navigator.onLine);
+        if(auth.currentUser?.uid!==user.uid)return;
+        setKnownAccount(true);
+        try { localStorage.setItem("bankSetuKnownAccount", "true"); } catch { /* Login remains available without persistent UI preference. */ }
+        setError("");setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);
+        setCheckingSession(false);
+      },
+      async (snapshotError) => {
+        console.error("Profile listener error:", snapshotError);
+        await rejectSession("Unable to verify your account permissions.");
+        setCheckingSession(false);
+      }
+    );
+  }, [applyProfile, checkLicense, clearProfileListener, rejectSession]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      clearTimeout(recoveryTimer.current);verifiedNavigation.current=false;activeProfile.current=null;
+      resetLicensePermission();sessionStorage.removeItem("bankSetuLicenseRequired");sessionStorage.removeItem("bankSetuDemoWorkspace");sessionStorage.removeItem("bankSetuWorkspaceOwner");sessionStorage.setItem("bankSetuLicenseReadOnly","true");
+      workspaceRequestRef.current++;setTenantWorkspaceReady(false);resetSyncSession();
+      if (!user) {
+        activeProfile.current=null;
+        ownerBootstrapAttemptRef.current = false;
+        clearProfileListener();
+        sessionStorage.removeItem("bankSetuRole");
+        sessionStorage.removeItem("bankSetuTenantId");
+        sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+        setTenantWorkspaceReady(false);
+        setIsLoggedIn(false);
+        setUserRole("user");
+        setAccountRole("user");
+        setLoginSuccess(false);
+        setCheckingSession(false);
+        return;
+      }
+
+      setCheckingSession(true);
+      setIsLoggedIn(false);
+      if(!navigator.onLine){
+        void resumeVerifiedOfflineSession(user).catch(reason=>{
+          if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+          setLoginSuccess(false);
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
+          setCheckingSession(false);
+        });
+        return;
+      }
+      watchUserProfile(user);
+      recoveryTimer.current=setTimeout(()=>{
+        if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
+        void resumeVerifiedOfflineSession(user).catch(reason=>{
+          if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
+          setLoginSuccess(false);
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
+          setCheckingSession(false);
+        });
+      },OFFLINE_STARTUP_FALLBACK_MS);
+    });
+
+    return () => {
+      clearTimeout(recoveryTimer.current);unsubscribe();
+      clearProfileListener();
+    };
+  }, [clearProfileListener, resumeVerifiedOfflineSession, watchUserProfile]);
+
+  useEffect(()=>{
+    const reconnect=()=>{if(auth.currentUser)watchUserProfile(auth.currentUser);};
+    window.addEventListener("online",reconnect);return()=>window.removeEventListener("online",reconnect);
+  },[watchUserProfile]);
+
+  useEffect(()=>{
+    if(!isLoggedIn)return;
+    configureConnectionRecovery(prepareClientWorkspace);
+    if(licenseReadOnly){
+      void prepareClientWorkspace().catch(()=>{/* A verified offline workspace still permits local viewing and backup. */});
+      return()=>configureConnectionRecovery(undefined);
+    }
+    const stop=startLocalSync();
+    return()=>{stop();configureConnectionRecovery(undefined);};
+  },[isLoggedIn,licenseReadOnly,prepareClientWorkspace]);
+
+  useEffect(() => {
+    const refresh=()=>{const user=auth.currentUser,profile=activeProfile.current;if(user&&profile)void checkLicense(user,profile,navigator.onLine);};
+    const refreshIfDue=()=>{const current=getLicensePermission();if(!current.canWrite||current.validUntil<=Date.now())refresh();};
+    window.addEventListener("banksetu-license-updated",refresh);
+    window.addEventListener("online",refresh);
+    const focus=()=>{if(document.visibilityState==="visible")refreshIfDue();};
+    document.addEventListener("visibilitychange",focus);
+    return()=>{window.removeEventListener("online",refresh);window.removeEventListener("banksetu-license-updated",refresh);document.removeEventListener("visibilitychange",focus);};
+  },[checkLicense]);
+
+  const handleForgotPassword = async () => {
+    setError("");
+    setSuccessMessage("");
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError("Please enter your email address first.");
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setSuccessMessage(
+        "Password reset link sent. Please check your email inbox or spam folder."
+      );
+    } catch (error: unknown) {
+      const err = error as { code?: string };
+      console.error("Password reset error:", err);
+
+      if (err.code === "auth/invalid-email") {
+        setError("Please enter a valid email address.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many requests. Please try again later.");
+      } else if (err.code === "auth/network-request-failed") {
+        setError("Internet connection problem. Please try again.");
+      } else {
+        setError("Unable to send the password reset email. Please try again.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccessMessage("");
+    loginAttemptRef.current = true;
+
+    if (!email.trim() || !password.trim()) {
+      setError("Please enter your email and password.");
+      setLoginSuccess(false);
+      loginAttemptRef.current = false;
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setLoginSuccess(true);
+      await signInWithEmailAndPassword(auth,email.trim(),password);
+    } catch (error: unknown) {
+      const err = error as { code?: string };
+      console.error("Login error:", err);
+      setLoginSuccess(false);
+
+      if (err.code === "auth/user-disabled") {
+        setError("Your Bank Setu account has been blocked by the administrator.");
+      } else if (err.code === "auth/invalid-credential") {
+        setError("Invalid email or password.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many login attempts. Please try again later.");
+      } else if (err.code === "auth/network-request-failed") {
+        setError("Internet connection problem. Please try again.");
+      } else if (err.code === "permission-denied") {
+        setError("Bank Setu could not verify your account permissions.");
+      } else {
+        setError(`Login failed: ${err.code || "unknown-error"}`);
+      }
+    } finally {
+      loginAttemptRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await clearBackgroundNotifications();
+      await unregisterAndroidPush();
+      clearProfileListener();
+      workspaceRequestRef.current++;activeProfile.current=null;setTenantWorkspaceReady(false);resetSyncSession();
+      await signOut(auth);
+      sessionStorage.removeItem("bankSetuRole");
+      sessionStorage.removeItem("bankSetuTenantId");
+      sessionStorage.removeItem("bankSetuAccountRole");sessionStorage.removeItem("bankSetuMasterLocalEnabled");
+      setTenantWorkspaceReady(false);
+      setIsLoggedIn(false);
+      setUserRole("user");
+      setAccountRole("user");
+      setEmail("");
+      setPassword("");
+      setError("");
+      setSuccessMessage("");
+      setLoginSuccess(false);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
+
+  const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
+  if (publicPath === "about" || publicPath === "privacy-policy" || publicPath === "terms") {
+    return <Suspense fallback={<AppLoading/>}><PublicPages /></Suspense>;
+  }
+
+  if (checkingSession) {
+    return <AppLoading/>;
+  }
+
+  if (!isLoggedIn && showLicenseWelcome && licenseWelcome && (pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey))) {
+    return <Suspense fallback={<AppLoading/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
+  }
+
+  if (loginSuccess) {
+    return <LoginTransition/>;
+  }
+
+  if (isLoggedIn) {
+    return (
+      <div className={`banksetu-session banksetu-role-${userRole}`}>
+        <Suspense fallback={<AppLoading/>}>
+          <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
+          <SoftwareUpdateNotice />
+        </Suspense>
+      </div>
+    );
+  }
+
+  return <LoginExperience
+    email={email}
+    password={password}
+    showPassword={showPassword}
+    loading={loading}
+    resetLoading={resetLoading}
+    error={error}
+    successMessage={successMessage}
+    pricingAvailable={Boolean(licenseWelcome)}
+    onEmailChange={setEmail}
+    onPasswordChange={setPassword}
+    onTogglePassword={() => setShowPassword(!showPassword)}
+    onForgotPassword={handleForgotPassword}
+    onSubmit={handleLogin}
+    onPricing={() => {setPricingRequested(true);setShowLicenseWelcome(true);}}
+  />;
 }
+
 export default App;
