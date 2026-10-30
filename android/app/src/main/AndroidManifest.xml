@@ -14,7 +14,8 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="banksetu_license" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="banksetu_update" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_banksetu" />
         <service android:name=".BankSetuMessagingService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
         </service>

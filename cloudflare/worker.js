@@ -312,7 +312,7 @@ async function handlePushRegistration(request, env, actor, route) {
     if (old.uid === actor.uid) await firestoreRequest(env, path, { method: "DELETE" });
     return json({ success: true });
   }
-  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token && old.scopedData === (body.scopedData===true) &&
+  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token && old.scopedData === (body.scopedData===true) && old.isMaster === isMasterActor(actor) &&
       Date.parse(old.expiresAt || "") > now && Date.parse(old.updatedAt || "") > now - 60_000)
     return json({ success: true, throttled: true });
   if (!existing) {
@@ -322,7 +322,7 @@ async function handlePushRegistration(request, env, actor, route) {
     } }) });
     if (rows.filter(row => Date.parse(decodeFields(row.document?.fields || {}).expiresAt || "") > now).length >= 5) return json({ error: "Too many registered devices." }, 429);
   }
-  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, scopedData:body.scopedData===true,platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
+  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, scopedData:body.scopedData===true,isMaster:isMasterActor(actor),platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
   return json({ success: true });
 }
 
@@ -340,7 +340,22 @@ async function preparePushJob(env, tenantId, event) {
   const seen = new Set();
   const deviceIds = rows.filter(row => {const record=licenseFields(row.document), key=record.uid+":"+record.token;if(seen.has(key))return false;seen.add(key);return true;}).map(row=>row.document?.name?.split("/").pop()).filter(id=>pushDevicePattern.test(id||""));
   const now=Date.now();
-  return deviceIds.length ? { tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date(now).toISOString(), expiresAt:new Date(now+PUSH_RETENTION_MS) } : null;
+  return deviceIds.length ? { targetMode:"tenant",tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date(now).toISOString(), expiresAt:new Date(now+PUSH_RETENTION_MS) } : null;
+}
+
+async function prepareUserPushJob(env, recipientUids, event, excludeUid="") {
+  const targets=[...new Set(recipientUids.map(value=>String(value||'')).filter(value=>value&&value!==excludeUid&&value.length<=128))];
+  if(!targets.length)return null;
+  const documents=[];
+  for(const target of targets){
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{
+      from:[{collectionId:"pushDevices"}],where:{fieldFilter:{field:{fieldPath:"uid"},op:"EQUAL",value:{stringValue:target}}},limit:5
+    }})});
+    documents.push(...rows.filter(row=>row.document).map(row=>row.document));
+  }
+  const seen=new Set(),deviceIds=documents.filter(document=>{const record=licenseFields(document),key=record.uid+":"+record.token;if(seen.has(key))return false;seen.add(key);return true;}).map(document=>document.name?.split('/').pop()).filter(id=>pushDevicePattern.test(id||''));
+  const now=Date.now();
+  return deviceIds.length?{targetMode:"users",targetUids:targets,tenantId:"support",event,priority:0,deviceIds,cursor:0,leaseUntil:0,createdAt:new Date(now).toISOString(),expiresAt:new Date(now+PUSH_RETENTION_MS)}:null;
 }
 
 export async function drainQueuedPush(env, tenantId, eventDocId) {
@@ -367,31 +382,43 @@ export async function drainQueuedPush(env, tenantId, eventDocId) {
   catch(error){if([409,412].includes(error.status))return;throw error;}
   const claimed = await licenseDoc(env, "/pendingPushEvents/" + id);
   if (!claimed) return;
-  const tenant = await licenseDoc(env, "/tenants/" + encodeURIComponent(job.tenantId));
-  if (licenseFields(tenant).status !== "active") {
-    await licenseCommit(env, [{delete:claimed.name,currentDocument:{updateTime:claimed.updateTime}}]);return;
+  if(job.targetMode!=="users"){
+    const tenant = await licenseDoc(env, "/tenants/" + encodeURIComponent(job.tenantId));
+    if (licenseFields(tenant).status !== "active") {
+      await licenseCommit(env, [{delete:claimed.name,currentDocument:{updateTime:claimed.updateTime}}]);return;
+    }
   }
-  const profiles = new Map(), tokens = new Set(), stale = [], started = Date.now();
+  const profiles = new Map(),tenants=new Map(), tokens = new Set(), stale = [], started = Date.now();
   let cursor = Math.max(0, Number(job.cursor || 0));
   for (let count = 0; cursor < job.deviceIds.length && count < 8 && Date.now() - started < 15_000; count++, cursor++) {
     const deviceId = job.deviceIds[cursor];
     if (!pushDevicePattern.test(String(deviceId))) continue;
     const device = await licenseDoc(env, "/pushDevices/" + encodeURIComponent(deviceId)), record = licenseFields(device);
-    if (!device || record.tenantId !== job.tenantId || !record.uid || !pushTokenPattern.test(String(record.token || "")) || !Number.isFinite(Date.parse(record.expiresAt || "")) || Date.parse(record.expiresAt) <= now) continue;
+    if (!device || (job.targetMode!=="users"&&record.tenantId !== job.tenantId) || !record.uid || !pushTokenPattern.test(String(record.token || "")) || !Number.isFinite(Date.parse(record.expiresAt || "")) || Date.parse(record.expiresAt) <= now) continue;
+    if(job.targetMode==="users"&&(!Array.isArray(job.targetUids)||!job.targetUids.includes(record.uid)))continue;
     if (!profiles.has(record.uid)) profiles.set(record.uid, await getProfile(env, record.uid));
     const profile = profiles.get(record.uid);
-    if (profile?.tenantId !== job.tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active" || tokens.has(record.token)) continue;
+    if(job.targetMode==="users"){
+      const role=String(profile?.role||'').toLowerCase(),masterScope=String(record.tenantId||'').startsWith('master:');
+      if(masterScope){if(!['master_owner','master_admin','admin'].includes(role))continue;}
+      else{
+        if(profile?.tenantId!==record.tenantId||profile.status!=="approved"||profile.subscriptionStatus!=="active")continue;
+        if(!tenants.has(record.tenantId))tenants.set(record.tenantId,licenseFields(await licenseDoc(env,"/tenants/"+encodeURIComponent(record.tenantId))));
+        if(tenants.get(record.tenantId)?.status!=="active")continue;
+      }
+    }else if (profile?.tenantId !== job.tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active") continue;
+    if(tokens.has(record.token))continue;
     tokens.add(record.token);
     const event = job.event;
     let result;
     try { result = await fetch("https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(env.FIREBASE_PROJECT_ID) + "/messages:send", {
       method:"POST", headers:{authorization:"Bearer " + await serviceAccessToken(env),"content-type":"application/json"}, signal:AbortSignal.timeout(5000),
-      // A notification payload lets Android display this while the WebView and
-      // app process are stopped. Text is deliberately generic: customer data
-      // and other private fields never leave the normal sync channel.
-      body:JSON.stringify({message:{token:record.token,notification:{title:event.title,body:event.body},
-        data:{page:event.page||"license-management",category:event.category||"license",eventId:event.id,uid:record.uid,tenantId:job.tenantId,title:event.title,body:event.body},
-        android:{priority:"HIGH",ttl:"604800s",notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}}
+      // High-priority data-only delivery always reaches the scoped native
+      // service, including when the WebView is closed. The service verifies the
+      // bound UID/workspace before it displays a generic OS notification.
+      body:JSON.stringify({message:{token:record.token,
+        data:{page:event.page||"license-management",category:event.category||"license",eventId:event.id,uid:record.uid,tenantId:record.tenantId,title:event.title,body:event.body},
+        android:{priority:"HIGH",ttl:"604800s"}
       }})
     }); } catch { break; } // Keep this recipient queued for the next invocation.
     if (!result.ok) {
@@ -414,6 +441,33 @@ export async function sendTenantPush(env, tenantId, event) {
     catch(error){if(![409,412].includes(error.status))throw error;}
     await drainQueuedPush(env, tenantId, id);
   } catch(error){console.warn("Bank Setu push delivery queued/unavailable",error instanceof Error?error.message:"unknown");}
+}
+
+export async function sendUserPush(env, recipientUids, event, excludeUid="") {
+  try{
+    const targets=[...new Set(recipientUids)].sort(),scope=`support:${targets.join(',')}`,id=await pushEventId(scope,event.id),job=await prepareUserPushJob(env,targets,event,excludeUid);
+    if(!job)return false;
+    try{await licenseCommit(env,[licenseWrite(env,"pendingPushEvents",id,job,{exists:false})]);}
+    catch(error){if(![409,412].includes(error.status))throw error;}
+    await drainQueuedPush(env,"support",id);
+    return true;
+  }catch(error){console.warn("Bank Setu user push queued/unavailable",error instanceof Error?error.message:"unknown");return false;}
+}
+
+async function handlePushTest(env,actor){
+  const queued=await sendUserPush(env,[actor.uid],{id:`test:${Date.now()}`,title:"Bank Setu notifications enabled",body:"Android background notifications are connected to this signed-in account.",category:"update",page:"dashboard"});
+  return json({success:true,queued,message:queued?"Test notification sent.":"No registered Android device was found. Re-enable System notifications and retry."});
+}
+
+async function supportMasterUids(env){
+  const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{from:[{collectionId:"pushDevices"}],where:{fieldFilter:{field:{fieldPath:"isMaster"},op:"EQUAL",value:{booleanValue:true}}},limit:20}})});
+  return [...new Set(rows.map(row=>licenseFields(row.document).uid).filter(Boolean))];
+}
+
+async function sendSupportPush(env,actor,result){
+  if(!result||result.replayed||!result.messageId||!result.clientUid)return;
+  const recipients=isMasterActor(actor)||actor.profile?.role==='master_admin'?[result.clientUid]:await supportMasterUids(env);
+  await sendUserPush(env,recipients,{id:`support:${result.messageId}`,title:"Bank Setu Support",body:isMasterActor(actor)||actor.profile?.role==='master_admin'?"You have a new reply from Bank Setu Support.":"A client sent a new support message.",category:"support",page:"support"},actor.uid);
 }
 
 export async function handleSyncPushEvent(request,env,actor) {
@@ -508,6 +562,11 @@ export async function deliverScheduledNotices(env) {
   catch(error){if(!pageToken||error.status!==400)throw error;listing=await firestoreRequest(env,"/tenantLicenses?pageSize=1");}
   let latest = "";
   try { const response = await fetch("https://banksetu-app.web.app/version.json",{signal:AbortSignal.timeout(5000)});if(response.ok){const value=await response.json();latest=String(value.androidVersion||value.version||"");} }catch{/* License events do not depend on update metadata. */}
+  let masterUpdateVersion=String(sweep.masterUpdateVersion||"");
+  if(/^\d+\.\d+\.\d+$/.test(latest)&&latest!==masterUpdateVersion){
+    const masters=await supportMasterUids(env);
+    if(masters.length){await sendUserPush(env,masters,{id:"master-update:"+latest,title:"Bank Setu software update",body:"Version "+latest+" is available. Open Bank Setu to check for updates.",category:"update",page:"dashboard"});masterUpdateVersion=latest;}
+  }
   for (const doc of listing.documents || []) {
     const license = licenseFields(doc), tenantId = license.tenantId;
     if (!tenantId) continue;
@@ -528,7 +587,7 @@ export async function deliverScheduledNotices(env) {
       break; // At most one new event per tick; unclaimed events remain discoverable.
     }
   }
-  await licenseCommit(env,[licenseWrite(env,"appSettings","pushSweep",{pageToken:listing.nextPageToken||"",updatedAt:new Date().toISOString()},state?{updateTime:state.updateTime}:{exists:false})]);
+  await licenseCommit(env,[licenseWrite(env,"appSettings","pushSweep",{pageToken:listing.nextPageToken||"",masterUpdateVersion,updatedAt:new Date().toISOString()},state?{updateTime:state.updateTime}:{exists:false})]);
 }
 
 async function purgeExpiredPushDevices(env) {
@@ -1885,9 +1944,33 @@ async function handleSupportMedia(request,env,actor,route){
     const raw=new Uint8Array(bytes);let offset=0;for(const part of parts){raw.set(part,offset);offset+=part.byteLength;}
     let body;try{body=JSON.parse(new TextDecoder().decode(raw));}catch{return json({error:'Invalid support request.'},400);}
     if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid support request.'},400);
-    const action={'/support-media-send':'send','/support-media-read':'read','/support-media-delete':'remove','/support-media-reply':'reply'}[route];
-    return json(await supportMedia[action](env,actor,body),200,{'cache-control':'private, no-store'});
+    const action={'/support-message-send':'text','/support-media-send':'send','/support-media-read':'read','/support-media-delete':'remove','/support-media-reply':'reply'}[route];
+    const result=await supportMedia[action](env,actor,body);
+    if(['text','send','reply'].includes(action))await sendSupportPush(env,actor,result);
+    return json(result,200,{'cache-control':'private, no-store'});
   }catch(error){return json({error:error instanceof Error?error.message:'Support media request failed.'},error.status||500,{'cache-control':'private, no-store'});}
+}
+
+async function deleteSupportConversation(request,env,actor){
+  if(!isMasterActor(actor))return json({error:'Only the Master Admin can delete a complete support conversation.'},403);
+  const body=await request.json().catch(()=>({})),clientUid=String(body.clientUid||'');
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(clientUid))return json({error:'Choose a valid support conversation.'},400);
+  const path=`/supportConversations/${encodeURIComponent(clientUid)}`,conversation=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+  if(!conversation)return json({success:true,deleted:false});
+  const tenantId=String(decodeFields(conversation.fields||{}).tenantId||'');
+  if(!tenantId)return json({error:'Support conversation workspace is invalid; deletion stopped.'},409);
+  await supportMedia.purgeConversation(env,clientUid);
+  for(let batch=0;batch<40;batch++){
+    const listing=await firestoreRequest(env,`${path}/messages?pageSize=50`),messages=listing.documents||[];
+    if(!messages.length)break;
+    for(const message of messages){
+      if(!message.name?.startsWith(`${firestoreDocumentName(env,path)}/messages/`)||String(decodeFields(message.fields||{}).tenantId||'')!==tenantId)throw Object.assign(new Error('Support conversation data mismatch; deletion stopped.'),{status:409});
+    }
+    await firestoreRequest(env,':commit',{method:'POST',body:JSON.stringify({writes:messages.map(message=>({delete:message.name}))})});
+    if(batch===39)throw Object.assign(new Error('Support conversation cleanup is incomplete. Retry deletion.'),{status:503});
+  }
+  await firestoreRequest(env,path,{method:'DELETE'});
+  return json({success:true,deleted:true});
 }
 async function licensePublicKey(env) {
   if (!cachedLicensePublicKey) {
@@ -1932,7 +2015,7 @@ export default {
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
         "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-inquiry-status", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-email-retry", "/license-admin-delete-request", "/license-admin-state",
-        "/push-register", "/push-unregister", "/push-sync-event", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
+        "/push-register", "/push-unregister", "/push-sync-event", "/push-test", "/afsm-confirmation", "/support-message-send", "/support-media-send", "/support-media-read", "/support-media-reply", "/support-conversation-delete",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -1956,8 +2039,12 @@ export default {
       const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
-        : route.startsWith('/support-media-')
+        : route === '/support-conversation-delete'
+        ? await deleteSupportConversation(request,env,actor)
+        : route.startsWith('/support-media-')||route==='/support-message-send'
         ? await handleSupportMedia(request,env,actor,route)
+        : route === "/push-test"
+        ? await handlePushTest(env,actor)
         : route === "/push-sync-event"
         ? await handleSyncPushEvent(request,env,actor)
         : route.startsWith("/push-")

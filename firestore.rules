@@ -219,53 +219,26 @@ service cloud.firestore {
     }
     match /supportConversations/{clientUid} {
       allow get, list: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
-      allow create: if approvedUser()
-        && request.resource.data.clientUid == clientUid
-        && supportOwnerActive(clientUid,request.resource.data.tenantId)
-        && request.resource.data.keys().hasOnly([
-          'clientUid', 'clientName', 'clientEmail', 'tenantId', 'lastMessage',
-          'updatedAt', 'unreadForMaster', 'unreadForClient'
-        ])
-        && request.resource.data.clientName is string
-        && request.resource.data.clientEmail is string
-        && request.resource.data.tenantId is string
-        && request.resource.data.lastMessage is string
-        && request.resource.data.lastMessage.size() <= 2000
-        && request.resource.data.updatedAt == request.time
-        && request.resource.data.unreadForMaster is bool
-        && request.resource.data.unreadForClient is bool
-        && (supportAdmin() || (request.auth.uid == clientUid && request.resource.data.tenantId == myTenantId()));
+      // New messages are committed by the authenticated Worker so a matching
+      // recipient push job is created atomically. Clients may only mark their
+      // own side of an existing conversation as read.
+      allow create: if false;
       allow update: if approvedUser()
         && resource.data.clientUid == clientUid
         && supportOwnerActive(clientUid,resource.data.tenantId)
         && request.resource.data.clientUid == clientUid
         && request.resource.data.tenantId == resource.data.tenantId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'clientName', 'clientEmail', 'lastMessage', 'updatedAt',
-          'unreadForMaster', 'unreadForClient'
-        ])
-        && request.resource.data.lastMessage is string
-        && request.resource.data.lastMessage.size() <= 2000
-        && request.resource.data.unreadForMaster is bool
-        && request.resource.data.unreadForClient is bool
-        && (supportAdmin() || request.auth.uid == clientUid);
+        && ((supportAdmin()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadForMaster'])
+            && request.resource.data.unreadForMaster == false)
+          || (request.auth.uid == clientUid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadForClient'])
+            && request.resource.data.unreadForClient == false));
       allow delete: if false;
 
       match /messages/{messageId} {
         allow read: if supportAdmin() || (approvedUser() && request.auth.uid == clientUid);
-        allow create: if approvedUser()
-          && supportOwnerActive(clientUid,request.resource.data.tenantId)
-          && request.resource.data.keys().hasOnly([
-            'text', 'senderUid', 'senderRole', 'clientUid', 'tenantId', 'createdAt'
-          ])
-          && request.resource.data.senderUid == request.auth.uid
-          && request.resource.data.clientUid == clientUid
-          && request.resource.data.tenantId == get(/databases/$(database)/documents/supportConversations/$(clientUid)).data.tenantId
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000
-          && request.resource.data.createdAt == request.time
-          && (supportAdmin() || request.auth.uid == clientUid);
+        allow create: if false;
         allow update, delete: if false;
       }
     }

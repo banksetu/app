@@ -20,15 +20,28 @@ test('Windows native notifications use the bridge; user setting disables deliver
  globalThis.__device='electron';tenant='tenant-c';notifySystem(event);await tick();assert.equal(sent.length,3);
  localStorage.getItem=()=> 'off';notifySystem({...event,key:'another'});await tick();assert.equal(sent.length,3);
 });
-test('Android background delivery has an OS-visible payload and persistent token refresh',()=>{
+test('Android background delivery uses a high-priority data message handled by the native service',()=>{
  const worker=fs.readFileSync('cloudflare/worker.js','utf8');
  const registration=fs.readFileSync('android/app/src/main/java/in/banksetu/android/BankSetuPushRegistration.java','utf8');
  const refreshWorker=fs.readFileSync('android/app/src/main/java/in/banksetu/android/BankSetuPushRefreshWorker.java','utf8');
- assert.match(worker,/notification:\{title:event\.title,body:event\.body\}/);
+ assert.doesNotMatch(worker,/notification:\{title:event\.title,body:event\.body\}/);
+ assert.match(worker,/data:\{page:event\.page/);
+ assert.match(worker,/android:\{priority:"HIGH"/);
+ assert.match(worker,/category:"support",page:"support"/);
  assert.match(worker,/ttl:"604800s"/);
  assert.match(worker,/PUSH_RETENTION_MS = 30 \* 86400000/);
  assert.match(registration,/enqueueUniquePeriodicWork/);
  assert.match(registration,/7,TimeUnit\.DAYS/);
  assert.match(refreshWorker,/FirebaseMessaging\.getInstance\(\)\.getToken/);
  assert.match(refreshWorker,/refreshBlocking/);
+});
+test('support push cannot be bypassed and only Master exposes complete conversation deletion',()=>{
+ const rules=fs.readFileSync('firestore.rules','utf8');
+ const support=fs.readFileSync('src/SupportCenter.tsx','utf8');
+ const registration=fs.readFileSync('src/platform/androidPush.ts','utf8');
+ assert.match(rules,/supportConversations[\s\S]*?allow create: if false;[\s\S]*?match \/messages[\s\S]*?allow create: if false;/);
+ assert.match(support,/support-conversation-delete/);
+ assert.doesNotMatch(support,/support-media-delete/);
+ assert.match(support,/isMaster&&activeConversation&&<button[^>]+support-delete-conversation/);
+ assert.match(registration,/`master:\$\{uid\}`/);
 });

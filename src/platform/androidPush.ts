@@ -31,7 +31,8 @@ export async function registerAndroidPush() {
     if (localStorage.getItem('bankSetuSystemNotifications') === 'off') { await unregisterAndroidPush(); return; }
     const permission = await native.requestPermissions();
     if (!permission.granted || auth.currentUser?.uid !== uid) { if (!permission.granted) await unregisterAndroidPush(); return; }
-    const tenantId=sessionStorage.getItem('bankSetuTenantId');
+    const role=(sessionStorage.getItem('bankSetuAccountRole')||'').toLowerCase();
+    const tenantId=sessionStorage.getItem('bankSetuTenantId')||(['master_owner','master_admin','admin'].includes(role)?`master:${uid}`:'');
     if(!tenantId)return;
     await native.bindPushAccount({uid,tenantId,deviceId:await deviceId(),refreshToken:user.refreshToken,worker});
     const { token } = await native.getPushToken();

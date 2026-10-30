@@ -867,7 +867,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     setAdminMenuOpen(false);
 
   };
-  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(page);}};window.addEventListener('banksetu-open-page',open);const timer=window.setTimeout(()=>{const pending=sessionStorage.getItem('bankSetuPendingNotificationPage');if(['dashboard','sync-backup','license-management'].includes(pending||'')){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(pending as PageName);}},0);return()=>{window.clearTimeout(timer);window.removeEventListener('banksetu-open-page',open);};});
+  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(page);}};window.addEventListener('banksetu-open-page',open);const timer=window.setTimeout(()=>{const pending=sessionStorage.getItem('bankSetuPendingNotificationPage');if(['dashboard','sync-backup','license-management','support'].includes(pending||'')){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(pending as PageName);}},0);return()=>{window.clearTimeout(timer);window.removeEventListener('banksetu-open-page',open);};});
   useEffect(()=>{
     // Warm the most data-heavy list after the dashboard is interactive. This
     // keeps first paint fast while making the first All Customer Data click local-only.

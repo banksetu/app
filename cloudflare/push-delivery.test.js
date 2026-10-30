@@ -17,7 +17,7 @@ test("FCM queue resumes all 100 recipients with fewer than 50 subrequests per in
   let before=f.calls.length;await sendTenantPush(f.env,"tenant-a",{id:"event-batch",title:"License updated",body:"Open Bank Setu."});assert(f.calls.length-before<50);assert.equal(f.sent.length,8);
   while([...f.store.keys()].some(key=>key.startsWith("pendingPushEvents/"))){before=f.calls.length;await drainQueuedPush(f.env);assert(f.calls.length-before<50);}
   assert.equal(f.sent.length,100);assert.equal(new Set(f.sent.map(message=>message.token)).size,100);
-  for(const message of f.sent){assert.deepEqual(message.notification,{title:"License updated",body:"Open Bank Setu."});assert.equal(message.data.tenantId,"tenant-a");assert(message.data.uid.startsWith("user-"));assert.equal(message.android.priority,"HIGH");assert.equal(message.android.notification.channel_id,"banksetu_license");}
+  for(const message of f.sent){assert.equal(message.notification,undefined);assert.equal(message.data.title,"License updated");assert.equal(message.data.body,"Open Bank Setu.");assert.equal(message.data.tenantId,"tenant-a");assert(message.data.uid.startsWith("user-"));assert.equal(message.android.priority,"HIGH");}
   assert.equal(JSON.stringify(f.store.get("customers/preserved")),customer);
  }finally{f.restore();}
 });
@@ -29,7 +29,7 @@ test("customer sync push uses one fixed cooldown document and contains no custom
   assert.equal((await call("11111111-1111-4111-8111-111111111111")).status,200);assert.equal(f.sent.length,1);
   assert.equal((await call("22222222-2222-4222-8222-222222222222")).status,200);assert.equal(f.sent.length,1);
   assert.equal([...f.store.keys()].filter(key=>key.startsWith("pushSyncSignals/")).length,1);
-  assert.equal(f.sent[0].data.category,"sync");assert.equal(f.sent[0].notification.body,"Customer changes from another device are ready to sync.");
+  assert.equal(f.sent[0].data.category,"sync");assert.equal(f.sent[0].data.body,"Customer changes from another device are ready to sync.");
   assert(!JSON.stringify(f.sent[0]).includes("Private customer"));assert.equal(JSON.stringify(f.store.get("customers/preserved")),before);
  }finally{f.restore();}
 });
