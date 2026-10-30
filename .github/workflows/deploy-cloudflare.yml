@@ -13,6 +13,7 @@ on:
       - cloudflare/**
       - firestore.rules
       - scripts/enforce-client-licenses*
+      - scripts/support-rules.test.mjs
       - scripts/verify-backend-release-gate.mjs
       - .github/workflows/deploy-cloudflare.yml
   workflow_dispatch:
