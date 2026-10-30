@@ -654,7 +654,7 @@ export default function Customers() {
 
   return (
 
-    <div className="customers-page" data-print-root="active">
+    <div className="customers-page" data-print-root="active" data-print-profile="safe">
 
       <style>{`
 

@@ -8,6 +8,8 @@ import BankFormatPrint from "./BankFormatPrint";
 import type { BankDocumentType } from "./bankDocumentPolicy";
 import type { PassbookBankInfo } from "./AssamQuickPassbook";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
+import { savedPrintOffset } from "./printAlignmentStorage";
+import PrintAlignmentChoice from "./PrintAlignmentChoice";
 import Pr2PrinterDialog from "./Pr2PrinterDialog";
 import { windowsPr2, WINDOWS_PR2_MESSAGE } from "./platform/pr2";
 import { printCurrentDocument } from "./platform/print";
@@ -26,6 +28,7 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
   const [error,setError] = useState("");
   const [configured,setConfigured] = useState(false);
   const [alignmentOpen,setAlignmentOpen] = useState(false);
+  const [alignmentChoice,setAlignmentChoice] = useState<"system"|"pr2"|null>(null);
   const [alignmentMode,setAlignmentMode] = useState<"system"|"pr2">("system");
   const [directPrinting,setDirectPrinting] = useState(false);
   const [directOffset,setDirectOffset] = useState<PrintOffset>({x:0,y:0});
@@ -56,10 +59,12 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
   };
   const search=(event:FormEvent)=>{event.preventDefault();if(query.trim())void load();};
   const markPrinted=async()=>{if(!rowNumber)return;await request({action:"markPassbookPrinted",rowNumber});setCustomer(current=>current?{...current,passbookStatus:"Printed"}:current);};
-  const openNormal=()=>{setAlignmentMode("system");setAlignmentOpen(true);};
-  const openDirect=async()=>{if(!windowsPr2()){await showMessage(WINDOWS_PR2_MESSAGE);return;}if(!customer||!rowNumber){setError("Search and load a customer first.");return;}if(!configured){setError("The selected bank format is not ready.");return;}try{await requireLicensedWrite();setError("");setAlignmentMode("pr2");setAlignmentOpen(true);}catch(reason){setError(reason instanceof Error?reason.message:"Printing is unavailable.");}};
+  const openNormal=()=>setAlignmentChoice("system");
+  const openDirect=async()=>{if(!windowsPr2()){await showMessage(WINDOWS_PR2_MESSAGE);return;}if(!customer||!rowNumber){setError("Search and load a customer first.");return;}if(!configured){setError("The selected bank format is not ready.");return;}try{await requireLicensedWrite();setError("");setAlignmentChoice("pr2");}catch(reason){setError(reason instanceof Error?reason.message:"Printing is unavailable.");}};
   const alignedPrint=async(offset:PrintOffset,test:boolean,duplex:boolean)=>{if(alignmentMode==="pr2"){setDirectOffset(offset);setDirectTestOnly(test);setAlignmentOpen(false);setDirectPrinting(true);return;}const root=document.querySelector<HTMLElement>(".custom-bank-document");if(!root)throw Error("Bank format layout is unavailable.");try{root.style.setProperty("--alignment-x",`${offset.x}mm`);root.style.setProperty("--alignment-y",`${offset.y}mm`);root.classList.add("alignment-print-active");const result=await printCurrentDocument(duplex);if(!test&&result.accepted)await markPrinted();return result;}finally{root.classList.remove("alignment-print-active");root.style.removeProperty("--alignment-x");root.style.removeProperty("--alignment-y");}};
-  return <section className="custom-bank-document" data-print-root="active" style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
+  const adjustChosenAlignment=()=>{if(!alignmentChoice)return;setAlignmentMode(alignmentChoice);setAlignmentChoice(null);setAlignmentOpen(true);};
+  const skipChosenAlignment=()=>{if(!alignmentChoice)return;const mode=alignmentChoice,offset=savedPrintOffset(bankInfo.passbookBank||"Active bank");setAlignmentChoice(null);if(mode==="system")void alignedPrint(offset,false,false);else{setDirectOffset(offset);setDirectTestOnly(false);setDirectPrinting(true);}};
+  return <section className="custom-bank-document" data-print-root="active" data-print-profile={formatType === "passbook" ? "exact" : "safe"} style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
     {directPrinting&&<Pr2PrinterDialog bankName={bankInfo.passbookBank||"Active bank"} sourceRoot=".custom-bank-document" offset={directOffset} testOnly={directTestOnly} onClose={()=>setDirectPrinting(false)} onComplete={()=>void markPrinted()} />}
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
@@ -85,5 +90,6 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     {customer && formatType === "accountOpening" && <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:12}}>{(["dateOfBirth","religion","category"] as const).map(field=><label key={field}>{field === "dateOfBirth" ? "Date of Birth ✎" : field === "religion" ? "Religion ✎" : "Category ✎"}<input aria-label={`Edit ${field}`} type={field==="dateOfBirth"?"date":"text"} value={overrides[field]} onChange={event=>setOverrides(current=>({...current,[field]:event.target.value}))} /></label>)}<small>ये edits इस print preview के लिए हैं।</small></div>}
     {unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} onPrint={formatType==="passbook"?openNormal:undefined} onDirectPrint={formatType==="passbook"?()=>void openDirect():undefined} />}
     {alignmentOpen&&formatType==="passbook"&&<PrintAlignmentPreview bankName={bankInfo.passbookBank||"Active bank"} sourceSelector=".custom-bank-document .bank-format-print-document" printMode={alignmentMode} onClose={()=>setAlignmentOpen(false)} onPrint={alignedPrint} />}
+    {alignmentChoice&&formatType==="passbook"&&<PrintAlignmentChoice bankName={bankInfo.passbookBank||"Active bank"} mode={alignmentChoice} saved={savedPrintOffset(bankInfo.passbookBank||"Active bank")} onClose={()=>setAlignmentChoice(null)} onAdjust={adjustChosenAlignment} onSkip={skipChosenAlignment}/>}
   </section>;
 }

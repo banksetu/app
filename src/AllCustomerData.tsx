@@ -337,7 +337,7 @@ export default function AllCustomerData() {
       {loading && <p role="status">Loading customers…</p>}
       {!query.trim() && more && <button type="button" disabled={loading} onClick={() => void loadPage()}>Load more customers</button>}
     </div>
-    {selected && createPortal(<div ref={previewOverlay} className="customer-preview-overlay" data-print-root="active" role="presentation" onClick={() => setSelected(null)}>
+    {selected && createPortal(<div ref={previewOverlay} className="customer-preview-overlay" data-print-root="active" data-print-profile="safe" role="presentation" onClick={() => setSelected(null)}>
       <div ref={previewCard} className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
         <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
         <div className="customer-preview-content">

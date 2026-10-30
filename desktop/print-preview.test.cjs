@@ -13,9 +13,9 @@ test('print controls inherit app dark appearance without changing PDF pixels or 
  assert.doesNotMatch(preferred,/value="windows-default" selected/);
 });
 test('Windows preview freezes print HTML, isolates IPC, validates settings and keeps passbook size',async()=>{
-  const handlers=new Map(),windows=[],pdfOptions=[],printOptions=[];
+  const handlers=new Map(),windows=[],pdfOptions=[],printOptions=[];let printerReads=0;
   class FakeWindow extends EventEmitter{
-    constructor(options){super();this.options=options;this.destroyed=false;this.contents=new EventEmitter();Object.defineProperty(this,"webContents",{get:()=>{if(this.destroyed)throw Error("Object has been destroyed");return this.contents}});this.webContents.mainFrame={};this.webContents.isDestroyed=()=>false;this.webContents.setWindowOpenHandler=()=>{};this.webContents.executeJavaScript=async()=>{};this.webContents.getPrintersAsync=async()=>[{name:'test-printer',isDefault:true}];this.webContents.printToPDF=async options=>{pdfOptions.push(options);return Buffer.from('%PDF-test /MediaBox [0 0 360 504]')};this.webContents.print=(options,callback)=>{printOptions.push(options);callback(true)};windows.push(this);}
+    constructor(options){super();this.options=options;this.destroyed=false;this.contents=new EventEmitter();Object.defineProperty(this,"webContents",{get:()=>{if(this.destroyed)throw Error("Object has been destroyed");return this.contents}});this.webContents.mainFrame={};this.webContents.isDestroyed=()=>false;this.webContents.setWindowOpenHandler=()=>{};this.webContents.executeJavaScript=async()=>{};this.webContents.getPrintersAsync=async()=>{printerReads++;return[{name:'test-printer',isDefault:true}]};this.webContents.printToPDF=async options=>{pdfOptions.push(options);return Buffer.from('%PDF-test /MediaBox [0 0 360 504]')};this.webContents.print=(options,callback)=>{printOptions.push(options);callback(true)};windows.push(this);}
     async loadURL(url){this.url=url}
     isDestroyed(){return this.destroyed}
     destroy(){this.destroyed=true;this.emit('closed')}
@@ -54,11 +54,17 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   assert.deepEqual(printOptions[0].pageRanges,[{from:0,to:1},{from:3,to:3}]);
   assert.equal(printOptions[0].silent,true);
   assert.equal(printOptions[0].duplexMode,'longEdge');
+  assert.equal(printOptions[0].margins.marginType,'printableArea','ordinary documents stay inside the printer imageable area');
   assert.deepEqual(printOptions[0].pageSize,{width:127000,height:177800});
   const acceptedCount=printOptions.length;
   assert((await handlers.get('print:action')(previewEvent,'print',settings)).accepted);
   assert.equal(printOptions.length,acceptedCount,'accepted jobs cannot be submitted twice');
   preview.close();await previewCompletion;
+  const beforeCachedRetry=pdfOptions.length;
+  const cachedCompletion=handlers.get('print:preview')(event,'<html><body>Customer snapshot</body></html>');await new Promise(resolve=>setImmediate(resolve));
+  windows.at(-1).close();await cachedCompletion;
+  assert.equal(pdfOptions.length,beforeCachedRetry,'identical print HTML reuses the short-lived prepared PDF');
+  assert.equal(printerReads,1,'installed printers are cached for the print session');
   const retryCompletion=handlers.get('print:preview')(event,'<html/>');
   await new Promise(resolve=>setImmediate(resolve));
   const retrySnapshot=windows.at(-2),retryPreview=windows.at(-1);
@@ -87,6 +93,12 @@ test('print capture scopes the snapshot to the active printable module and opens
  const source=require('node:fs').readFileSync(require.resolve('./print-preview.cjs'),'utf8');
  assert.match(source,/\[data-print-root="active"\]/);
  assert.match(source,/body\.replaceChildren\(selected\)/);
+ assert.match(source,/sourceScope\.querySelectorAll\('canvas'\)/);
+ assert.match(source,/active\.querySelectorAll\("img"\)/);
+ assert.match(source,/pdfCache=new Map\(\)/);
+ assert.match(source,/printerCache=\{at:0,value:\[\],task:null\}/);
+ assert.match(source,/printProfile:active\?\.dataset\.printProfile==="exact"\?"exact":"safe"/);
+ assert.match(source,/state\.printProfile==='exact'\?'none':'printableArea'/);
  assert.match(source,/Preparing print preview/);
  assert.match(source,/getPrintersAsync\(\).*\.then/);
  assert.doesNotMatch(source,/encodeURIComponent\(html\)/);

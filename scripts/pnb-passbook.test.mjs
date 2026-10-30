@@ -108,3 +108,13 @@ test('shared account-opening footer uses only the selected Assam or PNB bank nam
   assert.equal((accountOpening.match(/Assam Gramin Vikas Bank/g)||[]).length,1);
   assert.equal((accountOpening.match(/Punjab National Bank/g)||[]).length,1);
 });
+
+test('shared A4 account-opening print keeps original ink coordinates inside safe page margins',()=>{
+  const accountOpening=fs.readFileSync(new URL('../src/AccountOpeningPDF.tsx',import.meta.url),'utf8');
+  assert(accountOpening.includes('data-print-profile="safe"'));
+  assert(accountOpening.includes('@page { size: A4 portrait; margin: 10mm !important; }'));
+  assert(accountOpening.includes('.print-area { position: static !important; width: 190mm !important; }'));
+  assert(accountOpening.includes('width: 190mm !important;'));
+  assert(accountOpening.includes('padding: 4mm 2mm 0 !important;'));
+  assert(accountOpening.includes('box-decoration-break: clone'));
+});
