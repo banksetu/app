@@ -20,6 +20,8 @@ import { notifySystem, startNotificationNavigation } from "./platform/systemNoti
 import { clearBackgroundNotifications } from "./platform/backgroundNotifications";
 import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPush";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
+import LoginExperience from "./LoginExperience";
+import LoginTransition from "./LoginTransition";
 
 import "./App.css";
 
@@ -198,7 +200,6 @@ function App() {
     const master=["master_owner","admin"].includes(role);
     const ready=master?setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl:setup.workspaceStatus==="active"&&setup.dataApiReady&&setup.apiUrl&&setup.spreadsheetId&&setup.photoFolderId;
     if(!ready){
-      // A bridge outage must not disconnect an already verified local workspace.
       if((!master&&setup.workspaceStatus!=="active")||(setup.apiUrl&&setup.apiUrl!==sessionStorage.getItem("bankSetuBridgeUrl")))setTenantWorkspaceReady(false);
       throw new Error("Google connection unavailable; local data retained and reconnect will retry.");
     }
@@ -207,7 +208,6 @@ function App() {
     sessionStorage.setItem("bankSetuConnectionId",String(master?setup.masterConnectionId:setup.connectionId||setup.spreadsheetId));
     sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);
     setTenantWorkspaceReady(true);
-    // Offline grant renewal is independent of online workspace readiness.
     if(master||setup.connectionMode==="option-b")await enrollOfflineSession();
   }, []);
 
@@ -349,17 +349,19 @@ function App() {
         setIsLoggedIn(false);
         setUserRole("user");
         setAccountRole("user");
+        setLoginSuccess(false);
         setCheckingSession(false);
         return;
       }
 
       setCheckingSession(true);
-      // Stop the previous account's sync lifecycle before validating a switched user.
       setIsLoggedIn(false);
       if(!navigator.onLine){
         void resumeVerifiedOfflineSession(user).catch(reason=>{
           if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
-          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");setCheckingSession(false);
+          setLoginSuccess(false);
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
+          setCheckingSession(false);
         });
         return;
       }
@@ -368,6 +370,7 @@ function App() {
         if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
         void resumeVerifiedOfflineSession(user).catch(reason=>{
           if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
+          setLoginSuccess(false);
           setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
           setCheckingSession(false);
         });
@@ -448,18 +451,19 @@ function App() {
 
     if (!email.trim() || !password.trim()) {
       setError("Please enter your email and password.");
+      setLoginSuccess(false);
       loginAttemptRef.current = false;
       return;
     }
 
     try {
       setLoading(true);
-
+      setLoginSuccess(true);
       await signInWithEmailAndPassword(auth,email.trim(),password);
-      // The single profile listener authorizes navigation; no Google work here.
     } catch (error: unknown) {
       const err = error as { code?: string };
       console.error("Login error:", err);
+      setLoginSuccess(false);
 
       if (err.code === "auth/user-disabled") {
         setError("Your Bank Setu account has been blocked by the administrator.");
@@ -518,15 +522,7 @@ function App() {
   }
 
   if (loginSuccess) {
-    return (
-      <main className="login-success-page">
-        <div className="login-success-card">
-          <div className="login-success-check">✓</div>
-          <h2>Login Successful</h2>
-          <p>Opening your Bank Setu dashboard...</p>
-        </div>
-      </main>
-    );
+    return <LoginTransition/>;
   }
 
   if (isLoggedIn) {
@@ -540,132 +536,22 @@ function App() {
     );
   }
 
-  return (
-    <main className="login-page">
-      <div className="ambient ambient-one"></div>
-      <div className="ambient ambient-two"></div>
-
-      <section className="login-shell">
-        <div className="login-card">
-          <div className="banksetu-logo" aria-label="Bank Setu">
-            <div className="logo-ring">
-              <div className="logo-bridge">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
-
-          <div className="brand">
-            <h1>
-              BANK <span>SETU</span>
-            </h1>
-          </div>
-
-          <div className="welcome">
-            <h2>Welcome back</h2>
-          </div>
-          {licenseWelcome && <button type="button" className="login-pricing-link" onClick={()=>{setPricingRequested(true);setShowLicenseWelcome(true);}}>View Pricing Plans</button>}
-
-          <form onSubmit={handleLogin}>
-            <div className="field">
-              <label>Email address</label>
-              <div className="input-box">
-                <div className="field-icon">✉</div>
-                <input
-                  type="email"
-                  placeholder="name@example.com"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <div className="field-label-row">
-                <label>Password</label>
-                <button
-                  type="button"
-                  className="forgot-link"
-                  onClick={handleForgotPassword}
-                  disabled={resetLoading}
-                >
-                  {resetLoading ? "Sending..." : "Forgot password?"}
-                </button>
-              </div>
-
-              <div className="input-box">
-                <div className="field-icon">●</div>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="form-message error-message">
-                <span>!</span>
-                {error}
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="form-message success-message">
-                <span>✓</span>
-                {successMessage}
-              </div>
-            )}
-
-            <div className="login-options">
-              <label className="remember">
-                <input type="checkbox" />
-                <span>Keep me signed in</span>
-              </label>
-              <span className="encrypted">● Secure</span>
-            </div>
-
-            <div className="auth-action-row">
-              <button className="sign-in" type="submit" disabled={loading}>
-                <span>{loading ? "Signing in..." : "Sign In"}</span>
-                {!loading && <span className="arrow">→</span>}
-              </button>
-
-            </div>
-          </form>
-
-          <p className="approval-note compact-approval-note">
-            New accounts are created by the Bank Setu administrator.
-          </p>
-
-          <div className="login-footer">
-            <span className="status-dot"></span>
-            Bank Setu Secure Access
-            <span className="footer-separator">•</span>
-            v1.0
-            <span className="footer-separator">•</span>
-            <a href="/about" style={{ color: "inherit", textDecoration: "underline" }}>About</a>
-            <span className="footer-separator">•</span>
-            <a href="/privacy-policy" style={{ color: "inherit", textDecoration: "underline" }}>Privacy Policy</a>
-            <span className="footer-separator">•</span>
-            <a href="/terms" style={{ color: "inherit", textDecoration: "underline" }}>Terms</a>
-          </div>
-        </div>
-      </section>
-    </main>
-  );
+  return <LoginExperience
+    email={email}
+    password={password}
+    showPassword={showPassword}
+    loading={loading}
+    resetLoading={resetLoading}
+    error={error}
+    successMessage={successMessage}
+    pricingAvailable={Boolean(licenseWelcome)}
+    onEmailChange={setEmail}
+    onPasswordChange={setPassword}
+    onTogglePassword={() => setShowPassword(!showPassword)}
+    onForgotPassword={handleForgotPassword}
+    onSubmit={handleLogin}
+    onPricing={() => {setPricingRequested(true);setShowLicenseWelcome(true);}}
+  />;
 }
 
 export default App;
