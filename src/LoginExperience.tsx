@@ -77,7 +77,7 @@ export default function LoginExperience({
         </div>
       </section>
 
-      {pricingTransition && <div className="premium-transition-overlay premium-pricing-transition" role="status" aria-live="polite"><div className="premium-transition-portal"><span className="premium-portal-ring premium-portal-ring-one" /><span className="premium-portal-ring premium-portal-ring-two" /><img src="/banksetu-logo.png" alt="Bank Setu" /></div><div className="premium-pricing-cards" aria-hidden="true"><span>Basic</span><span>Standard</span><span>Premium</span></div><p>Opening your current pricing plans…</p></div>}
+      {pricingTransition && <div className="premium-transition-overlay premium-pricing-transition" role="status" aria-live="polite"><div className="premium-transition-portal"><span className="premium-portal-ring premium-portal-ring-one" /><span className="premium-portal-ring premium-portal-ring-two" /><img src="/banksetu-logo.png" alt="Bank Setu" /></div><div className="premium-pricing-cards" aria-hidden="true"><span>Demo</span><span>Annual</span><span>Lifetime</span></div><p>Opening your current pricing plans…</p></div>}
     </main>
   );
 }
