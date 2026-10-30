@@ -29,12 +29,12 @@ test('Central Bank quick passbook recreates the full 19 x 17.3 cm stationery as 
   assert.equal((quick.match(/<span>/g)||[]).length>=6,true);
   assert(!source.includes('central-bank-passbook-template'));
   assert(source.includes('font-size:1.95mm'));
-  assert(source.includes('font:400 10px/3.25mm'));
+  assert(source.includes('font:700 11px/3.8mm'));
   assert(source.includes('letter-spacing:.3px'));
 });
 
 test('Central Bank lower data is mapped from the selected tenant bank and customer',()=>{
-  for(const value of ['BADARPUR (ASSAM)','ACCOUNT NO: 5901891316','GSTIN: 18AAACC2498P3Z0','CKYC NO: CKYC-001','MODAK COMPLEX, ST ROAD BADARPUR, KARIMGANJ, ASSAM, 788806','TEL: 268644','MICR CODE: 788016789','IFSC CODE: CBIN0283594','27/10/2026','SYNTHETIC CUSTOMER','C/O: SYNTHETIC GUARDIAN','CIF: CIF-0091','Toll Free: 18003030  WhatsApp Banking: 7900123123']){
+  for(const value of ['BADARPUR (ASSAM)','ACCOUNT NO: 5901891316','GSTIN: 18AAACC2498P3Z0','CKYC NO: CKYC-001','MODAK COMPLEX\nST ROAD BADARPUR\nDISTT. KARIMGANJ (ASSAM)\n788806','Tel: 268644','MICR Code: 788016789','IFSC Code: CBIN0283594','27/10/2026','SYNTHETIC CUSTOMER','C/O: SYNTHETIC GUARDIAN','CIF: CIF-0091','Toll free: 18003030  WhatsApp banking: 7900123123']){
     assert(quick.includes(value),value);
     assert(print.includes(value),value);
   }
@@ -48,10 +48,36 @@ test('Central Bank physical passbook print omits stationery, logo, photograph an
   assert(!print.includes('data:image/png;base64,LOGO'));
   assert(!print.includes('data:image/png;base64,PHOTO'));
   assert(print.includes('central-lower'));
-  assert(print.includes('BRANCH ADDRESS AND TEL NO.:'));
-  assert(print.includes('NAME AND ADDRESS OF ACCOUNT HOLDER/S:'));
+  assert(print.includes('Branch Address And Tel No.:'));
+  assert(print.includes('Name and address of account holder/s:'));
   assert(source.includes('.central-bank-document[data-mode="passbook"]{background:#fff}'));
   assert(print.includes('data-print-paper'));
+});
+
+test('Central Bank dot-matrix data starts 15 mm below the fold and stays bold',()=>{
+  assert(source.includes('data-field="branchTitle" style={at(55,15,58)}'));
+  assert(source.includes('data-field="branchAddress" style={{...at(9.5,40,48),lineHeight:"3.8mm"}}'));
+  assert(source.includes('font-weight:700'));
+  assert(source.includes('font-size:11px'));
+});
+
+test('Central Bank quick and normal passbook keep account defaults and temporary edit support',()=>{
+  const blankDefaults=renderToStaticMarkup(React.createElement(CentralBankPassbook,{customer:{accountOpeningDate:'2026-10-27'},bankInfo,formatType:'passbook'}));
+  for(const markup of [quick,print,blankDefaults]){
+    assert(markup.includes('A/C TYPE: SAVINGS'));
+    assert(markup.includes('MODE: SELF'));
+    assert(markup.includes('OPERATING: SINGLY'));
+    assert(markup.includes('27/10/2026'));
+  }
+  const passbook=fs.readFileSync(new URL('../src/Passbook.tsx',import.meta.url),'utf8');
+  assert(passbook.includes('function withCentralPrintDefaults'));
+  assert(passbook.includes('if (isCentral) loaded=withCentralPrintDefaults(loaded)'));
+  assert(passbook.includes('label="Account Type"'));
+  assert(passbook.includes('label="Mode"'));
+  assert(passbook.includes('label="Operating"'));
+  assert(passbook.includes('changePreviewField("accountType",value)'));
+  assert(passbook.includes('changePreviewField("modeOfOperation",value)'));
+  assert(passbook.includes('changePreviewField("operatingInstruction",value)'));
 });
 
 test('Central Bank data-only passbook is wired to the Olivetti PR2 path at 190 x 173 mm',()=>{

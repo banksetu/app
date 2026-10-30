@@ -97,7 +97,12 @@ type Customer = {
   photoPreview?: string;
   jointHolder?: string;
   issueDate?: string;
+  accountType?: string;
+  acType?: string;
+  accountCategory?: string;
   modeOfOperation?: string;
+  operationMode?: string;
+  operatingInstruction?: string;
   pnbBranchOffice?: string;
   pnbBranchPhone?: string;
   pnbMicr?: string;
@@ -174,6 +179,9 @@ type EditableCustomer = Pick<
   | "pnbCountry"
   | "pnbIssueDate"
   | "pnbDicgcAmount"
+  | "accountType"
+  | "modeOfOperation"
+  | "operatingInstruction"
 
 >;
 
@@ -371,6 +379,15 @@ function withPnbPrintDefaults(customer: Customer, bankInfo?: PassbookBankInfo): 
     pnbState:safe(customer.pnbState),
     pnbCountry:safe(customer.pnbCountry),
     pnbIssueDate:safe(customer.pnbIssueDate)||safe(customer.issueDate),
+  };
+}
+
+function withCentralPrintDefaults(customer: Customer): Customer {
+  return {
+    ...customer,
+    accountType:safe(customer.accountType||customer.acType||customer.accountCategory)||"SAVINGS",
+    modeOfOperation:safe(customer.modeOfOperation||customer.operationMode)||"SELF",
+    operatingInstruction:safe(customer.operatingInstruction)||"SINGLY",
   };
 }
 
@@ -635,6 +652,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
       if (isPnb) loaded=withPnbPrintDefaults(loaded,bankInfo);
+      if (isCentral) loaded=withCentralPrintDefaults(loaded);
 
       setCustomer(loaded);
       setPreviewCustomer({ ...loaded });
@@ -673,6 +691,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
       if (isPnb) loaded=withPnbPrintDefaults(loaded,bankInfo);
+      if (isCentral) loaded=withCentralPrintDefaults(loaded);
 
       setCustomer(loaded);
       setPreviewCustomer({ ...loaded });
@@ -2809,6 +2828,24 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
                   value={safe(p[field])}
                   onChange={(value) => changePreviewField(field,value)}
                 />)}
+
+                {isCentral && <>
+                  <EditInput
+                    label="Account Type"
+                    value={safe(p.accountType)||"SAVINGS"}
+                    onChange={(value) => changePreviewField("accountType",value)}
+                  />
+                  <EditInput
+                    label="Mode"
+                    value={safe(p.modeOfOperation)||"SELF"}
+                    onChange={(value) => changePreviewField("modeOfOperation",value)}
+                  />
+                  <EditInput
+                    label="Operating"
+                    value={safe(p.operatingInstruction)||"SINGLY"}
+                    onChange={(value) => changePreviewField("operatingInstruction",value)}
+                  />
+                </>}
 
               </div>
 

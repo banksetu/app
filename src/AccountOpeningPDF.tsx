@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
 import ModalPortal from "./ModalPortal";
+import { isPnbBank } from "./bankDocumentPolicy";
 
 
 
@@ -318,6 +319,8 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
   const [religion, setReligion] = useState("MINORITY COM - MUSLIMS");
 
+  const [nomineeRelationship, setNomineeRelationship] = useState("");
+
   const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState("");
@@ -446,6 +449,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
       setCustomer(loaded);
       setDob("");
       setReligion("MINORITY COM - MUSLIMS");
+      setNomineeRelationship("");
       setMessage("Account Opening Form generated successfully.");
     } catch (err) {
       setCustomer(null);
@@ -479,6 +483,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
       setCustomer(loaded);
       setDob("");
       setReligion("MINORITY COM - MUSLIMS");
+      setNomineeRelationship("");
       setCustomerMatches([]);
       setShowMatchModal(false);
       setMessage("Selected customer loaded successfully. Account Opening Form is ready.");
@@ -513,6 +518,9 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
   const maskedAadhaar = maskAadhaar(c.uidaiNo);
   const selectedBankLogo = safe(bankLogo) || (/assam gramin/i.test(bankName) ? "/assam-gramin-bank-logo.jpg" : "");
+  const authorizedOfficialBankName = isPnbBank(bankName)
+    ? "Punjab National Bank"
+    : "Assam Gramin Vikas Bank";
 
 
 
@@ -2214,7 +2222,13 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
                       <td className="bold caps nominee-name-cell">{c.nominee || "—"}</td>
 
-                      <td className="bold">MOTHER</td>
+                      <td className="bold nominee-relationship-cell">
+                        <EditableField
+                          value={nomineeRelationship}
+                          onChange={setNomineeRelationship}
+                          placeholder="Click Edit"
+                        />
+                      </td>
 
                       <td></td>
 
@@ -2456,7 +2470,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
                 <div className="bold" style={{ marginTop: "2mm" }}>
 
-                  Assam Gramin Vikas Bank
+                  {authorizedOfficialBankName}
 
                 </div>
 
@@ -2513,6 +2527,8 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
                 setDob("");
 
                 setReligion("MINORITY COM - MUSLIMS");
+
+                setNomineeRelationship("");
 
                 setMessage("");
 

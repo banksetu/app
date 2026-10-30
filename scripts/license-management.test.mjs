@@ -72,3 +72,17 @@ test('a deleted or missing selected tenant cannot receive a stale assignment',()
  const html=render(true,{14:[],15:[],18:'deleted-tenant',19:'demo',29:'tenants'});
  assert(/<button[^>]*disabled=""[^>]*>Confirm &amp; Activate Five-Day Demo<\/button>/.test(html));
 });
+
+test('rejected inquiries expose permanent cleanup and pending email retry controls',()=>{
+ const source=fs.readFileSync('src/LicenseManagement.tsx','utf8');
+ const worker=fs.readFileSync('cloudflare/worker.js','utf8');
+ const alert=fs.readFileSync('src/LicenseInquiryAlert.tsx','utf8');
+ assert(source.includes('Delete Permanently'));
+ assert(source.includes('/license-admin-delete-request'));
+ assert(source.includes('↻ Retry Email'));
+ assert(source.includes('/license-admin-email-retry'));
+ assert(worker.includes('Reject this inquiry before permanently deleting it.'));
+ assert(worker.includes('licenseNotificationOutbox'));
+ assert(alert.includes('/license-admin-inquiry-status'));
+ assert(alert.includes('Open License Requests'));
+});
