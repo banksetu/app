@@ -86,7 +86,8 @@ export default function AssamQuickPassbook({ customer: c, bankInfo = {}, onEdit 
         text-align:center; white-space:nowrap; font:bold 3.5mm/7mm Arial,sans-serif; }
       .assam-quick-edit { display:block; margin:12px auto 0; }
       @media print {
-        @page { size:210mm 297mm; margin:0; }
+        /* 205mm artwork fits inside A4 with a real 2.5mm safety edge. */
+        @page { size:210mm 297mm; margin:2.5mm; }
         .assam-quick-document,.assam-quick-document * { visibility:visible!important; }
         .assam-quick-document { position:fixed!important; left:0!important; top:0!important;
           margin:0!important; box-shadow:none!important; print-color-adjust:exact; -webkit-print-color-adjust:exact; }

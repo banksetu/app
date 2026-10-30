@@ -47,7 +47,7 @@ function capturePrintDocument() {
   return '<!doctype html>'+copy.outerHTML;
 }
 const installPrintScript='window.bankSetuPrintJob=async(options={})=>{window.dispatchEvent(new Event("beforeprint"));try{const roots=[...document.querySelectorAll(\'[data-print-root="active"]\')],active=roots.filter(node=>node.getClientRects().length&&getComputedStyle(node).display!==\'none\').at(-1),images=active?[...active.querySelectorAll("img")]:[...document.images];await Promise.race([Promise.all([document.fonts?.ready,...images.filter(image=>!image.complete).map(image=>image.decode?image.decode().catch(()=>{}):Promise.resolve())]),new Promise(resolve=>setTimeout(resolve,750))]);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const html=('
-  +capturePrintDocument.toString()+')();return await window.bankSetuPrint.preview(html,{...options,appearance:document.documentElement.dataset.appearance||document.querySelector(".banksetu-app-shell")?.dataset.appearance||"light"});}finally{window.dispatchEvent(new Event("afterprint"));}};window.print=()=>{void window.bankSetuPrintJob().catch(error=>alert("Print preview failed: "+error.message));};';
+  +capturePrintDocument.toString()+')();return await window.bankSetuPrint.preview(html,{...options,printProfile:active?.dataset.printProfile==="exact"?"exact":"safe",appearance:document.documentElement.dataset.appearance||document.querySelector(".banksetu-app-shell")?.dataset.appearance||"light"});}finally{window.dispatchEvent(new Event("afterprint"));}};window.print=()=>{void window.bankSetuPrintJob().catch(error=>alert("Print preview failed: "+error.message));};';
 
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function previewHtml(pdf,printers,appearance="light",preferredPrinter="") {
@@ -134,7 +134,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
     };
     try{
       snapshotContents.setWindowOpenHandler(()=>({action:'deny'}));
-      Object.assign(state,{snapshot,snapshotContents,preview,printers:[],contents:preview.webContents});previews.set(state.contents,state);
+      Object.assign(state,{snapshot,snapshotContents,preview,printers:[],printProfile:requested?.printProfile==="exact"?"exact":"safe",contents:preview.webContents});previews.set(state.contents,state);
       preview.webContents.setWindowOpenHandler(()=>({action:'deny'}));
       preview.webContents.on('will-navigate',e=>e.preventDefault());
       preview.once('closed',cleanup);
@@ -181,7 +181,7 @@ function installPrintPreview({app,BrowserWindow,ipcMain,dialog,parentWindow,getP
       const pdf=await state.snapshotContents.printToPDF(pdfOptions(options));await fs.promises.writeFile(selected.filePath,pdf);return {message:'PDF saved.'};
     }
     if(!state.printers.some(printer=>printer.name===options.deviceName))throw Error('Choose an installed printer, or Save as PDF.');
-    const printOptions={silent:true,color:input?.color!==false,printBackground:true,deviceName:options.deviceName,copies:options.copies,landscape:options.landscape,duplexMode:options.duplex?'longEdge':'simplex',scaleFactor:options.scale,margins:{marginType:'none'},...(pageRanges?{pageRanges}:{}),...(options.paper!=='document'?{pageSize:options.paper}:state.documentSize?{pageSize:state.documentSize}:{})};
+    const printOptions={silent:true,color:input?.color!==false,printBackground:true,deviceName:options.deviceName,copies:options.copies,landscape:options.landscape,duplexMode:options.duplex?'longEdge':'simplex',scaleFactor:options.scale,margins:{marginType:state.printProfile==='exact'?'none':'printableArea'},...(pageRanges?{pageRanges}:{}),...(options.paper!=='document'?{pageSize:options.paper}:state.documentSize?{pageSize:state.documentSize}:{})};
     const result=await new Promise(resolve=>state.snapshotContents.print(printOptions,(ok,reason)=>resolve({ok,reason})));
     if(!result.ok){if(/cancel/i.test(result.reason||''))return {cancelled:true,message:'Print cancelled.'};throw Error(result.reason||'The printer could not accept the job.');}
     state.outcome={accepted:true,cancelled:false};

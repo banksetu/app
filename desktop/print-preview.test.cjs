@@ -54,6 +54,7 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   assert.deepEqual(printOptions[0].pageRanges,[{from:0,to:1},{from:3,to:3}]);
   assert.equal(printOptions[0].silent,true);
   assert.equal(printOptions[0].duplexMode,'longEdge');
+  assert.equal(printOptions[0].margins.marginType,'printableArea','ordinary documents stay inside the printer imageable area');
   assert.deepEqual(printOptions[0].pageSize,{width:127000,height:177800});
   const acceptedCount=printOptions.length;
   assert((await handlers.get('print:action')(previewEvent,'print',settings)).accepted);
@@ -96,6 +97,8 @@ test('print capture scopes the snapshot to the active printable module and opens
  assert.match(source,/active\.querySelectorAll\("img"\)/);
  assert.match(source,/pdfCache=new Map\(\)/);
  assert.match(source,/printerCache=\{at:0,value:\[\],task:null\}/);
+ assert.match(source,/printProfile:active\?\.dataset\.printProfile==="exact"\?"exact":"safe"/);
+ assert.match(source,/state\.printProfile==='exact'\?'none':'printableArea'/);
  assert.match(source,/Preparing print preview/);
  assert.match(source,/getPrintersAsync\(\).*\.then/);
  assert.doesNotMatch(source,/encodeURIComponent\(html\)/);

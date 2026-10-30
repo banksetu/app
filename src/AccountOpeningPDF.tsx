@@ -526,7 +526,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
   return (
 
-    <div className="aof-module" data-print-root="active">
+    <div className="aof-module" data-print-root="active" data-print-profile="safe">
 
       <style>{`
 
@@ -1685,7 +1685,24 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
         }
 
         @media print {
-          .paper { text-align: left !important; }
+          /* Keep the original content coordinates, but move the page box inside
+             a real A4 printable envelope. 210mm with 12mm side padding and
+             14mm top padding becomes 190mm with 2mm/4mm inner padding plus
+             the 10mm page margin: the ink stays at the same physical points. */
+          @page { size: A4 portrait; margin: 10mm !important; }
+          html, body { width: 210mm !important; min-height: 297mm !important; }
+          .print-area { position: static !important; width: 190mm !important; }
+          .paper {
+            width: 190mm !important;
+            height: auto !important;
+            min-height: 277mm !important;
+            margin: 0 !important;
+            padding: 4mm 2mm 0 !important;
+            overflow: visible !important;
+            text-align: left !important;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+          }
           .paper .edit-pencil { display: none !important; }
         }
 

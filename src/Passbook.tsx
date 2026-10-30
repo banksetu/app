@@ -1052,7 +1052,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
   return (
 
-    <div className="passbook-page" data-print-root="active">
+    <div className="passbook-page" data-print-root="active" data-print-profile={formatType === "passbook" ? "exact" : "safe"}>
       {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} offset={directOffset} testOnly={directTestOnly} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
 
       <style>{`

@@ -27,6 +27,7 @@ test("motion stays paint-only and mobile passbook fitting never changes print ge
   assert.doesNotMatch(css,/\.dashboard-stat-card[^\{]*\{[^}]*transition:[^}]*background-color/s);
   assert.match(css,/@media screen and \(max-width:420px\)[\s\S]*zoom:\.39/);
   assert.match(css,/@media print[\s\S]*bank-format-print-document\{zoom:1!important;animation:none!important\}/);
+  assert.match(css,/data-appearance="dark"[^\n]*\.match-modal \.match-card\{background:#233249!important;color:#f8fafc!important/s);
 });
 
 test("sidebar uses responsive outline icons and only spins sync while syncing", () => {
