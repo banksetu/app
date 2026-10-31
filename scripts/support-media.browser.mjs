@@ -26,7 +26,12 @@ try{
  await server.listen();browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
  for(const width of [390,1280])for(const role of ['master_owner','client_admin']){
   const page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(`http://127.0.0.1:5199/test-evidence/support.html?role=${role}`);await page.getByRole('button',{name:'Open Support Center',exact:true}).click();
+  await page.goto(`http://127.0.0.1:5199/test-evidence/support.html?role=${role}`);
+  // Vite may perform one dependency-optimizer reload after a new UI module is
+  // introduced. Let that development-only reload settle before changing the
+  // fixture's in-memory `open` state, otherwise the reload resets the click.
+  await page.waitForLoadState('networkidle');await page.waitForTimeout(400);
+  await page.getByRole('button',{name:'Open Support Center',exact:true}).click();
   await page.getByRole('button',{name:'Private Chat',exact:true}).first().click();
   if(role==='master_owner')await page.locator('.support-users button').click();
   const png=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;const context=canvas.getContext('2d');context.fillStyle='#1565c0';context.fillRect(0,0,40,40);return canvas.toDataURL('image/png').split(',')[1];}),'base64');
