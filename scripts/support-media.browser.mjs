@@ -31,7 +31,8 @@ try{
   // introduced. Let that development-only reload settle before changing the
   // fixture's in-memory `open` state, otherwise the reload resets the click.
   await page.waitForLoadState('networkidle');await page.waitForTimeout(400);
-  await page.getByRole('button',{name:'Open Support Center',exact:true}).click();
+  const openSupport=page.getByRole('button',{name:'Open Support Center',exact:true});
+  await openSupport.focus();await page.keyboard.press('Enter');
   await page.getByRole('button',{name:'Private Chat',exact:true}).first().click();
   if(role==='master_owner')await page.locator('.support-users button').click();
   const png=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;const context=canvas.getContext('2d');context.fillStyle='#1565c0';context.fillRect(0,0,40,40);return canvas.toDataURL('image/png').split(',')[1];}),'base64');
