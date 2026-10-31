@@ -109,12 +109,18 @@ test('shared account-opening footer uses only the selected Assam or PNB bank nam
   assert.equal((accountOpening.match(/Punjab National Bank/g)||[]).length,1);
 });
 
-test('shared A4 account-opening print keeps original ink coordinates inside safe page margins',()=>{
+test('shared account-opening print owns one exact A4 page without double printer shrink',()=>{
   const accountOpening=fs.readFileSync(new URL('../src/AccountOpeningPDF.tsx',import.meta.url),'utf8');
-  assert(accountOpening.includes('data-print-profile="safe"'));
-  assert(accountOpening.includes('@page { size: A4 portrait; margin: 10mm !important; }'));
-  assert(accountOpening.includes('.print-area { position: static !important; width: 190mm !important; }'));
-  assert(accountOpening.includes('width: 190mm !important;'));
-  assert(accountOpening.includes('padding: 4mm 2mm 0 !important;'));
-  assert(accountOpening.includes('box-decoration-break: clone'));
+  const uploaded=fs.readFileSync(new URL('../src/BankFormatPrint.tsx',import.meta.url),'utf8');
+  const custom=fs.readFileSync(new URL('../src/CustomBankDocument.tsx',import.meta.url),'utf8');
+  assert(accountOpening.includes('data-print-profile="exact"'));
+  assert(accountOpening.includes('@page { size: A4 portrait; margin: 0 !important; }'));
+  assert(accountOpening.includes('width: 210mm !important;'));
+  assert(accountOpening.includes('height: 297mm !important;'));
+  assert(accountOpening.includes('padding: 14mm 12mm 10mm !important;'));
+  assert(!accountOpening.includes('width: 190mm !important;'));
+  assert(uploaded.includes('className="bank-format-a4-page"'));
+  assert(uploaded.includes('Math.min(210/pageWidthMm,297/sourceHeightMm)'));
+  assert(uploaded.includes('accountOpening?"A4 portrait"'));
+  assert(custom.includes('formatType === "quickPassbook" ? "safe" : "exact"'));
 });

@@ -35,6 +35,16 @@ test('Android background delivery uses a high-priority data message handled by t
  assert.match(refreshWorker,/FirebaseMessaging\.getInstance\(\)\.getToken/);
  assert.match(refreshWorker,/refreshBlocking/);
 });
+test('Android local, FCM and status-bar notifications use the Bank Setu mark instead of the support headset',()=>{
+ const icon=fs.readFileSync('android/app/src/main/res/drawable/ic_stat_banksetu.xml','utf8');
+ const manifest=fs.readFileSync('android/app/src/main/AndroidManifest.xml','utf8');
+ const plugin=fs.readFileSync('android/app/src/main/java/in/banksetu/android/BankSetuNotificationsPlugin.java','utf8');
+ assert.match(icon,/compact Bank Setu B/);
+ assert.match(icon,/android:fillType="evenOdd"/);
+ assert.doesNotMatch(icon,/M12,2a9,9/,'the old headset glyph must not return');
+ assert.match(manifest,/default_notification_icon" android:resource="@drawable\/ic_stat_banksetu"/);
+ assert.equal((plugin.match(/setSmallIcon\(R\.drawable\.ic_stat_banksetu\)/g)||[]).length,2);
+});
 test('support push cannot be bypassed and only Master exposes complete conversation deletion',()=>{
  const rules=fs.readFileSync('firestore.rules','utf8');
  const support=fs.readFileSync('src/SupportCenter.tsx','utf8');

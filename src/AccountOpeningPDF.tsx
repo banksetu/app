@@ -526,7 +526,7 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
   return (
 
-    <div className="aof-module" data-print-root="active" data-print-profile="safe">
+    <div className="aof-module" data-print-root="active" data-print-profile="exact">
 
       <style>{`
 
@@ -1685,24 +1685,39 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
         }
 
         @media print {
-          /* Keep the original content coordinates, but move the page box inside
-             a real A4 printable envelope. 210mm with 12mm side padding and
-             14mm top padding becomes 190mm with 2mm/4mm inner padding plus
-             the 10mm page margin: the ink stays at the same physical points. */
-          @page { size: A4 portrait; margin: 10mm !important; }
-          html, body { width: 210mm !important; min-height: 297mm !important; }
-          .print-area { position: static !important; width: 190mm !important; }
-          .paper {
-            width: 190mm !important;
-            height: auto !important;
-            min-height: 277mm !important;
+          /* One physical A4 box owns every page. Safety space belongs inside
+             the document, so Chromium/Android cannot apply a second shrink. */
+          @page { size: A4 portrait; margin: 0 !important; }
+          html, body { width: 210mm !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          body * { visibility: hidden !important; }
+          .aof-module {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            width: 210mm !important;
             margin: 0 !important;
-            padding: 4mm 2mm 0 !important;
-            overflow: visible !important;
-            text-align: left !important;
-            box-decoration-break: clone;
-            -webkit-box-decoration-break: clone;
+            padding: 0 !important;
+            border: 0 !important;
+            background: #fff !important;
           }
+          .aof-module > :not(.preview-wrap) { display: none !important; }
+          .preview-wrap { width: 210mm !important; max-width: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+          .print-area, .print-area * { visibility: visible !important; }
+          .print-area { position: static !important; width: 210mm !important; margin: 0 !important; }
+          .paper {
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            margin: 0 !important;
+            padding: 14mm 12mm 10mm !important;
+            overflow: hidden !important;
+            text-align: left !important;
+            break-after: page !important;
+            page-break-after: always !important;
+            box-shadow: none !important;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+          .paper:last-child { break-after: auto !important; page-break-after: auto !important; }
           .paper .edit-pencil { display: none !important; }
         }
 
