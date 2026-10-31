@@ -30,7 +30,7 @@ try{
   // Let Vite's development-only dependency optimizer settle before exercising
   // the support home so the fixture behaves consistently in headless CI.
   await page.waitForLoadState('networkidle');await page.waitForTimeout(400);
-  await page.getByRole('button',{name:'Private Chat',exact:true}).first().click();
+  await page.getByRole('button',{name:/Private Chat/}).first().click();
   if(role==='master_owner')await page.locator('.support-users button').click();
   const png=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;const context=canvas.getContext('2d');context.fillStyle='#1565c0';context.fillRect(0,0,40,40);return canvas.toDataURL('image/png').split(',')[1];}),'base64');
   await page.getByLabel('Attach support photo').setInputFiles({name:'sample.png',mimeType:'image/png',buffer:png});
