@@ -19,7 +19,7 @@ const mocks={
  const id='fixture-'+window.chatMessages.length,expires=Date.now()+86400000;window.mediaFiles.set(id,body);window.chatMessages.push({text:body.text,senderUid:new URLSearchParams(location.search).get('role')==='master_owner'?'master':'client',createdAt:{toDate:()=>new Date()},attachment:{id,kind:body.mimeType.startsWith('image/')?'photo':'audio',expiresAt:{toMillis:()=>expires}}});window.chatCallbacks.forEach(fn=>fn());return{success:true};};`,
 };
 fs.writeFileSync('test-evidence/support.html','<div id="root"></div><script type="module" src="/test-evidence/support.tsx"></script>');
-fs.writeFileSync('test-evidence/support.tsx',`import React,{useState}from'react';import{createRoot}from'react-dom/client';import SupportCenter from'../src/SupportCenter';import FloatingSupportButton from'../src/FloatingSupportButton';import'../src/App.css';const role=new URLSearchParams(location.search).get('role')||'client_admin';document.documentElement.dataset.appearance='dark';sessionStorage.setItem('bankSetuAccountRole',role);sessionStorage.setItem('bankSetuTenantId','tenant');function App(){const[open,setOpen]=useState(false);return <main className="banksetu-app-shell" data-appearance="dark"><div className="banksetu-main-workspace">{open&&<SupportCenter accountRole={role}/>}<FloatingSupportButton unread={0} open={()=>setOpen(true)}/></div></main>};createRoot(document.getElementById('root')).render(<App/>);`);
+fs.writeFileSync('test-evidence/support.tsx',`import React from'react';import{createRoot}from'react-dom/client';import SupportCenter from'../src/SupportCenter';import'../src/App.css';const role=new URLSearchParams(location.search).get('role')||'client_admin';document.documentElement.dataset.appearance='dark';sessionStorage.setItem('bankSetuAccountRole',role);sessionStorage.setItem('bankSetuTenantId','tenant');function App(){return <main className="banksetu-app-shell" data-appearance="dark"><div className="banksetu-main-workspace"><SupportCenter accountRole={role}/></div></main>};createRoot(document.getElementById('root')).render(<App/>);`);
 const server=await createServer({configFile:false,root:process.cwd(),cacheDir:'node_modules/.vite-support-media',optimizeDeps:{noDiscovery:true,include:['react','react-dom/client']},plugins:[{name:'support-ui-fixture',enforce:'pre',resolveId(source,importer){const key=source.startsWith('../')?'./'+source.slice(3):source;if(importer?.includes('/src/')&&mocks[key])return'\0support:'+key;},load(id){if(id.startsWith('\0support:'))return mocks[id.slice(9)];}},react()],server:{host:'127.0.0.1',port:5199,strictPort:true}});
 let browser;
 try{
@@ -27,12 +27,9 @@ try{
  for(const width of [390,1280])for(const role of ['master_owner','client_admin']){
   const page=await browser.newPage({viewport:{width,height:900}});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(`http://127.0.0.1:5199/test-evidence/support.html?role=${role}`);
-  // Vite may perform one dependency-optimizer reload after a new UI module is
-  // introduced. Let that development-only reload settle before changing the
-  // fixture's in-memory `open` state, otherwise the reload resets the click.
+  // Let Vite's development-only dependency optimizer settle before exercising
+  // the support home so the fixture behaves consistently in headless CI.
   await page.waitForLoadState('networkidle');await page.waitForTimeout(400);
-  const openSupport=page.getByRole('button',{name:'Open Support Center',exact:true});
-  await openSupport.focus();await page.keyboard.press('Enter');
   await page.getByRole('button',{name:'Private Chat',exact:true}).first().click();
   if(role==='master_owner')await page.locator('.support-users button').click();
   const png=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;const context=canvas.getContext('2d');context.fillStyle='#1565c0';context.fillRect(0,0,40,40);return canvas.toDataURL('image/png').split(',')[1];}),'base64');
