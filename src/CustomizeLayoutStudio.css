@@ -105,3 +105,14 @@
 .ls-overlap-tools strong {font-size:11px}
 .ls-overlap-tools p {font-size:11px;line-height:1.5}
 .ls-inline-check {display:flex;gap:7px;align-items:center;color:var(--ls-muted)}
+
+.ls-catalog-panel {display:grid;gap:9px;margin:9px 0 12px;background:var(--ls-surface);border:1px solid var(--ls-border);border-radius:12px;padding:13px}
+.ls-catalog-panel>p {font-size:12px;line-height:1.5}
+.ls-catalog-heading {display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.ls-catalog-heading strong {flex:1}
+.ls-catalog-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.ls-catalog-card {border:1px solid var(--ls-border);padding:9px;border-radius:9px;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.ls-catalog-card span {font-size:12px;font-weight:700;flex:1 1 160px}
+.ls-catalog-card small {font-size:10px;color:var(--ls-muted);flex:1 1 160px}
+.ls-catalog-preview {border:1px solid var(--ls-accent);padding:12px;border-radius:11px;display:grid;gap:10px}
+.ls-catalog-mini-paper {position:relative;background:#fff;width:min(100%,350px);max-height:440px;overflow:hidden;box-shadow:0 7px 24px #0002;border:1px solid #b0c0d0}
