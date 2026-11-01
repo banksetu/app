@@ -12,3 +12,11 @@ html[data-appearance="dark"] .workspace-template-controls{background:#163246;bor
 
 html[data-appearance="dark"] .custom-bank-document:has(.workspace-template-document){background:#0e2130!important;color:#edf7fb!important}
 html[data-appearance="dark"] .custom-bank-document:has(.workspace-template-document) h1{color:#edf7fb}
+
+.workspace-template-temporary {flex:1 1 100%;border:1px solid var(--app-dark-border,#ccd8e3);border-radius:9px;padding:10px}
+.workspace-template-temporary>summary{cursor:pointer;font-weight:750}
+.workspace-template-temporary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));max-height:300px;overflow:auto;gap:8px;padding:10px 0}
+.workspace-template-temporary-grid label{display:grid;gap:4px;font-size:12px}
+.workspace-template-temporary-grid span{font-size:11px;overflow-wrap:anywhere}
+.workspace-template-temporary-grid input{font:inherit;border-radius:6px;border:1px solid #93a8b8;padding:8px;background:white;color:#172334;min-width:0}
+@media print{.workspace-template-temporary{display:none!important}}
