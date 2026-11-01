@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { estimatePassbookBounds, mapScannedPageToPassbook } from "../src/layoutScanGeometry.ts";
+import { estimatePassbookBounds, estimatePassbookFold, mapScannedPageToPassbook } from "../src/layoutScanGeometry.ts";
 
 function pixels(width, height, region) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -69,4 +69,33 @@ test("non-finite manual crop geometry is blocked before shifting customer fields
     assert.throws(()=>mapScannedPageToPassbook(invalid,200,150,210,297,parts));
   }
   assert.equal(parts[0].x,31);
+});
+
+test("fold-gap estimator proposes a reviewable midpoint when two printed halves are separated",()=>{
+  const width=200,height=180,scan=pixels(width,height,null);
+  const ink=(x0,y0,x1,y1)=>{
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+      const p=(y*width+x)*4;
+      scan[p]=70;scan[p+1]=70;scan[p+2]=70;scan[p+3]=255;
+    }
+  };
+  ink(20,15,180,78);
+  ink(20,101,180,165);
+  const bounds={left:20,top:15,right:180,bottom:165,widthMm:190,heightMm:175,confidence:"low",reason:"test"};
+  const proposal=estimatePassbookFold(scan,width,height,bounds);
+  assert.ok(proposal,"expected an unverified fold gap");
+  assert.ok(proposal.foldMm>70&&proposal.foldMm<105);
+  assert.equal(proposal.confidence,"low");
+});
+
+test("completely blank A4 paper never invents a fold",()=>{
+  const bounds={left:10,top:10,right:190,bottom:170,widthMm:190,heightMm:175,confidence:"low",reason:"test"};
+  assert.equal(estimatePassbookFold(pixels(200,180,null),200,180,bounds),null);
+});
+
+test("manual crop conversion rejects invalid numeric frames and stays non-mutating",()=>{
+  const bounds={left:10,top:10,right:190,bottom:170,widthMm:180,heightMm:180,confidence:"low",reason:"test"};
+  const data=[{x:10,y:30,width:20,height:5}];
+  assert.throws(()=>mapScannedPageToPassbook({...bounds,left:NaN},200,180,210,297,data));
+  assert.deepEqual(data,[{x:10,y:30,width:20,height:5}]);
 });
