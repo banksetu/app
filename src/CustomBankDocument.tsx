@@ -11,7 +11,7 @@ import BankFormatPrint from "./BankFormatPrint";
 import type { BankDocumentType } from "./bankDocumentPolicy";
 import type { PassbookBankInfo } from "./AssamQuickPassbook";
 type Match = { rowNumber: number; name?: string; accountNo?: string; enrolId?: string };
-export default function CustomBankDocument({ formatType, bankInfo }: { formatType: BankDocumentType; bankInfo: PassbookBankInfo }) {
+export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: { formatType: BankDocumentType; bankInfo: PassbookBankInfo; bankLogo?:string }) {
   const clientSearch = sessionStorage.getItem("bankSetuAccountRole") === "client_admin";
   const [templateLogo,setTemplateLogo]=useState("");
   const [overrides,setOverrides]=useState({dateOfBirth:"",religion:"",category:""});
@@ -96,7 +96,7 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     {activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
       template={activeLayout} bankName={bankInfo.passbookBank||""} customer={{...customer,...overrides}}
       bankInfo={bankInfo as Record<string,unknown>}
-      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo}
+      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo||bankLogo}
       onPr2Complete={()=>{void completedPr2();}} /></Suspense>
     : unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
   </section>;
