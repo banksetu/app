@@ -23,13 +23,21 @@ export function mapOpticalTextToMillimeters(
     if (!label || label.length>180 || !box ||
         ![box.x,box.y,box.width,box.height].every(v=>Number.isFinite(v)) ||
         box.width<=0 || box.height<=0) continue;
+    // OCR coordinates can extend outside the scanned canvas, especially after rotation
+    // or near a crop edge. Clip in pixel space before converting into page millimeters.
+    // Never save a suggestion outside the editable document boundary.
+    const left=Math.max(0,Math.min(canvasWidth,box.x));
+    const top=Math.max(0,Math.min(canvasHeight,box.y));
+    const right=Math.max(0,Math.min(canvasWidth,box.x+box.width));
+    const bottom=Math.max(0,Math.min(canvasHeight,box.y+box.height));
+    if (right<=left || bottom<=top) continue;
     const mm=(value:number)=>Math.round(value*10)/10;
     result.push({
       label,
-      x:mm(Math.max(0,box.x)/canvasWidth*pageWidthMm),
-      y:mm(Math.max(0,box.y)/canvasHeight*pageHeightMm),
-      width:mm(Math.max(2,box.width/canvasWidth*pageWidthMm)),
-      height:mm(Math.max(2,box.height/canvasHeight*pageHeightMm)),
+      x:mm(left/canvasWidth*pageWidthMm),
+      y:mm(top/canvasHeight*pageHeightMm),
+      width:mm((right-left)/canvasWidth*pageWidthMm),
+      height:mm((bottom-top)/canvasHeight*pageHeightMm),
     });
   }
   return result;
