@@ -9,7 +9,7 @@ import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerAnalytics } from "./core/dashboardAnalytics";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -50,6 +50,7 @@ import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
 import MasterClients from "./MasterClients";
 import LicenseManagement from "./LicenseManagement";
+const CustomizeLayoutStudio = lazy(() => import("./CustomizeLayoutStudio"));
 import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
@@ -277,6 +278,8 @@ type PageName =
   | "settings"
   | "sync-backup"
   | "license-management"
+  | "customize-passbook"
+  | "customize-account-opening"
   | "support";
 
 function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, licenseWarning = "", licensePermission, demoExpired = false }: DashboardProps) {
@@ -286,6 +289,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // compatibility. It has the same global appearance permissions as the
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
+  const canCustomizeLayout = !licenseReadOnly && ["master_owner", "admin", "client_admin"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
   useLayoutEffect(()=>{
@@ -318,6 +322,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [adminMenuOpen, setAdminMenuOpen] =
 
     useState(false);
+  const [customizeMenuOpen, setCustomizeMenuOpen] = useState(false);
   const adminTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [adminMenuPosition, setAdminMenuPosition] = useState({ top: 0, right: 0 });
   useEffect(() => {
@@ -1365,6 +1370,16 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                   </button>
                 )}
 
+                {canCustomizeLayout && <>
+                  <button type="button" style={{...styles.adminMenuItem,display:"flex",alignItems:"center",justifyContent:"space-between"}} aria-expanded={customizeMenuOpen} aria-controls="banksetu-customize-layout-submenu" onClick={() => setCustomizeMenuOpen(open => !open)}>
+                    <span>✏️ Customize Layout</span><span aria-hidden="true">{customizeMenuOpen ? "▴" : "▾"}</span>
+                  </button>
+                  {customizeMenuOpen && <div id="banksetu-customize-layout-submenu" role="group" aria-label="Customize Layout" style={{margin:"0 3px 8px 10px",paddingLeft:7,borderLeft:"2px solid #2c7778"}}>
+                    <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-passbook"); }}>Customize Passbook</button>
+                    <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-account-opening"); }}>Customize Account Opening Form</button>
+                  </div>}
+                </>}
+                {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button type="button" style={styles.adminMenuItem} onClick={() => openPage("license-management")}>🪪 License Management</button>}
                 <button
 
                   type="button"
@@ -1405,6 +1420,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
+          {canCustomizeLayout && bankSettingsReady && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} /></Suspense>}
           {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
