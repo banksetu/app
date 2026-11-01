@@ -7,7 +7,7 @@ import { estimatePassbookBounds, type ScanBounds } from "./layoutScanGeometry";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 type Mode = "passbook" | "accountOpening";
-type Kind = "text" | "field" | "rectangle" | "line" | "photo";
+type Kind = "text" | "field" | "rectangle" | "line" | "photo" | "image" | "ellipse";
 type Origin = "static" | "customer" | "bank" | "preprinted" | "dotmatrix";
 type Align = "left" | "center" | "right";
 type Unit = "mm" | "cm" | "in";
@@ -15,6 +15,8 @@ type Unit = "mm" | "cm" | "in";
 type LayoutPart = {
   id: string;
   kind: Kind;
+  page?: number;
+  imageData?: string;
   origin: Origin;
   label: string;
   fieldKey: string;
@@ -42,14 +44,14 @@ type LayoutPart = {
   dotMatrix: boolean;
   preprinted: boolean;
 };
-type Draft = { version: 1; mode: Mode; bankName: string; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; elements: LayoutPart[] };
+type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
 const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
 const fonts = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana", "Tahoma", "Noto Sans", "Noto Serif"];
 const randomId = () => "part-" + Math.random().toString(36).slice(2, 11);
 
 function addPart(kind: Kind, origin: Origin, label: string, fieldKey = "", x = 12, y = 15): LayoutPart {
-  return { ...defaults, id: randomId(), kind, origin, label, fieldKey, value: "", defaultValue: "", x, y, width: kind === "line" ? 120 : kind === "photo" ? 34 : 80, height: kind === "photo" ? 42 : kind === "rectangle" ? 20 : 8, z: 1, quick: true, dotMatrix: origin === "customer" || origin === "bank" || origin === "dotmatrix", preprinted: origin === "preprinted" };
+  return { ...defaults, id: randomId(), kind, page:1, origin, label, fieldKey, value: "", defaultValue: "", x, y, width: kind === "line" ? 120 : kind === "photo" ? 34 : 80, height: kind === "photo" ? 42 : kind === "rectangle" ? 20 : 8, z: 1, quick: true, dotMatrix: origin === "customer" || origin === "bank" || origin === "dotmatrix", preprinted: origin === "preprinted" };
 }
 const within = (number: number, min: number, max: number) => Math.min(max, Math.max(min, number));
 const round = (number: number) => Math.round(number * 10) / 10;
@@ -65,7 +67,7 @@ function initialDraft(mode: Mode, bankName: string): Draft {
   const account = addPart("field", "customer", "Account Number", "accountNumber", 16, 124);
   account.defaultValue = "Account Number"; account.width = 110;
   const fold = mode === "passbook" ? 88 : 0;
-  return { version: 1, mode, bankName, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0, elements: [heading, name, account] };
+  return { version: 1, mode, bankName, pageCount:1, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0, elements: [heading, name, account] };
 }
 function validDraft(draft: unknown, mode: Mode, bankName: string): draft is Draft {
   if (!draft || typeof draft !== "object") return false;
@@ -91,6 +93,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [unit, setUnit] = useState<Unit>("mm");
+  const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
@@ -112,7 +115,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const selected = draft.elements.find(part => part.id === selectedId) || null;
   const canReview = accountRole === "master_owner" || accountRole === "admin";
   const canSubmit = accountRole === "client_admin";
-  const ordered = useMemo(() => [...draft.elements].sort((a, b) => a.z - b.z), [draft.elements]);
+  const ordered = useMemo(() => [...draft.elements.filter(part => (part.page||1)===selectedPage)].sort((a, b) => a.z - b.z), [draft.elements,selectedPage]);
 
   const refreshCatalog = useCallback(async (review = false) => {
     if (!bankName.trim() && !review) return;
@@ -176,6 +179,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const append = (kind: Kind, origin: Origin, label: string, fieldKey = "") => {
     const part = addPart(kind, origin, label, fieldKey, 14, draft.foldMm ? draft.foldMm + 12 : 25);
     part.z = Math.max(0, ...draft.elements.map(p => p.z)) + 1;
+    part.page = selectedPage;
     modify(current => ({ ...current, elements: [...current.elements, part] }));
     setSelectedId(part.id);
   };
