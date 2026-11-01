@@ -17,6 +17,7 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
   const [overrides,setOverrides]=useState({dateOfBirth:"",religion:"",category:""});
   const [query,setQuery] = useState("");
   const [customer,setCustomer] = useState<Record<string,unknown> | null>(null);
+  const [customerRow,setCustomerRow] = useState<number|null>(null);
   const [matches,setMatches] = useState<Match[]>([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
@@ -47,17 +48,28 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     return result;
   };
   const load = async (rowNumber?: number) => {
-    setBusy(true); setError(""); setCustomer(null); setMatches([]);
+    setBusy(true); setError(""); setCustomer(null); setMatches([]);setCustomerRow(null);
     try {
       const result=await request(rowNumber ? {action:"getCustomerByRowNumber",rowNumber} : {action:"searchCustomer",query:query.trim()});
       if(result.multipleMatches && result.matches?.length) {setMatches(result.matches);return;}
       if(!result.customer) throw new Error("No customer found.");
       setOverrides({dateOfBirth:String(result.customer.dateOfBirth || result.customer.dob || ""),religion:String(result.customer.religion || ""),category:String(result.customer.category || "")});
+      setCustomerRow(Number.isSafeInteger(Number(rowNumber||result.rowNumber||result.customer.rowNumber)) && Number(rowNumber||result.rowNumber||result.customer.rowNumber)>0
+        ?Number(rowNumber||result.rowNumber||result.customer.rowNumber):null);
       setCustomer({...result.customer,branchName:bankInfo.branchName,ifsc:bankInfo.ifsc});
     } catch(reason) {setError(reason instanceof Error ? reason.message : "Search failed.");}
     finally {setBusy(false);}
   };
   const search=(event:FormEvent)=>{event.preventDefault();if(query.trim())void load();};
+  const completedPr2=async()=>{
+    if(!customerRow){setError("The printer acknowledged printing, but this customer has no verified row number. Passbook status was NOT changed. Do not print again solely to update status.");return;}
+    try{
+      await request({action:"markPassbookPrinted",rowNumber:customerRow});
+      setCustomer(current=>current?{...current,passbookStatus:"Printed"}:current);
+    }catch(error){
+      setError("PR2 device acknowledged printing, but passbook status could not be saved. Do not print again just to update it. "+(error instanceof Error?error.message:""));
+    }
+  };
   return <section className="custom-bank-document" style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
@@ -84,7 +96,8 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     {activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
       template={activeLayout} bankName={bankInfo.passbookBank||""} customer={{...customer,...overrides}}
       bankInfo={bankInfo as Record<string,unknown>}
-      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo} /></Suspense>
+      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo}
+      onPr2Complete={()=>{void completedPr2();}} /></Suspense>
     : unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
   </section>;
 }
