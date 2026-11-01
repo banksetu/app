@@ -309,6 +309,20 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
       <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
       <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
     </div>
+    {selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
+      <strong>Format:</strong>
+      <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
+      <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
+      <input aria-label="Font size" type="number" min={5} max={120} value={selected.size} onChange={event => edit({size:within(Number(event.target.value)||5,5,120)})}/>
+      <button type="button" title="Increase font size" onClick={() => edit({size:Math.min(120,selected.size+1)})}>A+</button>
+      <button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button>
+      <button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button>
+      <button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button>
+      <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
+      <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
+      <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
+      <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
+    </div>}
     {scanSuggestion && <div className="ls-scan-proposal" role="status">
       <strong>Scanner estimate (not verified)</strong> — {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence.
       <span>{scanSuggestion.reason}</span>
