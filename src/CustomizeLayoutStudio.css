@@ -125,3 +125,6 @@
 .ls-inference-labels {display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px;max-height:240px;overflow:auto}
 .ls-inference-item {display:flex;align-items:center;flex-wrap:wrap;gap:5px;border:1px solid var(--ls-border);border-radius:7px;padding:7px;font-size:11px}
 .ls-inference-item span {flex:1 1 160px}
+
+.ls-resize-handle {position:absolute;right:0;bottom:0;width:15px;height:15px;background:#087c80;border:2px solid white;border-radius:3px;cursor:nwse-resize;touch-action:none;z-index:10;box-shadow:0 0 0 1px #087c80}
+.ls-resize-handle:hover {background:#08a8ad}
