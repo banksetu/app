@@ -5,6 +5,7 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
+import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 type Mode = "passbook" | "accountOpening";
@@ -108,6 +109,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [referenceVisible, setReferenceVisible] = useState(false);
   const [visualDiff, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
   const [diffBusy, setDiffBusy] = useState(false);
+  const [audit, setAudit] = useState<AuditItem[] | null>(null);
+  const [physicalChecked, setPhysicalChecked] = useState(false);
+  const [labelChecked, setLabelChecked] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
   const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
   const [collisions, setCollisions] = useState<TextCollision[]>([]);
@@ -144,6 +148,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   useEffect(()=>{void refreshCatalog();},[refreshCatalog]);
   const submitForReview = async () => {
     if (!canSubmit || busy || !bankName.trim()) return;
+    const report=auditPassbookTemplate(draft);
+    setAudit(report);
+    if (report.some(item=>item.severity==="error")) {setNotice("Fix all audit errors before submitting a template for Master approval.");return;}
+    if(!physicalChecked || !labelChecked) {setNotice("Confirm physical dimensions and the preprinted label/PR2 separation before submission.");return;}
     if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
     setBusy(true);
     try {
@@ -510,9 +518,17 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   return <section className="layout-studio" aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
-      <div className="ls-actions"><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
+      <div className="ls-actions"><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
+    {audit && <div className="ls-audit" role="status">
+      <strong>Layout Audit · {audit.filter(item=>item.severity==="error").length} errors · {audit.filter(item=>item.severity==="warning").length} warnings</strong>
+      {audit.length?audit.slice(0,35).map((item,i)=><div key={i} className="ls-audit-row">
+        <strong>{item.severity==="error"?"Error":"Review"}</strong><span>{item.message}</span>
+        {item.elementId && <button type="button" onClick={()=>{const element=draft.elements.find(x=>x.id===item.elementId);setSelectedId(item.elementId||null);if(element)setSelectedPage(element.page||1);}}>Select field</button>}
+      </div>):<p>No static audit issues detected. Real PDF comparison and physical passbook printer tests are still required.</p>}
+      <button type="button" onClick={()=>setAudit(null)}>Close Audit</button>
+    </div>}
     <div className="ls-catalog-panel">
       <div className="ls-catalog-heading"><strong>Existing Approved Bank Templates</strong><button type="button" onClick={()=>setCatalogOpen(value=>!value)} aria-expanded={catalogOpen}>{catalogOpen?"Hide":"Show"}</button><button type="button" disabled={catalogBusy} onClick={()=>{setCatalogOpen(true);void refreshCatalog();}}>Refresh</button></div>
       {catalogOpen && <>
@@ -530,7 +546,11 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         </div>}
       </>}
       <div className="ls-actions">
-        {canSubmit && <button type="button" disabled={busy} onClick={()=>{void submitForReview();}}>Submit Generic Template for Master Review</button>}
+        {canSubmit && <>
+          <label><input type="checkbox" checked={physicalChecked} onChange={event=>setPhysicalChecked(event.target.checked)}/> I measured the real passbook, fold and print start</label>
+          <label><input type="checkbox" checked={labelChecked} onChange={event=>setLabelChecked(event.target.checked)}/> I verified which labels are already printed</label>
+          <button type="button" disabled={busy} onClick={()=>{void submitForReview();}}>Submit Generic Template for Master Review</button>
+        </>}
         {canReview && <button type="button" disabled={catalogBusy} onClick={()=>{void refreshCatalog(true);}}>View Pending Template Approvals</button>}
       </div>
       {canReview && pendingReview.length>0 && <div className="ls-catalog-list">{pendingReview.map(item=><div key={item.id} className="ls-catalog-card">
