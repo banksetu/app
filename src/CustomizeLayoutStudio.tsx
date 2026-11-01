@@ -290,6 +290,12 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
       <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
       <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
     </div>
+    {scanSuggestion && <div className="ls-scan-proposal" role="status">
+      <strong>Scanner estimate (not verified)</strong> — {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence.
+      <span>{scanSuggestion.reason}</span>
+      <button type="button" onClick={() => { modify(current => ({ ...current, widthMm:scanSuggestion.widthMm, heightMm:scanSuggestion.heightMm })); setNotice("Scanner estimate applied to local draft; confirm against physical dimensions before approval."); }}>Apply estimated size</button>
+      <button type="button" onClick={() => setScanSuggestion(null)}>Dismiss</button>
+    </div>}
     <div className="ls-settings">
       <label>Units <select value={unit} onChange={event => setUnit(event.target.value as Unit)}><option value="mm">mm</option><option value="cm">cm</option><option value="in">inch</option></select></label>
       <label>Width {number(valueInUnit(draft.widthMm, unit), next => setMeasure("widthMm", String(next)), 0, 500, .1)}</label>
