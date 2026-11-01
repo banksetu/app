@@ -137,3 +137,29 @@ test("manual fold overrides auto fold without changing crop; invalid measurement
    assert.throws(()=>calibrateScanBounds(raw,measures));
  }
 });
+
+test("sideways and upside-down passbook scans rotate edit boxes with their reference",()=>{
+ const frame={left:0,top:0,right:100,bottom:100,widthMm:100,heightMm:100,confidence:"low",reason:"manual"};
+ const base=[{x:10,y:20,width:30,height:10,rotation:0,page:1}];
+ const expected={
+  0:{x:10,y:20,width:30,height:10,rotation:0,page:1},
+  90:{x:70,y:10,width:10,height:30,rotation:90,page:1},
+  180:{x:60,y:70,width:30,height:10,rotation:180,page:1},
+  270:{x:20,y:60,width:10,height:30,rotation:270,page:1}
+ };
+ for(const orientation of [0,90,180,270]){
+  const mapped=mapScannedPageToPassbook(frame,100,100,100,100,base,orientation);
+  assert.deepEqual(mapped.elements[0],expected[orientation]);
+ }
+ assert.deepEqual(base,[{x:10,y:20,width:30,height:10,rotation:0,page:1}]);
+});
+
+test("scan orientation repositions first-page only and rejects impossible rotation",()=>{
+ const bounds={left:0,top:0,right:100,bottom:100,widthMm:175,heightMm:206,confidence:"low",reason:"manual"};
+ const parts=[{page:1,x:5,y:5,width:10,height:10},{page:2,x:5,y:5,width:10,height:10}];
+ const output=mapScannedPageToPassbook(bounds,100,100,100,100,parts,90);
+ assert.equal(output.elements[0].width,17.5);
+ assert.equal(output.elements[0].height,20.6);
+ assert.deepEqual(output.elements[1],parts[1]);
+ assert.throws(()=>mapScannedPageToPassbook(bounds,100,100,100,100,parts,45));
+});
