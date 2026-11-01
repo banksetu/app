@@ -3,7 +3,7 @@ import { callBankSetuWorker } from "./workerApi";
 import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
-import { estimatePassbookBounds, type ScanBounds } from "./layoutScanGeometry";
+import { estimatePassbookBounds, mapScannedPageToPassbook, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
@@ -100,6 +100,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
+  const [scanFrame, setScanFrame] = useState<{pixelWidth:number;pixelHeight:number;paperWidthMm:number;paperHeightMm:number}|null>(null);
   const [referencePages, setReferencePages] = useState<string[]>([]);
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
@@ -247,6 +248,38 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setNotice("Could not export proof: " + (error instanceof Error ? error.message : "Unknown error"));
     } finally { setBusy(false); }
   };
+  const applyScannerSuggestion = async () => {
+    const bounds=scanSuggestion,frame=scanFrame;
+    if(!bounds || !frame)return;
+    if(!await confirmAction("Apply this estimated scanner crop and convert every first-page text coordinate from the A4 sheet to actual passbook coordinates? Check with a ruler afterwards."))return;
+    let outside=0;
+    try {
+      modify(current=>{
+        const result=mapScannedPageToPassbook(bounds,frame.pixelWidth,frame.pixelHeight,frame.paperWidthMm,frame.paperHeightMm,current.elements);
+        outside=result.outsideCount;
+        return {...current,widthMm:bounds.widthMm,heightMm:bounds.heightMm,
+          foldMm:Math.min(current.foldMm,bounds.heightMm),
+          printStartMm:Math.min(current.printStartMm,bounds.heightMm),
+          elements:result.elements};
+      });
+      if(referencePages[0]){
+        const image = new Image();
+        image.src=referencePages[0];
+        await image.decode();
+        const cropX=bounds.left/frame.pixelWidth*image.width,cropY=bounds.top/frame.pixelHeight*image.height;
+        const cropW=(bounds.right-bounds.left)/frame.pixelWidth*image.width;
+        const cropH=(bounds.bottom-bounds.top)/frame.pixelHeight*image.height;
+        const canvas=document.createElement("canvas");
+        canvas.width=Math.max(1,Math.ceil(cropW));canvas.height=Math.max(1,Math.ceil(cropH));
+        canvas.getContext("2d")?.drawImage(image,cropX,cropY,cropW,cropH,0,0,canvas.width,canvas.height);
+        setReferencePages(previous=>[canvas.toDataURL("image/webp",.72),...previous.slice(1)]);
+      } else setReferenceVisible(false);
+      setScanSuggestion(null);setScanFrame(null);
+      setNotice("A4 ROI applied to passbook size and X/Y coordinates. "+outside+" first-page text objects may cross the detected border; review them. Physical ruler and printer calibration still required.");
+    }catch(error){
+      setReferenceVisible(false);setNotice("Scanner estimate applied or partially prepared. The original overlay was hidden because it could not be recropped: "+(error instanceof Error?error.message:"Unknown error"));
+    }
+  };
   const importGraphic = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; event.target.value = "";
     if (!file) return;
@@ -282,7 +315,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if (file.size > 12 * 1024 * 1024) { setNotice("Please choose a PDF up to 12 MB."); return; }
     setBusy(true);
     setReferencePages([]);
-    setSuggestedLabels([]);setCollisions([]);
+    setSuggestedLabels([]);setCollisions([]);setScanFrame(null);setScanSuggestion(null);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -341,6 +374,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               await page.render({ canvas, canvasContext: context, viewport: scanView }).promise;
               const suggestion = estimatePassbookBounds(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, width, height);
               setScanSuggestion(suggestion);
+              setScanFrame({pixelWidth:canvas.width,pixelHeight:canvas.height,paperWidthMm:width,paperHeightMm:height});
             }
           } catch { setScanSuggestion(null); }
         } else setScanSuggestion(null);
@@ -516,7 +550,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     {scanSuggestion && <div className="ls-scan-proposal" role="status">
       <strong>Scanner estimate (not verified)</strong> — {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence.
       <span>{scanSuggestion.reason}</span>
-      <button type="button" onClick={() => { modify(current => ({ ...current, widthMm:scanSuggestion.widthMm, heightMm:scanSuggestion.heightMm })); setNotice("Scanner estimate applied to local draft; confirm against physical dimensions before approval."); }}>Apply estimated size</button>
+      <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply estimated size</button>
       <button type="button" onClick={() => setScanSuggestion(null)}>Dismiss</button>
     </div>}
     <div className="ls-settings">
