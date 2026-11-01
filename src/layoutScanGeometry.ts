@@ -52,3 +52,31 @@ export function estimatePassbookBounds(pixels: Uint8ClampedArray, width: number,
       : "Likely content bounds only; blank margins may belong to the passbook. Measure manually before applying.",
   };
 }
+
+/** Shift A4 positions into the measured passbook's own physical coordinate system.
+ * Do not silently remove elements even when the scan estimator puts them outside
+ * the tentative crop; they may be real border text requiring manual review.
+ */
+export function mapScannedPageToPassbook<T extends { x:number;y:number;width:number;height:number;page?:number }>(
+  bounds:ScanBounds,
+  scannerWidth:number,
+  scannerHeight:number,
+  scannerPaperWidthMm:number,
+  scannerPaperHeightMm:number,
+  elements:T[],
+): { elements:T[]; outsideCount:number } {
+  if (![scannerWidth,scannerHeight,scannerPaperWidthMm,scannerPaperHeightMm].every(n=>Number.isFinite(n)&&n>0) ||
+    bounds.left<0 || bounds.top<0 || bounds.right>scannerWidth || bounds.bottom>scannerHeight ||
+    bounds.right<=bounds.left || bounds.bottom<=bounds.top) throw Error("Invalid scanner coordinate frame.");
+  const leftMm=bounds.left/scannerWidth*scannerPaperWidthMm;
+  const topMm=bounds.top/scannerHeight*scannerPaperHeightMm;
+  const round=(n:number)=>Math.round(n*10)/10;
+  let outsideCount=0;
+  const converted=elements.map(part=>{
+    if ((part.page||1)!==1) return part;
+    const x=round(part.x-leftMm),y=round(part.y-topMm);
+    if(x<0||y<0||x+part.width>bounds.widthMm+.5||y+part.height>bounds.heightMm+.5)outsideCount++;
+    return {...part,x,y};
+  });
+  return {elements:converted,outsideCount};
+}
