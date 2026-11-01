@@ -56,8 +56,14 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
       pdf.rect(x, y, part.width, part.height, "F");
     }
     if (part.kind === "image") {
-      if (mode === "quick" && part.imageData?.startsWith("data:image/") && part.imageData.length <= 1500000)
-        pdf.addImage(part.imageData,"WEBP",x,y,part.width,part.height);
+      if (mode === "quick" && part.imageData && part.imageData.length <= 1500000) {
+        // Imported artwork can be PNG, JPEG or WebP; it is not always WebP.
+        // Use the actual MIME format instead of interpreting every logo as WebP.
+        const format=part.imageData.startsWith("data:image/png;base64,")?"PNG":
+          part.imageData.startsWith("data:image/jpeg;base64,")?"JPEG":
+          part.imageData.startsWith("data:image/webp;base64,")?"WEBP":null;
+        if(format)pdf.addImage(part.imageData,format,x,y,part.width,part.height);
+      }
       continue;
     }
     if (part.kind === "ellipse") {
