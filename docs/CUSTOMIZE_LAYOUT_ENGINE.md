@@ -30,6 +30,15 @@ Admin dropdown > Customize Layout > Customize Passbook / Customize Account Openi
 - Approved single-page custom passbooks can use the existing Windows PR2 Bridge with model/PR2 checks, paper sensing and interruption fences; customer status is changed only on confirmed PR2 success with a verified row number.
 - Minimal CI including node tests, worker security tests and TypeScript/Vite build.
 
+## November 1 follow-up — scan-only reference and PR2 proof hardening
+- An A4, image-only Assam Gramin example was reviewed locally as a **reference only**. It contains no embedded PDF text. Do not commit the customer's account details or sample image, and never alter the existing approved Assam Gramin layout from this scan.
+- A4 ROI now offers a tentative whitespace **fold-gap suggestion** where the upper and lower printed halves are distinguishable. It is low confidence, remains a draft, and requires ruler/real-paper acceptance. This does not infer actual physical size if the scanner resized its A4 output.
+- Crop/overlay preparation is atomic: invalid image crops do not shift live draft objects. Geometry changes revoke earlier physical and hardware confirmations.
+- An image-only PDF with no supported OCR must never overwrite existing unsaved local draft data or pretend unrelated old fields came from the new PDF; it leaves the draft untouched and explains the OCR limitation.
+- Draft audit rejects invalid page/fold measurements and graphical elements in dot-matrix output. PR2 proof itself also excludes artwork/photo/lines even if individual flags were misconfigured.
+- Quick proof uses the real PNG/JPEG/WebP image MIME; layout tests now include A4 fold probes, PR2 PDF-content verification, paper validation and bank-specific regressions.
+- Do not treat tests, pixel differences, scan OCR or visually similar screenshots as physical paper approval.
+
 ## Mandatory unfinished work before claiming completion
 1. Reliable scanned-image OCR on Windows, Android and web (native TextDetector is not universally supported), Hindi/script handling, overlap recognition and confidence validation.
 2. Complex PDF graphics reconstruction: Bézier paths, color profiles, transparent objects, gradients, fonts, images and automatic full design reconstruction.
