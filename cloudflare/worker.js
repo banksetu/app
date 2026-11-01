@@ -34,6 +34,21 @@ export function validateWorkspaceBankPatch(body) {
     if (!bankInfo.bankName || !bankInfo.passbookBank) throw new Error("Enter Bank / CSP name and select a bank.");
     Object.assign(output, bankInfo, { bankInfo });
   }
+  // Optional extensible Bank Information fields. Store separately from the
+  // historical bankInfo map so legacy printers, sheets and backups are stable.
+  if (body.bankExtraFields !== undefined) {
+    const fields = body.bankExtraFields;
+    if (!fields || typeof fields !== "object" || Array.isArray(fields) || Object.keys(fields).length > 32)
+      throw new Error("Enter up to 32 custom Bank Information fields.");
+    const safe = Object.create(null);
+    for (const [key, value] of Object.entries(fields)) {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || key === "__proto__" ||
+          typeof value !== "string" || value.trim().length > 180)
+        throw new Error("Custom Bank Information fields must have valid names and values.");
+      safe[key] = value.trim();
+    }
+    output.bankExtraFields = safe;
+  }
   if (body.bankLogo !== undefined) {
     if (typeof body.bankLogo !== "string" || body.bankLogo.length > 150000 ||
         (body.bankLogo !== "" && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(body.bankLogo))) throw new Error("Choose a valid bank logo up to 110 KB after resizing.");
