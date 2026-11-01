@@ -632,7 +632,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
            <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("disable");}}>Disable Custom Layout</button>
            <button type="button" onClick={()=>{void refreshSelection();}}>Refresh</button>
           </div>}
-          {canReview && <button type="button" disabled={catalogBusy} onClick={()=>{void refreshCatalog(true);}}>View Pending Template Approvals</button>
+          {canReview && <button type="button" disabled={catalogBusy} onClick={()=>{void refreshCatalog(true);}}>View Pending Template Approvals</button>}
       </div>
       {canReview && pendingReview.length>0 && <div className="ls-catalog-list">{pendingReview.map(item=><div key={item.id} className="ls-catalog-card">
         <span>{item.bankName} · {item.mode} · {item.elements.length} elements</span>
