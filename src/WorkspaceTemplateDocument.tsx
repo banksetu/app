@@ -1,4 +1,6 @@
-import {useState} from "react";
+import {lazy,Suspense,useState} from "react";
+import {windowsPr2} from "./platform/pr2";
+const Pr2PrinterDialog=lazy(()=>import("./Pr2PrinterDialog"));
 import type {CSSProperties} from "react";
 import {requireLicensedWrite} from "./core/licenseAccess";
 import {printCurrentDocument} from "./platform/print";
@@ -18,11 +20,12 @@ function frame(part:LayoutDynamicElement):CSSProperties {
     zIndex:part.z+1000,
   };
 }
-export default function WorkspaceTemplateDocument({template,bankName,customer,bankInfo,output,bankLogo}:{
+export default function WorkspaceTemplateDocument({template,bankName,customer,bankInfo,output,bankLogo,onPr2Complete}:{
   template:ApprovedLayout;bankName:string;customer:Record<string,unknown>;bankInfo:Record<string,unknown>;
-  output:"quick"|"dotmatrix";bankLogo?:string;
+  output:"quick"|"dotmatrix";bankLogo?:string;onPr2Complete?:()=>void;
 }){
   const [printing,setPrinting]=useState(false),[message,setMessage]=useState("");
+  const [directPrinting,setDirectPrinting]=useState(false);
   if(!templateCanRender(template,bankName,template.mode))
     return <p role="alert">The activated bank layout is incompatible. Use the existing bank print flow.</p>;
   const pages=Math.min(10,Math.max(1,template.pageCount||1));
@@ -46,12 +49,17 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
       .workspace-template-document .workspace-template-page:last-child {page-break-after:auto;break-after:auto}
       .workspace-template-document .workspace-template-controls {display:none!important}
     }`}</style>
+    {directPrinting&&<Suspense fallback={<p>Connecting existing PR2 Bridge…</p>}><Pr2PrinterDialog
+      bankName={bankName} onClose={()=>setDirectPrinting(false)}
+      onComplete={()=>{setDirectPrinting(false);onPr2Complete?.();}} /></Suspense>}
     <div className="workspace-template-controls">
       <p><strong>Approved Custom Template</strong> · {bankName} · {output==="quick"?"Quick Passbook":"Dot Matrix Data Only"}</p>
       <p>Preview uses this client's customer and Bank Information fields. Confirm the paper and printer settings before printing.</p>
       <button type="button" onClick={()=>{void print();}} disabled={printing}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
+      {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting} onClick={()=>setDirectPrinting(true)}>Olivetti Mode Print (Existing PR2)</button>}
       {message&&<p role="status">{message}</p>}
     </div>
+    <div className="passbook-page workspace-bridge-page"><div className="passbook-shell workspace-bridge-shell">
     <div className="workspace-template-pages">
       {Array.from({length:pages},(_,index)=>index+1).map(page=><div key={page} className="workspace-template-page" style={{width:width+"mm",height:height+"mm"}}>
         {template.elements.filter(item=>(item.page||1)===page&&visibleLayoutElement(item,output))
@@ -74,6 +82,6 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
             return <span key={item.id} style={{...frame(item),color:output==="dotmatrix"?"#000":item.color,background:output==="dotmatrix"?"transparent":item.background}}>{text}</span>;
           })}
       </div>)}
-    </div>
+    </div></div></div>
   </section>;
 }
