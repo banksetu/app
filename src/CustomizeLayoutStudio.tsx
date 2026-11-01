@@ -614,16 +614,25 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {catalogChoice && <div className="ls-catalog-preview">
           <strong>Preview: {catalogChoice.bankName} · Generic template</strong>
           <div className="ls-catalog-mini-paper" style={{aspectRatio:catalogChoice.widthMm+"/"+catalogChoice.heightMm}}>{catalogChoice.elements.slice(0,35).map(part=><span key={part.id} style={{position:"absolute",left:(part.x/catalogChoice.widthMm*100)+"%",top:(part.y/catalogChoice.heightMm*100)+"%",fontSize:8,color:"#172334",maxWidth:(part.width/catalogChoice.widthMm*100)+"%",overflow:"hidden"}}>{part.kind==="text"||part.kind==="field"?part.origin==="customer"?"[Customer field]":part.origin==="bank"?"[Bank Information]":part.label:part.kind==="photo"?"□ PHOTO":part.kind==="line"?"────":""}</span>)}</div>
-          <div className="ls-actions"><button type="button" onClick={()=>{void useCatalogTemplate(catalogChoice);}}>Use This Template</button><button type="button" onClick={()=>{setCatalogChoice(null);setCatalogOpen(false);}}>No, Upload My Own PDF</button></div>
+          <div className="ls-actions"><button type="button" onClick={()=>{void useCatalogTemplate(catalogChoice);}}>Use This Template</button>{canSubmit && <button type="button" disabled={busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Activate Verified Template</button>}
+             <button type="button" onClick={()=>{setCatalogChoice(null);setCatalogOpen(false);}}>No, Upload My Own PDF</button></div>
         </div>}
       </>}
       <div className="ls-actions">
         {canSubmit && <>
           <label><input type="checkbox" checked={physicalChecked} onChange={event=>setPhysicalChecked(event.target.checked)}/> I measured the real passbook, fold and print start</label>
           <label><input type="checkbox" checked={labelChecked} onChange={event=>setLabelChecked(event.target.checked)}/> I verified which labels are already printed</label>
+           <label><input type="checkbox" checked={hardwareChecked} onChange={event=>setHardwareChecked(event.target.checked)}/> I performed an actual physical printer calibration and checked alignment</label>
           <button type="button" disabled={busy} onClick={()=>{void submitForReview();}}>Submit Generic Template for Master Review</button>
         </>}
-        {canReview && <button type="button" disabled={catalogBusy} onClick={()=>{void refreshCatalog(true);}}>View Pending Template Approvals</button>}
+        {canSubmit && <div className="ls-selection-status">
+           <strong>Workspace Layout Selection</strong>
+           <span>{layoutSelection?.active ? "Approved template "+layoutSelection.template?.id+" · revision "+layoutSelection.revision : "Custom layout not active. Existing bank print layout is unchanged."}</span>
+           <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("rollback");}}>Rollback Version</button>
+           <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("disable");}}>Disable Custom Layout</button>
+           <button type="button" onClick={()=>{void refreshSelection();}}>Refresh</button>
+          </div>}
+          {canReview && <button type="button" disabled={catalogBusy} onClick={()=>{void refreshCatalog(true);}}>View Pending Template Approvals</button>
       </div>
       {canReview && pendingReview.length>0 && <div className="ls-catalog-list">{pendingReview.map(item=><div key={item.id} className="ls-catalog-card">
         <span>{item.bankName} · {item.mode} · {item.elements.length} elements</span>
