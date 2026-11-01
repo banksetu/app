@@ -37,3 +37,6 @@ test("Basic editor features and dark/light variants are present", () => {
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /max-width:750px/);
 });
+
+// Include conservative A4 scanner geometry tests in the minimal draft CI job.
+import "./layout-scan-geometry.test.mjs";
