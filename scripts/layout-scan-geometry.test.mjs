@@ -39,7 +39,7 @@ test("A4 crop repositions coordinate origins and leaves other PDF pages alone", 
   ];
   const mapped=mapScannedPageToPassbook(bounds,200,150,210,297,parts);
   assert.equal(mapped.elements[0].x,10.5);
-  assert.equal(mapped.elements[0].y,14.9);
+  assert.ok(Math.abs(mapped.elements[0].y-14.85)<=0.11,"rounding is at 0.1 mm precision");
   assert.deepEqual(mapped.elements[1],parts[1]);
   assert.equal(parts[0].x,31.5,"original importer data is untouched");
 });
