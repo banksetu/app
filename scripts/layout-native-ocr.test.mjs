@@ -20,3 +20,19 @@ test("platform without native OCR reports manual fallback",async()=>{
   assert.equal(result.supported,false);
   assert.equal(result.items.length,0);
 });
+
+test("OCR suggestions stay within the scanned page and discard fully off-canvas boxes",()=>{
+  const regions=mapOpticalTextToMillimeters([
+    {rawValue:"Clipped left",boundingBox:{x:-10,y:10,width:30,height:20}},
+    {rawValue:"Clipped right",boundingBox:{x:190,y:290,width:30,height:20}},
+    {rawValue:"Outside",boundingBox:{x:250,y:10,width:20,height:10}},
+  ],200,300,210,297);
+  assert.equal(regions.length,2);
+  assert.deepEqual(regions[0],{label:"Clipped left",x:0,y:9.9,width:21,height:19.8});
+  assert.deepEqual(regions[1],{label:"Clipped right",x:199.5,y:287.1,width:10.5,height:9.9});
+  for (const region of regions) {
+    assert.ok(region.x>=0 && region.y>=0);
+    assert.ok(region.x+region.width<=210.01);
+    assert.ok(region.y+region.height<=297.01);
+  }
+});
