@@ -4,6 +4,7 @@ import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, type ScanBounds } from "./layoutScanGeometry";
+import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 type Mode = "passbook" | "accountOpening";
@@ -103,6 +104,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
+  const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
+  const [collisions, setCollisions] = useState<TextCollision[]>([]);
+  const [printedLabelRule, setPrintedLabelRule] = useState<"all"|"none"|"some">("some");
   const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
   const [showLayers, setShowLayers] = useState(true);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
@@ -278,6 +282,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if (file.size > 12 * 1024 * 1024) { setNotice("Please choose a PDF up to 12 MB."); return; }
     setBusy(true);
     setReferencePages([]);
+    setSuggestedLabels([]);setCollisions([]);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -339,11 +344,14 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             }
           } catch { setScanSuggestion(null); }
         } else setScanSuggestion(null);
-        let overlappingPairs = 0;
-        for (let i = 0; i < elements.length; i++) for (let j = i + 1; j < elements.length; j++) {
-          const a = elements[i], b = elements[j];
-          if (Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 1 && Math.abs(a.y - b.y) < 2) overlappingPairs++;
-        }
+        const overlapList = findOverlappingPassbookText(elements,150);
+        setCollisions(overlapList);
+        const suggestions = elements.flatMap(part => {
+          const hint=suggestPassbookLabel(part.label);
+          return hint ? [{id:part.id,label:part.label,fieldKey:hint.fieldKey,source:hint.source,page:part.page||1}] : [];
+        });
+        setSuggestedLabels(suggestions);
+        const overlappingPairs = overlapList.length;
         modify(current => ({
           ...current,
           pageCount,
@@ -452,6 +460,45 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
       <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
     </div>
+    {(suggestedLabels.length>0 || collisions.length>0) && <div className="ls-inference-panel">
+      <strong>Review PDF labels and overlapping lines (not automatically approved)</strong>
+      <p>{suggestedLabels.length} possible bank/customer labels · {collisions.length} possible overlapping text pairs. OCR can miss printed layers; confirm the physical passbook.</p>
+      <fieldset className="ls-rule-fieldset"><legend>Which labels are already printed on original paper?</legend>
+        <label><input type="radio" checked={printedLabelRule==="all"} onChange={()=>setPrintedLabelRule("all")}/> All suggested labels</label>
+        <label><input type="radio" checked={printedLabelRule==="none"} onChange={()=>setPrintedLabelRule("none")}/> No labels</label>
+        <label><input type="radio" checked={printedLabelRule==="some"} onChange={()=>setPrintedLabelRule("some")}/> I will verify individually</label>
+      </fieldset>
+      {suggestedLabels.length>0 && <div className="ls-inference-labels">
+        {suggestedLabels.map(item=><div key={item.id} className="ls-inference-item">
+          <span>{item.label} → <strong>{item.fieldKey}</strong> ({item.source}, page {item.page})</span>
+          <button type="button" onClick={()=>{setSelectedPage(item.page);setSelectedId(item.id);setPreview("quick");}}>Inspect</button>
+        </div>)}
+      </div>}
+      <button type="button" onClick={()=>{
+        let added=0;
+        modify(current=>{
+          const next=[...current.elements];const existing=new Set(next.filter(p=>p.kind==="field").map(p=>(p.page||1)+":"+p.fieldKey));
+          for(const hint of suggestedLabels){
+            const label=next.find(p=>p.id===hint.id);if(!label)continue;
+            const printed=printedLabelRule==="all" || (printedLabelRule==="some" && label.preprinted);
+            Object.assign(label,{origin:printed?"preprinted":"static",preprinted:printed,dotMatrix:!printed,quick:true});
+            const key=hint.page+":"+hint.fieldKey;
+            if(existing.has(key))continue;
+            const fieldPart=addPart("field",hint.source,hint.label,hint.fieldKey,round(within(label.x+label.width+2,0,current.widthMm-20)),label.y);
+            fieldPart.page=hint.page;fieldPart.width=Math.max(18,Math.min(75,current.widthMm-fieldPart.x));fieldPart.dotMatrix=true;fieldPart.quick=true;
+            fieldPart.defaultValue="";fieldPart.value="";fieldPart.z=next.length+1;
+            next.push(fieldPart);existing.add(key);added++;
+          }
+          return {...current,elements:next};
+        });
+        setSuggestedLabels([]);setNotice("Field suggestions applied to local DRAFT ("+added+" dynamic value boxes added). Inspect print labels and coordinates; physical accuracy is not guaranteed.");
+      }}>Apply reviewed suggestions to Draft</button>
+      {collisions.length>0 && <div className="ls-inference-labels">{collisions.slice(0,16).map((collision,i)=><div key={i} className="ls-inference-item">
+        <span>Page {collision.page}: possible overlap {collision.intersectionMm} mm</span>
+        <button type="button" onClick={()=>{setSelectedPage(collision.page);setSelectedId(collision.firstId);}}>Select first layer</button>
+        <button type="button" onClick={()=>{setSelectedPage(collision.page);setSelectedId(collision.secondId);}}>Second layer</button>
+      </div>)}</div>}
+    </div>}
     {selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
       <strong>Format:</strong>
       <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
