@@ -42,10 +42,10 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     if (part.x < 0 || part.y < 0 || part.x > layout.widthMm || part.y > layout.heightMm) continue;
     const x = part.x, y = part.y;
     const color = mode === "dotmatrix" ? [0,0,0] as const : rgb(part.color);
-    pdf.setDrawColor(...color);
-    pdf.setTextColor(...color);
+    pdf.setDrawColor(color[0],color[1],color[2]);
+    pdf.setTextColor(color[0],color[1],color[2]);
     if (part.background !== "transparent" && mode === "quick") {
-      pdf.setFillColor(...rgb(part.background));
+      const fill=rgb(part.background);pdf.setFillColor(fill[0],fill[1],fill[2]);
       pdf.rect(x, y, part.width, part.height, "F");
     }
     if (part.kind === "rectangle" || part.kind === "photo") {
