@@ -48,3 +48,25 @@ test("invalid scanner crop is never applied", () => {
   const b={left:100,top:50,right:50,bottom:90,widthMm:20,heightMm:50,confidence:"low",reason:""};
   assert.throws(()=>mapScannedPageToPassbook(b,200,150,210,297,[]));
 });
+
+test("non-finite and unsafe scanner frames cannot estimate passbook dimensions", () => {
+  const scan=pixels(200,100,[25,15,145,85]);
+  assert.equal(estimatePassbookBounds(scan,200,100,Number.NaN,297),null);
+  assert.equal(estimatePassbookBounds(scan,200,100,210,Number.POSITIVE_INFINITY),null);
+  assert.equal(estimatePassbookBounds(scan,200.5,100,210,297),null);
+  assert.equal(estimatePassbookBounds(scan,Number.POSITIVE_INFINITY,100,210,297),null);
+});
+
+test("non-finite manual crop geometry is blocked before shifting customer fields", () => {
+  const valid={left:20,top:15,right:160,bottom:105,widthMm:147,heightMm:178.2,confidence:"low",reason:"reference"};
+  const parts=[{page:1,x:31,y:40,width:20,height:5}];
+  for (const invalid of [
+    {...valid,left:Number.NaN},
+    {...valid,right:Number.POSITIVE_INFINITY},
+    {...valid,widthMm:0},
+    {...valid,heightMm:Number.NaN},
+  ]) {
+    assert.throws(()=>mapScannedPageToPassbook(invalid,200,150,210,297,parts));
+  }
+  assert.equal(parts[0].x,31);
+});
