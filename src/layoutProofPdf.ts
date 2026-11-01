@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 
 /** Independent, review-only proof. Never sends or marks a PR2 print as complete. */
 type ProofPart = {
