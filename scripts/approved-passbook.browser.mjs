@@ -15,7 +15,7 @@ const mocks={
  './core/licenseAccess':`export async function requireLicensedWrite(){if(window.blockTestLicense)throw Error('License suspended');}`,
  'firebase/auth':`export function getAuth(){return{currentUser:{uid:'synthetic'}};}`,
  './tenantApi':`export function getTenantApiUrl(){return '/synthetic-bridge';}`,
- './platform/print':`export async function printCurrentDocument(){window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
+ './platform/print':`export async function printCurrentDocument(){if(window.blockTestLicense)throw Error('License suspended');window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
 };
 const server=await createServer({configFile:false,root:process.cwd(),cacheDir:'node_modules/.vite-approved-passbook',optimizeDeps:{noDiscovery:true,include:['react','react-dom/client']},plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if(importer?.endsWith('/src/Passbook.tsx')&&mocks[source])return '\0test:'+source;if((importer?.endsWith('/src/PrintAlignmentPreview.tsx')||importer?.endsWith('/src/printAlignmentStorage.ts'))&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
 const openPassbookPage=async(page,url)=>{
