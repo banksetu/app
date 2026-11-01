@@ -116,3 +116,12 @@
 .ls-catalog-card small {font-size:10px;color:var(--ls-muted);flex:1 1 160px}
 .ls-catalog-preview {border:1px solid var(--ls-accent);padding:12px;border-radius:11px;display:grid;gap:10px}
 .ls-catalog-mini-paper {position:relative;background:#fff;width:min(100%,350px);max-height:440px;overflow:hidden;box-shadow:0 7px 24px #0002;border:1px solid #b0c0d0}
+
+.ls-inference-panel {border:1px solid var(--ls-accent);padding:12px;border-radius:12px;background:var(--ls-surface);margin:10px 0;display:grid;gap:8px}
+.ls-inference-panel>p {font-size:12px;line-height:1.45}
+.ls-rule-fieldset {display:flex;gap:12px;border:1px solid var(--ls-border);border-radius:8px;align-items:center;flex-wrap:wrap;padding:9px}
+.ls-rule-fieldset legend {font-size:12px;font-weight:650;padding:0 5px}
+.ls-rule-fieldset label {display:flex;gap:5px;align-items:center;font-size:12px}
+.ls-inference-labels {display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px;max-height:240px;overflow:auto}
+.ls-inference-item {display:flex;align-items:center;flex-wrap:wrap;gap:5px;border:1px solid var(--ls-border);border-radius:7px;padding:7px;font-size:11px}
+.ls-inference-item span {flex:1 1 160px}
