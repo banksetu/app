@@ -792,6 +792,15 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     </div>}
     {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
       <strong>Bank-independent scan calibration (unverified)</strong>
+      {referencePages[0] && <div className="ls-scan-preview" style={{aspectRatio:scanFrame.pixelWidth+"/"+scanFrame.pixelHeight}}>
+        <img src={referencePages[0]} alt="Local original PDF page; dotted selection marks proposed passbook crop" draggable={false}/>
+        <div className="ls-scan-selection" aria-hidden="true" style={{
+          left:(scanSuggestion.left/scanFrame.pixelWidth*100)+"%",
+          top:(scanSuggestion.top/scanFrame.pixelHeight*100)+"%",
+          width:((scanSuggestion.right-scanSuggestion.left)/scanFrame.pixelWidth*100)+"%",
+          height:((scanSuggestion.bottom-scanSuggestion.top)/scanFrame.pixelHeight*100)+"%"
+        }}/>
+      </div>}
       <span>Estimated scan area: {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence</span>
       <span>{scanSuggestion.reason}</span>
       <span>Crop edges (% of scanner PDF). Include the actual passbook's white borders; exclude empty A4 background.</span>
