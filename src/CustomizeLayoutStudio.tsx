@@ -93,6 +93,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
+  const [splitSecondLine, setSplitSecondLine] = useState("");
   const [showLayers, setShowLayers] = useState(true);
   const [showProps, setShowProps] = useState(true);
   const undoRef = useRef<Draft[]>([]);
@@ -338,6 +339,20 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
           {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" />)}
           {field("Default / Preview value", <input value={selected.defaultValue} onChange={event => edit({ defaultValue: event.target.value })} placeholder="Optional default" />)}
           {field("Manual field value", <input value={selected.value} onChange={event => edit({ value: event.target.value })} placeholder="Optional static override" />)}
+          <div className="ls-overlap-tools">
+            <strong>Overlapped / merged line repair</strong>
+            <p>If original preprinted label and dot-matrix output overlap, name both separately. The current selected line becomes layer one.</p>
+            {field("Second line / overprint text", <input value={splitSecondLine} onChange={event => setSplitSecondLine(event.target.value)} placeholder="Second line or value" />)}
+            <button type="button" disabled={!splitSecondLine.trim()} onClick={() => {
+              const first = selected;
+              if (!first || !splitSecondLine.trim()) return;
+              const second = { ...first, id: randomId(), label: splitSecondLine.trim(), origin: "dotmatrix" as Origin, preprinted: false, dotMatrix: true, quick: false, z: first.z + 1 };
+              modify(current => ({ ...current, elements: [...current.elements.map(part => part.id === first.id ? { ...part, origin: "preprinted" as Origin, preprinted: true, dotMatrix: false } : part), second] }));
+              setSelectedId(second.id);
+              setSplitSecondLine("");
+              setNotice("Two separate layers created. Confirm which layer is preprinted and correct both texts, positions and print settings.");
+            }}>Split into editable layers</button>
+          </div>
           <div className="ls-grid-two">{field("X (" + unit + ")", number(valueInUnit(selected.x, unit), next => edit({x:round(next * factor(unit))}), 0, 500, .1))}{field("Y (" + unit + ")", number(valueInUnit(selected.y, unit), next => edit({y:round(next * factor(unit))}), 0, 500, .1))}{field("Width (" + unit + ")", number(valueInUnit(selected.width, unit), next => edit({width:round(next * factor(unit))}), 1, 500, .1))}{field("Height (" + unit + ")", number(valueInUnit(selected.height, unit), next => edit({height:round(next * factor(unit))}), 1, 500, .1))}{field("Z layer", number(selected.z, next => edit({z:next}), -1000, 1000))}{field("Rotation (°)", number(selected.rotation, next => edit({rotation:next}), -360, 360))}</div>
           {field("Font family", <select value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select>)}
           <div className="ls-grid-two">{field("Font size (px)", number(selected.size, next => edit({size:next}), 5, 120))}{field("Letter spacing", number(selected.letterSpacing, next => edit({letterSpacing:next}), -5, 30, .1))}</div>
