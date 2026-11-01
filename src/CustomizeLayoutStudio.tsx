@@ -437,6 +437,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         for (let index = 1; index <= pageCount; index++) {
           const pdfPage = index === 1 ? page : await pdf.getPage(index);
           const view = pdfPage.getViewport({ scale:1 });
+          // A single template has one physical paper geometry. Mixed sizes in one
+          // scanned PDF must not be silently stretched into incorrect printer XY.
+          if(index>1 && (Math.abs(view.width-viewport.width)>1||Math.abs(view.height-viewport.height)>1))
+            throw Error("PDF pages have different dimensions or orientations. Import each physical passbook size as a separate draft.");
           const textLayer = await pdfPage.getTextContent();
           try {
             // Reference images are display-only, NEVER persisted or printed.
@@ -482,7 +486,11 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           }
           for (const item of textLayer.items) {
             if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
-            const part = addPart("text", "static", item.str.trim(), "", round(item.transform[4] / view.width * width), round((view.height - item.transform[5]) / view.height * height));
+            // PDF coordinates are bottom-left and may be rotated by Page /Rotate.
+            // The real PDF.js viewport maps them to the visible page orientation.
+            const [screenX,screenY]=view.convertToViewportPoint(item.transform[4],item.transform[5]);
+            if(!Number.isFinite(screenX)||!Number.isFinite(screenY))continue;
+            const part = addPart("text", "static", item.str.trim(), "", round(screenX/view.width*width), round(screenY/view.height*height));
             part.page = index;
             part.width = round(Math.max(4, item.width / view.width * width));
             part.height = round(Math.max(3, item.height / view.height * height));
