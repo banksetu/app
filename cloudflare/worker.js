@@ -3,6 +3,7 @@ import { DEFAULT_FLAGS, DEFAULT_PRICING, DEFAULT_PAYMENT_DETAILS, validatePaymen
 import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 import { createSupportMediaService } from "./supportMedia.js";
+import { normalizedBankKey, sanitizeLayoutTemplate } from "./layoutTemplates.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -1248,6 +1249,72 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({ success: true, tenantId });
   }
 
+  // Generic, reviewed bank templates; samples and customer records never enter this catalog.
+  if (route === "/submit-layout-template") {
+    if (role !== "client_admin" || !actor.profile.tenantId)
+      return json({error:"Only a licensed Client Admin can submit a bank layout for review."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(actor.profile.tenantId);
+    const current=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId));
+    const configured=decodeFields(current.fields||{});
+    const bankName=String(configured.passbookBank || configured.bankInfo?.passbookBank || "").trim();
+    let template;
+    try { template=sanitizeLayoutTemplate(body.template,bankName); }
+    catch(error){return json({error:error.message},400);}
+    const id=crypto.randomUUID();
+    await putDocument(env,"/layoutTemplateCatalog/"+id,{
+      ...template,id,status:"pending",originTenantId:tenantId,
+      submittedBy:actor.uid,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+    });
+    return json({success:true,id,status:"pending"});
+  }
+  if (route === "/review-layout-template") {
+    if (!isMasterActor(actor)) return json({error:"Only the Master Admin can approve shared layouts."},403);
+    const body=await request.json().catch(()=>({}));
+    const id=String(body.id||"");
+    if(!/^[a-f0-9-]{36}$/.test(id)||!["approve","reject"].includes(body.action))return json({error:"Choose a valid review action."},400);
+    const path="/layoutTemplateCatalog/"+id;
+    const found=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+    if(!found)return json({error:"Template was not found."},404);
+    const template=decodeFields(found.fields||{});
+    if(template.status!=="pending")return json({error:"Only pending submissions can be reviewed."},409);
+    // All published content must still satisfy the server sanitizer; never
+    // trust an unreviewed customer record or arbitrary attachment.
+    try { sanitizeLayoutTemplate(template,template.bankName); }
+    catch(error) { return json({error:"Template validation failed before approval: "+error.message},400); }
+    const status=body.action==="approve"?"approved":"rejected";
+    await putDocument(env,path,{status,reviewedBy:actor.uid,reviewedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    return json({success:true,id,status});
+  }
+  if (route === "/list-layout-templates") {
+    if (!["master_owner","admin","client_admin","client_user"].includes(role))
+      return json({error:"Sign in to view available templates."},403);
+    const body=await request.json().catch(()=>({}));
+    const pending=body.pending===true;
+    if(pending && !isMasterActor(actor))return json({error:"Only the Master Admin can review pending templates."},403);
+    const bankName=String(body.bankName||"").trim();
+    const bankKey=normalizedBankKey(bankName);
+    if(!pending && (!bankName || bankName.length>120 || !bankKey))return json({error:"Select a bank first."},400);
+    if(!pending && !isMasterActor(actor) && actor.profile.tenantId){
+      const current=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(actor.profile.tenantId));
+      const saved=decodeFields(current.fields||{});
+      if(normalizedBankKey(saved.passbookBank||saved.bankInfo?.passbookBank)!==bankKey)
+        return json({error:"The selected bank does not match this workspace."},403);
+    }
+    const key=pending?"status":"bankKey";
+    const value=pending?"pending":bankKey;
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({
+      structuredQuery:{from:[{collectionId:"layoutTemplateCatalog"}],where:{fieldFilter:{field:{fieldPath:key},op:"EQUAL",value:{stringValue:value}}},limit:50}
+    })});
+    const templates=(Array.isArray(rows)?rows:[]).filter(row=>row.document).map(row=>decodeFields(row.document.fields||{}))
+      .filter(item=>pending?item.status==="pending":item.status==="approved")
+      .slice(0,25).map(item=>({
+        id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,
+        widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,printStartMm:item.printStartMm,
+        elements:item.elements,updatedAt:item.updatedAt||item.createdAt||""
+      }));
+    return json({success:true,templates});
+  }
   if (route === "/save-bank-format-template" || route === "/save-bank-format-mapping") {
     if (role !== "client_admin" || !actor.profile.tenantId) return json({ error: "Only a Client Admin can change this workspace's bank formats." }, 403);
     const tenantId = String(actor.profile.tenantId);
