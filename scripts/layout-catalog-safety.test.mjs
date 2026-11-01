@@ -33,3 +33,11 @@ test("template cannot publish embedded image pixels or wrong-bank data",()=>{
   assert.throws(()=>sanitizeLayoutTemplate(draft([item({kind:"image",imageData:"data:image/png;base64,AAAA"})]),"Central Bank of India"));
   assert.throws(()=>sanitizeLayoutTemplate(draft(),"Union Bank of India"));
 });
+
+test("dynamic bank logo is a reusable field reference, never embedded pixels",()=>{
+ const logo=item({id:"bank-logo",kind:"image",origin:"bank",fieldKey:"bankLogo",label:"Bank Logo",dotMatrix:false});
+ const sanitized=sanitizeLayoutTemplate(draft([logo]),"Central Bank of India");
+ assert.equal(sanitized.elements[0].fieldKey,"bankLogo");
+ assert.equal(sanitized.elements[0].imageData,undefined);
+ assert.equal(sanitized.elements[0].dotMatrix,false);
+});
