@@ -11,9 +11,12 @@ test('print controls inherit app dark appearance without changing PDF pixels or 
  const preferred=previewHtml(pdf,[{name:'windows-default',isDefault:true},{name:'banksetu-printer'}],'light','banksetu-printer');
  assert.match(preferred,/value="banksetu-printer" selected/);
  assert.doesNotMatch(preferred,/value="windows-default" selected/);
+ assert.match(preferred,/Custom margins/);assert.match(preferred,/Always remember for this printer/);
+ assert.match(preferred,/data-side="left"/);assert.match(preferred,/Reset to default/);
 });
 test('Windows preview freezes print HTML, isolates IPC, validates settings and keeps passbook size',async()=>{
   const handlers=new Map(),windows=[],pdfOptions=[],printOptions=[];let printerReads=0;
+  const userData=require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(),'banksetu-print-test-'));
   class FakeWindow extends EventEmitter{
     constructor(options){super();this.options=options;this.destroyed=false;this.contents=new EventEmitter();Object.defineProperty(this,"webContents",{get:()=>{if(this.destroyed)throw Error("Object has been destroyed");return this.contents}});this.webContents.mainFrame={};this.webContents.isDestroyed=()=>false;this.webContents.setWindowOpenHandler=()=>{};this.webContents.executeJavaScript=async()=>{};this.webContents.getPrintersAsync=async()=>{printerReads++;return[{name:'test-printer',isDefault:true}]};this.webContents.printToPDF=async options=>{pdfOptions.push(options);return Buffer.from('%PDF-test /MediaBox [0 0 360 504]')};this.webContents.print=(options,callback)=>{printOptions.push(options);callback(true)};windows.push(this);}
     async loadURL(url){this.url=url}
@@ -22,7 +25,7 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
     close(){this.destroy()}
     focus(){}
   }
-  const bridge=installPrintPreview({app:{getPath:()=>'/unused'},BrowserWindow:FakeWindow,ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},dialog:{showSaveDialog:async()=>({canceled:true})}});
+  const bridge=installPrintPreview({app:{getPath:name=>name==='userData'?userData:'/unused'},BrowserWindow:FakeWindow,ipcMain:{handle:(name,fn)=>handlers.set(name,fn)},dialog:{showSaveDialog:async()=>({canceled:true})}});
   const source=new FakeWindow({});bridge.attach(source);
   const event={sender:source.webContents,senderFrame:source.webContents.mainFrame};
   await assert.rejects(handlers.get('print:preview')({sender:{},senderFrame:{}},'<html/>'),/Untrusted/);
@@ -43,6 +46,9 @@ test('Windows preview freezes print HTML, isolates IPC, validates settings and k
   await handlers.get('print:action')(previewEvent,'preview',{...settings,paper:'A4',landscape:true});
   assert.equal(pdfOptions.at(-1).pageSize,'A4');
   assert.equal(pdfOptions.at(-1).landscape,true);
+  await handlers.get('print:action')(previewEvent,'preview',{...settings,paper:'A4',fitMode:'custom',margins:{top:10,right:8,bottom:12,left:8}});
+  assert.equal(pdfOptions.at(-1).margins.top,10/25.4);
+  assert(pdfOptions.at(-1).scale<1,'custom A4 margins scale the page into the selected envelope');
   assert.equal((await handlers.get('print:action')(previewEvent,'save',settings)).message,'Save cancelled.');
   const originalPrint=snapshot.webContents.print;
   snapshot.webContents.print=(_options,callback)=>callback(false,'cancelled');
@@ -98,7 +104,9 @@ test('print capture scopes the snapshot to the active printable module and opens
  assert.match(source,/pdfCache=new Map\(\)/);
  assert.match(source,/printerCache=\{at:0,value:\[\],task:null\}/);
  assert.match(source,/printProfile:active\?\.dataset\.printProfile==="exact"\?"exact":"safe"/);
- assert.match(source,/state\.printProfile==='exact'\?'none':'printableArea'/);
+ assert.match(source,/options\.fitMode==='custom'\?'custom'/);
+ assert.match(source,/print-preview-settings\.json/);
+ assert.match(source,/Always remember for this printer/);
  assert.match(source,/Preparing print preview/);
  assert.match(source,/getPrintersAsync\(\).*\.then/);
  assert.doesNotMatch(source,/encodeURIComponent\(html\)/);
