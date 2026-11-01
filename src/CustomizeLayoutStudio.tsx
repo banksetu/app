@@ -344,12 +344,12 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     fontFamily: part.font, fontSize: part.size * zoom, fontWeight: part.bold ? 700 : 400,
     fontStyle: part.italic ? "italic" : "normal", textDecoration: part.underline ? "underline" : "none",
     textAlign: part.align, color: part.color, background: part.background, borderColor: part.borderColor,
-    borderWidth: part.kind === "rectangle" || part.kind === "photo" ? part.borderWidth * zoom : 0,
-    borderStyle: "solid", letterSpacing: part.letterSpacing * zoom, opacity: part.opacity,
+    borderWidth: ["rectangle","photo","ellipse","image"].includes(part.kind) ? part.borderWidth * zoom : 0,
+    borderStyle: "solid", letterSpacing: part.letterSpacing * zoom, opacity: part.opacity, borderRadius:part.kind==="ellipse"?"50%":undefined,
   });
   const partText = (part: LayoutPart) => {
     if (part.kind === "photo") return "PHOTO";
-    if (part.kind === "rectangle" || part.kind === "line") return "";
+    if (part.kind === "rectangle" || part.kind === "line" || part.kind === "ellipse" || part.kind === "image") return "";
     if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
     return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix"
       ? (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
@@ -400,6 +400,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
       <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button>
       <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
+      <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
       <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
       <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
       <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
@@ -425,6 +426,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <button type="button" onClick={() => setScanSuggestion(null)}>Dismiss</button>
     </div>}
     <div className="ls-settings">
+      <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
+      <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
       <label>Units <select value={unit} onChange={event => setUnit(event.target.value as Unit)}><option value="mm">mm</option><option value="cm">cm</option><option value="in">inch</option></select></label>
       <label>Width {number(valueInUnit(draft.widthMm, unit), next => setMeasure("widthMm", String(next)), 0, 500, .1)}</label>
       <label>Height {number(valueInUnit(draft.heightMm, unit), next => setMeasure("heightMm", String(next)), 0, 500, .1)}</label>
@@ -452,7 +455,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             if (!visible) return null;
             return <div key={part.id} onPointerDown={event => down(event, part)}
               className={"ls-object " + (selectedId === part.id ? "selected " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
-              style={toStyle(part)} title={part.label + " · " + part.origin}>{partText(part)}</div>;
+              style={toStyle(part)} title={part.label + " · " + part.origin}>{part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : partText(part)}</div>;
           })}
         </div>
         <p className="ls-canvas-note">Drag objects to position · Arrow keys: 0.1 mm · Shift+Arrow: 1 mm · Fold markers are guides only</p>
@@ -461,7 +464,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
         {showProps && (selected ? <div className="ls-properties-body">
           {field("Element name / Label", <input value={selected.label} onChange={event => edit({ label: event.target.value })} />)}
-          {field("Element type", <select value={selected.kind} onChange={event => edit({ kind: event.target.value as Kind })}><option value="text">Text / Instructions</option><option value="field">Dynamic Field</option><option value="rectangle">Rectangle</option><option value="line">Line</option><option value="photo">Photo Box</option></select>)}
+          {field("Element type", <select value={selected.kind} onChange={event => edit({ kind: event.target.value as Kind })}><option value="text">Text / Instructions</option><option value="field">Dynamic Field</option><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="line">Line</option><option value="photo">Photo Box</option><option value="image">Image</option></select>)}
           {field("Source / Meaning", <select value={selected.origin} onChange={event => edit({ origin: event.target.value as Origin, preprinted: event.target.value === "preprinted" })}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
           {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
           <datalist id="ls-bank-fields">{Object.keys(bankValues).sort().map(key=><option key={key} value={key}/>)}</datalist>
