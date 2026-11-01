@@ -26,7 +26,9 @@ test("Editor drafts remain isolated from live PR2 and backend mutations", () => 
   assert.match(editor, /bankSetuLayoutDraft:v1:/);
   assert.match(editor, /bankSetuTenantId/);
   assert.match(editor, /Local draft only/);
-  assert.doesNotMatch(editor, /setDoc\(|updateDoc\(|callBankSetuWorker\(|localDataFetch\(/);
+  assert.doesNotMatch(editor, /setDoc\(|updateDoc\(|localDataFetch\(|\/save-bank-format-template|\/save-bank-format-mapping/);
+  assert.match(editor, /\/submit-layout-template/);
+  assert.match(editor, /\/review-layout-template/);
 });
 
 test("Basic editor features and dark/light variants are present", () => {
