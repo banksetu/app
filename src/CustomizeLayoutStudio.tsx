@@ -3,7 +3,7 @@ import { callBankSetuWorker } from "./workerApi";
 import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
-import { estimatePassbookBounds, mapScannedPageToPassbook, type ScanBounds } from "./layoutScanGeometry";
+import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
@@ -99,6 +99,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
   const [scanFrame, setScanFrame] = useState<{pixelWidth:number;pixelHeight:number;paperWidthMm:number;paperHeightMm:number}|null>(null);
+  const [scanMeasurements,setScanMeasurements]=useState<{widthMm:number|null;heightMm:number|null;foldMm:number|null;printStartMm:number|null}>({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
   const [referencePages, setReferencePages] = useState<string[]>([]);
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
@@ -310,11 +311,38 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setNotice("Could not compare original and editable preview: "+(error instanceof Error?error.message:"Device limitation"));
     } finally {setDiffBusy(false);}
   };
+  const changeScanEdge=(edge:"left"|"top"|"right"|"bottom",percentage:number)=>{
+    const frame=scanFrame;
+    if(!frame||!Number.isFinite(percentage)||percentage<0||percentage>100)return;
+    const scale=edge==="left"||edge==="right"?frame.pixelWidth:frame.pixelHeight;
+    const pixel=Math.round(scale*percentage/100);
+    setScanSuggestion(current=>{
+      if(!current)return current;
+      const next={...current,[edge]:pixel};
+      if(next.left<0||next.top<0||next.right>frame.pixelWidth||next.bottom>frame.pixelHeight||
+         next.right-next.left<frame.pixelWidth*.025||next.bottom-next.top<frame.pixelHeight*.025)return current;
+      return {...next,
+        widthMm:round((next.right-next.left)/frame.pixelWidth*frame.paperWidthMm),
+        heightMm:round((next.bottom-next.top)/frame.pixelHeight*frame.paperHeightMm),
+        foldHint:undefined,confidence:"low",
+        reason:"Manually adjusted crop edges. Verify that only the actual passbook is selected; blank passbook margins must be included."
+      };
+    });
+  };
+  const changeScanMeasurement=(field:"widthMm"|"heightMm"|"foldMm"|"printStartMm",raw:string)=>{
+    const mm=raw.trim()===""?null:valueInMm(raw,unit);
+    if(mm!==null&&(!Number.isFinite(mm)||mm<0||mm>500))return;
+    setScanMeasurements(previous=>({...previous,[field]:mm}));
+  };
   const applyScannerSuggestion = async () => {
-    const bounds=scanSuggestion,frame=scanFrame;
-    if(!bounds || !frame)return;
-    if(!await confirmAction("Apply this unverified A4 crop and optional fold-gap estimate to the LOCAL draft only? Re-measure the actual passbook and printer alignment before activation."))return;
+    const proposal=scanSuggestion,frame=scanFrame;
+    if(!proposal || !frame)return;
+    if(!await confirmAction("Apply selected scan crop and manual measurements to this local DRAFT only? This is not physical printer certification."))return;
     try {
+      const bounds=calibrateScanBounds(proposal,scanMeasurements);
+      const chosenPrintStart=scanMeasurements.printStartMm??0;
+      if(chosenPrintStart<0||chosenPrintStart>bounds.heightMm)
+        throw Error("Print-start distance must be within physical passbook height.");
       // Prepare the reference crop BEFORE editing the draft. A failed image decode
       // must never leave customer positions updated against an uncropped overlay.
       let croppedReference:string|null=null;
@@ -341,8 +369,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         frame.paperWidthMm,frame.paperHeightMm,draft.elements);
       modify(current=>({...current,
         widthMm:bounds.widthMm,heightMm:bounds.heightMm,
-        foldMm:bounds.foldHint?.foldMm??Math.min(current.foldMm,bounds.heightMm),
-        printStartMm:Math.min(current.printStartMm,bounds.heightMm),
+        foldMm:bounds.foldHint?.foldMm??0,
+        printStartMm:chosenPrintStart,
         elements:result.elements,
       }));
       if(croppedReference)setReferencePages(previous=>[croppedReference!,...previous.slice(1)]);
@@ -351,6 +379,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       // earlier confirmations even when the bank name stays the same.
       setPhysicalChecked(false);setHardwareChecked(false);
       setScanSuggestion(null);setScanFrame(null);
+      setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
       setNotice("Scanner crop applied ONLY to draft. "+result.outsideCount+
         " elements may cross the estimated border. Fold"+(bounds.foldHint?" gap":"")+
         " and print start are UNVERIFIED; physical ruler and printer re-approval required.");
@@ -417,6 +446,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setReferencePages([]);
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
     setPhysicalChecked(false);setHardwareChecked(false);
+    setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -504,7 +534,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         // For an A4 scanner page, its paper dimensions are NOT the passbook dimensions.
         // Keep measured passbook size from the user's manual calibration until border analysis exists.
         const scannedA4 = (Math.abs(width - 210) < 5 && Math.abs(height - 297) < 5) || (Math.abs(width - 297) < 5 && Math.abs(height - 210) < 5);
-        if (scannedA4 && mode === "passbook") {
+        if (mode === "passbook") {
           try {
             const scanView = page.getViewport({ scale: Math.min(1, 750 / Math.max(viewport.width, viewport.height)) });
             const canvas = document.createElement("canvas");
@@ -513,11 +543,21 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             const context = canvas.getContext("2d", { willReadFrequently: true });
             if (context) {
               await page.render({ canvas, canvasContext: context, viewport: scanView }).promise;
-              const suggestion = estimatePassbookBounds(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, width, height);
-              setScanSuggestion(suggestion);
+              const suggestion = estimatePassbookBounds(context.getImageData(0,0,canvas.width,canvas.height).data,
+                canvas.width,canvas.height,width,height);
+              // Full-frame is a manual starting point, NEVER proof that the A4 page
+              // and the actual passbook are the same size.
+              setScanSuggestion(suggestion??{
+                left:0,top:0,right:canvas.width,bottom:canvas.height,
+                widthMm:width,heightMm:height,confidence:"low",
+                reason:"Outer boundary not detected. Manually adjust crop edges and enter physical measurements. The A4 scanner canvas is not the passbook."
+              });
               setScanFrame({pixelWidth:canvas.width,pixelHeight:canvas.height,paperWidthMm:width,paperHeightMm:height});
             }
-          } catch { setScanSuggestion(null); }
+            canvas.width=0;canvas.height=0;
+          } catch {
+            setScanSuggestion(null);setScanFrame(null);
+          }
         } else setScanSuggestion(null);
         const overlapList = findOverlappingPassbookText(elements,150);
         setCollisions(overlapList);
@@ -539,13 +579,13 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         } else {
           // A scan without a usable OCR engine must not silently replace existing
           // local work, nor assign its old fields to a newly uploaded bank PDF.
-          setScanSuggestion(null);setScanFrame(null);setReferenceVisible(false);
+          setReferenceVisible(true);
         }
         setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
           "Imported " + elements.length + " editable objects across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+", vector shapes: "+recognizedGraphics+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
-          "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Previous local draft was PRESERVED without importing stale objects. Use manual tools or an OCR-capable device.");
+          "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Existing draft was preserved; reference overlay and manual crop/calibration remain available.");
         if (scannedA4 && mode === "passbook" && elements.length) setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + elements.length + " editable text objects imported. "+(ocrStatus||""));
       } finally { await task.destroy(); }
     } catch (error) {
@@ -740,12 +780,30 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
       <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
     </div>}
-    {scanSuggestion && <div className="ls-scan-proposal" role="status">
-      <strong>Scanner estimate (not verified)</strong> — {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence.
+    {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
+      <strong>Bank-independent scan calibration (unverified)</strong>
+      <span>Estimated scan area: {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence</span>
       <span>{scanSuggestion.reason}</span>
-      {scanSuggestion.foldHint && <span>Possible fold gap: {scanSuggestion.foldHint.foldMm} mm from estimated top ({scanSuggestion.foldHint.confidence} confidence). Verify with ruler; NOT a confirmed crease.</span>}
-      <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply estimated size to draft</button>
-      <button type="button" onClick={() => setScanSuggestion(null)}>Dismiss</button>
+      <span>Crop edges (% of scanner PDF). Include the actual passbook's white borders; exclude empty A4 background.</span>
+      {(["left","top","right","bottom"] as const).map(edge=><label key={edge}>
+        {edge==="left"?"Left edge":edge==="top"?"Top edge":edge==="right"?"Right edge":"Bottom edge"} (%)
+        <input type="number" min={0} max={100} step={0.1}
+          value={round(scanSuggestion[edge]/((edge==="left"||edge==="right")?scanFrame.pixelWidth:scanFrame.pixelHeight)*100)}
+          onChange={event=>changeScanEdge(edge,Number(event.target.value))}/>
+      </label>)}
+      <span>Optional physical measurements (leave empty to use scanner estimate). Units: {unit}.</span>
+      {(["widthMm","heightMm","foldMm","printStartMm"] as const).map(field=><label key={field}>
+        {field==="widthMm"?"Physical width":field==="heightMm"?"Physical height":field==="foldMm"?"Fold from top":"Print start from top"} ({unit})
+        <input type="number" min={0} max={500/factor(unit)} step={0.1}
+          placeholder={field==="widthMm"?String(valueInUnit(scanSuggestion.widthMm,unit)):
+            field==="heightMm"?String(valueInUnit(scanSuggestion.heightMm,unit)):
+            field==="foldMm"?(scanSuggestion.foldHint?String(valueInUnit(scanSuggestion.foldHint.foldMm,unit)):"Optional"):"Optional"}
+          value={scanMeasurements[field]===null?"":valueInUnit(scanMeasurements[field]!,unit)}
+          onChange={event=>changeScanMeasurement(field,event.target.value)}/>
+      </label>)}
+      {scanSuggestion.foldHint && <span>Possible fold gap: {scanSuggestion.foldHint.foldMm} mm (low confidence). Override if needed. Print start is independent.</span>}
+      <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply crop and measurements to local draft</button>
+      <button type="button" onClick={() => {setScanSuggestion(null);setScanFrame(null);}}>Skip scan calibration</button>
     </div>}
     <div className="ls-settings">
       <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
