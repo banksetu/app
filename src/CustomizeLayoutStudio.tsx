@@ -393,6 +393,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         const elements: LayoutPart[] = [];
         const references:string[] = [];
         let recognizedFromScan=0;
+        let recognizedGraphics=0;
         let ocrStatus="";
         for (let index = 1; index <= pageCount; index++) {
           const pdfPage = index === 1 ? page : await pdf.getPage(index);
@@ -424,6 +425,22 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               previewCanvas.width=0;previewCanvas.height=0;
             } else references.push("");
           } catch { references.push(""); }
+          if (elements.length<290) {
+            try {
+              const {collectEditableVectorShapes}=await import("./layoutVectorImport");
+              const operators=await pdfPage.getOperatorList();
+              const shapes=collectEditableVectorShapes(operators,view,width,height,Math.min(80,300-elements.length));
+              for(const shape of shapes){
+                if(elements.length>=300)break;
+                const part=addPart(shape.kind,"static",shape.kind==="line"?"PDF vector line":"PDF vector rectangle","",shape.x,shape.y);
+                part.page=index;part.width=shape.width;part.height=shape.height;
+                part.rotation=shape.rotation;part.color=shape.color;part.borderColor=shape.color;
+                part.borderWidth=Math.max(.5,shape.borderWidth);part.background=shape.background;
+                part.quick=true;part.dotMatrix=false;part.z=elements.length+1;
+                elements.push(part);recognizedGraphics++;
+              }
+            }catch {/* Unsupported vector operations require editable manual reconstruction. */}
+          }
           for (const item of textLayer.items) {
             if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
             const part = addPart("text", "static", item.str.trim(), "", round(item.transform[4] / view.width * width), round((view.height - item.transform[5]) / view.height * height));
@@ -474,7 +491,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
-          "Imported " + elements.length + " editable text elements across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
+          "Imported " + elements.length + " editable objects across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+", vector shapes: "+recognizedGraphics+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
           "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Use Add tools to reconstruct fields manually.");
         if (scannedA4 && mode === "passbook") setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + (elements.length ? elements.length + " editable text elements imported." : "No embedded text; manual editing is available."));
       } finally { await task.destroy(); }
