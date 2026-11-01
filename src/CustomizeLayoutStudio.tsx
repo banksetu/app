@@ -196,6 +196,20 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
         // For an A4 scanner page, its paper dimensions are NOT the passbook dimensions.
         // Keep measured passbook size from the user's manual calibration until border analysis exists.
         const scannedA4 = (Math.abs(width - 210) < 5 && Math.abs(height - 297) < 5) || (Math.abs(width - 297) < 5 && Math.abs(height - 210) < 5);
+        if (scannedA4 && mode === "passbook") {
+          try {
+            const scanView = page.getViewport({ scale: Math.min(1, 750 / Math.max(viewport.width, viewport.height)) });
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.ceil(scanView.width);
+            canvas.height = Math.ceil(scanView.height);
+            const context = canvas.getContext("2d", { willReadFrequently: true });
+            if (context) {
+              await page.render({ canvas, canvasContext: context, viewport: scanView }).promise;
+              const suggestion = estimatePassbookBounds(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, width, height);
+              setScanSuggestion(suggestion);
+            }
+          } catch { setScanSuggestion(null); }
+        } else setScanSuggestion(null);
         let overlappingPairs = 0;
         for (let i = 0; i < elements.length; i++) for (let j = i + 1; j < elements.length; j++) {
           const a = elements[i], b = elements[j];
