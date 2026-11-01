@@ -27,7 +27,7 @@ test("preprinted labels and all graphics are excluded from dot-matrix data outpu
  assert.equal(visibleLayoutElement(layer({origin:"preprinted"}),"quick"),true);
 });
 test("live layout requires same bank, correct mode and single printed passbook page",()=>{
- const template={id:"catalog",mode:"passbook",bankName:"State Bank of India",widthMm:190,heightMm:175,pageCount:1,elements:[layer()]};
+ const template={id:"catalog",mode:"passbook",bankName:"State Bank of India",widthMm:190,heightMm:175,foldMm:88,printStartMm:100,pageCount:1,elements:[layer()]};
  assert.equal(templateCanRender(template,"State Bank of India","passbook"),true);
  assert.equal(templateCanRender(template,"Union Bank","passbook"),false);
  assert.equal(templateCanRender({...template,pageCount:2},"State Bank of India","passbook"),false);
