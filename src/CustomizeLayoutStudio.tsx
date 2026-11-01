@@ -330,6 +330,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         const pageCount = Math.min(10, pdf.numPages);
         const elements: LayoutPart[] = [];
         const references:string[] = [];
+        let recognizedFromScan=0;
+        let ocrStatus="";
         for (let index = 1; index <= pageCount; index++) {
           const pdfPage = index === 1 ? page : await pdf.getPage(index);
           const view = pdfPage.getViewport({ scale:1 });
@@ -344,6 +346,19 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             if (context) {
               await pdfPage.render({canvas:previewCanvas,canvasContext:context,viewport:previewViewport}).promise;
               references.push(previewCanvas.toDataURL("image/webp",.66));
+              if (!textLayer.items.some(item=>"str" in item && item.str.trim())) {
+                const {detectOfflineOpticalText}=await import("./layoutOnDeviceOCR");
+                const optical=await detectOfflineOpticalText(previewCanvas,width,height);
+                ocrStatus=optical.warning;
+                for (const found of optical.items) {
+                  if (elements.length>=300)break;
+                  const part=addPart("text","static",found.label,"",found.x,found.y);
+                  part.page=index;part.width=found.width;part.height=found.height;
+                  part.z=elements.length+1;part.size=within(Math.round(found.height*3.2),5,60);
+                  elements.push(part);
+                  recognizedFromScan++;
+                }
+              }
               previewCanvas.width=0;previewCanvas.height=0;
             } else references.push("");
           } catch { references.push(""); }
@@ -396,8 +411,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
-          "Imported " + elements.length + " editable PDF text elements across "+pageCount+" PDF pages. " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
-          "No embedded PDF text found (possibly a scanned image). Use Add tools to reconstruct fields; automatic OCR is not yet active.");
+          "Imported " + elements.length + " editable text elements across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
+          "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Use Add tools to reconstruct fields manually.");
         if (scannedA4 && mode === "passbook") setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + (elements.length ? elements.length + " editable text elements imported." : "No embedded text; manual editing is available."));
       } finally { await task.destroy(); }
     } catch (error) {
