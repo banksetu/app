@@ -29,3 +29,34 @@ test("limits vector elements for low-end mobile renderers",()=>{
  const result=collectEditableVectorShapes({fnArray:f,argsArray:a},viewport,100,100,12);
  assert.equal(result.length,12);
 });
+
+test("diagonal PDF strokes keep their true angle rather than disappearing",()=>{
+ const result=collectEditableVectorShapes({
+  fnArray:[OPS.constructPath,OPS.stroke],
+  argsArray:[[[OPS.moveTo,OPS.lineTo],[10,10,30,30]],[]],
+ },viewport,100,100);
+ assert.equal(result.length,1);
+ assert.equal(result[0].kind,"line");
+ assert.ok(Math.abs(result[0].rotation+45)<.2);
+ assert.ok(Math.abs(result[0].width-28.3)<.2);
+ assert.equal(result[0].x,10);
+ assert.equal(result[0].y,90);
+});
+test("cubic Bezier strokes become a bounded set of individually editable segments",()=>{
+ const result=collectEditableVectorShapes({
+  fnArray:[OPS.constructPath,OPS.stroke],
+  argsArray:[[[OPS.moveTo,OPS.curveTo],[10,10,30,70,70,70,90,10]],[]],
+ },viewport,100,100);
+ assert.equal(result.length,8);
+ assert.ok(result.every(p=>p.kind==="line"&&Number.isFinite(p.rotation)));
+ assert.ok(result.some(p=>Math.abs(p.rotation)>1));
+});
+test("rotated rectangles are reconstructed as strokes, not incorrect filled boxes",()=>{
+ const radians=Math.PI/6;
+ const result=collectEditableVectorShapes({
+  fnArray:[OPS.transform,OPS.constructPath,OPS.stroke],
+  argsArray:[[Math.cos(radians),Math.sin(radians),-Math.sin(radians),Math.cos(radians),30,30],[[OPS.rectangle],[0,0,20,15]],[]],
+ },viewport,100,100);
+ assert.equal(result.length,4);
+ assert.ok(result.every(p=>p.kind==="line"));
+});
