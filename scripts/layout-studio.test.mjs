@@ -58,3 +58,5 @@ import "./layout-vector-import.test.mjs";
 import "./layout-activation.test.mjs";
 
 import "./layout-runtime-values.test.mjs";
+
+import "./layout-activation-integration.test.mjs";
