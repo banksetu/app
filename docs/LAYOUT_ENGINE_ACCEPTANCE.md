@@ -10,10 +10,10 @@ Status: **NOT 100% certified**. This checklist deliberately does not equate a pa
 - [ ] A physically invalid layout, unsupported printer or failed/spooled job cannot mark a customer Printed.
 
 ## Actual reference samples and scanner calibration
-- [ ] One *sanitised* original full-open passbook and actual ruler measurements for each required bank/layout. A4 scanner canvas must NOT become passbook dimensions.
+- [ ] Engine must accept **any bank/passbook shape** independently: scanned PDF in A4, letter, landscape or direct-passbook canvas. It must NEVER require a photo or an Assam Gramin reference to function.\n- [ ] Automatic ROI and tentative dimensions available; when boundaries are uncertain, users can select crop edges and manually enter physical width/height/fold/print-start in mm/cm/inches. These measurements remain optional for draft editing but must be accepted before physical printer certification.\n- [ ] Physical printer acceptance may use a sanitised example of the relevant actual stock and recorded dimensions; this is a hardware sign-off task, not a requirement for PDF import or core software construction. A4 canvas dimensions must NOT be mistaken for physical passbook size.
 - [ ] Crop compared against physical outer edges; fold, upper/lower panels and print start independently checked to 1 mm or agreed printer tolerance.
 - [ ] A4 landscape and portrait, scan skew, 90/180/270-degree rotation, low-contrast, watermarks, mixed orientations and dirty page edges tested; unsure measurements must require review, not automatic activation.
-- [ ] Different-size pages are separate templates. Saved local drafts survive unusable OCR or import errors.
+- [ ] Different-size pages are separate templates. Saved local drafts survive unusable OCR or import errors.\n- [ ] Optional 0/90/180/270-degree scan rotation keeps reference and dynamic field positions in sync. Manual physical size must rescale x, y, width and height, not merely resize the white page.\n- [ ] Client can preview actual crop boundaries before applying any irreversible geometry changes; an undetected border must offer a manually editable crop, not pretend full A4 equals the passbook.
 
 ## OCR and digital-PDF reconstruction
 - [ ] Offline OCR successfully tested on actual Windows, Android and browser devices, including Devanagari/Hindi and English, with user review of uncertain words.
