@@ -9,3 +9,6 @@
 html[data-appearance="dark"] .workspace-template-document{background:#0e2130;color:#edf7fb}
 html[data-appearance="dark"] .workspace-template-controls{background:#163246;border-color:#38566a}
 @media(max-width:600px){.workspace-template-document{padding:7px}.workspace-template-pages{justify-content:start;gap:8px;padding:7px}}
+
+html[data-appearance="dark"] .custom-bank-document:has(.workspace-template-document){background:#0e2130!important;color:#edf7fb!important}
+html[data-appearance="dark"] .custom-bank-document:has(.workspace-template-document) h1{color:#edf7fb}
