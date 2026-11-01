@@ -289,7 +289,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // compatibility. It has the same global appearance permissions as the
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
-  const canCustomizeLayout = !licenseReadOnly && ["master_owner", "admin", "client_admin"].includes(accountRole);
+  const canCustomizeLayout = !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
   useLayoutEffect(()=>{
