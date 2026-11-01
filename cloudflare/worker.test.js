@@ -164,7 +164,7 @@ test("custom Bank Information fields reject unexpected or excessive data", () =>
   assert.equal(good.bankExtraFields.branchManager,"A. Manager");
   assert(!("bankInfo" in good));
   for(const bad of [
-    {"a.b":"x"}, {"__proto__":"x"}, {"0value":"x"},
+    {"a.b":"x"}, JSON.parse('{"__proto__":"x"}'), {"0value":"x"},
     {GSTIN:12}, {GSTIN:"x".repeat(181)},
     Object.fromEntries(Array.from({length:33},(_,i)=>["field"+i,"x"])),
   ]) assert.throws(()=>validateWorkspaceBankPatch({bankExtraFields:bad}));
