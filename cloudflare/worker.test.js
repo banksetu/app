@@ -158,6 +158,18 @@ test("bank settings patches preserve unrelated Drive and template configuration"
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,"+"A".repeat(150000)}));
 });
 
+test("custom Bank Information fields reject unexpected or excessive data", () => {
+  const good=validateWorkspaceBankPatch({bankExtraFields:{GSTIN:"22AAAAA0000A1Z5",branchManager:"A. Manager"}});
+  assert.equal(good.bankExtraFields.GSTIN,"22AAAAA0000A1Z5");
+  assert.equal(good.bankExtraFields.branchManager,"A. Manager");
+  assert(!("bankInfo" in good));
+  for(const bad of [
+    {"a.b":"x"}, {"__proto__":"x"}, {"0value":"x"},
+    {GSTIN:12}, {GSTIN:"x".repeat(181)},
+    Object.fromEntries(Array.from({length:33},(_,i)=>["field"+i,"x"])),
+  ]) assert.throws(()=>validateWorkspaceBankPatch({bankExtraFields:bad}));
+});
+
 test("Option B validates exact Google resource hosts and verified resource ownership", async () => {
   const {parseGoogleResource,validateResourceOwnership}=await import('./googleConnection.js');
   const id='abcdefghijklmnopqrstuvwxyz12345';
