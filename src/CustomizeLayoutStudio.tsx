@@ -100,6 +100,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
   const [scanFrame, setScanFrame] = useState<{pixelWidth:number;pixelHeight:number;paperWidthMm:number;paperHeightMm:number}|null>(null);
   const [scanMeasurements,setScanMeasurements]=useState<{widthMm:number|null;heightMm:number|null;foldMm:number|null;printStartMm:number|null}>({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
+  const [scanOrientation,setScanOrientation]=useState<0|90|180|270>(0);
   const [referencePages, setReferencePages] = useState<string[]>([]);
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
@@ -339,7 +340,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if(!proposal || !frame)return;
     if(!await confirmAction("Apply selected scan crop and manual measurements to this local DRAFT only? This is not physical printer certification."))return;
     try {
-      const bounds=calibrateScanBounds(proposal,scanMeasurements);
+      const oriented=scanOrientation===90||scanOrientation===270
+        ? {...proposal,widthMm:proposal.heightMm,heightMm:proposal.widthMm,foldHint:undefined}
+        : scanOrientation===180?{...proposal,foldHint:undefined}:proposal;
+      const bounds=calibrateScanBounds(oriented,scanMeasurements);
       const chosenPrintStart=scanMeasurements.printStartMm??0;
       if(chosenPrintStart<0||chosenPrintStart>bounds.heightMm)
         throw Error("Print-start distance must be within physical passbook height.");
@@ -356,17 +360,21 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         if(![cropX,cropY,cropW,cropH].every(Number.isFinite)||cropW<=0||cropH<=0)
           throw Error("Scanner crop is outside the source preview.");
         const canvas=document.createElement("canvas");
-        canvas.width=Math.max(1,Math.ceil(cropW));canvas.height=Math.max(1,Math.ceil(cropH));
+        canvas.width=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropH:cropW));
+        canvas.height=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropW:cropH));
         const context=canvas.getContext("2d");
         if(!context)throw Error("Canvas cropping is unavailable on this device.");
-        context.drawImage(image,cropX,cropY,cropW,cropH,0,0,canvas.width,canvas.height);
+        if(scanOrientation===90){context.translate(canvas.width,0);context.rotate(Math.PI/2);}
+        else if(scanOrientation===180){context.translate(canvas.width,canvas.height);context.rotate(Math.PI);}
+        else if(scanOrientation===270){context.translate(0,canvas.height);context.rotate(-Math.PI/2);}
+        context.drawImage(image,cropX,cropY,cropW,cropH,0,0,cropW,cropH);
         croppedReference=canvas.toDataURL("image/webp",.72);
         canvas.width=0;canvas.height=0;
       }
       // Calculate all coordinates before the state update: an invalid crop should
       // not partially replace a previously reviewed layout.
       const result=mapScannedPageToPassbook(bounds,frame.pixelWidth,frame.pixelHeight,
-        frame.paperWidthMm,frame.paperHeightMm,draft.elements);
+        frame.paperWidthMm,frame.paperHeightMm,draft.elements,scanOrientation);
       modify(current=>({...current,
         widthMm:bounds.widthMm,heightMm:bounds.heightMm,
         foldMm:bounds.foldHint?.foldMm??0,
@@ -380,6 +388,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setPhysicalChecked(false);setHardwareChecked(false);
       setScanSuggestion(null);setScanFrame(null);
       setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
+      setScanOrientation(0);
       setNotice("Scanner crop applied ONLY to draft. "+result.outsideCount+
         " elements may cross the estimated border. Fold"+(bounds.foldHint?" gap":"")+
         " and print start are UNVERIFIED; physical ruler and printer re-approval required.");
@@ -447,6 +456,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
     setPhysicalChecked(false);setHardwareChecked(false);
     setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
+    setScanOrientation(0);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -785,6 +795,13 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <span>Estimated scan area: {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence</span>
       <span>{scanSuggestion.reason}</span>
       <span>Crop edges (% of scanner PDF). Include the actual passbook's white borders; exclude empty A4 background.</span>
+      <label>Rotate passbook inside scan clockwise (optional)
+        <select value={scanOrientation} onChange={event=>setScanOrientation(Number(event.target.value) as 0|90|180|270)}>
+          <option value={0}>0° — already upright</option><option value={90}>90°</option>
+          <option value={180}>180°</option><option value={270}>270°</option>
+        </select>
+      </label>
+      <span>Rotation also rotates the crop reference and editable first-page coordinates. Sideways scans swap the estimated width and height.</span>
       {(["left","top","right","bottom"] as const).map(edge=><label key={edge}>
         {edge==="left"?"Left edge":edge==="top"?"Top edge":edge==="right"?"Right edge":"Bottom edge"} (%)
         <input type="number" min={0} max={100} step={0.1}
