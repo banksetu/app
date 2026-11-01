@@ -9,7 +9,13 @@ export type ScanBounds = {
   reason: string;
 };
 export function estimatePassbookBounds(pixels: Uint8ClampedArray, width: number, height: number, paperWidthMm: number, paperHeightMm: number): ScanBounds | null {
-  if (!width || !height || pixels.length < width * height * 4 || paperWidthMm <= 0 || paperHeightMm <= 0) return null;
+  // Reject invalid frames before allocating row/column accumulators. A malformed
+  // scan must never propagate NaN dimensions or crash the layout editor.
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
+      width<=0 || height<=0 || !Number.isSafeInteger(width*height*4) ||
+      !Number.isFinite(paperWidthMm) || !Number.isFinite(paperHeightMm) ||
+      paperWidthMm<=0 || paperHeightMm<=0 ||
+      pixels.length < width*height*4) return null;
   // Sample sparsely: keep large scanned images responsive on low-end mobiles.
   const step = Math.max(1, Math.ceil(Math.max(width, height) / 700));
   const rows = new Uint32Array(Math.ceil(height / step));
@@ -66,6 +72,8 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
   elements:T[],
 ): { elements:T[]; outsideCount:number } {
   if (![scannerWidth,scannerHeight,scannerPaperWidthMm,scannerPaperHeightMm].every(n=>Number.isFinite(n)&&n>0) ||
+    ![bounds.left,bounds.top,bounds.right,bounds.bottom,bounds.widthMm,bounds.heightMm].every(Number.isFinite) ||
+    bounds.widthMm<=0 || bounds.heightMm<=0 ||
     bounds.left<0 || bounds.top<0 || bounds.right>scannerWidth || bounds.bottom>scannerHeight ||
     bounds.right<=bounds.left || bounds.bottom<=bounds.top) throw Error("Invalid scanner coordinate frame.");
   const leftMm=bounds.left/scannerWidth*scannerPaperWidthMm;
