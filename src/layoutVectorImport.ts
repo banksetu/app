@@ -83,7 +83,7 @@ export function collectEditableVectorShapes(
         if(command===OPS.rectangle && cursor+3<coords.length){
           const px=Number(coords[cursor++]),py=Number(coords[cursor++]),w=Number(coords[cursor++]),h=Number(coords[cursor++]);
           if(![px,py,w,h].every(Number.isFinite))continue;
-          const points:Point=[
+          const points:Point[]=[
             transform(matrix,px,py),transform(matrix,px+w,py),
             transform(matrix,px+w,py+h),transform(matrix,px,py+h)
           ];
