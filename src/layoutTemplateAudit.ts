@@ -4,7 +4,7 @@
  */
 export type AuditItem={severity:"error"|"warning";message:string;elementId?:string};
 type AuditPart={
-  id:string;kind:string;origin:string;fieldKey:string;label:string;
+  id:string;kind:string;origin:string;fieldKey:string;label:string;imageData?:string;
   page?:number;x:number;y:number;width:number;height:number;
   dotMatrix:boolean;preprinted:boolean;quick:boolean;
 };
@@ -33,6 +33,8 @@ export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
     else if(item.x<0||item.y<0||item.x+item.width>draft.widthMm+.5||item.y+item.height>draft.heightMm+.5)warning("Element crosses the physical page boundary.",item.id);
     if((item.page||1)>pageCount||(item.page||1)<1)error("Element page index is out of range.",item.id);
     if(["customer","bank","dotmatrix"].includes(item.origin)&&!item.fieldKey?.trim())error("Dynamic field requires an explicit Customer or Bank Information mapping.",item.id);
+    if(item.kind==="image" && (item.imageData || item.fieldKey!=="bankLogo" || item.origin!=="bank"))
+      error("Shared template graphics must be editable vector shapes or a Bank Logo field. Local bitmap images cannot be shared as customer-free templates.",item.id);
     if(item.preprinted&&item.dotMatrix)warning("Already-printed content is marked for dot-matrix output; verify values-only rule.",item.id);
     if(item.dotMatrix&&!item.preprinted)printable++;
     if(draft.mode==="passbook"&&/union bank/i.test(draft.bankName)&&item.dotMatrix&&!item.preprinted&&["static","preprinted"].includes(item.origin))
