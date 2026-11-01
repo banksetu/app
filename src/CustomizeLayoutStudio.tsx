@@ -165,6 +165,22 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
     window.setTimeout(() => URL.revokeObjectURL(url), 500);
     setNotice("Template JSON exported. Draft only; not a verified print format.");
   };
+  const proofPdf = async () => {
+    setBusy(true);
+    try {
+      const { exportLayoutProofPdf } = await import("./layoutProofPdf");
+      const blob = await exportLayoutProofPdf(draft, preview);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = (normalizeKey(bankName) || "bank") + "-" + preview + "-proof-UNAPPROVED.pdf";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 500);
+      setNotice("Unapproved layout proof exported for measurement only. Never use this proof for customer passbook printing until physically verified.");
+    } catch (error) {
+      setNotice("Could not export proof: " + (error instanceof Error ? error.message : "Unknown error"));
+    } finally { setBusy(false); }
+  };
   const importPdf = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -275,7 +291,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
   return <section className="layout-studio" aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
-      <div className="ls-actions"><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
+      <div className="ls-actions"><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
     <div className="ls-ribbon" role="toolbar" aria-label="Add and edit layout elements">
