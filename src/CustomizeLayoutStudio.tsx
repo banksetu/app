@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
+import { estimatePassbookBounds, type ScanBounds } from "./layoutScanGeometry";
+import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 type Mode = "passbook" | "accountOpening";
 type Kind = "text" | "field" | "rectangle" | "line" | "photo";
@@ -90,6 +92,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
   const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
+  const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
   const [showLayers, setShowLayers] = useState(true);
   const [showProps, setShowProps] = useState(true);
   const undoRef = useRef<Draft[]>([]);
@@ -170,7 +173,8 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
     setBusy(true);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
-      const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      GlobalWorkerOptions.workerSrc = pdfWorker;
       const task = getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
       try {
         const pdf = await task.promise;
