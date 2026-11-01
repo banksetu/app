@@ -1,4 +1,4 @@
-import { bankTemplateValue } from "./bankFormatUtils";
+import { layoutCustomerValue } from "./layoutCustomerValue.ts";
 export type LayoutDynamicElement = {
  id:string;kind:string;origin:string;label:string;fieldKey:string;value?:string;defaultValue?:string;
  x:number;y:number;width:number;height:number;z:number;page?:number;rotation:number;size:number;font:string;align:"left"|"center"|"right";
@@ -34,7 +34,7 @@ export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<st
   if(element.origin==="customer"||element.origin==="dotmatrix"){
     // Values must be from explicitly allowed fields, not arbitrary customer object properties.
     if(allowedCustomerFields.has(field)){
-      const value=bankTemplateValue(customer,field);
+      const value=layoutCustomerValue(customer,field);
       return value || clean(element.defaultValue);
     }
     // Bank values may be intentionally referenced from a dot-matrix line.
