@@ -3,7 +3,7 @@
  * bank labels can be submitted. Never copy tenant/customer photos or records.
  * Approval is explicitly Master-Admin only in the worker route.
  */
-const kinds = new Set(["text", "field", "rectangle", "line", "photo"]);
+const kinds = new Set(["text", "field", "rectangle", "line", "photo", "ellipse"]);
 const origins = new Set(["static", "customer", "bank", "preprinted", "dotmatrix"]);
 const aligns = new Set(["left", "center", "right"]);
 const pdfFormats = new Set(["passbook", "accountOpening"]);
@@ -26,6 +26,8 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
       !finite(raw.foldMm, 0, 500) || !finite(raw.printStartMm, 0, 500) ||
       raw.foldMm > raw.heightMm || raw.printStartMm > raw.heightMm)
     throw Error("Invalid template physical measurements.");
+  const pageCount = raw.pageCount === undefined ? 1 : raw.pageCount;
+  if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > 10) throw Error("Template can contain 1–10 pages.");
   if (!Array.isArray(raw.elements) || !raw.elements.length || raw.elements.length > 300)
     throw Error("Template needs 1–300 editable elements.");
   const seen = new Set();
@@ -39,6 +41,8 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
         !finite(item.opacity, 0, 1) || !finite(item.borderWidth, 0, 10) ||
         !aligns.has(item.align))
       throw Error("Invalid layout element " + (index + 1) + ".");
+    const page = item.page === undefined ? 1 : item.page;
+    if (!Number.isInteger(page) || page < 1 || page > pageCount) throw Error("Invalid element page.");
     const label = clean(item.label, 130), fieldKey = clean(item.fieldKey, 80);
     if (!label || suspicious(label) || fieldKey && !/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/.test(fieldKey))
       throw Error("A label might contain customer data or an invalid field mapping.");
@@ -48,7 +52,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     const origin = item.origin;
     const staticLabel = origin === "static" || origin === "preprinted";
     const safe = {
-      id, kind:item.kind, origin, label, fieldKey, value:"", defaultValue:"",
+      id, kind:item.kind, page, origin, label, fieldKey, value:"", defaultValue:"",
       x:item.x, y:item.y, width:item.width, height:item.height, z:item.z,
       rotation:item.rotation, size:item.size, align:item.align, letterSpacing:item.letterSpacing,
       opacity:item.opacity, borderWidth:item.borderWidth,
@@ -67,7 +71,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     return safe;
   });
   const template = {
-    version:1, bankName, bankKey:normalizedBankKey(bankName), mode:raw.mode,
+    version:1, bankName, bankKey:normalizedBankKey(bankName), mode:raw.mode, pageCount,
     widthMm:raw.widthMm, heightMm:raw.heightMm,
     foldMm:raw.foldMm, printStartMm:raw.printStartMm, elements,
   };
