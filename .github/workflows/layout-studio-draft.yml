@@ -8,6 +8,21 @@ on:
       - src/CustomizeLayoutStudio.css
       - src/layoutScanGeometry.ts
       - src/layoutProofPdf.ts
+      - src/CustomBankDocument.tsx
+      - src/SelectedBankDocument.tsx
+      - src/WorkspaceTemplateDocument.tsx
+      - src/WorkspaceTemplateDocument.css
+      - src/layoutActivation.ts
+      - src/layoutRuntimeValues.ts
+      - src/layoutCustomerValue.ts
+      - src/layoutFieldInference.ts
+      - src/layoutOnDeviceOCR.ts
+      - src/layoutVectorImport.ts
+      - src/layoutTemplateAudit.ts
+      - src/layoutVisualDiff.ts
+      - cloudflare/layoutActivation.js
+      - cloudflare/layoutTemplates.js
+      - scripts/layout-*.test.mjs
       - cloudflare/worker.js
       - cloudflare/worker.test.js
       - scripts/layout-studio.test.mjs
