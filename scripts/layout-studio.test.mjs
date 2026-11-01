@@ -54,3 +54,5 @@ import "./layout-template-audit.test.mjs";
 import "./layout-catalog-safety.test.mjs";
 
 import "./layout-vector-import.test.mjs";
+
+import "./layout-activation.test.mjs";
