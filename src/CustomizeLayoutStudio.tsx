@@ -573,7 +573,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   });
   const partText = (part: LayoutPart) => {
     if (part.kind === "photo") return "PHOTO";
-    if (part.kind === "rectangle" || part.kind === "line" || part.kind === "ellipse" || part.kind === "image") return "";
+    if(part.kind==="image")return part.fieldKey==="bankLogo"?"BANK LOGO":"";
+    if (part.kind === "rectangle" || part.kind === "line" || part.kind === "ellipse") return "";
     if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
     return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix"
       ? (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
