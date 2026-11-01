@@ -125,6 +125,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [catalogChoice, setCatalogChoice] = useState<CatalogEntry | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(true);
   const [catalogBusy, setCatalogBusy] = useState(false);
+  const [layoutSelection, setLayoutSelection] = useState<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}|null>(null);
+  const [hardwareChecked, setHardwareChecked] = useState(false);
   const [showProps, setShowProps] = useState(true);
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
@@ -148,6 +150,28 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     } finally { setCatalogBusy(false); }
   },[bankName,mode]);
   useEffect(()=>{void refreshCatalog();},[refreshCatalog]);
+  const refreshSelection = useCallback(async()=>{
+    if(!canSubmit || !bankName.trim())return;
+    try{
+      const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode});
+      setLayoutSelection(state);
+    } catch {setLayoutSelection(null);}
+  },[canSubmit,bankName,mode]);
+  useEffect(()=>{void refreshSelection();},[refreshSelection]);
+  const selectApprovedTemplate = async(action:"activate"|"rollback"|"disable",templateId?:string)=>{
+    if(!canSubmit || busy || !physicalChecked || !labelChecked || !hardwareChecked){
+      setNotice("Only the Client Admin can select a template after confirming actual paper size, preprinted labels and a real PR2 calibration test.");return;
+    }
+    if(!await confirmAction("Change this workspace's selected layout? Bank Setu will keep version history. Only choose a physically verified approved bank template."))return;
+    setBusy(true);
+    try{
+      const response=await callBankSetuWorker<{success:boolean;revision:number;active:boolean}>("/set-workspace-layout-selection",{
+        mode,action,templateId,confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,confirmedPrinterCalibration:hardwareChecked,
+      });
+      await refreshSelection();setNotice("Workspace layout selection updated to revision "+response.revision+". You can revert or disable it using the same controls.");
+    }catch(error){setNotice("Template activation was blocked: "+(error instanceof Error?error.message:"Unknown error"));}
+    finally{setBusy(false);}
+  };
   const submitForReview = async () => {
     if (!canSubmit || busy || !bankName.trim()) return;
     const report=auditPassbookTemplate(draft);
@@ -165,7 +189,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   };
   const useCatalogTemplate = async (entry:CatalogEntry) => {
     if (!await confirmAction("Use this approved generic layout as a new local draft? Your current unsaved layout will be replaced. Customer data is never copied.")) return;
-    const restored:Draft={version:1,bankName,mode,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,elements:entry.elements.map(part=>({...part,id:randomId(),value:"",defaultValue:""}))};
+    const restored:Draft={version:1,bankName,mode,pageCount:(entry as CatalogEntry & {pageCount?:number}).pageCount||1,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,elements:entry.elements.map(part=>({...part,id:randomId(),value:""}))};
     if (!validDraft(restored,mode,bankName)){setNotice("Catalog template is not compatible with this bank or editor version.");return;}
     setDraft(restored);setSelectedId(null);setCatalogChoice(null);setCatalogOpen(false);setDirty(true);setTemporaryValues({});undoRef.current=[];redoRef.current=[];
     setNotice("Approved generic layout copied into your local DRAFT. Verify physical size and printing; it has not been activated for customers.");
