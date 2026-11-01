@@ -80,7 +80,7 @@ function draftKey(mode: Mode, bankName: string) {
   return "bankSetuLayoutDraft:v1:" + tenantId + ":" + uid + ":" + mode + ":" + bankName;
 }
 
-export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; bankName: string }) {
+export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {} }: { mode: Mode; bankName: string; bankValues?: Record<string,string> }) {
   const storageKey = draftKey(mode, bankName);
   const [draft, setDraft] = useState<Draft>(() => {
     try { const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
@@ -170,7 +170,11 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
     setBusy(true);
     try {
       const { exportLayoutProofPdf } = await import("./layoutProofPdf");
-      const blob = await exportLayoutProofPdf({ ...draft, elements: draft.elements.map(part => temporaryValues[part.id] === undefined ? part : {...part,value:temporaryValues[part.id]}) }, preview);
+      const blob = await exportLayoutProofPdf({ ...draft, elements: draft.elements.map(part => {
+        if (temporaryValues[part.id] !== undefined) return {...part, value:temporaryValues[part.id]};
+        if (part.origin === "bank" && typeof bankValues[part.fieldKey] === "string") return {...part,value:bankValues[part.fieldKey]};
+        return part;
+      }) }, preview);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -285,7 +289,8 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
     if (part.kind === "photo") return "PHOTO";
     if (part.kind === "rectangle" || part.kind === "line") return "";
     if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
-    return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix" ? part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
+    return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix"
+      ? (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
   };
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
@@ -368,7 +373,8 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
           {field("Element name / Label", <input value={selected.label} onChange={event => edit({ label: event.target.value })} />)}
           {field("Element type", <select value={selected.kind} onChange={event => edit({ kind: event.target.value as Kind })}><option value="text">Text / Instructions</option><option value="field">Dynamic Field</option><option value="rectangle">Rectangle</option><option value="line">Line</option><option value="photo">Photo Box</option></select>)}
           {field("Source / Meaning", <select value={selected.origin} onChange={event => edit({ origin: event.target.value as Origin, preprinted: event.target.value === "preprinted" })}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
-          {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" />)}
+          {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
+          <datalist id="ls-bank-fields">{Object.keys(bankValues).sort().map(key=><option key={key} value={key}/>)}</datalist>
           {field("Default / Preview value", <input value={selected.defaultValue} onChange={event => edit({ defaultValue: event.target.value })} placeholder="Optional default" />)}
           {field("Manual field value", <input value={selected.value} onChange={event => edit({ value: event.target.value })} placeholder="Optional static override" />)}
           {["customer","bank","dotmatrix"].includes(selected.origin) && <div className="ls-overlap-tools">
