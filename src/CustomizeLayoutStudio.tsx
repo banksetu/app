@@ -587,7 +587,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const toStyle = (part: LayoutPart): React.CSSProperties => ({
     position: "absolute", left: part.x * PX_PER_MM * zoom, top: part.y * PX_PER_MM * zoom,
     width: part.width * PX_PER_MM * zoom, height: part.height * PX_PER_MM * zoom,
-    transform: "rotate(" + part.rotation + "deg)", zIndex: part.z + 1000,
+    transform: "rotate(" + part.rotation + "deg)", transformOrigin:part.kind==="line"?"0 50%":undefined, zIndex: part.z + 1000,
     fontFamily: part.font, fontSize: part.size * zoom, fontWeight: part.bold ? 700 : 400,
     fontStyle: part.italic ? "italic" : "normal", textDecoration: part.underline ? "underline" : "none",
     textAlign: part.align, color: part.color, background: part.background, borderColor: part.borderColor,
