@@ -240,6 +240,33 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setNotice("Could not export proof: " + (error instanceof Error ? error.message : "Unknown error"));
     } finally { setBusy(false); }
   };
+  const importGraphic = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = "";
+    if (!file) return;
+    if (!["image/png","image/jpeg","image/webp"].includes(file.type) || file.size > 3 * 1024 * 1024) {
+      setNotice("Choose a PNG, JPEG or WebP logo/graphic under 3 MB."); return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=()=>reject(Error("Image not readable"));img.src=objectUrl;});
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(1, 512 / img.width, 512 / img.height);
+      canvas.width = Math.max(1,Math.round(img.width*scale));
+      canvas.height = Math.max(1,Math.round(img.height*scale));
+      canvas.getContext("2d")?.drawImage(img,0,0,canvas.width,canvas.height);
+      const imageData = canvas.toDataURL("image/webp",.82);
+      if (imageData.length>1200000) throw Error("Graphic too complex. Resize it before importing.");
+      const part = addPart("image","static",file.name.slice(0,100));
+      part.imageData=imageData; part.page=selectedPage; part.width=45;
+      part.height=round(45 * img.height / img.width);part.dotMatrix=false;
+      part.z=Math.max(0,...draft.elements.map(p=>p.z))+1;
+      modify(current=>({...current,elements:[...current.elements,part]}));
+      setSelectedId(part.id);
+      setNotice("Independent editable graphic imported. Logo artwork can be moved, scaled, layered or removed; full scanned pages are not used as backgrounds.");
+    } catch(error) { setNotice("Graphic import failed: "+(error instanceof Error?error.message:"Unknown error")); }
+    finally { URL.revokeObjectURL(objectUrl); }
+  };
   const importPdf = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -392,7 +419,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       </div>)}</div>}
     </div>
     <div className="ls-ribbon" role="toolbar" aria-label="Add and edit layout elements">
-      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label>
+      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
       <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
       <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
       <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
