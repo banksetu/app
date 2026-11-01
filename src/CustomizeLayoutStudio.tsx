@@ -96,6 +96,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [unit, setUnit] = useState<Unit>("mm");
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapGrid, setSnapGrid] = useState(false);
   const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
@@ -119,6 +121,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
   const dragRef = useRef<{ id: string; pageX: number; pageY: number; x: number; y: number } | null>(null);
+  const resizeRef = useRef<{id:string;pageX:number;pageY:number;width:number;height:number}|null>(null);
   const [dirty, setDirty] = useState(false);
   const selected = draft.elements.find(part => part.id === selectedId) || null;
   const canReview = accountRole === "master_owner" || accountRole === "admin";
@@ -430,17 +433,33 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     dragRef.current = { id: part.id, pageX: event.clientX, pageY: event.clientY, x: part.x, y: part.y };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
+  const beginResize = (event:ReactPointerEvent<HTMLDivElement>,part:LayoutPart) => {
+    event.preventDefault();event.stopPropagation();
+    dragRef.current=null;
+    undoRef.current=[...undoRef.current.slice(-39),draft];redoRef.current=[];
+    resizeRef.current={id:part.id,pageX:event.clientX,pageY:event.clientY,width:part.width,height:part.height};
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
   const dragging = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if(resizeRef.current){
+      const resizing=resizeRef.current;
+      const dx=(event.clientX-resizing.pageX)/(PX_PER_MM*zoom);
+      const dy=(event.clientY-resizing.pageY)/(PX_PER_MM*zoom);
+      setDraft(current=>({...current,elements:current.elements.map(part=>part.id!==resizing.id?part:{
+        ...part,width:round(Math.max(2,snapGrid?Math.round((resizing.width+dx)/5)*5:resizing.width+dx)),
+        height:round(Math.max(2,snapGrid?Math.round((resizing.height+dy)/5)*5:resizing.height+dy))
+      })}));setDirty(true);return;
+    }
     if (!dragRef.current) return;
     const drag = dragRef.current;
     const dx = (event.clientX - drag.pageX) / (PX_PER_MM * zoom);
     const dy = (event.clientY - drag.pageY) / (PX_PER_MM * zoom);
     setDraft(current => ({ ...current, elements: current.elements.map(part => part.id === drag.id ? {
-      ...part, x: round(within(drag.x + dx, 0, current.widthMm)), y: round(within(drag.y + dy, 0, current.heightMm))
+      ...part, x: round(within(snapGrid?Math.round((drag.x+dx)/5)*5:drag.x + dx, 0, current.widthMm)), y: round(within(snapGrid?Math.round((drag.y+dy)/5)*5:drag.y + dy, 0, current.heightMm))
     } : part) }));
     setDirty(true);
   };
-  const dragEnd = () => { dragRef.current = null; };
+  const dragEnd = () => { dragRef.current = null;resizeRef.current=null; };
   const toStyle = (part: LayoutPart): React.CSSProperties => ({
     position: "absolute", left: part.x * PX_PER_MM * zoom, top: part.y * PX_PER_MM * zoom,
     width: part.width * PX_PER_MM * zoom, height: part.height * PX_PER_MM * zoom,
@@ -578,6 +597,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <label>Print start {number(valueInUnit(draft.printStartMm, unit), next => setMeasure("printStartMm", String(next)), 0, 500, .1)}</label>
       <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
       <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
+      <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
+      <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
       <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
       <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
     </div>
@@ -587,7 +608,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={() => setSelectedId(part.id)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
       </aside>
       <div className="ls-canvas-wrap">
-        <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Select an element then use arrow keys for fine adjustment." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event => {
+        <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Select an element then use arrow keys for fine adjustment." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
+          backgroundImage:showGrid?"linear-gradient(to right,#b4d7e444 1px,transparent 1px),linear-gradient(to bottom,#b4d7e444 1px,transparent 1px)":undefined,
+          backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event => {
           if (!selected || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
           event.preventDefault();
           const step = event.shiftKey ? 1 : .1;
@@ -601,7 +624,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             if (!visible) return null;
             return <div key={part.id} onPointerDown={event => down(event, part)}
               className={"ls-object " + (selectedId === part.id ? "selected " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
-              style={toStyle(part)} title={part.label + " · " + part.origin}>{part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : partText(part)}</div>;
+              style={toStyle(part)} title={part.label + " · " + part.origin}>
+              {part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : partText(part)}
+              {selectedId===part.id && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
+            </div>;
           })}
         </div>
         <p className="ls-canvas-note">Drag objects to position · Arrow keys: 0.1 mm · Shift+Arrow: 1 mm · Fold markers are guides only</p>
