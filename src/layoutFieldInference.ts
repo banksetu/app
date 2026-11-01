@@ -41,12 +41,14 @@ export function findOverlappingPassbookText(parts:AnalyzedTextPart[], cap=150):T
   const rows = new Map<string,number[]>();
   const found:TextCollision[]=[];
   const indexed = parts.slice(0,700);
+  const safeCap=Number.isFinite(cap)?Math.max(0,Math.floor(cap)):150;
+  if(safeCap===0)return [];
   for(let index=0;index<indexed.length;index++){
-    const part=indexed[index]; if(![part.x,part.y,part.width,part.height].every(Number.isFinite))continue;
+    const part=indexed[index]; if(![part.x,part.y,part.width,part.height].every(Number.isFinite) || part.width<=0 || part.height<=0)continue;
     const pg=part.page||1;
     const start=Math.floor((part.y-2)/5),end=Math.floor((part.y+Math.max(2,part.height)+2)/5);
     const candidate=new Set<number>();
-    for(let row=start;row<=Math.min(start+8,end);row++){
+    for(let row=start;row<=end && row<start+120;row++){
       const key=pg+":"+row;
       for(const other of rows.get(key)||[])candidate.add(other);
     }
@@ -57,10 +59,10 @@ export function findOverlappingPassbookText(parts:AnalyzedTextPart[], cap=150):T
       const overlapY=Math.min(prev.y+Math.max(2,prev.height),part.y+Math.max(2,part.height))-Math.max(prev.y,part.y);
       if(overlapX>1 && overlapY>0.6){
         found.push({firstId:prev.id||String(otherIndex),secondId:part.id||String(index),page:pg,intersectionMm:Math.round(overlapX*10)/10,reason:"Possible preprinted label and overprinted data; user must verify"});
-        if(found.length>=cap)return found;
+        if(found.length>=safeCap)return found;
       }
     }
-    for(let row=start;row<=Math.min(start+8,end);row++){
+    for(let row=start;row<=end && row<start+120;row++){
       const key=pg+":"+row;
       if(!rows.has(key))rows.set(key,[]);
       rows.get(key)!.push(index);
