@@ -256,18 +256,24 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         const pdf = await task.promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 1 });
-        const text = await page.getTextContent();
         const width = round(viewport.width / 72 * 25.4);
         const height = round(viewport.height / 72 * 25.4);
+        const pageCount = Math.min(10, pdf.numPages);
         const elements: LayoutPart[] = [];
-        for (const item of text.items) {
-          if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
-          const part = addPart("text", "static", item.str.trim(), "", round(item.transform[4] / viewport.width * width), round((viewport.height - item.transform[5]) / viewport.height * height));
-          part.width = round(Math.max(4, item.width / viewport.width * width));
-          part.height = round(Math.max(3, item.height / viewport.height * height));
-          part.size = within(Math.round(Math.abs(item.transform[0]) * 72 / 96) || 10, 5, 60);
-          part.z = elements.length + 1;
-          elements.push(part);
+        for (let index = 1; index <= pageCount; index++) {
+          const pdfPage = index === 1 ? page : await pdf.getPage(index);
+          const view = pdfPage.getViewport({ scale:1 });
+          const textLayer = await pdfPage.getTextContent();
+          for (const item of textLayer.items) {
+            if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
+            const part = addPart("text", "static", item.str.trim(), "", round(item.transform[4] / view.width * width), round((view.height - item.transform[5]) / view.height * height));
+            part.page = index;
+            part.width = round(Math.max(4, item.width / view.width * width));
+            part.height = round(Math.max(3, item.height / view.height * height));
+            part.size = within(Math.round(Math.abs(item.transform[0]) * 72 / 96) || 10, 5, 60);
+            part.z = elements.length + 1;
+            elements.push(part);
+          }
         }
         // For an A4 scanner page, its paper dimensions are NOT the passbook dimensions.
         // Keep measured passbook size from the user's manual calibration until border analysis exists.
@@ -293,13 +299,15 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         }
         modify(current => ({
           ...current,
+          pageCount,
           widthMm: scannedA4 && mode === "passbook" ? current.widthMm : width,
           heightMm: scannedA4 && mode === "passbook" ? current.heightMm : height,
           elements: elements.length ? elements : current.elements,
         }));
+        setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
-          "Imported " + elements.length + " editable PDF text elements. " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
+          "Imported " + elements.length + " editable PDF text elements across "+pageCount+" PDF pages. " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
           "No embedded PDF text found (possibly a scanned image). Use Add tools to reconstruct fields; automatic OCR is not yet active.");
         if (scannedA4 && mode === "passbook") setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + (elements.length ? elements.length + " editable text elements imported." : "No embedded text; manual editing is available."));
       } finally { await task.destroy(); }
