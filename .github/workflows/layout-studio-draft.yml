@@ -7,6 +7,9 @@ on:
       - src/CustomizeLayoutStudio.tsx
       - src/CustomizeLayoutStudio.css
       - src/layoutScanGeometry.ts
+      - src/layoutProofPdf.ts
+      - cloudflare/worker.js
+      - cloudflare/worker.test.js
       - scripts/layout-studio.test.mjs
       - .github/workflows/layout-studio-draft.yml
   workflow_dispatch:
@@ -26,4 +29,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test scripts/layout-studio.test.mjs
+      - run: node --test cloudflare/worker.test.js
       - run: npm run build
