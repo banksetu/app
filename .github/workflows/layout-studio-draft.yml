@@ -48,3 +48,52 @@ jobs:
       - run: npm run test:pr2
       - run: node --test scripts/bank-pdf.test.mjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs desktop/print-preview.test.cjs
       - run: npm run build
+
+  windows-installer-smoke:
+    name: Windows unsigned installer smoke (draft only)
+    needs: layout-studio
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test desktop/print-preview.test.cjs desktop/pr2.test.cjs
+      - run: npm run desktop:pack:unsigned
+      - name: Check draft installer exists
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem desktop-release -Filter "BankSetu-Setup-*.exe" -ErrorAction SilentlyContinue)
+          if ($files.Count -eq 0) { throw "No unsigned Windows test installer produced" }
+          Write-Host "Unsigned draft installer built successfully; no deployment or publishing performed."
+
+  android-debug-smoke:
+    name: Android debug build smoke (draft only)
+    needs: layout-studio
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - run: npm run android:sync
+      - run: bash ./gradlew assembleDebug --no-daemon
+        working-directory: android
+      - name: Check draft APK exists
+        run: |
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          echo "Android debug build successful; no production deployment performed."
