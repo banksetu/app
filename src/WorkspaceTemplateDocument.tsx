@@ -26,6 +26,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
 }){
   const [printing,setPrinting]=useState(false),[message,setMessage]=useState("");
   const [directPrinting,setDirectPrinting]=useState(false);
+  const [temporaryValues,setTemporaryValues]=useState<Record<string,string>>({});
   if(!templateCanRender(template,bankName,template.mode))
     return <p role="alert">The activated bank layout is incompatible. Use the existing bank print flow.</p>;
   const pages=Math.min(10,Math.max(1,template.pageCount||1));
@@ -57,6 +58,17 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
       <p>Preview uses this client's customer and Bank Information fields. Confirm the paper and printer settings before printing.</p>
       <button type="button" onClick={()=>{void print();}} disabled={printing}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
       {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting} onClick={()=>setDirectPrinting(true)}>Olivetti Mode Print (Existing PR2)</button>}
+      <details className="workspace-template-temporary"><summary>Temporary Edit — this print only</summary>
+        <p>These changes affect the active preview and print job only. The Master Template and customer data are never modified.</p>
+        <div className="workspace-template-temporary-grid">
+          {template.elements.filter(item=>["customer","bank","dotmatrix"].includes(item.origin)).map(item=><label key={item.id}>
+            <span>{item.label} · {item.fieldKey||"Unmapped"}</span>
+            <input value={temporaryValues[item.id]??boundLayoutValue(item,customer,bankInfo)} maxLength={500}
+              onChange={event=>setTemporaryValues(current=>({...current,[item.id]:event.target.value}))}/>
+          </label>)}
+        </div>
+        <button type="button" onClick={()=>setTemporaryValues({})}>Reset Temporary Edits</button>
+      </details>
       {message&&<p role="status">{message}</p>}
     </div>
     <div className="passbook-page workspace-bridge-page"><div className="passbook-shell workspace-bridge-shell">
@@ -79,7 +91,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
             }
             if(kind==="rectangle"||kind==="ellipse")return <div key={item.id} style={frame(item)} aria-hidden="true"/>;
             if(kind==="line")return <div key={item.id} aria-hidden="true" style={{...frame(item),height:Math.max(.2,item.borderWidth)+"px",width:item.width+"mm",background:item.borderColor||item.color,transform:"rotate("+item.rotation+"deg)"}}/>;
-            const text=boundLayoutValue(item,customer,bankInfo);
+            const text=temporaryValues[item.id]??boundLayoutValue(item,customer,bankInfo);
             return <span key={item.id} style={{...frame(item),color:output==="dotmatrix"?"#000":item.color,background:output==="dotmatrix"?"transparent":item.background}}>{text}</span>;
           })}
       </div>)}
