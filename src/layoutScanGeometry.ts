@@ -113,7 +113,7 @@ export function estimatePassbookBounds(pixels: Uint8ClampedArray, width: number,
   const cornerHits = corners.filter(([x, y]) => background(Math.floor(x), Math.floor(y))).length;
   return {
     left, top, right, bottom, widthMm, heightMm,
-    foldHint:estimatePassbookFold(pixels,width,height,{left,top,right,bottom,widthMm,heightMm,confidence:"low",reason:"estimate"}),
+    foldHint:estimatePassbookFold(pixels,width,height,{left,top,right,bottom,widthMm,heightMm,confidence:"low",reason:"estimate"}) ?? undefined,
     confidence: cornerHits >= 3 ? "medium" : "low",
     reason: cornerHits >= 3
       ? "Outer contrast visible near corners. Verify against the real passbook before applying."
