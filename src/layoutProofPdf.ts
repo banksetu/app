@@ -2,7 +2,8 @@ import jsPDF from "jspdf";
 
 /** Independent, review-only proof. Never sends or marks a PR2 print as complete. */
 type ProofPart = {
-  kind: "text" | "field" | "rectangle" | "line" | "photo";
+  kind: "text" | "field" | "rectangle" | "line" | "photo" | "ellipse" | "image";
+  page?: number; imageData?: string;
   origin: string;
   label: string;
   fieldKey: string;
@@ -15,7 +16,7 @@ type ProofPart = {
   quick: boolean; dotMatrix: boolean; preprinted: boolean;
 };
 export type ProofLayout = {
-  widthMm: number; heightMm: number; elements: ProofPart[];
+  widthMm: number; heightMm: number; pageCount?: number; elements: ProofPart[];
 };
 export type ProofMode = "quick" | "dotmatrix";
 const rgb = (hex: string): [number, number, number] => {
@@ -37,7 +38,10 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     compress: true,
   });
   pdf.setProperties({ title: "UNAPPROVED BANK SETU LAYOUT PROOF", subject: "Manual printer alignment proof — not an approved template" });
-  for (const part of [...layout.elements].sort((a, b) => a.z - b.z)) {
+  const pages = Math.max(1, Math.min(10, layout.pageCount || 1));
+  for (let pageNo = 1; pageNo <= pages; pageNo++) {
+    if (pageNo > 1) pdf.addPage([layout.widthMm,layout.heightMm], layout.widthMm > layout.heightMm ? "landscape" : "portrait");
+    for (const part of [...layout.elements].filter(p => (p.page || 1) === pageNo).sort((a, b) => a.z - b.z)) {
     if (mode === "quick" ? !part.quick : !part.dotMatrix || part.preprinted) continue;
     if (part.x < 0 || part.y < 0 || part.x > layout.widthMm || part.y > layout.heightMm) continue;
     const x = part.x, y = part.y;
@@ -47,6 +51,16 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     if (part.background !== "transparent" && mode === "quick") {
       const fill=rgb(part.background);pdf.setFillColor(fill[0],fill[1],fill[2]);
       pdf.rect(x, y, part.width, part.height, "F");
+    }
+    if (part.kind === "image") {
+      if (mode === "quick" && part.imageData?.startsWith("data:image/") && part.imageData.length <= 1500000)
+        pdf.addImage(part.imageData,"WEBP",x,y,part.width,part.height);
+      continue;
+    }
+    if (part.kind === "ellipse") {
+      pdf.setLineWidth(Math.max(.15,part.borderWidth*.2646));
+      pdf.ellipse(x+part.width/2,y+part.height/2,part.width/2,part.height/2,"S");
+      continue;
     }
     if (part.kind === "rectangle" || part.kind === "photo") {
       pdf.setLineWidth(Math.max(.15,part.borderWidth * .2646));
@@ -70,6 +84,7 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     const lines = pdf.splitTextToSize(partValue(part), Math.max(2,part.width));
     pdf.text(lines.slice(0, 24), x + (part.align === "center" ? part.width / 2 : part.align === "right" ? part.width : 0),
       y + Math.min(part.height, Math.max(2,part.size * .2646)), { align: part.align, angle: part.rotation });
+  }
   }
   return pdf.output("blob");
 }
