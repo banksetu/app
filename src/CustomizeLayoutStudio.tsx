@@ -109,6 +109,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [referenceVisible, setReferenceVisible] = useState(false);
   const [visualDiff, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
   const [diffBusy, setDiffBusy] = useState(false);
+  const [pr2Proof, setPr2Proof] = useState("");
   const [audit, setAudit] = useState<AuditItem[] | null>(null);
   const [physicalChecked, setPhysicalChecked] = useState(false);
   const [labelChecked, setLabelChecked] = useState(false);
@@ -318,6 +319,28 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setReferenceVisible(false);setNotice("Scanner estimate applied or partially prepared. The original overlay was hidden because it could not be recropped: "+(error instanceof Error?error.message:"Unknown error"));
     }
   };
+  // The existing PR2 renderer is reused for compatibility; never dispatch
+  // data to a printer or call the native bridge from the draft editor.
+  const verifyPr2Raster = async () => {
+    if(draft.mode!=="passbook"||(draft.pageCount||1)!==1){
+      setNotice("Direct PR2 requires a single passbook page. Review one page at a time.");return;
+    }
+    setBusy(true);setPr2Proof("");
+    try {
+      const [{exportLayoutProofPdf},{rasterizePassbook}] = await Promise.all([
+        import("./layoutProofPdf"),import("./platform/pr2")
+      ]);
+      const pdf=await exportLayoutProofPdf(draft,"dotmatrix");
+      const bytes=new Uint8Array(await pdf.arrayBuffer());
+      let binary="";
+      for(let i=0;i<bytes.length;i+=8192) binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+      const rendered=await rasterizePassbook(btoa(binary));
+      setPr2Proof(rendered.preview);
+      setNotice("Draft passed the existing PR2 raster size/render compatibility check. No printer was contacted. Paper sensing, font accuracy and physical X/Y alignment remain unverified.");
+    }catch(error){
+      setNotice("PR2 compatibility check failed: "+(error instanceof Error?error.message:"Unknown error"));
+    }finally{setBusy(false);}
+  };
   const importGraphic = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; event.target.value = "";
     if (!file) return;
@@ -518,9 +541,15 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   return <section className="layout-studio" aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
-      <div className="ls-actions"><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
+      <div className="ls-actions"><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button>
+        {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
+    {pr2Proof && <details className="ls-audit"><summary>Unapproved dot-matrix proof — existing PR2 renderer</summary>
+      <p>This does not certify physical Epson alignment or authorize production printing.</p>
+      <img alt="Black and white draft PR2 raster preview" src={pr2Proof} style={{maxWidth:"100%",maxHeight:400,objectFit:"contain"}}/>
+      <button type="button" onClick={()=>setPr2Proof("")}>Clear raster proof</button>
+    </details>}
     {audit && <div className="ls-audit" role="status">
       <strong>Layout Audit · {audit.filter(item=>item.severity==="error").length} errors · {audit.filter(item=>item.severity==="warning").length} warnings</strong>
       {audit.length?audit.slice(0,35).map((item,i)=><div key={i} className="ls-audit-row">
