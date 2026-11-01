@@ -36,3 +36,24 @@ test("overlap detection is bounded for large PDFs", () => {
   const parts=Array.from({length:900},(_,i)=>({id:String(i),label:"x",x:(i%20)*9,y:Math.floor(i/20)*6,width:7,height:3}));
   assert.ok(findOverlappingPassbookText(parts).length<=150);
 });
+
+test("tall scanned labels are checked beyond the first eight spatial rows", () => {
+  const matches=findOverlappingPassbookText([
+    {id:"tall",page:1,label:"preprinted panel",x:10,y:10,width:50,height:90},
+    {id:"overprint",page:1,label:"printed customer value",x:20,y:80,width:30,height:4}
+  ]);
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].firstId,"tall");
+  assert.equal(matches[0].secondId,"overprint");
+});
+
+test("malformed boxes and nonpositive result caps are ignored safely", () => {
+  const text=[
+    {label:"invalid",x:10,y:10,width:-20,height:10},
+    {label:"valid a",x:10,y:10,width:30,height:5},
+    {label:"valid b",x:12,y:11,width:25,height:5}
+  ];
+  assert.equal(findOverlappingPassbookText(text).length,1);
+  assert.deepEqual(findOverlappingPassbookText(text,0),[]);
+  assert.deepEqual(findOverlappingPassbookText(text,-1),[]);
+});
