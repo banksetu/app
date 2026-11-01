@@ -191,7 +191,12 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
         }
         // For an A4 scanner page, its paper dimensions are NOT the passbook dimensions.
         // Keep measured passbook size from the user's manual calibration until border analysis exists.
-        const scannedA4 = Math.abs(width - 210) < 5 && Math.abs(height - 297) < 5;
+        const scannedA4 = (Math.abs(width - 210) < 5 && Math.abs(height - 297) < 5) || (Math.abs(width - 297) < 5 && Math.abs(height - 210) < 5);
+        let overlappingPairs = 0;
+        for (let i = 0; i < elements.length; i++) for (let j = i + 1; j < elements.length; j++) {
+          const a = elements[i], b = elements[j];
+          if (Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > 1 && Math.abs(a.y - b.y) < 2) overlappingPairs++;
+        }
         modify(current => ({
           ...current,
           widthMm: scannedA4 && mode === "passbook" ? current.widthMm : width,
@@ -200,7 +205,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
         }));
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
-          "Imported " + elements.length + " editable PDF text elements. Graphics, OCR, overlapping text and actual passbook boundaries still require verification." :
+          "Imported " + elements.length + " editable PDF text elements. " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
           "No embedded PDF text found (possibly a scanned image). Use Add tools to reconstruct fields; automatic OCR is not yet active.");
         if (scannedA4 && mode === "passbook") setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + (elements.length ? elements.length + " editable text elements imported." : "No embedded text; manual editing is available."));
       } finally { await task.destroy(); }
