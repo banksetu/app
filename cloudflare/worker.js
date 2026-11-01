@@ -4,6 +4,7 @@ import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 import { createSupportMediaService } from "./supportMedia.js";
 import { normalizedBankKey, sanitizeLayoutTemplate } from "./layoutTemplates.js";
+import { layoutSelectionKey, normalizedActivationRecord, previousApprovedVersion } from "./layoutActivation.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -1285,6 +1286,64 @@ async function handleMasterOperation(request, env, actor, route) {
     const status=body.action==="approve"?"approved":"rejected";
     await putDocument(env,path,{status,reviewedBy:actor.uid,reviewedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
     return json({success:true,id,status});
+  }
+  if (route === "/get-workspace-layout-selection" || route === "/set-workspace-layout-selection") {
+    if (!["client_admin","client_user"].includes(role) || !actor.profile.tenantId)
+      return json({error:"A signed-in client workspace is required."},403);
+    if (route === "/set-workspace-layout-selection" && role !== "client_admin")
+      return json({error:"Only the Client Admin can select or roll back a verified template."},403);
+    const body=await request.json().catch(()=>({}));
+    const mode=String(body.mode||"");
+    let id;
+    try { id=layoutSelectionKey(actor.profile.tenantId,mode); }
+    catch(error){return json({error:error.message},400);}
+    const tenantId=String(actor.profile.tenantId),settingsPath="/tenantSettings/"+encodeURIComponent(tenantId);
+    const settingsDoc=await firestoreRequest(env,settingsPath).catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const bankKey=normalizedBankKey(settings.passbookBank||settings.bankInfo?.passbookBank||"");
+    if(!bankKey)return json({error:"Select a bank in Bank Information before using custom templates."},409);
+    const selectionPath="/tenantLayoutSelections/"+id;
+    const oldDoc=await firestoreRequest(env,selectionPath).catch(error=>error.status===404?null:Promise.reject(error));
+    const old=decodeFields(oldDoc?.fields||{});
+    if (route === "/get-workspace-layout-selection") {
+      if(!old.templateId || old.bankKey!==bankKey) return json({active:false,bankKey,mode,revision:old.revision||0,template:null});
+      const templateDoc=await firestoreRequest(env,"/layoutTemplateCatalog/"+old.templateId).catch(error=>error.status===404?null:Promise.reject(error));
+      const template=decodeFields(templateDoc?.fields||{});
+      if(template.status!=="approved" || template.mode!==mode || template.bankKey!==bankKey)
+        return json({active:false,bankKey,mode,revision:old.revision||0,template:null});
+      return json({active:true,bankKey,mode,revision:old.revision,activatedAt:old.activatedAt,template:{
+        id:template.id,bankName:template.bankName,mode:template.mode,
+        widthMm:template.widthMm,heightMm:template.heightMm,foldMm:template.foldMm,
+        printStartMm:template.printStartMm,pageCount:template.pageCount||1,elements:template.elements
+      }});
+    }
+    const action=String(body.action||"");
+    if(!["activate","rollback","disable"].includes(action))return json({error:"Choose activate, rollback or disable."},400);
+    if(body.confirmedPhysicalSample!==true || body.confirmedPrintedLabels!==true ||
+       body.confirmedPrinterCalibration!==true)
+       return json({error:"Physical sample, preprinted labels and printer calibration must all be confirmed."},409);
+    if(old.templateId && old.bankKey!==bankKey && action!=="disable")
+      return json({error:"Bank changed since the previous custom layout. Disable that layout before selecting a new bank."},409);
+    let templateId="";
+    if(action==="activate")templateId=String(body.templateId||"");
+    if(action==="rollback")templateId=previousApprovedVersion(old);
+    if(action==="rollback"&&!templateId)return json({error:"No earlier verified layout version to restore."},409);
+    if(templateId){
+      if(!/^[a-f0-9-]{36}$/.test(templateId))return json({error:"Invalid template selection."},400);
+      const selected=await firestoreRequest(env,"/layoutTemplateCatalog/"+templateId).catch(error=>error.status===404?null:Promise.reject(error));
+      const template=decodeFields(selected?.fields||{});
+      if(template.status!=="approved"||template.mode!==mode||template.bankKey!==bankKey)
+        return json({error:"Select a Master-approved template for your currently selected bank and format."},409);
+    }
+    let next;
+    try { next=normalizedActivationRecord(old,templateId||null,actor.uid,new Date().toISOString()); }
+    catch(error){return json({error:error.message},409);}
+    const saved={...next,tenantId,mode,bankKey,updatedBy:actor.uid,updatedAt:new Date().toISOString()};
+    const write={update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
+      currentDocument:oldDoc?{updateTime:oldDoc.updateTime}:{exists:false}};
+    try {await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
+    catch(error){if(error.status===409 || error.status===400)return json({error:"Template version changed. Refresh before retrying."},409);throw error;}
+    return json({success:true,active:Boolean(templateId),mode,revision:next.revision,templateId:templateId||null});
   }
   if (route === "/list-layout-templates") {
     if (!["master_owner","admin","client_admin","client_user"].includes(role))
