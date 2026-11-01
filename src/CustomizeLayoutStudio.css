@@ -18,7 +18,7 @@
   max-width: 100%;
   min-width: 0;
 }
-.banksetu-app-shell[data-appearance="dark"] .layout-studio {
+html[data-appearance="dark"] .layout-studio, .banksetu-app-shell[data-appearance="dark"] .layout-studio {
   --ls-bg: #081925;
   --ls-surface: #10293a;
   --ls-text: #e7f2f5;
