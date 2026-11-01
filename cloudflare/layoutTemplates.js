@@ -3,7 +3,7 @@
  * bank labels can be submitted. Never copy tenant/customer photos or records.
  * Approval is explicitly Master-Admin only in the worker route.
  */
-const kinds = new Set(["text", "field", "rectangle", "line", "photo", "ellipse"]);
+const kinds = new Set(["text", "field", "rectangle", "line", "photo", "ellipse", "image"]);
 const origins = new Set(["static", "customer", "bank", "preprinted", "dotmatrix"]);
 const aligns = new Set(["left", "center", "right"]);
 const pdfFormats = new Set(["passbook", "accountOpening"]);
@@ -50,6 +50,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     if (!/^[\w-]{1,80}$/.test(id) || seen.has(id)) throw Error("Duplicate or invalid layer IDs.");
     seen.add(id);
     const origin = item.origin;
+    if(item.kind==="image" && (item.imageData!==undefined || fieldKey!=="bankLogo" || origin!=="bank")) throw Error("Shared logos must be Bank Information image placeholders; embedded raster image pixels cannot be shared.");
     const staticLabel = origin === "static" || origin === "preprinted";
     const safe = {
       id, kind:item.kind, page, origin, label, fieldKey, value:"",
