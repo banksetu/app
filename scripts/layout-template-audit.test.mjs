@@ -27,3 +27,22 @@ test("overlapping printed content can be separately marked and reviewed",()=>{
  const report=auditPassbookTemplate(draft({elements:[part({preprinted:true})]}));
  assert.ok(report.some(item=>/Already-printed/.test(item.message)));
 });
+
+test("invalid page counts and nonfinite fold positions never pass activation audit",()=>{
+ for(const change of [
+  {foldMm:NaN}, {printStartMm:Infinity}, {pageCount:1.5}, {pageCount:0},
+  {widthMm:501}, {heightMm:NaN}
+ ]) {
+  const report=auditPassbookTemplate(draft(change));
+  assert.ok(report.some(item=>item.severity==="error"),JSON.stringify(change));
+ }
+});
+
+test("misconfigured passbook graphics can never be accepted for PR2 output",()=>{
+ for(const kind of ["image","photo","rectangle","ellipse","line"]){
+  const report=auditPassbookTemplate(draft({elements:[
+   part(), part({id:"graphic",kind,origin:"static",fieldKey:"",dotMatrix:true,quick:true})
+  ]}));
+  assert.ok(report.some(item=>item.severity==="error"&&/graphics and photo/.test(item.message)),kind);
+ }
+});
