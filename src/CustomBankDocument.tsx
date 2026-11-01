@@ -1,7 +1,10 @@
 import UnionAccountOpening from "./UnionAccountOpening";
 import UnionPassbook from "./UnionPassbook";
 import { localDataFetch, getDataIdToken } from "./core/localData";
-import { useCallback, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
+import {callBankSetuWorker} from "./workerApi";
+import {templateCanRender,type ApprovedLayout} from "./layoutRuntimeValues";
+const WorkspaceTemplateDocument=lazy(()=>import("./WorkspaceTemplateDocument"));
 import { auth } from "./firebase";
 import { getTenantApiUrl } from "./tenantApi";
 import BankFormatPrint from "./BankFormatPrint";
@@ -17,10 +20,24 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
   const [matches,setMatches] = useState<Match[]>([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
+  const [activeLayout,setActiveLayout]=useState<ApprovedLayout|null>(null);
   const onConfigured = useCallback(() => {}, []);
   const unionAof = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType === "accountOpening";
   const unionPassbook = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType !== "accountOpening";
   const title = formatType === "accountOpening" ? "Account Opening PDF" : formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print";
+  const layoutMode=formatType==="accountOpening"?"accountOpening":"passbook";
+  useEffect(()=>{
+    let live=true;
+    setActiveLayout(null);
+    void (async()=>{
+      try{
+        const state=await callBankSetuWorker<{active:boolean;template:ApprovedLayout|null}>("/get-workspace-layout-selection",{mode:layoutMode});
+        if(live && state.active && state.template && templateCanRender(state.template,bankInfo.passbookBank||"",layoutMode))
+          setActiveLayout(state.template);
+      }catch{/* Offline or no active custom template: keep the original bank print renderer unchanged. */}
+    })();
+    return()=>{live=false;};
+  },[layoutMode,bankInfo.passbookBank]);
   const request = async (body: Record<string,unknown>) => {
     const user=auth.currentUser, url=getTenantApiUrl();
     if (!user || !url) throw new Error("Connect this workspace's Google account first.");
@@ -64,6 +81,10 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     {matches.map(match=><button type="button" key={match.rowNumber} disabled={busy} onClick={()=>void load(match.rowNumber)}>{match.name} · {match.accountNo} · {match.enrolId}</button>)}
     {customer && !unionAof && formatType === "accountOpening" && <label>Optional bank logo <input type="file" accept="image/png,image/jpeg" onChange={event=>{const file=event.target.files?.[0];if(!file||file.size>2*1024*1024)return;const reader=new FileReader();reader.onload=()=>setTemplateLogo(String(reader.result));reader.readAsDataURL(file);}} /></label>}
     {customer && formatType === "accountOpening" && <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:12}}>{(["dateOfBirth","religion","category"] as const).map(field=><label key={field}>{field === "dateOfBirth" ? "Date of Birth ✎" : field === "religion" ? "Religion ✎" : "Category ✎"}<input aria-label={`Edit ${field}`} type={field==="dateOfBirth"?"date":"text"} value={overrides[field]} onChange={event=>setOverrides(current=>({...current,[field]:event.target.value}))} /></label>)}<small>ये edits इस print preview के लिए हैं।</small></div>}
-    {unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
+    {activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
+      template={activeLayout} bankName={bankInfo.passbookBank||""} customer={{...customer,...overrides}}
+      bankInfo={bankInfo as Record<string,unknown>}
+      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo} /></Suspense>
+    : unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
   </section>;
 }
