@@ -44,3 +44,5 @@ test("Basic editor features and dark/light variants are present", () => {
 import "./layout-scan-geometry.test.mjs";
 
 import "./layout-field-inference.test.mjs";
+
+import "./layout-native-ocr.test.mjs";
