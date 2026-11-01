@@ -82,7 +82,8 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     }
     if (part.kind === "line") {
       pdf.setLineWidth(Math.max(.15,part.borderWidth * .2646));
-      pdf.line(x,y,x+part.width,y);
+      const radians=part.rotation*Math.PI/180;
+      pdf.line(x,y,x+part.width*Math.cos(radians),y+part.width*Math.sin(radians));
       continue;
     }
     const font = fontFamily(part.font);
