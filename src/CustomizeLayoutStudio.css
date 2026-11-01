@@ -128,3 +128,9 @@
 
 .ls-resize-handle {position:absolute;right:0;bottom:0;width:15px;height:15px;background:#087c80;border:2px solid white;border-radius:3px;cursor:nwse-resize;touch-action:none;z-index:10;box-shadow:0 0 0 1px #087c80}
 .ls-resize-handle:hover {background:#08a8ad}
+
+.ls-audit {display:grid;gap:6px;border:1px solid var(--ls-accent);background:var(--ls-surface);padding:11px;border-radius:10px;margin-bottom:10px}
+.ls-audit-row {display:flex;flex-wrap:wrap;align-items:center;gap:7px;border-bottom:1px solid var(--ls-border);padding:5px 0;font-size:12px}
+.ls-audit-row>strong {min-width:54px}
+.ls-audit-row>span {flex:1 1 210px}
+.ls-audit-row>button {font-size:11px}
