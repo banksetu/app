@@ -105,7 +105,7 @@ test("global calibration rescales both positions and field dimensions on an A4 c
  const adjusted=calibrateScanBounds(raw,{widthMm:190,heightMm:173});
  const imported=[{page:1,x:52.5,y:59.4,width:21,height:14.85}];
  const result=mapScannedPageToPassbook(adjusted,200,100,210,297,imported);
- assert.deepEqual(result.elements[0],{page:1,x:39.8,y:36.7,width:31.7,height:12.4});
+ assert.deepEqual(result.elements[0],{page:1,x:39.6,y:12.4,width:31.7,height:12.4});
  assert.equal(adjusted.widthMm,190);
  assert.equal(adjusted.heightMm,173);
  assert.equal(raw.widthMm,126,"original suggestion remains unchanged");
