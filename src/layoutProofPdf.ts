@@ -43,6 +43,9 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     if (pageNo > 1) pdf.addPage([layout.widthMm,layout.heightMm], layout.widthMm > layout.heightMm ? "landscape" : "portrait");
     for (const part of [...layout.elements].filter(p => (p.page || 1) === pageNo).sort((a, b) => a.z - b.z)) {
     if (mode === "quick" ? !part.quick : !part.dotMatrix || part.preprinted) continue;
+    // Physical passbook stock already carries the artwork. Even a misconfigured
+    // draft cannot include photos, logos, borders or shapes in Direct PR2 proof.
+    if (mode === "dotmatrix" && part.kind !== "text" && part.kind !== "field") continue;
     if (part.x < 0 || part.y < 0 || part.x > layout.widthMm || part.y > layout.heightMm) continue;
     const x = part.x, y = part.y;
     const color = mode === "dotmatrix" ? [0,0,0] as const : rgb(part.color);
