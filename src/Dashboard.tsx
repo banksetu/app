@@ -424,6 +424,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const [bankLogo, setBankLogo] = useState("");
   const [bankInfo, setBankInfo] = useState<BankInfo>(emptyBankInfo);
+  const [bankExtraFields, setBankExtraFields] = useState<Record<string,string>>({});
+  const [bankExtraFieldsDraft, setBankExtraFieldsDraft] = useState<Record<string,string>>({});
+  const [newBankFieldLabel, setNewBankFieldLabel] = useState("");
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
@@ -463,6 +466,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       const saved = restoreWorkspaceBankSettings(cloudData);
       if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
       setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
+       const custom = cloudData.bankExtraFields && typeof cloudData.bankExtraFields === "object" && !Array.isArray(cloudData.bankExtraFields) ? cloudData.bankExtraFields as Record<string,unknown> : {};
+       setBankExtraFields(Object.fromEntries(Object.entries(custom).filter(([key,value])=>/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) && typeof value==="string").map(([key,value])=>[key,String(value)])));
       setBankSettingsReady(true); setBankSettingsError("");
       // This is only a workspace-scoped cache. It never overrides Firebase.
       try {
@@ -490,6 +495,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     setBankInfoDraft({ ...bankInfo });
+    setBankExtraFieldsDraft({ ...bankExtraFields });
+    setNewBankFieldLabel("");
 
     setBankInfoEditOpen(true);
 
@@ -557,9 +564,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     try {
 
-      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned });
+      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned, bankExtraFields:bankExtraFieldsDraft });
 
       setBankInfo(cleaned);
+       setBankExtraFields({...bankExtraFieldsDraft});
 
       try { localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned)); } catch { /* Firebase save already succeeded. */ }
 
@@ -1420,7 +1428,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
-          {canCustomizeLayout && bankSettingsReady && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} /></Suspense>}
+          {canCustomizeLayout && bankSettingsReady && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} bankValues={{...bankInfo,...bankExtraFields}} /></Suspense>}
           {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
@@ -1772,7 +1780,24 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             </div>
 
-            <div style={styles.bankInfoModalActions}>
+            <div style={{display:"grid",gap:9,padding:12,border:"1px solid var(--app-dark-border, #64748b)",borderRadius:10,marginTop:12}}>
+                <strong>Custom Bank Information Fields</strong>
+                <p style={{fontSize:12,margin:0}}>Add optional bank-specific data such as GSTIN, Telephone or Branch Manager. Customer records are not modified.</p>
+                {Object.entries(bankExtraFieldsDraft).map(([key,value])=><label key={key} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{minWidth:110,fontSize:12}}>{key}</span>
+                  <input aria-label={key+" value"} value={value} maxLength={180} onChange={event=>setBankExtraFieldsDraft(current=>({...current,[key]:event.target.value}))} style={{...styles.bankInfoInput,flex:"1 1 130px"}}/>
+                  <button type="button" aria-label={"Remove "+key} onClick={()=>setBankExtraFieldsDraft(current=>Object.fromEntries(Object.entries(current).filter(([name])=>name!==key)))}>Remove</button>
+                </label>)}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <input aria-label="New Bank Information field name" placeholder="New field e.g. GSTIN" value={newBankFieldLabel} maxLength={40} onChange={event=>setNewBankFieldLabel(event.target.value)} style={{...styles.bankInfoInput,flex:"1 1 180px"}}/>
+                  <button type="button" onClick={()=>{
+                    const key=newBankFieldLabel.trim().replace(/[^a-zA-Z0-9_]+/g,"_").replace(/^_+|_+$/g,"");
+                    if(!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || Object.keys(bankExtraFieldsDraft).length>=32 || key in bankInfoDraft || key in bankExtraFieldsDraft){showMessage("Choose a unique name starting with a letter (maximum 32 fields).");return;}
+                    setBankExtraFieldsDraft(current=>({...current,[key]:""}));setNewBankFieldLabel("");
+                  }}>＋ Add Field</button>
+                </div>
+              </div>
+             <div style={styles.bankInfoModalActions}>
 
               <button
 
