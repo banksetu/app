@@ -6,6 +6,7 @@ import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
+import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 type Mode = "passbook" | "accountOpening";
@@ -72,13 +73,7 @@ function initialDraft(mode: Mode, bankName: string): Draft {
   return { version: 1, mode, bankName, pageCount:1, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0, elements: [heading, name, account] };
 }
 function validDraft(draft: unknown, mode: Mode, bankName: string): draft is Draft {
-  if (!draft || typeof draft !== "object") return false;
-  const item = draft as Partial<Draft>;
-  return item.version === 1 && item.mode === mode && item.bankName === bankName &&
-    typeof item.widthMm === "number" && item.widthMm >= 50 && item.widthMm <= 500 &&
-    typeof item.heightMm === "number" && item.heightMm >= 50 && item.heightMm <= 500 &&
-    Array.isArray(item.elements) && item.elements.length <= 500 &&
-    item.elements.every(part => typeof part.id === "string" && typeof part.x === "number" && typeof part.y === "number" && typeof part.label === "string");
+  return validatePersistedLayoutDraft(draft, mode, bankName);
 }
 function draftKey(mode: Mode, bankName: string) {
   const tenantId = sessionStorage.getItem("bankSetuTenantId") || "master";
@@ -222,6 +217,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     const mm = valueInMm(value, unit);
     if (!Number.isFinite(mm)) return;
     modify(current => ({ ...current, [key]: round(within(mm, key === "widthMm" || key === "heightMm" ? 50 : 0, 500)) }));
+    // Any physical-size, crease or start-position edit invalidates past approvals.
+    setPhysicalChecked(false);
+    setHardwareChecked(false);
   };
   const append = (kind: Kind, origin: Origin, label: string, fieldKey = "") => {
     const part = addPart(kind, origin, label, fieldKey, 14, draft.foldMm ? draft.foldMm + 12 : 25);
@@ -776,7 +774,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
           {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
           {ordered.map(part => {
-            const visible = preview === "quick" ? part.quick : part.dotMatrix && !part.preprinted;
+            const visible = preview === "quick" ? part.quick : part.dotMatrix && !part.preprinted && (part.kind==="text" || part.kind==="field");
             if (!visible) return null;
             return <div key={part.id} onPointerDown={event => down(event, part)}
               className={"ls-object " + (selectedId === part.id ? "selected " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
