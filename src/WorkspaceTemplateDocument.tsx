@@ -66,6 +66,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
           .sort((a,b)=>a.z-b.z).map(item=>{
             const kind=item.kind;
             if(kind==="image" && output==="quick"){
+              if(item.fieldKey!=="bankLogo" && !/\blogo\b/i.test(item.label))return null;
               if(!bankLogo||!/^data:image\/(png|jpeg|webp);base64,/.test(bankLogo))return null;
               return <img key={item.id} alt="Bank logo" src={bankLogo} style={{...frame(item),objectFit:"contain"}}/>;
             }
