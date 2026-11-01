@@ -94,6 +94,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
   const [splitSecondLine, setSplitSecondLine] = useState("");
+  const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
   const [showLayers, setShowLayers] = useState(true);
   const [showProps, setShowProps] = useState(true);
   const undoRef = useRef<Draft[]>([]);
@@ -169,7 +170,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
     setBusy(true);
     try {
       const { exportLayoutProofPdf } = await import("./layoutProofPdf");
-      const blob = await exportLayoutProofPdf(draft, preview);
+      const blob = await exportLayoutProofPdf({ ...draft, elements: draft.elements.map(part => temporaryValues[part.id] === undefined ? part : {...part,value:temporaryValues[part.id]}) }, preview);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -283,6 +284,7 @@ export default function CustomizeLayoutStudio({ mode, bankName }: { mode: Mode; 
   const partText = (part: LayoutPart) => {
     if (part.kind === "photo") return "PHOTO";
     if (part.kind === "rectangle" || part.kind === "line") return "";
+    if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
     return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix" ? part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
   };
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
