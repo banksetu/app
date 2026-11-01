@@ -52,7 +52,11 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     const origin = item.origin;
     const staticLabel = origin === "static" || origin === "preprinted";
     const safe = {
-      id, kind:item.kind, page, origin, label, fieldKey, value:"", defaultValue:"",
+      id, kind:item.kind, page, origin, label, fieldKey, value:"",
+      // Public bank defaults, never customer- or branch-specific values.
+      defaultValue:["accountType","mode","operatingMode"].includes(fieldKey) &&
+        /^(?:saving|savings|savings account|current|current account|self|singly|jointly)$/i.test(String(item.defaultValue||"").trim())
+        ? String(item.defaultValue).trim() : "",
       x:item.x, y:item.y, width:item.width, height:item.height, z:item.z,
       rotation:item.rotation, size:item.size, align:item.align, letterSpacing:item.letterSpacing,
       opacity:item.opacity, borderWidth:item.borderWidth,
