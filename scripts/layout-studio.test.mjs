@@ -50,3 +50,5 @@ import "./layout-native-ocr.test.mjs";
 import "./layout-visual-diff.test.mjs";
 
 import "./layout-template-audit.test.mjs";
+
+import "./layout-catalog-safety.test.mjs";
