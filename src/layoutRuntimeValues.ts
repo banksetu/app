@@ -46,12 +46,16 @@ export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<st
 export function visibleLayoutElement(element:LayoutDynamicElement,output:"quick"|"dotmatrix"):boolean{
   if(output==="quick")return element.quick;
   if(!element.dotMatrix||element.preprinted)return false;
-  if(["image","photo","ellipse","rectangle"].includes(element.kind))return false;
+  // Shared runtime must enforce the same text-only rules as PR2 proof and audit.
+  // Never rely on user-controlled dotMatrix flags for a logo, border or line.
+  if(element.kind!=="text"&&element.kind!=="field")return false;
   return true;
 }
 export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"passbook"|"accountOpening"):boolean {
   if(!template||template.mode!==mode||template.bankName.trim().toLowerCase()!==bankName.trim().toLowerCase())return false;
   if(!Number.isFinite(template.widthMm)||!Number.isFinite(template.heightMm)||template.widthMm<50||template.heightMm<50||template.widthMm>500||template.heightMm>500)return false;
+  if(![template.foldMm,template.printStartMm].every(v=>Number.isFinite(v)&&v>=0&&v<=template.heightMm))return false;
+  if(template.pageCount!==undefined&&(!Number.isSafeInteger(template.pageCount)||template.pageCount<1||template.pageCount>10))return false;
   if(!Array.isArray(template.elements)||!template.elements.length||template.elements.length>300)return false;
   if(mode==="passbook"&&(template.pageCount||1)!==1)return false;
   return true;
