@@ -649,7 +649,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
       <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
       <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
-      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button>
+      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
       <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
       <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
       <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
