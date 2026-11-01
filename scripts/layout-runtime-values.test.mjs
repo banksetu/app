@@ -20,6 +20,9 @@ test("preprinted labels and all graphics are excluded from dot-matrix data outpu
  assert.equal(visibleLayoutElement(layer({origin:"preprinted",preprinted:true}),"dotmatrix"),false);
  assert.equal(visibleLayoutElement(layer({kind:"photo",origin:"static",dotMatrix:true}),"dotmatrix"),false);
  assert.equal(visibleLayoutElement(layer({kind:"image",origin:"static",dotMatrix:true}),"dotmatrix"),false);
+ for(const kind of ["line","rectangle","ellipse","photo","image"]) {
+  assert.equal(visibleLayoutElement(layer({kind,origin:"static",dotMatrix:true}),"dotmatrix"),false,kind);
+ }
  assert.equal(visibleLayoutElement(layer({origin:"customer"}),"dotmatrix"),true);
  assert.equal(visibleLayoutElement(layer({origin:"preprinted"}),"quick"),true);
 });
@@ -29,4 +32,13 @@ test("live layout requires same bank, correct mode and single printed passbook p
  assert.equal(templateCanRender(template,"Union Bank","passbook"),false);
  assert.equal(templateCanRender({...template,pageCount:2},"State Bank of India","passbook"),false);
  assert.equal(templateCanRender(template,"State Bank of India","accountOpening"),false);
+});
+
+test("activated passbook rejects invalid physical calibration and page counts",()=>{
+ const source={id:"clean",mode:"passbook",bankName:"Test Bank",widthMm:190,heightMm:175,
+  foldMm:88,printStartMm:100,pageCount:1,elements:[layer()]};
+ assert.equal(templateCanRender(source,"Test Bank","passbook"),true);
+ for(const diff of [{foldMm:NaN},{printStartMm:-1},{printStartMm:176},{pageCount:1.5},{pageCount:0}]){
+  assert.equal(templateCanRender({...source,...diff},"Test Bank","passbook"),false,JSON.stringify(diff));
+ }
 });
