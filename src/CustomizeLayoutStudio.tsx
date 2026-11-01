@@ -117,6 +117,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
   const [collisions, setCollisions] = useState<TextCollision[]>([]);
   const [printedLabelRule, setPrintedLabelRule] = useState<"all"|"none"|"some">("some");
+  const [confirmedPreprinted, setConfirmedPreprinted] = useState<Record<string,boolean>>({});
   const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
   const [showLayers, setShowLayers] = useState(true);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
@@ -376,7 +377,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if (file.size > 12 * 1024 * 1024) { setNotice("Please choose a PDF up to 12 MB."); return; }
     setBusy(true);
     setReferencePages([]);
-    setSuggestedLabels([]);setCollisions([]);setScanFrame(null);setScanSuggestion(null);
+    setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -461,6 +462,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           return hint ? [{id:part.id,label:part.label,fieldKey:hint.fieldKey,source:hint.source,page:part.page||1}] : [];
         });
         setSuggestedLabels(suggestions);
+        setConfirmedPreprinted(Object.fromEntries(suggestions.map(item=>[item.id,true])));
         const overlappingPairs = overlapList.length;
         modify(current => ({
           ...current,
@@ -615,6 +617,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       {suggestedLabels.length>0 && <div className="ls-inference-labels">
         {suggestedLabels.map(item=><div key={item.id} className="ls-inference-item">
           <span>{item.label} → <strong>{item.fieldKey}</strong> ({item.source}, page {item.page})</span>
+          {printedLabelRule==="some" && <label><input type="checkbox" checked={confirmedPreprinted[item.id]===true} onChange={event=>setConfirmedPreprinted(current=>({...current,[item.id]:event.target.checked}))}/> Already printed on paper</label>}
           <button type="button" onClick={()=>{setSelectedPage(item.page);setSelectedId(item.id);setPreview("quick");}}>Inspect</button>
         </div>)}
       </div>}
@@ -624,7 +627,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           const next=[...current.elements];const existing=new Set(next.filter(p=>p.kind==="field").map(p=>(p.page||1)+":"+p.fieldKey));
           for(const hint of suggestedLabels){
             const label=next.find(p=>p.id===hint.id);if(!label)continue;
-            const printed=printedLabelRule==="all" || (printedLabelRule==="some" && label.preprinted);
+            const printed=printedLabelRule==="all" || (printedLabelRule==="some" && confirmedPreprinted[hint.id]===true);
             Object.assign(label,{origin:printed?"preprinted":"static",preprinted:printed,dotMatrix:!printed,quick:true});
             const key=hint.page+":"+hint.fieldKey;
             if(existing.has(key))continue;
