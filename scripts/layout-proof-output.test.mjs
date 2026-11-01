@@ -21,7 +21,8 @@ test("unapproved dot-matrix proof contains values only even if graphic flags are
    part("line","divider",{z:5,x:5,y:90,width:130,height:1}),
  ]};
  const output=await exportLayoutProofPdf(document,"dotmatrix");
- const pdf=await getDocument({data:new Uint8Array(await output.arrayBuffer()),useSystemFonts:true}).promise;
+ const loadingTask=getDocument({data:new Uint8Array(await output.arrayBuffer()),useSystemFonts:true});
+ const pdf=await loadingTask.promise;
  try{
    const page=await pdf.getPage(1);
    const text=(await page.getTextContent()).items.filter(i=>"str" in i).map(i=>i.str).join(" ");
@@ -29,5 +30,5 @@ test("unapproved dot-matrix proof contains values only even if graphic flags are
    assert.doesNotMatch(text,/PHOTO/);
    const commands=(await page.getOperatorList()).fnArray;
    assert.equal(commands.includes(OPS.constructPath),false,"PR2 proof must contain no graphic paths");
- }finally{await pdf.destroy();}
+ }finally{await loadingTask.destroy();}
 });
