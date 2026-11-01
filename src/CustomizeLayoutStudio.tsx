@@ -99,6 +99,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
+  const [referencePages, setReferencePages] = useState<string[]>([]);
+  const [referenceOpacity, setReferenceOpacity] = useState(0.4);
+  const [referenceVisible, setReferenceVisible] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
   const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
   const [showLayers, setShowLayers] = useState(true);
@@ -274,6 +277,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) { setNotice("Please choose a PDF sample."); return; }
     if (file.size > 12 * 1024 * 1024) { setNotice("Please choose a PDF up to 12 MB."); return; }
     setBusy(true);
+    setReferencePages([]);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -287,10 +291,24 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         const height = round(viewport.height / 72 * 25.4);
         const pageCount = Math.min(10, pdf.numPages);
         const elements: LayoutPart[] = [];
+        const references:string[] = [];
         for (let index = 1; index <= pageCount; index++) {
           const pdfPage = index === 1 ? page : await pdf.getPage(index);
           const view = pdfPage.getViewport({ scale:1 });
           const textLayer = await pdfPage.getTextContent();
+          try {
+            // Reference images are display-only, NEVER persisted or printed.
+            const previewViewport=pdfPage.getViewport({scale:Math.min(.9,480/Math.max(view.width,view.height))});
+            const previewCanvas=document.createElement("canvas");
+            previewCanvas.width=Math.ceil(previewViewport.width);
+            previewCanvas.height=Math.ceil(previewViewport.height);
+            const context=previewCanvas.getContext("2d");
+            if (context) {
+              await pdfPage.render({canvas:previewCanvas,canvasContext:context,viewport:previewViewport}).promise;
+              references.push(previewCanvas.toDataURL("image/webp",.66));
+              previewCanvas.width=0;previewCanvas.height=0;
+            } else references.push("");
+          } catch { references.push(""); }
           for (const item of textLayer.items) {
             if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
             const part = addPart("text", "static", item.str.trim(), "", round(item.transform[4] / view.width * width), round((view.height - item.transform[5]) / view.height * height));
@@ -302,6 +320,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             elements.push(part);
           }
         }
+        setReferencePages(references);
+        setReferenceVisible(true);
         // For an A4 scanner page, its paper dimensions are NOT the passbook dimensions.
         // Keep measured passbook size from the user's manual calibration until border analysis exists.
         const scannedA4 = (Math.abs(width - 210) < 5 && Math.abs(height - 297) < 5) || (Math.abs(width - 297) < 5 && Math.abs(height - 210) < 5);
@@ -460,6 +480,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <label>Height {number(valueInUnit(draft.heightMm, unit), next => setMeasure("heightMm", String(next)), 0, 500, .1)}</label>
       <label>Fold from top {number(valueInUnit(draft.foldMm, unit), next => setMeasure("foldMm", String(next)), 0, 500, .1)}</label>
       <label>Print start {number(valueInUnit(draft.printStartMm, unit), next => setMeasure("printStartMm", String(next)), 0, 500, .1)}</label>
+      <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
+      <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
       <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
       <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
     </div>
@@ -475,6 +497,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           const step = event.shiftKey ? 1 : .1;
           edit({ x: round(within(selected.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0), 0, draft.widthMm)), y: round(within(selected.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0), 0, draft.heightMm)) });
         }}>
+          {referenceVisible && referencePages[selectedPage-1] && <img aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
           {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
           {ordered.map(part => {
