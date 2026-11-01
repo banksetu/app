@@ -522,19 +522,25 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         setSuggestedLabels(suggestions);
         setConfirmedPreprinted(Object.fromEntries(suggestions.map(item=>[item.id,true])));
         const overlappingPairs = overlapList.length;
-        modify(current => ({
-          ...current,
-          pageCount,
-          widthMm: scannedA4 && mode === "passbook" ? current.widthMm : width,
-          heightMm: scannedA4 && mode === "passbook" ? current.heightMm : height,
-          elements, // Never reuse unrelated bank fields when the new scan has no OCR text.
-        }));
+        if(elements.length) {
+          modify(current => ({
+            ...current,
+            pageCount,
+            widthMm: scannedA4 && mode === "passbook" ? current.widthMm : width,
+            heightMm: scannedA4 && mode === "passbook" ? current.heightMm : height,
+            elements,
+          }));
+        } else {
+          // A scan without a usable OCR engine must not silently replace existing
+          // local work, nor assign its old fields to a newly uploaded bank PDF.
+          setScanSuggestion(null);setScanFrame(null);setReferenceVisible(false);
+        }
         setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
           "Imported " + elements.length + " editable objects across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+", vector shapes: "+recognizedGraphics+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
-          "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Use Add tools to reconstruct fields manually.");
-        if (scannedA4 && mode === "passbook") setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + (elements.length ? elements.length + " editable text elements imported." : "No embedded text; manual editing is available."));
+          "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Previous local draft was PRESERVED without importing stale objects. Use manual tools or an OCR-capable device.");
+        if (scannedA4 && mode === "passbook" && elements.length) setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + elements.length + " editable text objects imported. "+(ocrStatus||""));
       } finally { await task.destroy(); }
     } catch (error) {
       setNotice("PDF could not be read: " + (error instanceof Error ? error.message : "Unknown error"));
