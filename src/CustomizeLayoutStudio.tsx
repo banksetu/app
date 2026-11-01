@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { callBankSetuWorker } from "./workerApi";
+import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, type ScanBounds } from "./layoutScanGeometry";
@@ -80,7 +82,8 @@ function draftKey(mode: Mode, bankName: string) {
   return "bankSetuLayoutDraft:v1:" + tenantId + ":" + uid + ":" + mode + ":" + bankName;
 }
 
-export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {} }: { mode: Mode; bankName: string; bankValues?: Record<string,string> }) {
+type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
+export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {}, accountRole = "client_user" }: { mode: Mode; bankName: string; bankValues?: Record<string,string>; accountRole?:string }) {
   const storageKey = draftKey(mode, bankName);
   const [draft, setDraft] = useState<Draft>(() => {
     try { const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
@@ -96,14 +99,61 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {} 
   const [splitSecondLine, setSplitSecondLine] = useState("");
   const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
   const [showLayers, setShowLayers] = useState(true);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [pendingReview, setPendingReview] = useState<CatalogEntry[]>([]);
+  const [catalogChoice, setCatalogChoice] = useState<CatalogEntry | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(true);
+  const [catalogBusy, setCatalogBusy] = useState(false);
   const [showProps, setShowProps] = useState(true);
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
   const dragRef = useRef<{ id: string; pageX: number; pageY: number; x: number; y: number } | null>(null);
   const [dirty, setDirty] = useState(false);
   const selected = draft.elements.find(part => part.id === selectedId) || null;
+  const canReview = accountRole === "master_owner" || accountRole === "admin";
+  const canSubmit = accountRole === "client_admin";
   const ordered = useMemo(() => [...draft.elements].sort((a, b) => a.z - b.z), [draft.elements]);
 
+  const refreshCatalog = useCallback(async (review = false) => {
+    if (!bankName.trim() && !review) return;
+    setCatalogBusy(true);
+    try {
+      const response = await callBankSetuWorker<{templates:CatalogEntry[]}>("/list-layout-templates",{bankName,pending:review});
+      const entries = (response.templates || []).filter(item=>item.mode === mode || review);
+      if (review) setPendingReview(entries); else setCatalog(entries);
+    } catch (error) {
+      setNotice("Shared layout list unavailable: "+(error instanceof Error?error.message:"Connection required")+". Local editing remains available.");
+    } finally { setCatalogBusy(false); }
+  },[bankName,mode]);
+  useEffect(()=>{void refreshCatalog();},[refreshCatalog]);
+  const submitForReview = async () => {
+    if (!canSubmit || busy || !bankName.trim()) return;
+    if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
+    setBusy(true);
+    try {
+      const response=await callBankSetuWorker<{success:boolean;id:string}>("/submit-layout-template",{template:draft});
+      setNotice("Generic layout submitted for Master Admin review: "+response.id+". Nothing was published or activated.");
+    } catch(error) {
+      setNotice("Submission failed: "+(error instanceof Error?error.message:"Review the template's coordinates and labels."));
+    } finally { setBusy(false); }
+  };
+  const useCatalogTemplate = async (entry:CatalogEntry) => {
+    if (!await confirmAction("Use this approved generic layout as a new local draft? Your current unsaved layout will be replaced. Customer data is never copied.")) return;
+    const restored:Draft={version:1,bankName,mode,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,elements:entry.elements.map(part=>({...part,id:randomId(),value:"",defaultValue:""}))};
+    if (!validDraft(restored,mode,bankName)){setNotice("Catalog template is not compatible with this bank or editor version.");return;}
+    setDraft(restored);setSelectedId(null);setCatalogChoice(null);setCatalogOpen(false);setDirty(true);setTemporaryValues({});undoRef.current=[];redoRef.current=[];
+    setNotice("Approved generic layout copied into your local DRAFT. Verify physical size and printing; it has not been activated for customers.");
+  };
+  const reviewCatalog = async (entry:CatalogEntry, action:"approve"|"reject") => {
+    if (!canReview || !await confirmAction(action === "approve" ? "Approve this generic layout for use by other tenants? Check that all text is generic and contains no private customer information." : "Reject this unapproved shared template?")) return;
+    setCatalogBusy(true);
+    try {
+      await callBankSetuWorker("/review-layout-template",{id:entry.id,action});
+      setNotice("Template review decision saved. "+(action==="approve"?"Approved layouts will be discoverable by bank.":"Submission rejected."));
+      await refreshCatalog(true);
+    } catch(error){setNotice("Review failed: "+(error instanceof Error?error.message:"Unknown error"));}
+    finally {setCatalogBusy(false);}
+  };
   const modify = useCallback((apply: (current: Draft) => Draft) => {
     setDraft(current => {
       const next = apply(current);
