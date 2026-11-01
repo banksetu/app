@@ -160,25 +160,27 @@ export function calibrateScanBounds(
  * Do not silently remove elements even when the scan estimator puts them outside
  * the tentative crop; they may be real border text requiring manual review.
  */
-export function mapScannedPageToPassbook<T extends { x:number;y:number;width:number;height:number;page?:number }>(
+export function mapScannedPageToPassbook<T extends { x:number;y:number;width:number;height:number;page?:number;rotation?:number }>(
   bounds:ScanBounds,
   scannerWidth:number,
   scannerHeight:number,
   scannerPaperWidthMm:number,
   scannerPaperHeightMm:number,
   elements:T[],
+  clockwiseRotation:0|90|180|270=0,
 ): { elements:T[]; outsideCount:number } {
   if (![scannerWidth,scannerHeight,scannerPaperWidthMm,scannerPaperHeightMm].every(n=>Number.isFinite(n)&&n>0) ||
     ![bounds.left,bounds.top,bounds.right,bounds.bottom,bounds.widthMm,bounds.heightMm].every(Number.isFinite) ||
     bounds.widthMm<=0 || bounds.heightMm<=0 ||
     bounds.left<0 || bounds.top<0 || bounds.right>scannerWidth || bounds.bottom>scannerHeight ||
     bounds.right<=bounds.left || bounds.bottom<=bounds.top) throw Error("Invalid scanner coordinate frame.");
+  if(![0,90,180,270].includes(clockwiseRotation))
+    throw Error("Unsupported scan orientation.");
   const leftMm=bounds.left/scannerWidth*scannerPaperWidthMm;
   const topMm=bounds.top/scannerHeight*scannerPaperHeightMm;
   const sourceWidthMm=(bounds.right-bounds.left)/scannerWidth*scannerPaperWidthMm;
   const sourceHeightMm=(bounds.bottom-bounds.top)/scannerHeight*scannerPaperHeightMm;
-  const scaleX=bounds.widthMm/sourceWidthMm,scaleY=bounds.heightMm/sourceHeightMm;
-  if(![scaleX,scaleY].every(n=>Number.isFinite(n)&&n>0))
+  if(![sourceWidthMm,sourceHeightMm].every(n=>Number.isFinite(n)&&n>0))
     throw Error("Invalid calibrated scan scale.");
   const round=(n:number)=>Math.round(n*10)/10;
   let outsideCount=0;
@@ -186,10 +188,22 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
     if ((part.page??1)!==1) return part;
     if(![part.x,part.y,part.width,part.height].every(Number.isFinite))
       throw Error("Invalid element geometry during scan calibration.");
-    const x=round((part.x-leftMm)*scaleX),y=round((part.y-topMm)*scaleY);
-    const width=round(part.width*scaleX),height=round(part.height*scaleY);
+    // Normalized object bounding box in the selected source crop.
+    let nx=(part.x-leftMm)/sourceWidthMm,ny=(part.y-topMm)/sourceHeightMm;
+    let nw=part.width/sourceWidthMm,nh=part.height/sourceHeightMm;
+    if(clockwiseRotation===90){
+      [nx,ny,nw,nh]=[1-(ny+nh),nx,nh,nw];
+    }else if(clockwiseRotation===180){
+      [nx,ny]=[1-(nx+nw),1-(ny+nh)];
+    }else if(clockwiseRotation===270){
+      [nx,ny,nw,nh]=[ny,1-(nx+nw),nh,nw];
+    }
+    const x=round(nx*bounds.widthMm),y=round(ny*bounds.heightMm);
+    const width=round(nw*bounds.widthMm),height=round(nh*bounds.heightMm);
     if(x<0||y<0||x+width>bounds.widthMm+.5||y+height>bounds.heightMm+.5)outsideCount++;
-    return {...part,x,y,width,height};
+    return {...part,x,y,width,height,
+      ...(typeof part.rotation==="number" ? {rotation:(part.rotation+clockwiseRotation)%360}: {})
+    } as T;
   });
   return {elements:converted,outsideCount};
 }
