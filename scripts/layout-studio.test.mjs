@@ -46,3 +46,5 @@ import "./layout-scan-geometry.test.mjs";
 import "./layout-field-inference.test.mjs";
 
 import "./layout-native-ocr.test.mjs";
+
+import "./layout-visual-diff.test.mjs";
