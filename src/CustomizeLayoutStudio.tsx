@@ -106,6 +106,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [referencePages, setReferencePages] = useState<string[]>([]);
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
+  const [visualDiff, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
+  const [diffBusy, setDiffBusy] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
   const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
   const [collisions, setCollisions] = useState<TextCollision[]>([]);
@@ -250,6 +252,31 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     } catch (error) {
       setNotice("Could not export proof: " + (error instanceof Error ? error.message : "Unknown error"));
     } finally { setBusy(false); }
+  };
+  const compareOriginal = async () => {
+    const data=referencePages[selectedPage-1];
+    const element=document.querySelector(".layout-studio .ls-paper");
+    if(!data||!(element instanceof HTMLElement)){setNotice("Upload an original PDF before visual comparison.");return;}
+    setDiffBusy(true);
+    try {
+      const [{default:html2canvas},{measureLayoutDifference}]=await Promise.all([import("html2canvas"),import("./layoutVisualDiff")]);
+      const render=await html2canvas(element,{backgroundColor:"#ffffff",scale:Math.min(1,450/Math.max(element.clientWidth,element.clientHeight)),
+        useCORS:false,allowTaint:false,
+        ignoreElements:node=>node instanceof Element && (node.hasAttribute("data-original-overlay") || node.classList.contains("ls-resize-handle")),
+        onclone:doc=>doc.querySelectorAll(".ls-object.selected").forEach(node=>node.classList.remove("selected")),
+      });
+      const referenceImage=new Image();referenceImage.src=data;await referenceImage.decode();
+      const original=document.createElement("canvas");original.width=render.width;original.height=render.height;
+      const context=original.getContext("2d"),renderContext=render.getContext("2d");
+      if(!context||!renderContext)throw Error("Canvas comparison is unavailable on this device.");
+      context.fillStyle="white";context.fillRect(0,0,original.width,original.height);
+      context.drawImage(referenceImage,0,0,original.width,original.height);
+      const report=measureLayoutDifference(context.getImageData(0,0,original.width,original.height).data,renderContext.getImageData(0,0,render.width,render.height).data);
+      setVisualDiff(report);
+      setNotice("Visual diagnostic: "+report.meanDifferencePercent+"% mean pixel difference. A4 cropping, fonts and image scanning must be verified separately. This is NOT printer accuracy certification.");
+    } catch(error) {
+      setNotice("Could not compare original and editable preview: "+(error instanceof Error?error.message:"Device limitation"));
+    } finally {setDiffBusy(false);}
   };
   const applyScannerSuggestion = async () => {
     const bounds=scanSuggestion,frame=scanFrame;
@@ -595,6 +622,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <label>Height {number(valueInUnit(draft.heightMm, unit), next => setMeasure("heightMm", String(next)), 0, 500, .1)}</label>
       <label>Fold from top {number(valueInUnit(draft.foldMm, unit), next => setMeasure("foldMm", String(next)), 0, 500, .1)}</label>
       <label>Print start {number(valueInUnit(draft.printStartMm, unit), next => setMeasure("printStartMm", String(next)), 0, 500, .1)}</label>
+      <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
+      {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
       <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
       <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
       <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
@@ -616,7 +645,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           const step = event.shiftKey ? 1 : .1;
           edit({ x: round(within(selected.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0), 0, draft.widthMm)), y: round(within(selected.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0), 0, draft.heightMm)) });
         }}>
-          {referenceVisible && referencePages[selectedPage-1] && <img aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
+          {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
           {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
           {ordered.map(part => {
