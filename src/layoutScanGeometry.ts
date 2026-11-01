@@ -121,6 +121,41 @@ export function estimatePassbookBounds(pixels: Uint8ClampedArray, width: number,
   };
 }
 
+/** Optional manual ruler measurements override scanner pixel scaling without
+ * changing the selected ROI. Works for landscape, tall and square passbooks:
+ * neither paper shape nor any bank's template is assumed.
+ * The caller must review/crop the actual passbook boundary first.
+ */
+export function calibrateScanBounds(
+  bounds:ScanBounds,
+  measurements:{widthMm?:number|null;heightMm?:number|null;foldMm?:number|null},
+):ScanBounds {
+  const widthMm=measurements.widthMm??bounds.widthMm;
+  const heightMm=measurements.heightMm??bounds.heightMm;
+  if(![widthMm,heightMm].every(n=>Number.isFinite(n)&&n>=10&&n<=500) ||
+     ![bounds.left,bounds.top,bounds.right,bounds.bottom].every(Number.isFinite) ||
+     bounds.right<=bounds.left||bounds.bottom<=bounds.top)
+    throw Error("Invalid manual passbook dimensions or scanner crop.");
+  const originalFold=bounds.foldHint;
+  const foldMm=measurements.foldMm??(originalFold?originalFold.foldMm/bounds.heightMm*heightMm:null);
+  if(foldMm!==null&&(!Number.isFinite(foldMm)||foldMm<0||foldMm>heightMm))
+    throw Error("Fold measurement must be within the physical passbook height.");
+  return {...bounds,widthMm,heightMm,
+    foldHint:foldMm===null?undefined:{
+      foldMm:Math.round(foldMm*10)/10,
+      pageY:originalFold?.pageY??Math.round(bounds.top+
+        (bounds.bottom-bounds.top)*foldMm/heightMm),
+      confidence:"low",reason:measurements.foldMm!==undefined&&measurements.foldMm!==null
+        ?"Manually entered fold location; print start must be calibrated independently."
+        :"Automatically suggested quiet gap, rescaled to the supplied passbook height."
+    },
+    confidence:"low",
+    reason:measurements.widthMm!=null||measurements.heightMm!=null
+      ?"Manual physical size combined with selected scanner ROI. Check borders and print start."
+      :bounds.reason
+  };
+}
+
 /** Shift A4 positions into the measured passbook's own physical coordinate system.
  * Do not silently remove elements even when the scan estimator puts them outside
  * the tentative crop; they may be real border text requiring manual review.
@@ -140,13 +175,21 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
     bounds.right<=bounds.left || bounds.bottom<=bounds.top) throw Error("Invalid scanner coordinate frame.");
   const leftMm=bounds.left/scannerWidth*scannerPaperWidthMm;
   const topMm=bounds.top/scannerHeight*scannerPaperHeightMm;
+  const sourceWidthMm=(bounds.right-bounds.left)/scannerWidth*scannerPaperWidthMm;
+  const sourceHeightMm=(bounds.bottom-bounds.top)/scannerHeight*scannerPaperHeightMm;
+  const scaleX=bounds.widthMm/sourceWidthMm,scaleY=bounds.heightMm/sourceHeightMm;
+  if(![scaleX,scaleY].every(n=>Number.isFinite(n)&&n>0))
+    throw Error("Invalid calibrated scan scale.");
   const round=(n:number)=>Math.round(n*10)/10;
   let outsideCount=0;
   const converted=elements.map(part=>{
-    if ((part.page||1)!==1) return part;
-    const x=round(part.x-leftMm),y=round(part.y-topMm);
-    if(x<0||y<0||x+part.width>bounds.widthMm+.5||y+part.height>bounds.heightMm+.5)outsideCount++;
-    return {...part,x,y};
+    if ((part.page??1)!==1) return part;
+    if(![part.x,part.y,part.width,part.height].every(Number.isFinite))
+      throw Error("Invalid element geometry during scan calibration.");
+    const x=round((part.x-leftMm)*scaleX),y=round((part.y-topMm)*scaleY);
+    const width=round(part.width*scaleX),height=round(part.height*scaleY);
+    if(x<0||y<0||x+width>bounds.widthMm+.5||y+height>bounds.heightMm+.5)outsideCount++;
+    return {...part,x,y,width,height};
   });
   return {elements:converted,outsideCount};
 }
