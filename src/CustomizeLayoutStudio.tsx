@@ -315,33 +315,49 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const applyScannerSuggestion = async () => {
     const bounds=scanSuggestion,frame=scanFrame;
     if(!bounds || !frame)return;
-    if(!await confirmAction("Apply this estimated scanner crop and convert every first-page text coordinate from the A4 sheet to actual passbook coordinates? Check with a ruler afterwards."))return;
-    let outside=0;
+    if(!await confirmAction("Apply this unverified A4 crop and optional fold-gap estimate to the LOCAL draft only? Re-measure the actual passbook and printer alignment before activation."))return;
     try {
-      modify(current=>{
-        const result=mapScannedPageToPassbook(bounds,frame.pixelWidth,frame.pixelHeight,frame.paperWidthMm,frame.paperHeightMm,current.elements);
-        outside=result.outsideCount;
-        return {...current,widthMm:bounds.widthMm,heightMm:bounds.heightMm,
-          foldMm:Math.min(current.foldMm,bounds.heightMm),
-          printStartMm:Math.min(current.printStartMm,bounds.heightMm),
-          elements:result.elements};
-      });
+      // Prepare the reference crop BEFORE editing the draft. A failed image decode
+      // must never leave customer positions updated against an uncropped overlay.
+      let croppedReference:string|null=null;
       if(referencePages[0]){
-        const image = new Image();
+        const image=new Image();
         image.src=referencePages[0];
         await image.decode();
         const cropX=bounds.left/frame.pixelWidth*image.width,cropY=bounds.top/frame.pixelHeight*image.height;
         const cropW=(bounds.right-bounds.left)/frame.pixelWidth*image.width;
         const cropH=(bounds.bottom-bounds.top)/frame.pixelHeight*image.height;
+        if(![cropX,cropY,cropW,cropH].every(Number.isFinite)||cropW<=0||cropH<=0)
+          throw Error("Scanner crop is outside the source preview.");
         const canvas=document.createElement("canvas");
         canvas.width=Math.max(1,Math.ceil(cropW));canvas.height=Math.max(1,Math.ceil(cropH));
-        canvas.getContext("2d")?.drawImage(image,cropX,cropY,cropW,cropH,0,0,canvas.width,canvas.height);
-        setReferencePages(previous=>[canvas.toDataURL("image/webp",.72),...previous.slice(1)]);
-      } else setReferenceVisible(false);
+        const context=canvas.getContext("2d");
+        if(!context)throw Error("Canvas cropping is unavailable on this device.");
+        context.drawImage(image,cropX,cropY,cropW,cropH,0,0,canvas.width,canvas.height);
+        croppedReference=canvas.toDataURL("image/webp",.72);
+        canvas.width=0;canvas.height=0;
+      }
+      // Calculate all coordinates before the state update: an invalid crop should
+      // not partially replace a previously reviewed layout.
+      const result=mapScannedPageToPassbook(bounds,frame.pixelWidth,frame.pixelHeight,
+        frame.paperWidthMm,frame.paperHeightMm,draft.elements);
+      modify(current=>({...current,
+        widthMm:bounds.widthMm,heightMm:bounds.heightMm,
+        foldMm:bounds.foldHint?.foldMm??Math.min(current.foldMm,bounds.heightMm),
+        printStartMm:Math.min(current.printStartMm,bounds.heightMm),
+        elements:result.elements,
+      }));
+      if(croppedReference)setReferencePages(previous=>[croppedReference!,...previous.slice(1)]);
+      else setReferenceVisible(false);
+      // Calibration is bound to actual paper geometry; changing geometry revokes
+      // earlier confirmations even when the bank name stays the same.
+      setPhysicalChecked(false);setHardwareChecked(false);
       setScanSuggestion(null);setScanFrame(null);
-      setNotice("A4 ROI applied to passbook size and X/Y coordinates. "+outside+" first-page text objects may cross the detected border; review them. Physical ruler and printer calibration still required.");
+      setNotice("Scanner crop applied ONLY to draft. "+result.outsideCount+
+        " elements may cross the estimated border. Fold"+(bounds.foldHint?" gap":"")+
+        " and print start are UNVERIFIED; physical ruler and printer re-approval required.");
     }catch(error){
-      setReferenceVisible(false);setNotice("Scanner estimate applied or partially prepared. The original overlay was hidden because it could not be recropped: "+(error instanceof Error?error.message:"Unknown error"));
+      setNotice("Scanner crop NOT applied: "+(error instanceof Error?error.message:"Unknown error"));
     }
   };
   // The existing PR2 renderer is reused for compatibility; never dispatch
@@ -402,6 +418,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setBusy(true);
     setReferencePages([]);
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
+    setPhysicalChecked(false);setHardwareChecked(false);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
       const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -510,7 +527,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           pageCount,
           widthMm: scannedA4 && mode === "passbook" ? current.widthMm : width,
           heightMm: scannedA4 && mode === "passbook" ? current.heightMm : height,
-          elements: elements.length ? elements : current.elements,
+          elements, // Never reuse unrelated bank fields when the new scan has no OCR text.
         }));
         setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
@@ -714,7 +731,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     {scanSuggestion && <div className="ls-scan-proposal" role="status">
       <strong>Scanner estimate (not verified)</strong> — {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence.
       <span>{scanSuggestion.reason}</span>
-      <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply estimated size</button>
+      {scanSuggestion.foldHint && <span>Possible fold gap: {scanSuggestion.foldHint.foldMm} mm from estimated top ({scanSuggestion.foldHint.confidence} confidence). Verify with ruler; NOT a confirmed crease.</span>}
+      <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply estimated size to draft</button>
       <button type="button" onClick={() => setScanSuggestion(null)}>Dismiss</button>
     </div>}
     <div className="ls-settings">
