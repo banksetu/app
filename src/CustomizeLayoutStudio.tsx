@@ -351,6 +351,34 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <div className="ls-actions"><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
+    <div className="ls-catalog-panel">
+      <div className="ls-catalog-heading"><strong>Existing Approved Bank Templates</strong><button type="button" onClick={()=>setCatalogOpen(value=>!value)} aria-expanded={catalogOpen}>{catalogOpen?"Hide":"Show"}</button><button type="button" disabled={catalogBusy} onClick={()=>{setCatalogOpen(true);void refreshCatalog();}}>Refresh</button></div>
+      {catalogOpen && <>
+        <p>Existing templates for {bankName || "the selected bank"} can be previewed and copied without recreating the layout. No other tenant's customer records are shared.</p>
+        {catalog.length===0 ? <p>No verified shared template is available for this bank. Upload your own passbook PDF or design manually.</p> :
+          <div className="ls-catalog-list">{catalog.filter(item=>item.mode===mode).map(item=><div key={item.id} className="ls-catalog-card">
+            <span>{item.bankName} · {item.mode==="passbook"?"Passbook":"Account Opening"}</span>
+            <small>{item.widthMm} × {item.heightMm} mm · {item.elements.length} editable elements</small>
+            <button type="button" onClick={()=>setCatalogChoice(item)}>Preview</button>
+          </div>)}</div>}
+        {catalogChoice && <div className="ls-catalog-preview">
+          <strong>Preview: {catalogChoice.bankName} · Generic template</strong>
+          <div className="ls-catalog-mini-paper" style={{aspectRatio:catalogChoice.widthMm+"/"+catalogChoice.heightMm}}>{catalogChoice.elements.slice(0,35).map(part=><span key={part.id} style={{position:"absolute",left:(part.x/catalogChoice.widthMm*100)+"%",top:(part.y/catalogChoice.heightMm*100)+"%",fontSize:8,color:"#172334",maxWidth:(part.width/catalogChoice.widthMm*100)+"%",overflow:"hidden"}}>{part.kind==="text"||part.kind==="field"?part.origin==="customer"?"[Customer field]":part.origin==="bank"?"[Bank Information]":part.label:part.kind==="photo"?"□ PHOTO":part.kind==="line"?"────":""}</span>)}</div>
+          <div className="ls-actions"><button type="button" onClick={()=>{void useCatalogTemplate(catalogChoice);}}>Use This Template</button><button type="button" onClick={()=>{setCatalogChoice(null);setCatalogOpen(false);}}>No, Upload My Own PDF</button></div>
+        </div>}
+      </>}
+      <div className="ls-actions">
+        {canSubmit && <button type="button" disabled={busy} onClick={()=>{void submitForReview();}}>Submit Generic Template for Master Review</button>}
+        {canReview && <button type="button" disabled={catalogBusy} onClick={()=>{void refreshCatalog(true);}}>View Pending Template Approvals</button>}
+      </div>
+      {canReview && pendingReview.length>0 && <div className="ls-catalog-list">{pendingReview.map(item=><div key={item.id} className="ls-catalog-card">
+        <span>{item.bankName} · {item.mode} · {item.elements.length} elements</span>
+        <small>Pending Master Review — inspect all text, physical measurements and customer-data safety</small>
+        <button type="button" onClick={()=>setCatalogChoice(item)}>Inspect</button>
+        <button type="button" onClick={()=>{void reviewCatalog(item,"approve");}}>Approve</button>
+        <button type="button" onClick={()=>{void reviewCatalog(item,"reject");}}>Reject</button>
+      </div>)}</div>}
+    </div>
     <div className="ls-ribbon" role="toolbar" aria-label="Add and edit layout elements">
       <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label>
       <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
