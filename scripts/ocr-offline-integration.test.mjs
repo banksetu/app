@@ -22,13 +22,14 @@ function blankBmp(width=128,height=64){
 }
 test("fully offline English/Hindi OCR worker initializes and recognizes a local image", {timeout:120000}, async()=>{
  for(const lang of ["eng","hin"])
-  assert.ok(fs.existsSync(path.join(assets,"lang",lang+".traineddata.gz")),lang+" model absent");
+  assert.ok(fs.existsSync(path.join(assets,"lang",lang+".traineddata")),lang+" model absent");
  assert.ok(fs.existsSync(path.join(assets,"worker.min.js")),"offline worker absent");
  assert.ok(fs.readdirSync(path.join(assets,"core")).some(name=>name.endsWith(".wasm")),"offline WASM core absent");
  const worker=await createWorker(["eng","hin"],1,{
    langPath:path.join(assets,"lang"),
    corePath:path.join(assets,"core"),
    cacheMethod:"none",
+   gzip:false,
  });
  try{
   const result=await worker.recognize(blankBmp());
