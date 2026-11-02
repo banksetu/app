@@ -100,26 +100,3 @@ jobs:
           test -f android/app/build/outputs/apk/debug/app-debug.apk
           echo "Android debug build successful; no production deployment performed."
 
-  offline-ocr-lock-prep:
-    name: Generate offline OCR dependency lock (draft artifact only)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '24'
-          cache: npm
-      - run: cp package-lock.json package-lock.before.json && npm install --package-lock-only --ignore-scripts --save-exact tesseract.js@7.0.0 @tesseract.js-data/eng@1.0.0 @tesseract.js-data/hin@1.0.0
-      - name: Export proposed dependency lock for review (never commits or merges)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ocr-dependency-lock-${{ github.run_id }}
-          path: |
-            package.json
-            package-lock.json
-            package-lock.before.json
-          retention-days: 2
