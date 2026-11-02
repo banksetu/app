@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/prepare-client-assets.mjs && tsc -b && vite build && node scripts/generate-sw.mjs",
+    "build": "node scripts/prepare-client-assets.mjs && tsc -b && vite build && node scripts/prepare-offline-ocr.mjs dist && node scripts/generate-sw.mjs",
     "build:portfolio": "node portfolio/validate.mjs && vite build --config portfolio/vite.config.ts && node portfolio/copy-public.mjs",
     "test:portfolio": "node --test scripts/portfolio.test.mjs",
     "check:schema": "node scripts/check-sheet-schema.mjs",
@@ -23,7 +23,7 @@
     "android:open": "cap open android",
     "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs scripts/verify-backend-release-gate.test.mjs desktop/testUpdater.test.cjs scripts/enforce-client-licenses.test.mjs",
-    "build:web": "node scripts/prepare-client-assets.mjs && tsc -b && vite build --base=/app/ --outDir=web-app-dist && node scripts/generate-sw.mjs web-app-dist /app/",
+    "build:web": "node scripts/prepare-client-assets.mjs && tsc -b && vite build --base=/app/ --outDir=web-app-dist && node scripts/prepare-offline-ocr.mjs web-app-dist && node scripts/generate-sw.mjs web-app-dist /app/",
     "build:hosting": "npm run build:portfolio && npm run build:web && node scripts/assemble-hosting-app.mjs",
     "test:afsm": "node --test scripts/afsm.test.mjs scripts/afsm-local.test.mjs scripts/afsm-authority.test.mjs",
     "test:pr2": "node --test desktop/pr2.test.cjs"
