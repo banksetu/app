@@ -46,3 +46,10 @@ test("misconfigured passbook graphics can never be accepted for PR2 output",()=>
   assert.ok(report.some(item=>item.severity==="error"&&/graphics and photo/.test(item.message)),kind);
  }
 });
+
+test("unreadable OCR suggestions cannot pass draft audit until user confirms correction",()=>{
+ const pending=auditPassbookTemplate(draft({elements:[part({id:"ocr",kind:"text",origin:"static",fieldKey:"",label:"Branch address",needsReview:true,dotMatrix:false})]}));
+ assert.ok(pending.some(issue=>issue.severity==="error"&&/Unreadable scan\/OCR/.test(issue.message)));
+ const accepted=auditPassbookTemplate(draft({elements:[part({needsReview:false})]}));
+ assert.equal(accepted.some(issue=>/Unreadable/.test(issue.message)),false);
+});
