@@ -6,7 +6,7 @@
 export type OpticalText = { rawValue:string; boundingBox:{ x:number;y:number;width:number;height:number } };
 type TextDetectorLike = { detect:(image:HTMLCanvasElement)=>Promise<OpticalText[]> };
 type TextDetectorFactory = new ()=>TextDetectorLike;
-export type OpticalRegion = { label:string;x:number;y:number;width:number;height:number };
+export type OpticalRegion = { label:string;x:number;y:number;width:number;height:number;confidence?:number };
 
 export function mapOpticalTextToMillimeters(
   items:OpticalText[],
@@ -38,6 +38,7 @@ export function mapOpticalTextToMillimeters(
       y:mm(top/canvasHeight*pageHeightMm),
       width:mm((right-left)/canvasWidth*pageWidthMm),
       height:mm((bottom-top)/canvasHeight*pageHeightMm),
+      ...("confidence" in item && typeof item.confidence==="number" && Number.isFinite(item.confidence)?{confidence:Math.max(0,Math.min(100,item.confidence))}:{}),
     });
   }
   return result;
@@ -65,6 +66,22 @@ export function rotateOpticalTextBoxesToOriginal(
  * documents, rotated probes are only attempted on small single-page previews,
  * and only when the first read was empty.
  */
+async function bundledFallback(
+  canvas:HTMLCanvasElement,pageWidthMm:number,pageHeightMm:number
+):Promise<{supported:boolean;items:OpticalRegion[];warning:string}>{
+  try{
+    const {recognizeBundledOfflineOCR}=await import("./layoutBundledOCR");
+    const recognized=await recognizeBundledOfflineOCR(canvas);
+    const items=mapOpticalTextToMillimeters(recognized,canvas.width,canvas.height,pageWidthMm,pageHeightMm);
+    return {supported:true,items,warning:items.length
+      ?"Bundled offline English/Hindi OCR found "+items.length+" tentative text lines. Review every line against the reference scan."
+      :"Bundled offline OCR could not read this page. Keep the original scan and use manual editing."};
+  }catch{
+    return {supported:false,items:[],
+      warning:"Local OCR models were unavailable or unsupported on this device. The scan was not sent to an external server; use manual correction."};
+  }
+}
+
 export async function detectOfflineOpticalText(
   canvas:HTMLCanvasElement,
   pageWidthMm:number,
@@ -72,10 +89,7 @@ export async function detectOfflineOpticalText(
 ):Promise<{supported:boolean;items:OpticalRegion[];warning:string}> {
   if(typeof window==="undefined")return {supported:false,items:[],warning:"Browser native OCR is unavailable."};
   const factory=(window as unknown as {TextDetector?:TextDetectorFactory}).TextDetector;
-  if(typeof factory!=="function")return {
-    supported:false,items:[],
-    warning:"This device does not support offline TextDetector. Use manual text and field tools; no PDF data was uploaded to an external OCR service.",
-  };
+  if(typeof factory!=="function")return bundledFallback(canvas,pageWidthMm,pageHeightMm);
   try{
     if(!canvas.width||!canvas.height)return {supported:true,items:[],warning:"Invalid scanned page dimensions."};
     const detector=new factory();
@@ -128,8 +142,8 @@ export async function detectOfflineOpticalText(
         items:mapOpticalTextToMillimeters(mapped,canvas.width,canvas.height,pageWidthMm,pageHeightMm),
         warning:"Rotated scan OCR found possible text. Verify orientation and every suggested label before saving."};
     }
-    return {supported:true,items:[],warning:"Native OCR found no reliable text after limited offline contrast and rotation checks. Manual editing remains available."};
+    return bundledFallback(canvas,pageWidthMm,pageHeightMm);
   }catch{
-    return {supported:true,items:[],warning:"Local text recognition failed. The original scan remains private; use manual field editing."};
+    return bundledFallback(canvas,pageWidthMm,pageHeightMm);
   }
 }
