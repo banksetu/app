@@ -57,3 +57,20 @@ test("malformed boxes and nonpositive result caps are ignored safely", () => {
   assert.deepEqual(findOverlappingPassbookText(text,0),[]);
   assert.deepEqual(findOverlappingPassbookText(text,-1),[]);
 });
+
+test("conservative Hindi passbook labels map to same customer/bank fields",()=>{
+ const labels=[
+  ["खाता संख्या :","accountNo","customer"],["खाताधारक का नाम","customerName","customer"],
+  ["शाखा का नाम","branchName","bank"],["शाखा का पता","branchAddress","bank"],
+  ["आई एफ एस सी कोड","ifsc","bank"],["एम आई सी आर","micr","bank"],
+  ["खाता खोलने की तिथि","accountOpeningDate","customer"],["नामिनी","nominee","customer"],
+ ];
+ for(const [label,key,source] of labels){
+  const result=suggestPassbookLabel(label);
+  assert.equal(result?.fieldKey,key,label);
+  assert.equal(result?.source,source,label);
+ }
+ for(const text of ["खाता संख्या 987654321", "ग्राहक का नाम सीमा शर्मा", "अमित कुमार", "नामिनी रोहित"]){
+  assert.equal(suggestPassbookLabel(text),null,"Never infer private values from mixed OCR lines: "+text);
+ }
+});
