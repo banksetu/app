@@ -504,7 +504,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             if (context) {
               await pdfPage.render({canvas:previewCanvas,canvasContext:context,viewport:previewViewport}).promise;
               references.push(previewCanvas.toDataURL("image/webp",.66));
-              if (!textLayer.items.some(item=>"str" in item && item.str.trim())) {
+              // A few digital headers do not mean the rest of the page is
+              // searchable. Mixed digital+scanned PDFs still receive local OCR
+              // suggestions for their raster-only regions (always reviewable).
+              if (textLayer.items.filter(item=>"str" in item && item.str.trim()).length<4) {
                 const {detectOfflineOpticalText}=await import("./layoutOnDeviceOCR");
                 const optical=await detectOfflineOpticalText(previewCanvas,width,height);
                 ocrStatus=optical.warning;
