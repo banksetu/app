@@ -47,6 +47,12 @@ Admin dropdown > Customize Layout > Customize Passbook / Customize Account Openi
 - The PDF and scanner import remain generic to any passbook bank/shape, with optional manual crop dimensions, orientation, fold and print-start. No Assam Gramin layout was changed.
 - Do not label this engine 100% certified until real device OCR, scan perspective/skew, reference-art color/font verification, printer model support and physical alignment approvals are complete.
 
+## November 2 — cross-platform OCR packaging correction
+- Android's asset packaging changed the gzip-suffixed language filenames. The build step now explicitly decompresses pin-locked ENG/HIN language models to raw `.traineddata` and starts Tesseract with `gzip:false` on every target.
+- Verified in draft CI: Node/Vite build and real local bilingual OCR worker test pass; Android Debug APK builds and contains both expected language assets. Windows installer smoke is checked independently.
+- Heavy Windows/Android CI jobs restored to manual-only trigger after testing to avoid unnecessary runner usage.
+- Draft software tests are not real printed-passbook or OCR character accuracy evidence.
+
 ## Mandatory unfinished work before claiming completion
 1. **Real-world OCR accuracy acceptance:** bundled local English/Hindi Tesseract now runs in CI, but must be tested on actual Windows/Android/Web devices and diverse Hindi/English passbook scans; handwriting, faded dots and overlapping print still require manual review.
 2. Complex PDF graphics reconstruction: Bézier paths, color profiles, transparent objects, gradients, fonts, images and automatic full design reconstruction.
