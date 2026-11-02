@@ -6,7 +6,7 @@ export type AuditItem={severity:"error"|"warning";message:string;elementId?:stri
 type AuditPart={
   id:string;kind:string;origin:string;fieldKey:string;label:string;imageData?:string;
   page?:number;x:number;y:number;width:number;height:number;
-  dotMatrix:boolean;preprinted:boolean;quick:boolean;
+  dotMatrix:boolean;preprinted:boolean;quick:boolean;needsReview?:boolean;
 };
 type AuditDraft={
   mode:string;bankName:string;widthMm:number;heightMm:number;
@@ -29,6 +29,7 @@ export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
   let printable=0;
   for(const item of draft.elements.slice(0,500)){
     if(!item.id?.trim())error("Each element needs a valid unique ID.",item.id);
+    if(item.needsReview===true)error("Unreadable scan/OCR line needs manual correction and review.",item.id);
     if(ids.has(item.id))error("Duplicate element ID detected.",item.id);
     ids.add(item.id);
     if(![item.x,item.y,item.width,item.height].every(Number.isFinite)||item.width<=0||item.height<=0)error("Invalid element coordinates.",item.id);
