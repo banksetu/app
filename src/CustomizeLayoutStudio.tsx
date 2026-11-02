@@ -46,6 +46,7 @@ type LayoutPart = {
   quick: boolean;
   dotMatrix: boolean;
   preprinted: boolean;
+  needsReview?: boolean;
 };
 type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
@@ -507,6 +508,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
                   if (elements.length>=300)break;
                   const part=addPart("text","static",found.label,"",found.x,found.y);
                   part.page=index;part.width=found.width;part.height=found.height;
+                  part.needsReview=true; // OCR text must be acknowledged against the source before Master review.
                   part.z=elements.length+1;part.size=within(Math.round(found.height*3.2),5,60);
                   elements.push(part);
                   recognizedFromScan++;
@@ -890,6 +892,17 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
         {showProps && (selected ? <div className="ls-properties-body">
           {field("Element name / Label", <input value={selected.label} onChange={event => edit({ label: event.target.value })} />)}
+          {(selected.kind==="text"||selected.kind==="field") && <div className="ls-overlap-tools">
+            <strong>Unreadable scan line / OCR correction</strong>
+            <label><input type="checkbox" checked={selected.needsReview===true}
+              onChange={event=>edit({needsReview:event.target.checked})}/>
+              We cannot read this line — correction required</label>
+            {selected.needsReview && <p role="alert">This text cannot be submitted or published until you compare it with the original scan, correct the label above and mark it reviewed.</p>}
+            <button type="button" disabled={!selected.needsReview||!selected.label.trim()||/unreadable|cannot read/i.test(selected.label)}
+              onClick={()=>{edit({needsReview:false});setNotice("This OCR line was marked reviewed in the local draft. Check dimensions and print alignment separately.");}}>
+              Mark corrected text as reviewed
+            </button>
+          </div>
           {field("Element type", <select value={selected.kind} onChange={event => edit({ kind: event.target.value as Kind })}><option value="text">Text / Instructions</option><option value="field">Dynamic Field</option><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="line">Line</option><option value="photo">Photo Box</option><option value="image">Image</option></select>)}
           {field("Source / Meaning", <select value={selected.origin} onChange={event => edit({ origin: event.target.value as Origin, preprinted: event.target.value === "preprinted" })}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
           {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
