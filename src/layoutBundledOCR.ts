@@ -10,7 +10,9 @@ export async function recognizeBundledOfflineOCR(canvas:HTMLCanvasElement):Promi
     throw Error("Browser local canvas is required for bundled OCR.");
   if(canvas.width*canvas.height>3000000)
     throw Error("Reduce scanned page size before offline OCR.");
-  const root=new URL("./",document.baseURI);
+  // The emitted lazy chunk lives under /assets/; resolve OCR relative to the
+  // chunk itself instead of a nested SPA route or Android page URL.
+  const root=new URL("../",import.meta.url);
   if(root.origin!==window.location.origin)throw Error("Only same-origin local OCR bundles are permitted.");
   const asset=(suffix:string)=>new URL("ocr/"+suffix,root).href;
   // Lazy import keeps the heavy recognition library off the login path.
