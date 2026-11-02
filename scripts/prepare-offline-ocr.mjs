@@ -38,8 +38,13 @@ export function prepareOfflineOcr(outDir="dist",root=process.cwd()){
       }
     };
     find(rootDir);
-    if(matches.length!==1)throw Error("Expected exactly one bundled "+lang+" OCR traineddata.gz file.");
-    fs.copyFileSync(matches[0],path.join(output,"lang",lang+".traineddata.gz"));
+    // Official data packages include both standard (~11 MB) and best_int
+    // (~3 MB) models. Choose the pin-locked compact LSTM model for Android
+    // and Firebase bandwidth; never import duplicate language versions.
+    const selected=matches.find(file=>file.split(path.sep).includes("4.0.0_best_int"))||
+      matches.find(file=>file.split(path.sep).includes("4.0.0"));
+    if(!selected)throw Error("Pinned "+lang+" OCR package contains no supported traineddata.gz model.");
+    fs.copyFileSync(selected,path.join(output,"lang",lang+".traineddata.gz"));
   }
   const manifest={version:1,eng:true,hin:true,coreFiles:count,localOnly:true};
   fs.writeFileSync(path.join(output,"manifest.json"),JSON.stringify(manifest));
