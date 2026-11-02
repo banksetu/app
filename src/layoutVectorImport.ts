@@ -137,8 +137,13 @@ export function collectEditableVectorShapes(
     }
     if([OPS.stroke,OPS.closeStroke,OPS.fill,OPS.eoFill,OPS.fillStroke,OPS.eoFillStroke,OPS.closeFillStroke,OPS.closeEOFillStroke].includes(op)){
       const filled=[OPS.fill,OPS.eoFill,OPS.fillStroke,OPS.eoFillStroke,OPS.closeFillStroke,OPS.closeEOFillStroke].includes(op);
+      const stroked=[OPS.stroke,OPS.closeStroke,OPS.fillStroke,OPS.eoFillStroke,OPS.closeFillStroke,OPS.closeEOFillStroke].includes(op);
       for(const shape of pending){
         if(results.length>=maxShapes)break;
+        // Solid Bézier silhouettes and non-rectangular fill paths cannot be
+        // faithfully recreated as editable strokes. Keep them in source overlay
+        // for manual tracing instead of inventing black pen outlines.
+        if(shape.kind==="line"&&!stroked)continue;
         accept({...shape,color:stroke,background:filled&&shape.kind==="rectangle"?fill:"transparent"});
       }
       pending=[];
