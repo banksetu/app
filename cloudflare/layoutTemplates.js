@@ -51,6 +51,12 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     if (!/^[\w-]{1,80}$/.test(id) || seen.has(id)) throw Error("Duplicate or invalid layer IDs.");
     seen.add(id);
     const origin = item.origin;
+    if(raw.mode==="passbook" && item.dotMatrix===true && !item.preprinted){
+      if(!["text","field"].includes(item.kind))
+        throw Error("Passbook dot-matrix output cannot include shapes, logos or photos.");
+      if(/union bank/i.test(bankName) && ["static","preprinted"].includes(origin))
+        throw Error("Union Bank passbooks print values only; static labels must not be included in dot-matrix output.");
+    }
     if(item.kind==="image" && (item.imageData!==undefined || fieldKey!=="bankLogo" || origin!=="bank")) throw Error("Shared logos must be Bank Information image placeholders; embedded raster image pixels cannot be shared.");
     const staticLabel = origin === "static" || origin === "preprinted";
     const safe = {
