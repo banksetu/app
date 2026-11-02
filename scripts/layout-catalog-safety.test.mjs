@@ -51,3 +51,17 @@ test("worker refuses unresolved unreadable OCR even when client bypasses UI",()=
   ]),"Central Bank of India");
   assert.equal(clean.elements[0].needsReview,undefined);
 });
+
+test("server-side catalog enforces Union Bank values-only and excludes PR2 graphic shapes",()=>{
+ const raw=draft([
+  item({id:"value",kind:"field",origin:"customer",fieldKey:"accountNo",dotMatrix:true})
+ ]);
+ const union={...raw,bankName:"Union Bank of India"};
+ assert.ok(sanitizeLayoutTemplate(union,"Union Bank of India"));
+ assert.throws(()=>sanitizeLayoutTemplate({...union,elements:[
+  item({id:"label",kind:"text",origin:"static",label:"Account No",fieldKey:"",dotMatrix:true})
+ ]},"Union Bank of India"),/values only/);
+ assert.throws(()=>sanitizeLayoutTemplate(draft([
+  item({id:"bad-line",kind:"line",origin:"static",fieldKey:"",dotMatrix:true})
+ ]),"Central Bank of India"),/cannot include shapes/);
+});
