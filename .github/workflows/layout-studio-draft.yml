@@ -51,7 +51,7 @@ jobs:
       - run: node --test scripts/ocr-offline-integration.test.mjs
 
   windows-installer-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'codex/customize-layout-engine-phase1-20261101'
     name: Windows unsigned installer smoke (draft only)
     needs: layout-studio
     runs-on: windows-latest
@@ -72,10 +72,11 @@ jobs:
         run: |
           $files = @(Get-ChildItem desktop-release -Filter "BankSetu-Setup-*.exe" -ErrorAction SilentlyContinue)
           if ($files.Count -eq 0) { throw "No unsigned Windows test installer produced" }
+          foreach ($lang in @("eng", "hin")) { if (!(Test-Path "dist/ocr/lang/$lang.traineddata.gz")) { throw "Offline OCR $lang model missing from packaged app inputs" } }
           Write-Host "Unsigned draft installer built successfully; no deployment or publishing performed."
 
   android-debug-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'codex/customize-layout-engine-phase1-20261101'
     name: Android debug build smoke (draft only)
     needs: layout-studio
     runs-on: ubuntu-latest
@@ -99,5 +100,7 @@ jobs:
       - name: Check draft APK exists
         run: |
           test -f android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -q "ocr/lang/eng.traineddata.gz"
+          unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -q "ocr/lang/hin.traineddata.gz"
           echo "Android debug build successful; no production deployment performed."
 
