@@ -50,6 +50,7 @@ jobs:
       - run: npm run build
 
   windows-installer-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: Windows unsigned installer smoke (draft only)
     needs: layout-studio
     runs-on: windows-latest
@@ -73,6 +74,7 @@ jobs:
           Write-Host "Unsigned draft installer built successfully; no deployment or publishing performed."
 
   android-debug-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: Android debug build smoke (draft only)
     needs: layout-studio
     runs-on: ubuntu-latest
