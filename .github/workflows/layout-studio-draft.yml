@@ -113,7 +113,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - run: npm install --package-lock-only --ignore-scripts --save-exact tesseract.js@7.0.0 @tesseract.js-data/eng@1.0.0 @tesseract.js-data/hin@1.0.0
+      - run: cp package-lock.json package-lock.before.json && npm install --package-lock-only --ignore-scripts --save-exact tesseract.js@7.0.0 @tesseract.js-data/eng@1.0.0 @tesseract.js-data/hin@1.0.0
       - name: Export proposed dependency lock for review (never commits or merges)
         uses: actions/upload-artifact@v4
         with:
@@ -121,4 +121,5 @@ jobs:
           path: |
             package.json
             package-lock.json
+            package-lock.before.json
           retention-days: 2
