@@ -100,6 +100,10 @@ export function estimatePassbookBounds(pixels: Uint8ClampedArray, width: number,
   for (let i = 0; i < rows.length; i++) if (rows[i] >= rowMin) activeRows.push(i);
   for (let i = 0; i < cols.length; i++) if (cols[i] >= colMin) activeCols.push(i);
   if (activeRows.length < sampledHeight * .06 || activeCols.length < sampledWidth * .06) return null;
+  // If contrast covers every scanner edge, it cannot establish the book's
+  // physical outline. Require manual crop rather than accepting the whole A4.
+  if(activeRows[0]<=1&&activeRows[activeRows.length-1]>=rows.length-2&&
+     activeCols[0]<=1&&activeCols[activeCols.length-1]>=cols.length-2)return null;
   const left = Math.max(0, activeCols[0] * step);
   const right = Math.min(width, (activeCols[activeCols.length - 1] + 1) * step);
   const top = Math.max(0, activeRows[0] * step);
