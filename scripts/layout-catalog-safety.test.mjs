@@ -41,3 +41,13 @@ test("dynamic bank logo is a reusable field reference, never embedded pixels",()
  assert.equal(sanitized.elements[0].imageData,undefined);
  assert.equal(sanitized.elements[0].dotMatrix,false);
 });
+
+test("worker refuses unresolved unreadable OCR even when client bypasses UI",()=>{
+  assert.throws(()=>sanitizeLayoutTemplate(draft([
+    item({id:"ocr-pending",kind:"text",origin:"static",fieldKey:"",label:"Branch address",needsReview:true})
+  ]),"Central Bank of India"),/Unverified or unreadable/);
+  const clean=sanitizeLayoutTemplate(draft([
+    item({id:"ocr-reviewed",kind:"text",origin:"static",fieldKey:"",label:"Branch address",needsReview:false})
+  ]),"Central Bank of India");
+  assert.equal(clean.elements[0].needsReview,undefined);
+});
