@@ -163,3 +163,8 @@ test("scan orientation repositions first-page only and rejects impossible rotati
  assert.deepEqual(output.elements[1],parts[1]);
  assert.throws(()=>mapScannedPageToPassbook(bounds,100,100,100,100,parts,45));
 });
+
+test("uniform tinted A4 background must not masquerade as detected passbook",()=>{
+ const image=pixels(200,150,[0,0,200,150]);
+ assert.equal(estimatePassbookBounds(image,200,150,210,297),null);
+});
