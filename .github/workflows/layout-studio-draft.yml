@@ -100,7 +100,11 @@ jobs:
       - name: Check draft APK exists
         run: |
           test -f android/app/build/outputs/apk/debug/app-debug.apk
+          echo "=== OCR models in Capacitor public assets ==="
+          find android/app/src/main/assets/public -type f | grep '/ocr/' | head -25 || true
+          echo "=== OCR models in compiled APK ==="
+          unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep '/ocr/' | head -25 || true
           unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -q "ocr/lang/eng.traineddata.gz"
           unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -q "ocr/lang/hin.traineddata.gz"
-          echo "Android debug build successful; no production deployment performed."
+          echo "Android APK contains both OCR models; no production deployment performed."
 
