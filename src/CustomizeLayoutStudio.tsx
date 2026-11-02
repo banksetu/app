@@ -902,7 +902,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               onClick={()=>{edit({needsReview:false});setNotice("This OCR line was marked reviewed in the local draft. Check dimensions and print alignment separately.");}}>
               Mark corrected text as reviewed
             </button>
-          </div>
+          </div>}
           {field("Element type", <select value={selected.kind} onChange={event => edit({ kind: event.target.value as Kind })}><option value="text">Text / Instructions</option><option value="field">Dynamic Field</option><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="line">Line</option><option value="photo">Photo Box</option><option value="image">Image</option></select>)}
           {field("Source / Meaning", <select value={selected.origin} onChange={event => edit({ origin: event.target.value as Origin, preprinted: event.target.value === "preprinted" })}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
           {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
