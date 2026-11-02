@@ -48,6 +48,7 @@ jobs:
       - run: npm run test:pr2
       - run: node --test scripts/bank-pdf.test.mjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs desktop/print-preview.test.cjs
       - run: npm run build
+      - run: node --test scripts/ocr-offline-integration.test.mjs
 
   windows-installer-smoke:
     if: github.event_name == 'workflow_dispatch'
