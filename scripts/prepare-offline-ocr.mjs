@@ -5,6 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import {pathToFileURL} from "node:url";
 
 export function prepareOfflineOcr(outDir="dist",root=process.cwd()){
   const npm=(...names)=>path.join(root,"node_modules",...names);
@@ -44,7 +45,7 @@ export function prepareOfflineOcr(outDir="dist",root=process.cwd()){
   fs.writeFileSync(path.join(output,"manifest.json"),JSON.stringify(manifest));
   return manifest;
 }
-if(import.meta.url===new URL("file://"+path.resolve(process.argv[1]||"")).href){
+if(process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const output=process.argv[2]||"dist";
   const result=prepareOfflineOcr(output);
   console.log("Offline OCR assets prepared for "+output,JSON.stringify(result));
