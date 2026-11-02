@@ -60,3 +60,19 @@ test("rotated rectangles are reconstructed as strokes, not incorrect filled boxe
  assert.equal(result.length,4);
  assert.ok(result.every(p=>p.kind==="line"));
 });
+
+test("filled-only cubic vector shapes are not invented as visible lines",()=>{
+ const result=collectEditableVectorShapes({
+   fnArray:[OPS.setFillRGBColor,OPS.constructPath,OPS.fill],
+   argsArray:[[1,0,0],[[OPS.moveTo,OPS.curveTo],[10,10,25,70,60,70,80,10]],[]],
+ },viewport,100,100);
+ assert.equal(result.length,0,"curve fill should remain source-reference art, not made-up strokes");
+});
+test("filled rectangles still preserve original fill color",()=>{
+ const result=collectEditableVectorShapes({
+   fnArray:[OPS.setFillRGBColor,OPS.constructPath,OPS.fill],
+   argsArray:[[0,1,0],[[OPS.rectangle],[10,10,40,30]],[]],
+ },viewport,100,100);
+ assert.equal(result.length,1);
+ assert.equal(result[0].background,"#00ff00");
+});
