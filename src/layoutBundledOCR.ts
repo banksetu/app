@@ -22,6 +22,7 @@ export async function recognizeBundledOfflineOCR(canvas:HTMLCanvasElement):Promi
     corePath:asset("core"),
     langPath:asset("lang"),
     workerBlobURL:false,
+    gzip:false,
   });
   try{
     const result=await worker.recognize(canvas,{}, {blocks:true,text:true});
