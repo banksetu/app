@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
+import {gunzipSync} from "node:zlib";
 
 export function prepareOfflineOcr(outDir="dist",root=process.cwd()){
   const npm=(...names)=>path.join(root,"node_modules",...names);
@@ -44,9 +45,13 @@ export function prepareOfflineOcr(outDir="dist",root=process.cwd()){
     const selected=matches.find(file=>file.split(path.sep).includes("4.0.0_best_int"))||
       matches.find(file=>file.split(path.sep).includes("4.0.0"));
     if(!selected)throw Error("Pinned "+lang+" OCR package contains no supported traineddata.gz model.");
-    fs.copyFileSync(selected,path.join(output,"lang",lang+".traineddata.gz"));
+    // Android asset packaging can strip the .gz suffix. Write raw traineddata
+    // consistently for Web, Electron and Capacitor and set gzip:false at runtime.
+    const raw=gunzipSync(fs.readFileSync(selected));
+    if(raw.length<100)throw Error("OCR model appears corrupted: "+lang);
+    fs.writeFileSync(path.join(output,"lang",lang+".traineddata"),raw);
   }
-  const manifest={version:1,eng:true,hin:true,coreFiles:count,localOnly:true};
+  const manifest={version:1,eng:true,hin:true,coreFiles:count,localOnly:true,gzip:false};
   fs.writeFileSync(path.join(output,"manifest.json"),JSON.stringify(manifest));
   return manifest;
 }
