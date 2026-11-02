@@ -173,6 +173,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   };
   const submitForReview = async () => {
     if (!canSubmit || busy || !bankName.trim()) return;
+    if(scanFrame && scanSuggestion){
+      setNotice("Review and apply or explicitly skip the source PDF crop before submitting. An A4 scanner sheet is not a physical passbook.");
+      return;
+    }
     const report=auditPassbookTemplate(draft);
     setAudit(report);
     if (report.some(item=>item.severity==="error")) {setNotice("Fix all audit errors before submitting a template for Master approval.");return;}
