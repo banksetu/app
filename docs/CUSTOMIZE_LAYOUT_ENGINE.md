@@ -39,8 +39,16 @@ Admin dropdown > Customize Layout > Customize Passbook / Customize Account Openi
 - Quick proof uses the real PNG/JPEG/WebP image MIME; layout tests now include A4 fold probes, PR2 PDF-content verification, paper validation and bank-specific regressions.
 - Do not treat tests, pixel differences, scan OCR or visually similar screenshots as physical paper approval.
 
+## November 2 — opt-in truly bundled OCR (draft)
+- Tesseract.js v7 is pinned in package-lock with English and Hindi language-data packages; WASM/worker/model files are copied into Web, Windows and Android build outputs. OCR never uploads customer scans to external services.
+- The offline OCR runtime lazy-loads only when needed, after native TextDetector is unavailable or fails. Both digital+scanned sparse mixed PDFs can be reviewed; every OCR-imported line requires explicit correction/acknowledgement and cannot be shared or activated while unreadable.
+- Static OCR models are copied during build without network requests. The web Service Worker caches large static language assets only when users invoke OCR, rather than preloading during login. Windows/Android installers include models in their packaged app assets.
+- CI includes a real Node/WASM bilingual-model initialization and local-image recognition smoke test after build, plus a no-network packager fixture. Passing it does NOT establish accurate Hindi text on all scans or hardware compatibility.
+- The PDF and scanner import remain generic to any passbook bank/shape, with optional manual crop dimensions, orientation, fold and print-start. No Assam Gramin layout was changed.
+- Do not label this engine 100% certified until real device OCR, scan perspective/skew, reference-art color/font verification, printer model support and physical alignment approvals are complete.
+
 ## Mandatory unfinished work before claiming completion
-1. Reliable scanned-image OCR on Windows, Android and web (native TextDetector is not universally supported), Hindi/script handling, overlap recognition and confidence validation.
+1. **Real-world OCR accuracy acceptance:** bundled local English/Hindi Tesseract now runs in CI, but must be tested on actual Windows/Android/Web devices and diverse Hindi/English passbook scans; handwriting, faded dots and overlapping print still require manual review.
 2. Complex PDF graphics reconstruction: Bézier paths, color profiles, transparent objects, gradients, fonts, images and automatic full design reconstruction.
 3. Complete end-to-end Windows and Android acceptance of the new opt-in rendering path; built-in Assam/Union formats intentionally keep their approved existing engine unless a separately reviewed migration is supplied.
 4. Physical Epson PR2/Olivetti tests for every requested model/mode and layout, actual fold/print start, paper sensing, output comparison, duplicate job recovery and multi-page insertion prompts. Existing PR2 bridge supports confirmed PLQ-20/20M; PLQ-35/80 require verified printer command profiles.
