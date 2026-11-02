@@ -20,6 +20,18 @@ const aliases: Array<[string,LayoutSource,RegExp]> = [
   ["accountType","customer",/^(?:account\s*type|type\s*of\s*account)\s*[:=.-]*$/i],
   ["operatingMode","customer",/^(?:operating\s*(?:mode|instructions?)|operation)\s*[:=.-]*$/i],
   ["mode","customer",/^(?:mode\s*of\s*operation)\s*[:=.-]*$/i],
+  // Conservative Devanagari labels only. Full strings must match: personal
+  // names, numerical account values and OCR fragments are never auto-mapped.
+  ["accountNo","customer",/^(?:खाता\s*(?:संख्या|क्रमांक|नंबर)|खाता\s*नं\.?)[\s:：।-]*$/u],
+  ["customerName","customer",/^(?:खाताधारक\s*का\s*नाम|खातेदार\s*का\s*नाम|ग्राहक\s*का\s*नाम)[\s:：।-]*$/u],
+  ["customerId","customer",/^(?:ग्राहक\s*(?:आईडी|पहचान\s*संख्या)|सी\s*आई\s*एफ\s*(?:आईडी|संख्या)?)[\s:：।-]*$/u],
+  ["fullAddress","customer",/^(?:खाताधारक\s*का\s*पता|ग्राहक\s*का\s*पता|नाम\s*(?:और|व)\s*पता)[\s:：।-]*$/u],
+  ["branchName","bank",/^(?:शाखा|शाखा\s*का\s*नाम)[\s:：।-]*$/u],
+  ["branchAddress","bank",/^(?:शाखा\s*का\s*पता|शाखा\s*पता)[\s:：।-]*$/u],
+  ["ifsc","bank",/^(?:आई\s*एफ\s*एस\s*सी(?:\s*कोड)?)[\s:：।-]*$/u],
+  ["micr","bank",/^(?:एम\s*आई\s*सी\s*आर(?:\s*कोड)?)[\s:：।-]*$/u],
+  ["accountOpeningDate","customer",/^(?:खाता\s*खोलने\s*की\s*(?:तिथि|तारीख)|खाता\s*खोलने\s*का\s*दिनांक)[\s:：।-]*$/u],
+  ["nominee","customer",/^(?:नामिनी|नामिती|नामांकित\s*व्यक्ति)[\s:：।-]*$/u],
 ];
 export function suggestPassbookLabel(raw: string): LabelSuggestion | null {
   const label=String(raw||"").trim().replace(/\s+/g," ");
