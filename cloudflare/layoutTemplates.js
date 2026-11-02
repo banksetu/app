@@ -43,6 +43,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
       throw Error("Invalid layout element " + (index + 1) + ".");
     const page = item.page === undefined ? 1 : item.page;
     if (!Number.isInteger(page) || page < 1 || page > pageCount) throw Error("Invalid element page.");
+    if(item.needsReview===true)throw Error("Unverified or unreadable OCR text must be corrected before template sharing.");
     const label = clean(item.label, 130), fieldKey = clean(item.fieldKey, 80);
     if (!label || suspicious(label) || fieldKey && !/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/.test(fieldKey))
       throw Error("A label might contain customer data or an invalid field mapping.");
