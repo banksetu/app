@@ -4,7 +4,7 @@
 export type OCRCandidate={rawValue:string;confidence:number;boundingBox:{x:number;y:number;width:number;height:number}};
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==="object"&&!Array.isArray(v);
 const rows=(v:unknown)=>Array.isArray(v)?v:[];
-const finite=(v:unknown)=>typeof v==="number"&&Number.isFinite(v);
+const finite=(v:unknown):v is number=>typeof v==="number"&&Number.isFinite(v);
 export function extractTesseractLines(blocks:unknown,maxLines=250):OCRCandidate[]{
   const max=Number.isFinite(maxLines)?Math.max(0,Math.min(250,Math.trunc(maxLines))):250;
   if(max===0)return [];
