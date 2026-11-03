@@ -1,4 +1,4 @@
-import {validatePersistedLayoutDraft} from "./layoutDraftValidation";
+import {validatePersistedLayoutDraft} from "./layoutDraftValidation.ts";
 /** A strict outgoing whitelist prevents uploading local OCR/customer text
  * values, image scans, credentials or arbitrary custom metadata. Server's
  * independent sanitizeLayoutTemplate is the mandatory second validation.
