@@ -9,7 +9,7 @@ import {OPS} from "pdfjs-dist/legacy/build/pdf.mjs";
 type Matrix=[number,number,number,number,number,number];
 type Point=[number,number];
 export type VectorPrimitive={
-  kind:"line"|"rectangle";x:number;y:number;width:number;height:number;
+  kind:"line"|"rectangle"|"ellipse";x:number;y:number;width:number;height:number;
   rotation:number;color:string;background:string;borderWidth:number;
 };
 type PdfViewportLike={width:number;height:number;convertToViewportPoint:(x:number,y:number)=>number[]};
@@ -78,6 +78,36 @@ export function collectEditableVectorShapes(
     if(op===OPS.constructPath){
       const commands=Array.isArray(args[0])?args[0] as number[]:[];
       const coords=Array.isArray(args[1])?args[1] as number[]:[];
+      // Recognize four connected cubic quarter-arcs forming an axis-aligned
+      // ellipse. Keep it as one editable vector instead of 32 pen strokes.
+      // Non-elliptical filled Bézier contours must still be reviewed manually.
+      if(commands.length===6&&commands[0]===OPS.moveTo&&
+        commands.slice(1,5).every(code=>code===OPS.curveTo)&&
+        commands[5]===OPS.closePath&&coords.length===26&&coords.every(Number.isFinite)){
+        const start=toMm(transform(matrix,coords[0],coords[1]));
+        const endPoints:Point[]=[start];
+        for(let curve=0;curve<4;curve++){
+          const at=2+curve*6;
+          endPoints.push(toMm(transform(matrix,coords[at+4],coords[at+5])));
+        }
+        const closing=endPoints.pop()!;
+        const xs=endPoints.map(p=>p[0]),ys=endPoints.map(p=>p[1]);
+        const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+        const radiusX=(maxX-minX)/2,radiusY=(maxY-minY)/2;
+        const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
+        const tx=Math.max(.5,radiusX*.08),ty=Math.max(.5,radiusY*.08);
+        const cardinals=endPoints.every(([x,y])=>
+          ((Math.abs(x-minX)<tx||Math.abs(x-maxX)<tx)&&Math.abs(y-cy)<ty)||
+          ((Math.abs(y-minY)<ty||Math.abs(y-maxY)<ty)&&Math.abs(x-cx)<tx));
+        if(radiusX>=.5&&radiusY>=.5&&cardinals&&
+          Math.hypot(closing[0]-start[0],closing[1]-start[1])<1){
+          pending.push({kind:"ellipse",x:round(minX),y:round(minY),
+            width:round(maxX-minX),height:round(maxY-minY),
+            rotation:0,color:stroke,background:"transparent",
+            borderWidth:round(width/72*25.4)});
+          continue;
+        }
+      }
       let cursor=0,starting:Point|null=null,prev:Point|null=null;
       for(const command of commands){
         if(command===OPS.rectangle && cursor+3<coords.length){
@@ -144,7 +174,7 @@ export function collectEditableVectorShapes(
         // faithfully recreated as editable strokes. Keep them in source overlay
         // for manual tracing instead of inventing black pen outlines.
         if(shape.kind==="line"&&!stroked)continue;
-        accept({...shape,color:stroke,background:filled&&shape.kind==="rectangle"?fill:"transparent"});
+        accept({...shape,color:stroke,background:filled&&(shape.kind==="rectangle"||shape.kind==="ellipse")?fill:"transparent"});
       }
       pending=[];
     }else if(op===OPS.endPath){pending=[];}
