@@ -6,7 +6,15 @@ import vm from 'node:vm';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import {renderToStaticMarkup} from 'react-dom/server';
-const source=ts.transpileModule(fs.readFileSync('src/Dashboard.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const dashboardSource=fs.readFileSync('src/Dashboard.tsx','utf8');
+const hookPosition=name=>{
+  const offset=dashboardSource.indexOf('const ['+name);
+  assert(offset>0,'Dashboard hook is present: '+name);
+  return (dashboardSource.slice(0,offset).match(/\\buseState(?:<[^>\\n]*>)?\\s*\\(/g)||[]).length+1;
+};
+const activePageHook=hookPosition('activePage');
+const bankSettingsReadyHook=hookPosition('bankSettingsReady');
+const source=ts.transpileModule(dashboardSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const noticeSource=ts.transpileModule(fs.readFileSync('src/LicenseNotice.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 function render(page,blocked){
  const storage={getItem:()=>null,setItem(){},removeItem(){}};
@@ -14,7 +22,7 @@ function render(page,blocked){
  const exports={};
  const component=name=>props=>React.createElement('div',{'data-component':name},name==='LicenseNotice'?props.permission.state:undefined);
  const require=path=>{
-  if(path==='react')return {...React,useState:value=>{index++;return React.useState(index===2?page:index===23?true:value);}};
+  if(path==='react')return {...React,useState:value=>{index++;return React.useState(index===activePageHook?page:index===bankSettingsReadyHook?true:value);}};
   if(path==='react/jsx-runtime')return jsx;
   if(path==='react-dom')return {createPortal:()=>null};
   if(path==='./core/useSyncStatus')return {useSyncStatus:()=>({records:1,pending:1,online:true})};
