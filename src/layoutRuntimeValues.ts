@@ -1,3 +1,4 @@
+import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import { layoutCustomerValue } from "./layoutCustomerValue.ts";
 export type LayoutDynamicElement = {
  id:string;kind:string;origin:string;label:string;fieldKey:string;value?:string;defaultValue?:string;
@@ -43,13 +44,8 @@ export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<st
   }
   return clean(element.defaultValue);
 }
-export function visibleLayoutElement(element:LayoutDynamicElement,output:"quick"|"dotmatrix"):boolean{
-  if(output==="quick")return element.quick;
-  if(!element.dotMatrix||element.preprinted)return false;
-  // Shared runtime must enforce the same text-only rules as PR2 proof and audit.
-  // Never rely on user-controlled dotMatrix flags for a logo, border or line.
-  if(element.kind!=="text"&&element.kind!=="field")return false;
-  return true;
+export function visibleLayoutElement(element:LayoutDynamicElement,output:"quick"|"dotmatrix",bankName=""):boolean{
+  return isLayoutLayerPrintable(element,output,bankName);
 }
 export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"passbook"|"accountOpening"):boolean {
   if(!template||template.mode!==mode||template.bankName.trim().toLowerCase()!==bankName.trim().toLowerCase())return false;
