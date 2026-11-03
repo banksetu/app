@@ -146,3 +146,14 @@ html[data-appearance="dark"] .layout-studio, .banksetu-app-shell[data-appearance
 .ls-scan-corner label {display:flex;align-items:center;gap:6px;justify-content:space-between}
 .ls-scan-corner input {min-width:0;max-width:76px}
 .ls-scan-corner-controls>p {grid-column:1/-1;color:var(--ls-muted)}
+
+/* Word-style layout workspace: paper rulers remain purely visual; all edited
+   field coordinates stay in actual millimeters rather than browser pixels. */
+.ls-paper-stage{position:relative;margin:0 auto;max-width:none}
+.ls-ruler-x{height:20px;position:relative;white-space:nowrap;color:var(--ls-muted);background:var(--ls-surface);border:1px solid var(--ls-border);border-bottom:0;box-sizing:border-box;font-size:9px}
+.ls-ruler-x span{position:absolute;top:1px;transform:translateX(-2px);border-left:1px solid var(--ls-border);padding-left:3px;height:18px;line-height:14px}
+.ls-ruler-y{position:absolute;top:20px;left:-27px;width:24px;color:var(--ls-muted);background:var(--ls-surface);border:1px solid var(--ls-border);font-size:9px;pointer-events:none}
+.ls-ruler-y span{position:absolute;left:1px;right:1px;border-top:1px solid var(--ls-border);line-height:11px;text-align:center}
+.ls-word-align{display:flex;flex-wrap:wrap;gap:5px;border:1px solid var(--ls-border);padding:6px;border-radius:8px}
+.ls-word-align strong{width:100%;font-size:11px}
+@media(max-width:750px){.ls-ruler-y{left:-20px;width:18px}.ls-ruler-y span{font-size:8px}.ls-ruler-x{height:18px}.ls-ruler-y{top:18px}}
