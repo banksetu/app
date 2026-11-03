@@ -57,7 +57,9 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     const page = item.page === undefined ? 1 : item.page;
     if (!Number.isInteger(page) || page < 1 || page > pageCount) throw Error("Invalid element page.");
     if(item.needsReview===true)throw Error("Unverified or unreadable OCR text must be corrected before template sharing.");
-    const label = clean(item.label, 130), fieldKey = clean(item.fieldKey, 80);
+    if(typeof item.label!=="string"||item.label.length>500)
+      throw Error("Passbook text must be at most 500 characters; content was not silently truncated.");
+    const label = clean(item.label, 500), fieldKey = clean(item.fieldKey, 80);
     if (!label || suspicious(label) || fieldKey && !/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/.test(fieldKey))
       throw Error("A label might contain customer data or an invalid field mapping.");
     const id=clean(item.id, 80);
