@@ -76,3 +76,25 @@ test("filled rectangles still preserve original fill color",()=>{
  assert.equal(result.length,1);
  assert.equal(result[0].background,"#00ff00");
 });
+
+test("step 3: four PDF Bézier quarter-arcs become one editable filled ellipse",()=>{
+ const k=.5522847498;
+ const coords=[
+  70,50,
+  70,50+10*k,50+20*k,60,50,60,
+  50-20*k,60,30,50+10*k,30,50,
+  30,50-10*k,50-20*k,40,50,40,
+  50+20*k,40,70,50-10*k,70,50,
+ ];
+ const shapes=collectEditableVectorShapes({
+  fnArray:[OPS.setFillRGBColor,OPS.constructPath,OPS.fill],
+  argsArray:[[0,1,0],[[OPS.moveTo,OPS.curveTo,OPS.curveTo,OPS.curveTo,OPS.curveTo,OPS.closePath],coords],[]]
+ },viewport,100,100);
+ assert.equal(shapes.length,1);
+ assert.equal(shapes[0].kind,"ellipse");
+ assert.equal(shapes[0].x,30);
+ assert.equal(shapes[0].y,40);
+ assert.equal(shapes[0].width,40);
+ assert.equal(shapes[0].height,20);
+ assert.equal(shapes[0].background,"#00ff00");
+});
