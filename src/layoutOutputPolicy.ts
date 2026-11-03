@@ -2,7 +2,7 @@
  * This does not replace the existing PR2 bridge or bank-specific print layouts.
  */
 export type LayoutOutputLayer={
-  kind:string;origin:string;quick:boolean;dotMatrix:boolean;preprinted:boolean;
+  kind:string;origin:string;fieldKey?:string;quick:boolean;dotMatrix:boolean;preprinted:boolean;
 };
 export type LayoutOutputMode="quick"|"dotmatrix";
 export function isLayoutLayerPrintable(
@@ -13,7 +13,7 @@ export function isLayoutLayerPrintable(
  if(layer.kind!=="text"&&layer.kind!=="field")return false;
  // Union Bank's physical stock includes all labels: print values only.
  if(/union\s+bank/i.test(bankName)&&
-     (layer.origin==="static"||layer.origin==="preprinted"||layer.origin==="dotmatrix"&&layer.kind==="text"))
+     (layer.origin==="static"||layer.origin==="preprinted"||layer.origin==="dotmatrix"&&!layer.fieldKey?.trim()))
    return false;
  return true;
 }
