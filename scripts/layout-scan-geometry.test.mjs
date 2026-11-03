@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { estimatePassbookBounds, estimatePassbookFold, mapScannedPageToPassbook, calibrateScanBounds } from "../src/layoutScanGeometry.ts";
+import { estimatePassbookBounds, estimatePassbookFold, estimatePassbookSkew, mapScannedPageToPassbook, calibrateScanBounds } from "../src/layoutScanGeometry.ts";
 
 function pixels(width, height, region) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -167,4 +167,30 @@ test("scan orientation repositions first-page only and rejects impossible rotati
 test("uniform tinted A4 background must not masquerade as detected passbook",()=>{
  const image=pixels(200,150,[0,0,200,150]);
  assert.equal(estimatePassbookBounds(image,200,150,210,297),null);
+});
+
+test("step 1: both sloping scanner edges give a cautious, bounded skew hint",()=>{
+ const width=300,height=240,data=pixels(width,height,null);
+ for(let y=30;y<210;y++){
+   const first=30+Math.round((y-30)*.055);
+   for(let x=first;x<first+180;x++){
+     const k=(y*width+x)*4;data[k]=215;data[k+1]=215;data[k+2]=212;
+   }
+ }
+ const hint=estimatePassbookSkew(data,width,height,{left:28,right:223,top:30,bottom:210});
+ assert.ok(hint,"expected low confidence outer edge tilt");
+ assert.ok(hint.angleDeg>=2.4&&hint.angleDeg<=3.8);
+ assert.equal(hint.confidence,"low");
+});
+test("step 1: manually deskew text inside passbook crop, keeping A4 untouched",()=>{
+ const frame={left:0,top:0,right:100,bottom:100,widthMm:100,heightMm:100,confidence:"low",reason:"manual"};
+ const part={page:1,x:10,y:20,width:30,height:10,rotation:0};
+ const result=mapScannedPageToPassbook(frame,100,100,100,100,[part],0,5);
+ assert.ok(Math.abs(result.elements[0].x-12.3)<.2);
+ assert.ok(Math.abs(result.elements[0].y-17.9)<.2);
+ assert.equal(result.elements[0].rotation,5);
+ assert.equal(part.x,10,"input is not mutated");
+ for(const bad of [9,-9,NaN,Infinity]){
+   assert.throws(()=>mapScannedPageToPassbook(frame,100,100,100,100,[part],0,bad));
+ }
 });
