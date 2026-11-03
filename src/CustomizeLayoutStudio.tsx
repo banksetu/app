@@ -364,9 +364,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       ? "Apply the scanned crop, optional perspective correction and manual dimensions to this local DRAFT? Printer calibration is still required."
       : "No usable text was imported. Applying this image-only PDF will open an EMPTY editable canvas with the cropped reference; Undo can recover current editor objects. Save/export your previous draft first. Continue?"))return;
     try {
-      const oriented=scanOrientation===90||scanOrientation===270
+      const orientedBase=scanOrientation===90||scanOrientation===270
         ? {...proposal,widthMm:proposal.heightMm,heightMm:proposal.widthMm,foldHint:undefined}
         : scanOrientation===180?{...proposal,foldHint:undefined}:proposal;
+      const oriented=scanPerspective?{...orientedBase,foldHint:undefined}:orientedBase;
       const bounds=calibrateScanBounds(oriented,scanMeasurements);
       const perspective:PerspectiveQuad|undefined=scanPerspective&&scanCornerPercents
         ? scanCornerPercents.map(point=>({
@@ -924,16 +925,54 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <strong>Bank-independent scan calibration (unverified)</strong>
       {referencePages[0] && <div className="ls-scan-preview" style={{aspectRatio:scanFrame.pixelWidth+"/"+scanFrame.pixelHeight}}>
         <img src={referencePages[0]} alt="Local original PDF page; dotted selection marks proposed passbook crop" draggable={false}/>
-        <div className="ls-scan-selection" aria-hidden="true" style={{
-          left:(scanSuggestion.left/scanFrame.pixelWidth*100)+"%",
-          top:(scanSuggestion.top/scanFrame.pixelHeight*100)+"%",
-          width:((scanSuggestion.right-scanSuggestion.left)/scanFrame.pixelWidth*100)+"%",
-          height:((scanSuggestion.bottom-scanSuggestion.top)/scanFrame.pixelHeight*100)+"%"
-        }}/>
+        {scanPerspective&&scanCornerPercents ?
+          <svg className="ls-scan-quad" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <polygon points={scanCornerPercents.map(point=>point.x+","+point.y).join(" ")}
+              fill="rgba(214,64,69,.10)" stroke="#d64045" strokeWidth=".6" strokeDasharray="1.5 1"/>
+          </svg> :
+          <div className="ls-scan-selection" aria-hidden="true" style={{
+            left:(scanSuggestion.left/scanFrame.pixelWidth*100)+"%",
+            top:(scanSuggestion.top/scanFrame.pixelHeight*100)+"%",
+            width:((scanSuggestion.right-scanSuggestion.left)/scanFrame.pixelWidth*100)+"%",
+            height:((scanSuggestion.bottom-scanSuggestion.top)/scanFrame.pixelHeight*100)+"%"
+          }}/>}
+
       </div>}
       <span>Estimated scan area: {scanSuggestion.widthMm} × {scanSuggestion.heightMm} mm · {scanSuggestion.confidence} confidence</span>
       <span>{scanSuggestion.reason}</span>
       <span>Crop edges (% of scanner PDF). Include the actual passbook's white borders; exclude empty A4 background.</span>
+      <label><input type="checkbox" checked={scanPerspective} onChange={event=>{
+          const enabled=event.target.checked;setScanPerspective(enabled);
+          if(enabled){
+            const pct=(value:number,extent:number)=>round(value/extent*100);
+            setScanCornerPercents([
+              {x:pct(scanSuggestion.left,scanFrame.pixelWidth),y:pct(scanSuggestion.top,scanFrame.pixelHeight)},
+              {x:pct(scanSuggestion.right,scanFrame.pixelWidth),y:pct(scanSuggestion.top,scanFrame.pixelHeight)},
+              {x:pct(scanSuggestion.right,scanFrame.pixelWidth),y:pct(scanSuggestion.bottom,scanFrame.pixelHeight)},
+              {x:pct(scanSuggestion.left,scanFrame.pixelWidth),y:pct(scanSuggestion.bottom,scanFrame.pixelHeight)}
+            ]);
+          }else setScanCornerPercents(null);
+        }}/> Advanced four-corner / trapezoid correction (optional)</label>
+      {scanPerspective&&scanCornerPercents && <div className="ls-scan-corner-controls">
+        {scanCornerPercents.map((point,index)=><div key={index} className="ls-scan-corner">
+          <strong>{["Top left","Top right","Bottom right","Bottom left"][index]}</strong>
+          {(["x","y"] as const).map(axis=><label key={axis}>{axis.toUpperCase()} %
+            <input type="number" min={0} max={100} step={0.1} value={point[axis]}
+              onChange={event=>{
+                const value=Number(event.target.value);
+                if(!Number.isFinite(value)||value<0||value>100)return;
+                setScanCornerPercents(previous=>{
+                  if(!previous)return previous;
+                  const next=previous.map(p=>({...p})) as PerspectiveQuad;
+                  next[index][axis]=value;
+                  return next;
+                });
+              }}/>
+          </label>)}
+        </div>)}
+        <p>Corner order: top left, top right, bottom right, bottom left. Crossing or invalid shapes are blocked before changing the draft. Enter ruler dimensions for accurate physical size.</p>
+      </div>}
+
       <label>Rotate passbook inside scan clockwise (optional)
         <select value={scanOrientation} onChange={event=>setScanOrientation(Number(event.target.value) as 0|90|180|270)}>
           <option value={0}>0° — already upright</option><option value={90}>90°</option>
@@ -950,6 +989,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       {(["left","top","right","bottom"] as const).map(edge=><label key={edge}>
         {edge==="left"?"Left edge":edge==="top"?"Top edge":edge==="right"?"Right edge":"Bottom edge"} (%)
         <input type="number" min={0} max={100} step={0.1}
+          disabled={scanPerspective}
           value={round(scanSuggestion[edge]/((edge==="left"||edge==="right")?scanFrame.pixelWidth:scanFrame.pixelHeight)*100)}
           onChange={event=>changeScanEdge(edge,Number(event.target.value))}/>
       </label>)}
@@ -965,7 +1005,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       </label>)}
       {scanSuggestion.foldHint && <span>Possible fold gap: {scanSuggestion.foldHint.foldMm} mm (low confidence). Override if needed. Print start is independent.</span>}
       <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply crop and measurements to local draft</button>
-      <button type="button" onClick={() => {setScanSuggestion(null);setScanFrame(null);}}>Skip scan calibration</button>
+      <button type="button" onClick={() => {setScanSuggestion(null);setScanFrame(null);setScanPerspective(false);setScanCornerPercents(null);}}>Skip scan calibration</button>
     </div>}
     <div className="ls-settings">
       <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
