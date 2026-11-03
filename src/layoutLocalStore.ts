@@ -7,7 +7,11 @@ import {listLayoutSlots,putLayoutSlot,type LayoutMode,type LocalLayoutSlot} from
  */
 export function currentLayoutScope(){
   const scope=identity(),uid=auth.currentUser?.uid||"";
-  const tenantId=sessionStorage.getItem("bankSetuTenantId")||"";
+  const role=sessionStorage.getItem("bankSetuAccountRole")||"";
+  const masterLocal=["master_owner","admin"].includes(role)&&
+    sessionStorage.getItem("bankSetuMasterLocalEnabled")==="true";
+  const tenantId=masterLocal?"master:"+uid:
+    (sessionStorage.getItem("bankSetuTenantId")||"");
   if(!uid||!tenantId||!scope.startsWith(uid+":")||!scope.includes(":"+tenantId+":"))
     throw Error("The bank layout workspace identity is not verified.");
   return {scope,tenantId,uid};
