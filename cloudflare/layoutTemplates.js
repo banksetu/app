@@ -15,8 +15,16 @@ export const safeLayoutBankFieldKey=key=>/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key
 
 
 export function normalizedBankKey(name) {
-  const input = clean(name, 120).toLowerCase();
-  return input.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90);
+  const input = clean(name, 120).normalize("NFKC").toLowerCase();
+  const ascii = input.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if(!input)return "";
+  if(/^[\\x00-\\x7f]*$/.test(input))return ascii.slice(0,90);
+  // Preserve keys of all existing ASCII banks. Bank names written partly or
+  // fully in Hindi must not collapse to "" or collide on their ASCII prefix.
+  let hash=0xcbf29ce484222325n;
+  for(const symbol of input)hash=BigInt.asUintN(64,
+    (hash ^ BigInt(symbol.codePointAt(0)))*0x100000001b3n);
+  return (ascii.slice(0,50)||"bank")+"-u"+hash.toString(36);
 }
 
 export function sanitizeLayoutTemplate(raw, selectedBank) {
