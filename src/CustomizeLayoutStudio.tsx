@@ -117,6 +117,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [splitSecondLine, setSplitSecondLine] = useState("");
   const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
   const [collisions, setCollisions] = useState<TextCollision[]>([]);
+  const [graphicWarnings,setGraphicWarnings]=useState<string[]>([]);
+  const [graphicsChecked,setGraphicsChecked]=useState(false);
   const [printedLabelRule, setPrintedLabelRule] = useState<"all"|"none"|"some">("some");
   const [confirmedPreprinted, setConfirmedPreprinted] = useState<Record<string,boolean>>({});
   const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
@@ -183,6 +185,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setAudit(report);
     if (report.some(item=>item.severity==="error")) {setNotice("Fix all audit errors before submitting a template for Master approval.");return;}
     if(!physicalChecked || !labelChecked) {setNotice("Confirm physical dimensions and the preprinted label/PR2 separation before submission.");return;}
+    if(graphicWarnings.length&&!graphicsChecked){
+      setNotice("Review unsupported PDF artwork against the original before submitting this shared template.");return;
+    }
     if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
     setBusy(true);
     try {
@@ -466,6 +471,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setBusy(true);
     setReferencePages([]);
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
+    setGraphicWarnings([]);setGraphicsChecked(false);
     setPhysicalChecked(false);setHardwareChecked(false);
     setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
     setScanOrientation(0);setScanFineRotation(0);
@@ -487,6 +493,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         let recognizedFromScan=0;
         let recognizedGraphics=0;
         let ocrStatus="";
+        const sourceGraphicsWarnings:string[]=[];
         for (let index = 1; index <= pageCount; index++) {
           const pdfPage = index === 1 ? page : await pdf.getPage(index);
           const view = pdfPage.getViewport({ scale:1 });
@@ -527,8 +534,12 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           } catch { references.push(""); }
           if (elements.length<290) {
             try {
-              const {collectEditableVectorShapes}=await import("./layoutVectorImport");
+              const [{collectEditableVectorShapes},{analyzePdfGraphicsCoverage}]=await Promise.all([
+                import("./layoutVectorImport"),import("./layoutGraphicsCoverage")
+              ]);
               const operators=await pdfPage.getOperatorList();
+              const coverage=analyzePdfGraphicsCoverage(operators);
+              sourceGraphicsWarnings.push(...coverage.warnings.map(warning=>"PDF page "+index+": "+warning));
               const shapes=collectEditableVectorShapes(operators,view,width,height,Math.min(80,300-elements.length));
               for(const shape of shapes){
                 if(elements.length>=300)break;
@@ -539,7 +550,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
                 part.quick=true;part.dotMatrix=false;part.z=elements.length+1;
                 elements.push(part);recognizedGraphics++;
               }
-            }catch {/* Unsupported vector operations require editable manual reconstruction. */}
+            }catch {
+              sourceGraphicsWarnings.push("PDF page "+index+": vector artwork could not be analyzed; check the original manually.");
+            }
           }
           for (const item of textLayer.items) {
             if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
@@ -558,6 +571,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         }
         setReferencePages(references);
         setReferenceVisible(true);
+        setGraphicWarnings(sourceGraphicsWarnings.slice(0,24));
         // For an A4 scanner page, its paper dimensions are NOT the passbook dimensions.
         // Keep measured passbook size from the user's manual calibration until border analysis exists.
         const scannedA4 = (Math.abs(width - 210) < 5 && Math.abs(height - 297) < 5) || (Math.abs(width - 297) < 5 && Math.abs(height - 210) < 5);
@@ -693,6 +707,13 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
+    {graphicWarnings.length>0 && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
+      <strong>Source PDF artwork requires review — {graphicWarnings.length} warning(s)</strong>
+      <p>Scanned page art, gradients, fonts and clipping cannot be silently treated as editable vectors. Check the in-memory original overlay. No uploaded customer image is shared.</p>
+      {graphicWarnings.slice(0,12).map((warning,index)=><p key={index}>{warning}</p>)}
+      <label><input type="checkbox" checked={graphicsChecked} onChange={event=>setGraphicsChecked(event.target.checked)}/>
+        I checked the source PDF and manually recreated any REQUIRED unsupported artwork before template submission.</label>
+    </div>}
     {pr2Proof && <details className="ls-audit"><summary>Unapproved dot-matrix proof — existing PR2 renderer</summary>
       <p>This does not certify physical Epson alignment or authorize production printing.</p>
       <img alt="Black and white draft PR2 raster preview" src={pr2Proof} style={{maxWidth:"100%",maxHeight:400,objectFit:"contain"}}/>
