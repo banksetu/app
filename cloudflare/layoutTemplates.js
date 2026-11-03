@@ -22,6 +22,8 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
   if (!bankName || clean(raw.bankName, 120).toLowerCase() !== bankName.toLowerCase())
     throw Error("The template bank must match the selected Bank Information.");
   if (!pdfFormats.has(raw.mode)) throw Error("Invalid bank layout type.");
+  if(raw.sourceArtworkStatus!==undefined && !["clean","reviewed"].includes(raw.sourceArtworkStatus))
+    throw Error("Unreviewed PDF raster/complex graphics require manual reconstruction before template sharing.");
   if (!finite(raw.widthMm, 50, 500) || !finite(raw.heightMm, 50, 500) ||
       !finite(raw.foldMm, 0, 500) || !finite(raw.printStartMm, 0, 500) ||
       raw.foldMm > raw.heightMm || raw.printStartMm > raw.heightMm)
