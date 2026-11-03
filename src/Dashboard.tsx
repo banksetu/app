@@ -441,10 +441,19 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       if(!active||running||!navigator.onLine)return;
       running=true;
       try{
-        const {synchronizeLocalLayoutSlots}=await import("./layoutCloudRecovery");
+        const {synchronizeLocalLayoutSlots,publishLocalLayoutSlot}=await import("./layoutCloudRecovery");
+        const {readLocalLayouts}=await import("./layoutLocalStore");
         for(const layoutMode of ["passbook","accountOpening"] as const){
           if(!active)return;
           await synchronizeLocalLayoutSlots(bankInfo.passbookBank,layoutMode);
+          if(accountRole==="client_admin"){
+            const pending=await readLocalLayouts(bankInfo.passbookBank,layoutMode);
+            for(const slot of pending.filter(entry=>entry.dirty&&!entry.incoming)){
+              if(!active)return;
+              try{await publishLocalLayoutSlot(bankInfo.passbookBank,layoutMode,slot.slotId);}
+              catch{/* Leave unreviewed/competing drafts safely pending offline. */}
+            }
+          }
         }
       }catch{
         // Cloud unavailable: all previously cached layouts remain offline.
