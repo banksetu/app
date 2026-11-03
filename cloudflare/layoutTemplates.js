@@ -10,6 +10,9 @@ const pdfFormats = new Set(["passbook", "accountOpening"]);
 const clean = (value, max) => String(value || "").trim().slice(0, max);
 const finite = (value, lower, upper) => typeof value === "number" && Number.isFinite(value) && value >= lower && value <= upper;
 const suspicious = text => /\b[A-Z]{5}\d{4}[A-Z]\b|\b\d[\d -]{9,19}\d\b|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text);
+export const safeLayoutBankFieldKey=key=>/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key)&&
+  !/(?:password|passphrase|secret|credential|token|api_?key|private_?key|license|firebase|oauth|refresh|session|tenant|permission|admin|role|identity)/i.test(key);
+
 
 export function normalizedBankKey(name) {
   const input = clean(name, 120).toLowerCase();
@@ -53,6 +56,8 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
     if (!/^[\w-]{1,80}$/.test(id) || seen.has(id)) throw Error("Duplicate or invalid layer IDs.");
     seen.add(id);
     const origin = item.origin;
+    if((origin==="bank"||origin==="dotmatrix") && fieldKey && !safeLayoutBankFieldKey(fieldKey))
+      throw Error("A bank field must not expose tenant credentials, tokens, licences or private settings.");
     if(raw.mode==="passbook" && item.dotMatrix===true && !item.preprinted){
       if(!["text","field"].includes(item.kind))
         throw Error("Passbook dot-matrix output cannot include shapes, logos or photos.");
