@@ -1,7 +1,8 @@
 import {callBankSetuWorker} from "./workerApi";
 import {customerRepository} from "./core/customerRepository";
-import {currentLayoutScope,layoutSlotKey,listLayoutSlots,
- mergeRemoteLayoutSlot,markLayoutSynced,type LayoutMode,type LocalLayoutSlot} from "./layoutLocalStore";
+import {currentLayoutScope} from "./layoutLocalStore";
+import {layoutSlotKey,listLayoutSlots,
+ mergeRemoteLayoutSlot,markLayoutSynced,type LayoutMode} from "./layoutLocalState.ts";
 import {validatePersistedLayoutDraft} from "./layoutDraftValidation";
 
 /** Existing Worker is the ONLY cloud transport. Local DB is the ONLY local
