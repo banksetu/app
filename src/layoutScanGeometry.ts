@@ -1,4 +1,4 @@
-import { createPerspectiveMap, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
+import { createPerspectiveMap, type PerspectiveQuad } from "./layoutPerspectiveGeometry.ts";
 /**
  * Conservative A4 scanner estimator. This is a proposal, never an automatic
  * source of truth: white passbooks can be indistinguishable from white scanner
