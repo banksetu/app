@@ -7,6 +7,10 @@ on:
       - src/CustomizeLayoutStudio.tsx
       - src/CustomizeLayoutStudio.css
       - src/layoutScanGeometry.ts
+      - src/layoutPerspectiveGeometry.ts
+      - src/layoutImportReview.ts
+      - src/layoutLayerRepair.ts
+      - src/layoutGraphicsCoverage.ts
       - src/layoutProofPdf.ts
       - src/CustomBankDocument.tsx
       - src/SelectedBankDocument.tsx
