@@ -332,6 +332,19 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     window.setTimeout(() => URL.revokeObjectURL(url), 500);
     setNotice("Template JSON exported. Draft only; not a verified print format.");
   };
+  const calibrationPdf=async()=>{
+    try{
+      const {exportLayoutCalibrationProof}=await import("./layoutCalibrationProof");
+      const blob=exportLayoutCalibrationProof(draft);
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement("a");
+      link.href=url;link.download=(normalizeKey(bankName)||"bank")+"-physical-ruler-UNAPPROVED.pdf";
+      link.click();window.setTimeout(()=>URL.revokeObjectURL(url),500);
+      setNotice("Private-data-free physical test ruler exported. Confirm actual stock, model, driver, feed direction and 1 mm X/Y offsets. No PR2 job was sent and Printed status was not changed.");
+    }catch(error){
+      setNotice("Physical calibration sheet unavailable: "+(error instanceof Error?error.message:"Unknown error"));
+    }
+  };
   const proofPdf = async () => {
     setBusy(true);
     try {
@@ -828,7 +841,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   return <section className="layout-studio" aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
-      <div className="ls-actions"><button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button>
+      <div className="ls-actions"><button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
