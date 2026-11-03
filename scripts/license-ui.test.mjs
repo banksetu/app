@@ -10,7 +10,11 @@ const dashboardSource=fs.readFileSync('src/Dashboard.tsx','utf8');
 const hookPosition=name=>{
   const offset=dashboardSource.indexOf('const ['+name);
   assert(offset>0,'Dashboard hook is present: '+name);
-  return (dashboardSource.slice(0,offset).match(/\buseState(?:<[^>\n]*>)?\s*\(/g)||[]).length+1;
+  // Count all generic and non-generic hooks. Nested types such as
+  // useState<Record<string,string>> make regexes that expect one '>' incorrect.
+  const componentStart=dashboardSource.indexOf('function Dashboard(');
+  assert(componentStart>=0&&componentStart<offset);
+  return (dashboardSource.slice(componentStart,offset).match(/\buseState\s*(?=[(<])/g)||[]).length+1;
 };
 const activePageHook=hookPosition('activePage');
 const bankSettingsReadyHook=hookPosition('bankSettingsReady');
