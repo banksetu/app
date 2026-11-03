@@ -547,6 +547,22 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           if(index>1 && (Math.abs(view.width-viewport.width)>1||Math.abs(view.height-viewport.height)>1))
             throw Error("PDF pages have different dimensions or orientations. Import each physical passbook size as a separate draft.");
           const textLayer = await pdfPage.getTextContent();
+          // Import embedded PDF text BEFORE OCR or vector objects. Large raster
+          // scans must never crowd out the original digitally mapped fields.
+          for (const item of textLayer.items) {
+            if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
+            // PDF coordinates are bottom-left and may be rotated by Page /Rotate.
+            // The real PDF.js viewport maps them to the visible page orientation.
+            const [screenX,screenY]=view.convertToViewportPoint(item.transform[4],item.transform[5]);
+            if(!Number.isFinite(screenX)||!Number.isFinite(screenY))continue;
+            const part = addPart("text", "static", item.str.trim(), "", round(screenX/view.width*width), round(screenY/view.height*height));
+            part.page = index;
+            part.width = round(Math.max(4, item.width / view.width * width));
+            part.height = round(Math.max(3, item.height / view.height * height));
+            part.size = within(Math.round(Math.abs(item.transform[0]) * 72 / 96) || 10, 5, 60);
+            part.z = elements.length + 1;
+            elements.push(part);
+          }
           try {
             // Reference images are display-only, NEVER persisted or printed.
             const previewViewport=pdfPage.getViewport({scale:Math.min(.9,480/Math.max(view.width,view.height))});
@@ -620,20 +636,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               sourceGraphicsWarnings.push("PDF page "+index+": vector artwork could not be analyzed; check the original manually.");
             }
           }
-          for (const item of textLayer.items) {
-            if (!("str" in item) || !item.str.trim() || elements.length >= 300) continue;
-            // PDF coordinates are bottom-left and may be rotated by Page /Rotate.
-            // The real PDF.js viewport maps them to the visible page orientation.
-            const [screenX,screenY]=view.convertToViewportPoint(item.transform[4],item.transform[5]);
-            if(!Number.isFinite(screenX)||!Number.isFinite(screenY))continue;
-            const part = addPart("text", "static", item.str.trim(), "", round(screenX/view.width*width), round(screenY/view.height*height));
-            part.page = index;
-            part.width = round(Math.max(4, item.width / view.width * width));
-            part.height = round(Math.max(3, item.height / view.height * height));
-            part.size = within(Math.round(Math.abs(item.transform[0]) * 72 / 96) || 10, 5, 60);
-            part.z = elements.length + 1;
-            elements.push(part);
-          }
+
         }
         setReferencePages(references);
         setReferenceVisible(true);
