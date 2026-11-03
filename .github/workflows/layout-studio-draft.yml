@@ -47,7 +47,7 @@ permissions:
 jobs:
   layout-studio:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -58,7 +58,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --test scripts/layout-*.test.mjs
-      - run: node --test cloudflare/worker.test.js
+      - run: npm run test:worker
+      - run: npm run test:local
+      - run: npm run test:bridge
       - run: npm run test:pr2
       - run: node --test scripts/bank-pdf.test.mjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs desktop/print-preview.test.cjs
       - run: npm run build
