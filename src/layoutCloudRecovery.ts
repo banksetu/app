@@ -77,7 +77,7 @@ export async function synchronizeLocalLayoutSlots(
        throw Error("Downloaded layout differs from the authorized cloud index.");
     const draft=await decodeLayoutBackup(reply);
     verifyScope(scope,tenantId,uid);
-    let outcome:"unchanged"|"downloaded"|"conflict"="unchanged";
+    let outcome:string="unchanged";
     await customerRepository.transact(scope,state=>{
       outcome=mergeRemoteLayoutSlot(state,tenantId,bankName,mode,entry.slotId,{
         draft,revision:entry.revision,hash:entry.hash
@@ -94,7 +94,7 @@ export async function publishLocalLayoutSlot(
 ):Promise<{synced:boolean;revision:number;hash:string}>{
   const {scope,tenantId,uid}=currentLayoutScope();
   if(!navigator.onLine)throw Error("Layout saved locally; online connection required for device recovery.");
-  const key=layoutSlotKey(bankName,mode,slotId);
+  layoutSlotKey(bankName,mode,slotId); // Validate slot before network access.
   const state=await customerRepository.read(scope);
   const local=listLayoutSlots(state,tenantId,bankName,mode).find(item=>item.slotId===slotId);
   if(!local)throw Error("Save your layout to the local template repository first.");
