@@ -41,3 +41,14 @@ test("step 5: custom PR2 uses its own approved values PDF and requires physical 
  assert.match(print,/requirePhysicalConfirmation/);
  assert.match(print,/I inspected|onPr2Complete/);
 });
+
+test("step 6: Master approval is compare-and-swap and preserves template data on concurrent reviews",()=>{
+ const start=worker.indexOf('if (route === "/review-layout-template")');
+ const end=worker.indexOf('if (route === "/get-workspace-layout-selection"',start);
+ const section=worker.slice(start,end);
+ assert.ok(start>=0&&end>start);
+ assert.match(section,/currentDocument:\{updateTime:found\.updateTime\}/);
+ assert.match(section,/updateMask:\{fieldPaths:Object\.keys\(reviewed\)\}/);
+ assert.match(section,/Refresh before making a new decision/);
+ assert.doesNotMatch(section,/await putDocument\(env,path/);
+});
