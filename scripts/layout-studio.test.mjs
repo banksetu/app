@@ -60,3 +60,19 @@ import "./layout-activation.test.mjs";
 import "./layout-runtime-values.test.mjs";
 
 import "./layout-activation-integration.test.mjs";
+
+test("steps 1–4: import prioritizes digital text, then OCR, with perspective and safety review",()=>{
+ const start=editor.indexOf("const importPdf = async");
+ assert.ok(start>0);
+ const part=editor.slice(start);
+ const digital=part.indexOf("for (const item of textLayer.items)");
+ const localOcr=part.indexOf('import("./layoutOnDeviceOCR")');
+ assert.ok(digital>0 && localOcr>digital,"embedded PDF text must be imported before OCR guesses");
+ assert.match(part,/hasRasterArtwork/);
+ assert.match(part,/reconcileImportedText\(elements\)/);
+ assert.match(part,/textForOverlapReview\(elements\)/);
+ assert.match(editor,/rectifyPerspectivePixels\(/);
+ assert.match(editor,/scanCornerPercents/);
+ assert.match(editor,/sourceArtworkStatus/);
+ assert.match(editor,/splitPreprintedAndDynamic\(/);
+});
