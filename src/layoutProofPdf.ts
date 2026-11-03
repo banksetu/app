@@ -51,7 +51,7 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     const color = mode === "dotmatrix" ? [0,0,0] as const : rgb(part.color);
     pdf.setDrawColor(color[0],color[1],color[2]);
     pdf.setTextColor(color[0],color[1],color[2]);
-    if (part.background !== "transparent" && mode === "quick") {
+    if (part.background !== "transparent" && mode === "quick" && part.kind!=="ellipse") {
       const fill=rgb(part.background);pdf.setFillColor(fill[0],fill[1],fill[2]);
       pdf.rect(x, y, part.width, part.height, "F");
     }
@@ -68,7 +68,7 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     }
     if (part.kind === "ellipse") {
       pdf.setLineWidth(Math.max(.15,part.borderWidth*.2646));
-      pdf.ellipse(x+part.width/2,y+part.height/2,part.width/2,part.height/2,"S");
+      pdf.ellipse(x+part.width/2,y+part.height/2,part.width/2,part.height/2,mode==="quick"&&part.background!=="transparent"?"FD":"S");
       continue;
     }
     if (part.kind === "rectangle" || part.kind === "photo") {
