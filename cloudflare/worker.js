@@ -1951,7 +1951,7 @@ export default {
         "/account-action", "/delete-user", "/create-client-user", "/create-client", "/create-client-invite",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
-        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
+        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
         "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
       ];
@@ -1974,7 +1974,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
+      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
         : route.startsWith('/support-media-')
