@@ -15,7 +15,7 @@ export function splitPreprintedAndDynamic<T extends RepairablePart>(
   if(!first.id?.trim()||!secondId.trim()||first.id===secondId||
      (first.kind!=="text"&&first.kind!=="field"))
     throw Error("Select a valid scanned text line before splitting layers.");
-  if(!name||name.length>110||!/^\w[A-Za-z0-9_ :().&/-]*$/.test(name))
+  if(!name||name.length>110||!/^[\p{L}][\p{L}\p{M}\p{N}_ :().&/-]*$/u.test(name))
     throw Error("Use a short generic field description, not account data.");
   if(!/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key)||
       !["customer","bank"].includes(source))
