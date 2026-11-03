@@ -1,4 +1,5 @@
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
+import {typographyIsValid} from "./layoutTypography.ts";
 import { layoutCustomerValue } from "./layoutCustomerValue.ts";
 export type LayoutDynamicElement = {
  id:string;kind:string;origin:string;label:string;fieldKey:string;value?:string;defaultValue?:string;
@@ -62,6 +63,7 @@ export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"
   if(![template.foldMm,template.printStartMm].every(v=>Number.isFinite(v)&&v>=0&&v<=template.heightMm))return false;
   if(template.pageCount!==undefined&&(!Number.isSafeInteger(template.pageCount)||template.pageCount<1||template.pageCount>10))return false;
   if(!Array.isArray(template.elements)||!template.elements.length||template.elements.length>300)return false;
+  if(template.elements.some(item=>!typographyIsValid(item)))return false;
   if(mode==="passbook"&&(template.pageCount||1)!==1)return false;
   return true;
 }
