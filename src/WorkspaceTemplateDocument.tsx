@@ -74,7 +74,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
     <div className="passbook-page workspace-bridge-page"><div className="passbook-shell workspace-bridge-shell">
     <div className="workspace-template-pages">
       {Array.from({length:pages},(_,index)=>index+1).map(page=><div key={page} className="workspace-template-page" style={{width:width+"mm",height:height+"mm"}}>
-        {template.elements.filter(item=>(item.page||1)===page&&visibleLayoutElement(item,output))
+        {template.elements.filter(item=>(item.page||1)===page&&visibleLayoutElement(item,output,bankName))
           .sort((a,b)=>a.z-b.z).map(item=>{
             const kind=item.kind;
             if(kind==="image" && output==="quick"){
