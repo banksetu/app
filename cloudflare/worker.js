@@ -5,6 +5,7 @@ import { parseGoogleResource, validateResourceOwnership } from "./googleConnecti
 import { createSupportMediaService } from "./supportMedia.js";
 import { normalizedBankKey, sanitizeLayoutTemplate } from "./layoutTemplates.js";
 import { layoutSelectionKey, normalizedActivationRecord, previousApprovedVersion } from "./layoutActivation.js";
+import {layoutCloudPaths,safeCloudManifest,changedLayoutSlots,nextCloudManifest,compactLayoutTemplate,validCloudSlot} from "./layoutCloudSync.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -1248,6 +1249,105 @@ async function handleMasterOperation(request, env, actor, route) {
       ...(googleEmail ? { googleEmail } : {}), updatedAt: new Date().toISOString(), updatedBy: actor.uid,
     });
     return json({ success: true, tenantId });
+  }
+
+  // Private compact layout recovery is an extension of the EXISTING
+  // authenticated Worker / Firestore tenant service, NOT a second sync engine.
+  // No scanned PDF, full customer value, credential, AI model or image is uploaded.
+  if (["/layout-sync-index","/layout-sync-download","/layout-sync-publish"].includes(route)) {
+    if(!["client_admin","client_user"].includes(role)||!actor.profile.tenantId)
+      return json({error:"A verified client workspace is required."},403);
+    if(route==="/layout-sync-publish"&&role!=="client_admin")
+      return json({error:"Only the Client Admin can sync new layout backups."},403);
+    const body=await request.json().catch(()=>({}));
+    const mode=String(body.mode||"");
+    if(!["passbook","accountOpening"].includes(mode))
+      return json({error:"Invalid bank layout mode."},400);
+    const tenantId=String(actor.profile.tenantId);
+    const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const bankName=String(settings.passbookBank||settings.bankInfo?.passbookBank||"").trim();
+    const bankKey=normalizedBankKey(bankName);
+    if(!bankKey || String(body.bankName||"").trim().toLowerCase()!==bankName.toLowerCase())
+      return json({error:"Layout bank must match your verified Bank Information."},403);
+    let paths;
+    try{paths=layoutCloudPaths(tenantId,bankKey,mode,body.slotId);}
+    catch(error){return json({error:error.message},400);}
+    const manifestDoc=await firestoreRequest(env,paths.manifest)
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const empty={tenantId,bankKey,mode,revision:0,slots:[]};
+    let manifest;
+    try{manifest=manifestDoc
+      ? safeCloudManifest(decodeFields(manifestDoc.fields||{}),tenantId,bankKey,mode)
+      : empty;
+    }catch(error){return json({error:error.message},409);}
+    if(route==="/layout-sync-index"){
+      const changed=changedLayoutSlots(manifest,body.known||{});
+      return json({success:true,tenantId,bankKey,mode,revision:manifest.revision,
+        slots:manifest.slots,changed});
+    }
+    let slotId;
+    try{slotId=validCloudSlot(body.slotId);}
+    catch(error){return json({error:error.message},400);}
+    const entry=manifest.slots.find(item=>item.slotId===slotId);
+    if(route==="/layout-sync-download"){
+      if(!entry)return json({error:"This client does not own the requested layout slot."},404);
+      const stored=await firestoreRequest(env,paths.slot)
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const row=decodeFields(stored?.fields||{});
+      if(!row||row.tenantId!==tenantId||row.bankKey!==bankKey||
+         row.mode!==mode||row.slotId!==slotId||
+         row.hash!==entry.hash||row.revision!==entry.revision||
+         row.size!==entry.size||row.encoding!=="gzip-base64")
+        return json({error:"Cloud template backup requires recovery review; previous local layout was not changed."},409);
+      return json({success:true,bankName,mode,slotId,revision:entry.revision,
+        hash:entry.hash,size:entry.size,encoding:row.encoding,payload:row.payload});
+    }
+    // Strict server-side privacy sanitizer runs BEFORE any cloud storage or
+    // compression. Shared publication still needs separate Master approval.
+    let generic;
+    try{generic=sanitizeLayoutTemplate(body.template,bankName);}
+    catch(error){return json({error:"Only reviewed generic, non-customer layout data can be backed up: "+error.message},400);}
+    const expectedManifestRevision=body.expectedManifestRevision;
+    const expectedSlotRevision=body.expectedSlotRevision;
+    if(!Number.isSafeInteger(expectedSlotRevision)||expectedSlotRevision<0||
+       !Number.isSafeInteger(expectedManifestRevision)||expectedManifestRevision<0)
+       return json({error:"Expected layout and manifest versions are required."},400);
+    if(expectedManifestRevision!==manifest.revision||
+       expectedSlotRevision!==(entry?.revision||0))
+      return json({error:"A layout changed in another session. Download or review conflict before retrying."},409);
+    let compact,next;
+    try{
+      compact=await compactLayoutTemplate(generic);
+      if(entry?.hash===compact.hash)
+        return json({success:true,unchanged:true,mode,slotId,bankKey,
+          revision:entry.revision,hash:entry.hash,manifestRevision:manifest.revision});
+      next=nextCloudManifest(manifest,{slotId,hash:compact.hash,size:compact.size},
+        new Date().toISOString(),expectedManifestRevision);
+    }catch(error){return json({error:error.message},400);}
+    const record={
+      tenantId,bankKey,mode,slotId,revision:next.slots.find(item=>item.slotId===slotId).revision,
+      ...compact,updatedAt:new Date().toISOString(),updatedBy:actor.uid
+    };
+    const writes=[
+      {update:{name:firestoreDocumentName(env,paths.slot),fields:encodeFields(record)},
+        currentDocument:entry
+          ? {updateTime:(await firestoreRequest(env,paths.slot)).updateTime}:{exists:false}},
+      {update:{name:firestoreDocumentName(env,paths.manifest),fields:encodeFields(next)},
+        currentDocument:manifestDoc?{updateTime:manifestDoc.updateTime}:{exists:false}}
+    ];
+    try{await firestoreRequest(env,":commit",{
+      method:"POST",body:JSON.stringify({writes})
+    });}
+    catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Another device modified this layout. Retry after synchronizing its latest version."},409);
+      throw error;
+    }
+    return json({success:true,mode,slotId,bankKey,
+      revision:record.revision,hash:compact.hash,manifestRevision:next.revision,
+      size:compact.size});
   }
 
   // Generic, reviewed bank templates; samples and customer records never enter this catalog.
