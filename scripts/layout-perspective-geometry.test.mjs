@@ -50,3 +50,19 @@ test("step 1: reject invalid/crossing/degenerate corners and excessive bitmap wo
  const src=new Uint8ClampedArray(60*60*4);
  assert.throws(()=>rectifyPerspectivePixels(src,60,60,trapezoid,2000,1200));
 });
+
+test("step 1: rotated paper preview and dynamic box land on the same pixels",()=>{
+ const size=100,quad=[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}];
+ const rgba=new Uint8ClampedArray(size*size*4);
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+   const at=(y*size+x)*4;
+   rgba[at]=x>=20&&x<30&&y>=20&&y<30?55:255;
+   rgba[at+1]=255;rgba[at+2]=255;rgba[at+3]=255;
+ }
+ const rotated=rectifyPerspectivePixels(rgba,size,size,quad,size,size,90);
+ const bounds={left:0,top:0,right:100,bottom:100,widthMm:100,heightMm:100,confidence:"low",reason:"reference"};
+ const layer=mapScannedPageToPassbook(bounds,100,100,100,100,[{x:20,y:20,width:10,height:10,page:1}],90,0,quad).elements[0];
+ assert.deepEqual([layer.x,layer.y,layer.width,layer.height],[70,20,10,10]);
+ const sample=(y*size+75)*4;
+ assert.equal(rotated[sample+20*size*4],55);
+});
