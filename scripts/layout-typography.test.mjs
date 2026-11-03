@@ -12,7 +12,7 @@ test("Office ribbon supports 0.5 px increments from 0 to 10 px and 50–100% fon
  for(let i=0;i<=20;i++){
    const tracking=i/2;
    assert.equal(typographyIsValid({letterSpacing:tracking,fontCompression:75}),true);
-   assert.equal(trackingMm({letterSpacing:tracking}),tracking*25.4/96);
+   assert.ok(Math.abs(trackingMm({letterSpacing:tracking})-tracking*25.4/96)<1e-10);
  }
  assert.equal(typographyCompression(undefined),1);
  assert.equal(typographyCompression(50),.5);
@@ -67,8 +67,9 @@ test("Quick PDF proof preserves actual horizontal glyph compression and letter s
    {...common,id:"lettergap",y:140,letterSpacing:4,fontCompression:100}
  ]);
  const blob=await exportLayoutProofPdf(layout,"quick");
- const doc=await getDocument({data:new Uint8Array(await blob.arrayBuffer()),
-   useSystemFonts:true,disableFontFace:true}).promise;
+ const loading=getDocument({data:new Uint8Array(await blob.arrayBuffer()),
+   useSystemFonts:true,disableFontFace:true});
+ const doc=await loading.promise;
  try{
    const page=await doc.getPage(1);
    const content=await page.getTextContent();
@@ -78,7 +79,7 @@ test("Quick PDF proof preserves actual horizontal glyph compression and letter s
      "60% font width should produce a visibly narrower proof glyph run");
    assert.ok(items[2].width>items[0].width+8,
      "4 px letter tracking should widen the proof glyph run");
- }finally{await doc.destroy();}
+ }finally{await loading.destroy();}
 });
 
 test("Office formatting is saved and rendered in editor, browser print and PDF",()=>{
