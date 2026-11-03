@@ -95,3 +95,16 @@ test("step 6: Hindi and mixed-language bank names never share an empty or trunca
  assert.equal(normalizedBankKey("Union Bank of India"),"union-bank-of-india",
    "legacy bank keys must not be changed");
 });
+
+test("step 7: Word-style multi-line generic text is shared without silent truncation",()=>{
+ const paragraph="Please check customer details.\n"+"Use the actual issue date. ".repeat(8);
+ assert.ok(paragraph.length>130);
+ const bank="Central Bank of India";
+ const result=sanitizeLayoutTemplate(draft([
+   item({id:"instructions",kind:"text",origin:"static",fieldKey:"",label:paragraph,dotMatrix:false})
+ ]),bank);
+ assert.equal(result.elements[0].label,paragraph.trim());
+ assert.throws(()=>sanitizeLayoutTemplate(draft([
+   item({id:"huge",kind:"text",origin:"static",fieldKey:"",label:"A".repeat(501),dotMatrix:false})
+ ]),bank),/500 characters/);
+});
