@@ -63,6 +63,6 @@ test("step 1: rotated paper preview and dynamic box land on the same pixels",()=
  const bounds={left:0,top:0,right:100,bottom:100,widthMm:100,heightMm:100,confidence:"low",reason:"reference"};
  const layer=mapScannedPageToPassbook(bounds,100,100,100,100,[{x:20,y:20,width:10,height:10,page:1}],90,0,quad).elements[0];
  assert.deepEqual([layer.x,layer.y,layer.width,layer.height],[70,20,10,10]);
- const sample=(y*size+75)*4;
- assert.equal(rotated[sample+20*size*4],55);
+ const sample=(25*size+75)*4;
+ assert.equal(rotated[sample],55);
 });
