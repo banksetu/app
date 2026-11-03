@@ -1,3 +1,4 @@
+import { createPerspectiveMap, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 /**
  * Conservative A4 scanner estimator. This is a proposal, never an automatic
  * source of truth: white passbooks can be indistinguishable from white scanner
@@ -222,6 +223,7 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
   elements:T[],
   clockwiseRotation:0|90|180|270=0,
   fineRotationDeg=0,
+  perspectiveCorners?:PerspectiveQuad,
 ): { elements:T[]; outsideCount:number } {
   if (![scannerWidth,scannerHeight,scannerPaperWidthMm,scannerPaperHeightMm].every(n=>Number.isFinite(n)&&n>0) ||
     ![bounds.left,bounds.top,bounds.right,bounds.bottom,bounds.widthMm,bounds.heightMm].every(Number.isFinite) ||
@@ -237,15 +239,34 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
   const sourceHeightMm=(bounds.bottom-bounds.top)/scannerHeight*scannerPaperHeightMm;
   if(![sourceWidthMm,sourceHeightMm].every(n=>Number.isFinite(n)&&n>0))
     throw Error("Invalid calibrated scan scale.");
+  const perspective=perspectiveCorners
+    ? createPerspectiveMap(perspectiveCorners,scannerWidth,scannerHeight):null;
   const round=(n:number)=>Math.round(n*10)/10;
   let outsideCount=0;
   const converted=elements.map(part=>{
     if ((part.page??1)!==1) return part;
     if(![part.x,part.y,part.width,part.height].every(Number.isFinite))
       throw Error("Invalid element geometry during scan calibration.");
-    // Normalized object bounding box in the selected source crop.
+    // Normalize the source box in the selected physical passbook.
+    // For optional perspective rectification transform all four corners,
+    // not only the object's top-left (which would distort OCR field widths).
     let nx=(part.x-leftMm)/sourceWidthMm,ny=(part.y-topMm)/sourceHeightMm;
     let nw=part.width/sourceWidthMm,nh=part.height/sourceHeightMm;
+    if(perspective){
+      const pixelX=part.x/scannerPaperWidthMm*scannerWidth;
+      const pixelY=part.y/scannerPaperHeightMm*scannerHeight;
+      const pixelW=part.width/scannerPaperWidthMm*scannerWidth;
+      const pixelH=part.height/scannerPaperHeightMm*scannerHeight;
+      const corners=[
+        perspective.toNormalized(pixelX,pixelY),
+        perspective.toNormalized(pixelX+pixelW,pixelY),
+        perspective.toNormalized(pixelX+pixelW,pixelY+pixelH),
+        perspective.toNormalized(pixelX,pixelY+pixelH)
+      ];
+      const xs=corners.map(c=>c.x),ys=corners.map(c=>c.y);
+      nx=Math.min(...xs);ny=Math.min(...ys);
+      nw=Math.max(...xs)-nx;nh=Math.max(...ys)-ny;
+    }
     if(clockwiseRotation===90){
       [nx,ny,nw,nh]=[1-(ny+nh),nx,nh,nw];
     }else if(clockwiseRotation===180){
