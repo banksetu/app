@@ -5,6 +5,7 @@ import type {CSSProperties} from "react";
 import {requireLicensedWrite} from "./core/licenseAccess";
 import {printCurrentDocument} from "./platform/print";
 import {boundLayoutValue,visibleLayoutElement,templateCanRender,type ApprovedLayout,type LayoutDynamicElement} from "./layoutRuntimeValues";
+import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import "./WorkspaceTemplateDocument.css";
 
 function frame(part:LayoutDynamicElement):CSSProperties {
@@ -26,6 +27,8 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
 }){
   const [printing,setPrinting]=useState(false),[message,setMessage]=useState("");
   const [directPrinting,setDirectPrinting]=useState(false);
+  const [directPreparing,setDirectPreparing]=useState(false);
+  const [directPdfBase64,setDirectPdfBase64]=useState("");
   const [temporaryValues,setTemporaryValues]=useState<Record<string,string>>({});
   if(!templateCanRender(template,bankName,template.mode))
     return <p role="alert">The activated bank layout is incompatible. Use the existing bank print flow.</p>;
@@ -40,6 +43,40 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
     }catch(error){setMessage(error instanceof Error?error.message:"Printer preview unavailable.");}
     finally{setPrinting(false);}
   };
+  const startCustomPr2=async()=>{
+    if(!windowsPr2()||output!=="dotmatrix"||template.mode!=="passbook"||
+       (template.pageCount??1)!==1||directPreparing||directPrinting)return;
+    setDirectPreparing(true);setMessage("");
+    try{
+      await requireLicensedWrite();
+      const relevant=template.elements.filter(item=>isLayoutLayerPrintable(item,"dotmatrix",bankName));
+      if(!relevant.length)throw Error("No verified text/value layers are configured for the selected bank.");
+      const checked=relevant.map(item=>{
+        const dynamic=["customer","bank","dotmatrix"].includes(item.origin);
+        const value=dynamic?(temporaryValues[item.id]??boundLayoutValue(item,customer,bankInfo)):item.label;
+        if(!value?.trim())throw Error("Missing required customer/bank value: "+item.fieldKey+". Correct the customer record or this-print value.");
+        if(dynamic && value===item.defaultValue &&
+           !["accountType","mode","operatingMode"].includes(item.fieldKey))
+          throw Error("Unverified placeholder/default for "+item.fieldKey+"; select actual customer/bank information first.");
+        if(/[^\u0009\u000A\u000D\u0020-\u007E]/.test(value))
+          throw Error("PR2 draft PDF cannot safely render this non-ASCII text without an embedded Unicode font: "+(item.fieldKey||item.label)+". Use verified bank-specific printer output instead.");
+        return {...item,kind:item.kind as "text"|"field",value,defaultValue:""};
+      });
+      const {exportLayoutProofPdf}=await import("./layoutProofPdf");
+      const document=await exportLayoutProofPdf({
+        bankName,widthMm:template.widthMm,heightMm:template.heightMm,pageCount:1,
+        elements:checked
+      },"dotmatrix");
+      const bytes=new Uint8Array(await document.arrayBuffer());
+      let binary="";
+      for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+      setDirectPdfBase64(btoa(binary));
+      setDirectPrinting(true);
+    }catch(error){
+      setDirectPdfBase64("");
+      setMessage("Custom direct PR2 blocked: "+(error instanceof Error?error.message:"Invalid document"));
+    }finally{setDirectPreparing(false);}
+  };
   return <section className="workspace-template-document" aria-label="Activated bank passbook layout">
     <style>{`@media print {
       @page { size: ${width}mm ${height}mm; margin:0; }
@@ -51,13 +88,15 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
       .workspace-template-document .workspace-template-controls {display:none!important}
     }`}</style>
     {directPrinting&&<Suspense fallback={<p>Connecting existing PR2 Bridge…</p>}><Pr2PrinterDialog
-      bankName={bankName} onClose={()=>setDirectPrinting(false)}
-      onComplete={()=>{setDirectPrinting(false);onPr2Complete?.();}} /></Suspense>}
+      bankName={bankName} customPdfBase64={directPdfBase64} requirePhysicalConfirmation
+      onClose={()=>{setDirectPrinting(false);setDirectPdfBase64("");}}
+      onComplete={(result)=>{if(result.completed){setDirectPrinting(false);setDirectPdfBase64("");onPr2Complete?.();}}} /></Suspense>}
     <div className="workspace-template-controls">
       <p><strong>Approved Custom Template</strong> · {bankName} · {output==="quick"?"Quick Passbook":"Dot Matrix Data Only"}</p>
       <p>Preview uses this client's customer and Bank Information fields. Confirm the paper and printer settings before printing.</p>
       <button type="button" onClick={()=>{void print();}} disabled={printing}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
-      {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting} onClick={()=>setDirectPrinting(true)}>Olivetti Mode Print (Existing PR2)</button>}
+      {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting||directPreparing}
+          onClick={()=>{void startCustomPr2();}}>{directPreparing?"Preparing custom data-only raster…":"Olivetti Mode Print — Custom Layout"}</button>}
       <details className="workspace-template-temporary"><summary>Temporary Edit — this print only</summary>
         <p>These changes affect the active preview and print job only. The Master Template and customer data are never modified.</p>
         <div className="workspace-template-temporary-grid">
