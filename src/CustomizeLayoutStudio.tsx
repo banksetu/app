@@ -567,7 +567,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               const shapes=collectEditableVectorShapes(operators,view,width,height,Math.min(80,300-elements.length));
               for(const shape of shapes){
                 if(elements.length>=300)break;
-                const part=addPart(shape.kind,"static",shape.kind==="line"?"PDF vector line":"PDF vector rectangle","",shape.x,shape.y);
+                const part=addPart(shape.kind,"static",shape.kind==="line"?"PDF vector line":shape.kind==="ellipse"?"PDF vector ellipse":"PDF vector rectangle","",shape.x,shape.y);
                 part.page=index;part.width=shape.width;part.height=shape.height;
                 part.rotation=shape.rotation;part.color=shape.color;part.borderColor=shape.color;
                 part.borderWidth=Math.max(.5,shape.borderWidth);part.background=shape.background;
