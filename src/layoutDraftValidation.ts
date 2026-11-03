@@ -24,6 +24,8 @@ export function validatePersistedLayoutDraft(value:unknown,mode:string,bankName:
     if(Number(p.width)<=0||Number(p.height)<=0)return false;
     if(p.page!==undefined&&(!Number.isSafeInteger(p.page)||Number(p.page)<1||Number(p.page)>count))return false;
     if(p.rotation!==undefined&&(typeof p.rotation!=="number"||!Number.isFinite(p.rotation)))return false;
+    if(p.fontCompression!==undefined&&(typeof p.fontCompression!=="number"||!Number.isFinite(p.fontCompression)||p.fontCompression<50||p.fontCompression>100))return false;
+    if(p.letterSpacing!==undefined&&(typeof p.letterSpacing!=="number"||!Number.isFinite(p.letterSpacing)||p.letterSpacing< -5||p.letterSpacing>30))return false;
   }
   return true;
 }
