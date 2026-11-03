@@ -71,3 +71,16 @@ test("step 3: server blocks unreviewed source image/gradient reconstruction",()=
  const reviewed=sanitizeLayoutTemplate({...draft(),sourceArtworkStatus:"reviewed"},"Central Bank of India");
  assert.equal(reviewed.sourceArtworkStatus,undefined);
 });
+
+test("step 6: public catalog rejects credential and private Bank Information keys",()=>{
+ for(const fieldKey of ["apiKey","password","sessionToken","tenantSecret","oauthRefreshToken","firebaseAdmin"]){
+   assert.throws(()=>sanitizeLayoutTemplate(draft([
+     item({id:"private",origin:"bank",fieldKey,label:"Branch information"})
+   ]),"Central Bank of India"),/bank field must not expose/);
+ }
+ for(const fieldKey of ["GSTIN","ifsc","branchAddress","branchPhone","micr"]){
+   assert.ok(sanitizeLayoutTemplate(draft([item({
+     id:"safe",origin:"bank",fieldKey,label:"Bank information"
+   })]),"Central Bank of India"));
+ }
+});
