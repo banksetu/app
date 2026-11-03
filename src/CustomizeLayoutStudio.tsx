@@ -6,6 +6,7 @@ import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
+import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
@@ -115,6 +116,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [physicalChecked, setPhysicalChecked] = useState(false);
   const [labelChecked, setLabelChecked] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
+  const [splitSecondKey,setSplitSecondKey] = useState("");
+  const [splitSecondSource,setSplitSecondSource] = useState<"customer"|"bank">("customer");
   const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
   const [collisions, setCollisions] = useState<TextCollision[]>([]);
   const [graphicWarnings,setGraphicWarnings]=useState<string[]>([]);
@@ -986,7 +989,13 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             </button>
           </div>}
           {field("Element type", <select value={selected.kind} onChange={event => edit({ kind: event.target.value as Kind })}><option value="text">Text / Instructions</option><option value="field">Dynamic Field</option><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="line">Line</option><option value="photo">Photo Box</option><option value="image">Image</option></select>)}
-          {field("Source / Meaning", <select value={selected.origin} onChange={event => edit({ origin: event.target.value as Origin, preprinted: event.target.value === "preprinted" })}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
+          {field("Source / Meaning", <select value={selected.origin} onChange={event => {
+            const origin=event.target.value as Origin;
+            edit({origin,preprinted:origin==="preprinted",
+              dotMatrix:origin==="preprinted"?false:
+                (origin==="customer"||origin==="bank"||origin==="dotmatrix"?true:selected.dotMatrix)});
+            setLabelChecked(false);
+          }}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
           {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
           <datalist id="ls-bank-fields">{Object.keys(bankValues).sort().map(key=><option key={key} value={key}/>)}</datalist>
           {field("Default / Preview value", <input value={selected.defaultValue} onChange={event => edit({ defaultValue: event.target.value })} placeholder="Optional default" />)}
@@ -999,16 +1008,29 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           <div className="ls-overlap-tools">
             <strong>Overlapped / merged line repair</strong>
             <p>If original preprinted label and dot-matrix output overlap, name both separately. The current selected line becomes layer one.</p>
-            {field("Second line / overprint text", <input value={splitSecondLine} onChange={event => setSplitSecondLine(event.target.value)} placeholder="Second line or value" />)}
-            <button type="button" disabled={!splitSecondLine.trim()} onClick={() => {
-              const first = selected;
-              if (!first || !splitSecondLine.trim()) return;
-              const second = { ...first, id: randomId(), label: splitSecondLine.trim(), origin: "dotmatrix" as Origin, preprinted: false, dotMatrix: true, quick: false, z: first.z + 1 };
-              modify(current => ({ ...current, elements: [...current.elements.map(part => part.id === first.id ? { ...part, origin: "preprinted" as Origin, preprinted: true, dotMatrix: false } : part), second] }));
-              setSelectedId(second.id);
-              setSplitSecondLine("");
-              setNotice("Two separate layers created. Confirm which layer is preprinted and correct both texts, positions and print settings.");
-            }}>Split into editable layers</button>
+            {field("Second layer description (generic label only)", <input value={splitSecondLine} onChange={event=>setSplitSecondLine(event.target.value)} placeholder="Account Number / खाता संख्या" />)}
+            {field("Second layer data source", <select value={splitSecondSource} onChange={event=>setSplitSecondSource(event.target.value as "customer"|"bank")}>
+              <option value="customer">Current customer data</option><option value="bank">Selected bank information</option>
+            </select>)}
+            {field("Second layer field key (mandatory)", <input value={splitSecondKey} onChange={event=>setSplitSecondKey(event.target.value)} placeholder="accountNo / customerName / ifsc" list={splitSecondSource==="bank"?"ls-bank-fields":undefined}/>)}
+            <button type="button" disabled={!splitSecondLine.trim()||!splitSecondKey.trim()} onClick={() => {
+              if(!selected)return;
+              if(draft.elements.length>=300){setNotice("Draft review limit reached; remove unused elements before splitting.");return;}
+              if(draft.elements.some(part=>(part.page??1)===(selected.page??1)&&part.kind==="field"&&part.fieldKey===splitSecondKey.trim())){
+                setNotice("That field is already mapped on this page. Select and reposition the existing field.");return;
+              }
+              try {
+                const result=splitPreprintedAndDynamic(selected,randomId(),splitSecondLine,splitSecondKey,splitSecondSource);
+                modify(current=>({...current,elements:[
+                  ...current.elements.map(part=>part.id===selected.id?result.original:part),result.overprint
+                ]}));
+                setLabelChecked(false);setSelectedId(result.overprint.id);
+                setSplitSecondLine("");setSplitSecondKey("");
+                setNotice("Preprinted and dynamic text split safely; OCR/private value was NOT copied into the shared field. Recheck both layers and print offsets.");
+              } catch(error){
+                setNotice(error instanceof Error?error.message:"Invalid layer split");
+              }
+            }}>Split into mapped editable layers</button>
           </div>
           <div className="ls-grid-two">{field("X (" + unit + ")", number(valueInUnit(selected.x, unit), next => edit({x:round(next * factor(unit))}), 0, 500, .1))}{field("Y (" + unit + ")", number(valueInUnit(selected.y, unit), next => edit({y:round(next * factor(unit))}), 0, 500, .1))}{field("Width (" + unit + ")", number(valueInUnit(selected.width, unit), next => edit({width:round(next * factor(unit))}), 1, 500, .1))}{field("Height (" + unit + ")", number(valueInUnit(selected.height, unit), next => edit({height:round(next * factor(unit))}), 1, 500, .1))}{field("Z layer", number(selected.z, next => edit({z:next}), -1000, 1000))}{field("Rotation (°)", number(selected.rotation, next => edit({rotation:next}), -360, 360))}</div>
           {field("Font family", <select value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select>)}
@@ -1017,7 +1039,11 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           {field("Text alignment", <select value={selected.align} onChange={event => edit({align:event.target.value as Align})}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>)}
           <div className="ls-grid-two">{field("Text color", <input type="color" value={selected.color} onChange={event => edit({color:event.target.value})}/>)}{field("Background color", <input type="color" value={selected.background === "transparent" ? "#ffffff" : selected.background} onChange={event => edit({background:event.target.value})}/>)}{field("Border color", <input type="color" value={selected.borderColor} onChange={event => edit({borderColor:event.target.value})}/>)}{field("Border width", number(selected.borderWidth, next => edit({borderWidth:next}), 0, 10, .5))}{field("Opacity", number(selected.opacity, next => edit({opacity:next}), 0, 1, .1))}</div>
           <label className="ls-inline-check"><input type="checkbox" checked={selected.background === "transparent"} onChange={event => edit({background:event.target.checked ? "transparent" : "#ffffff"})}/> Transparent background</label>
-          <div className="ls-checks"><label><input type="checkbox" checked={selected.quick} onChange={event => edit({quick:event.target.checked})}/> Quick Passbook</label><label><input type="checkbox" checked={selected.dotMatrix} onChange={event => edit({dotMatrix:event.target.checked})}/> Dot Matrix output</label><label><input type="checkbox" checked={selected.preprinted} onChange={event => edit({preprinted:event.target.checked})}/> Preprinted on paper</label></div>
+          <div className="ls-checks"><label><input type="checkbox" checked={selected.quick} onChange={event => edit({quick:event.target.checked})}/> Quick Passbook</label><label><input type="checkbox" checked={selected.dotMatrix} onChange={event => edit({dotMatrix:event.target.checked})}/> Dot Matrix output</label><label><input type="checkbox" checked={selected.preprinted} onChange={event => {
+              const preprinted=event.target.checked;
+              edit({preprinted,origin:preprinted?"preprinted":selected.origin==="preprinted"?"static":selected.origin,dotMatrix:preprinted?false:selected.dotMatrix});
+              setLabelChecked(false);
+            }}/> Preprinted on paper</label></div>
           <div className="ls-actions"><button type="button" onClick={() => { const duplicate={...selected,id:randomId(),x:selected.x+3,y:selected.y+3,z:selected.z+1};modify(current=>({...current,elements:[...current.elements,duplicate]}));setSelectedId(duplicate.id); }}>Duplicate</button><button type="button" className="ls-danger" onClick={() => { modify(current=>({...current,elements:current.elements.filter(item=>item.id!==selected.id)}));setSelectedId(null); }}>Delete</button></div>
         </div> : <p className="ls-empty">Select an object to edit every property: text, dynamic mapping, font, color, size, layers, coordinates and print behavior.</p>)}
       </aside>
