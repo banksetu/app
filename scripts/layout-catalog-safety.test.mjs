@@ -84,3 +84,14 @@ test("step 6: public catalog rejects credential and private Bank Information key
    })]),"Central Bank of India"));
  }
 });
+
+test("step 6: Hindi and mixed-language bank names never share an empty or truncated catalog key",()=>{
+ const hindiA="असम ग्रामीण विकास बैंक",hindiB="पंजाब नेशनल बैंक";
+ const a=normalizedBankKey(hindiA),b=normalizedBankKey(hindiB);
+ assert.ok(a.startsWith("bank-u"));
+ assert.ok(b.startsWith("bank-u"));
+ assert.notEqual(a,b);
+ assert.notEqual(normalizedBankKey("National ग्रामीण Bank"),normalizedBankKey("National पंजाब Bank"));
+ assert.equal(normalizedBankKey("Union Bank of India"),"union-bank-of-india",
+   "legacy bank keys must not be changed");
+});
