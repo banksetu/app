@@ -1128,7 +1128,11 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <aside className="ls-panel ls-properties">
         <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
         {showProps && (selected ? <div className="ls-properties-body">
-          {field("Element name / Label", <input value={selected.label} onChange={event => edit({ label: event.target.value })} />)}
+          {field(selected.kind==="text"?"Editable text / Paragraph":"Element name / Label",
+            selected.kind==="text"?
+              <textarea rows={4} value={selected.label} onChange={event=>edit({label:event.target.value})}
+                placeholder="Type a paragraph, header or multiple passbook lines here" maxLength={500}/>:
+              <input value={selected.label} onChange={event=>edit({label:event.target.value})} />)}
           {(selected.kind==="text"||selected.kind==="field") && <div className="ls-overlap-tools">
             <strong>Unreadable scan line / OCR correction</strong>
             <label><input type="checkbox" checked={selected.needsReview===true}
