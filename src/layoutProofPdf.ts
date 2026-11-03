@@ -1,3 +1,4 @@
+import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import { jsPDF } from "jspdf";
 
 /** Independent, review-only proof. Never sends or marks a PR2 print as complete. */
@@ -16,7 +17,7 @@ type ProofPart = {
   quick: boolean; dotMatrix: boolean; preprinted: boolean;
 };
 export type ProofLayout = {
-  widthMm: number; heightMm: number; pageCount?: number; elements: ProofPart[];
+  widthMm: number; heightMm: number; bankName?:string; pageCount?: number; elements: ProofPart[];
 };
 export type ProofMode = "quick" | "dotmatrix";
 const rgb = (hex: string): [number, number, number] => {
@@ -42,7 +43,7 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
   for (let pageNo = 1; pageNo <= pages; pageNo++) {
     if (pageNo > 1) pdf.addPage([layout.widthMm,layout.heightMm], layout.widthMm > layout.heightMm ? "landscape" : "portrait");
     for (const part of [...layout.elements].filter(p => (p.page || 1) === pageNo).sort((a, b) => a.z - b.z)) {
-    if (mode === "quick" ? !part.quick : !part.dotMatrix || part.preprinted) continue;
+    if (!isLayoutLayerPrintable(part,mode,layout.bankName||"")) continue;
     // Physical passbook stock already carries the artwork. Even a misconfigured
     // draft cannot include photos, logos, borders or shapes in Direct PR2 proof.
     if (mode === "dotmatrix" && part.kind !== "text" && part.kind !== "field") continue;
