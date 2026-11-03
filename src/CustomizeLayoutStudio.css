@@ -157,3 +157,8 @@ html[data-appearance="dark"] .layout-studio, .banksetu-app-shell[data-appearance
 .ls-word-align{display:flex;flex-wrap:wrap;gap:5px;border:1px solid var(--ls-border);padding:6px;border-radius:8px}
 .ls-word-align strong{width:100%;font-size:11px}
 @media(max-width:750px){.ls-ruler-y{left:-20px;width:18px}.ls-ruler-y span{font-size:8px}.ls-ruler-x{height:18px}.ls-ruler-y{top:18px}}
+
+/* Multi-line MS Word-style text editing for instructions and bank headings. */
+.ls-field textarea{width:100%;min-height:90px;min-width:0;resize:vertical;
+ font:12px/1.4 inherit;color:var(--ls-text);background:var(--ls-surface);
+ border:1px solid var(--ls-border);border-radius:7px;padding:8px}
