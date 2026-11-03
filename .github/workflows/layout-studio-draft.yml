@@ -27,6 +27,11 @@ on:
       - src/layoutOutputPreflight.ts
       - src/layoutBlankDocument.ts
       - src/layoutTypography.ts
+      - src/layoutLocalState.ts
+      - src/layoutLocalStore.ts
+      - src/layoutGenericUpload.ts
+      - src/layoutCloudRecovery.ts
+      - cloudflare/layoutCloudSync.js
       - src/Pr2PrinterDialog.tsx
       - src/layoutVisualDiff.ts
       - cloudflare/layoutActivation.js
