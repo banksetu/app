@@ -96,7 +96,16 @@ export async function detectOfflineOpticalText(
     const original=await detector.detect(canvas);
     if(original.length){
       const items=mapOpticalTextToMillimeters(original,canvas.width,canvas.height,pageWidthMm,pageHeightMm);
-      return {supported:true,items,warning:"On-device OCR suggestions require manual review against the scan."};
+      if(items.length>=4)return {supported:true,items,
+        warning:"On-device OCR suggestions require manual review against the scan."};
+      // Native TextDetector often finds a logo/header but misses small Hindi
+      // lines. Compare local bilingual OCR on sparse pages; do not upload data,
+      // and prefer the richer result without claiming character correctness.
+      const bilingual=await bundledFallback(canvas,pageWidthMm,pageHeightMm);
+      if(bilingual.items.length>items.length)return {...bilingual,
+        warning:bilingual.warning+" Sparse native OCR was replaced with the richer local bilingual result; all text is unverified."};
+      if(items.length)return {supported:true,items,
+        warning:"Native OCR found only "+items.length+" text line(s). Bilingual offline OCR did not provide more; inspect the rest manually."};
     }
     if(typeof document==="undefined"||canvas.width*canvas.height>2400000)
       return {supported:true,items:[],warning:"No text detected. Large scans require manual review or an OCR-equipped device."};
