@@ -89,3 +89,17 @@ test("Step 3: successful sync acknowledges only same local revision, preserving 
  assert.equal(listLayoutSlots(state,"tenant-a",bank,"passbook")[0].draft.elements[0].label,"NEW");
  assert.equal(updated.remoteHash,"a".repeat(64));
 });
+
+test("Step 3: later local edits never erase an incoming remote conflict candidate",()=>{
+ const state=blank(),bank="Central Bank of India";
+ let local=putLayoutSlot(state,"tenant-a",bank,"passbook","layout-1",draft(bank,"LOCAL"));
+ mergeRemoteLayoutSlot(state,"tenant-a",bank,"passbook","layout-1",{
+   draft:draft(bank,"INCOMING"),revision:7,hash:"d".repeat(64)
+ });
+ local=putLayoutSlot(state,"tenant-a",bank,"passbook","layout-1",draft(bank,"LOCAL NEW"),local.localRevision);
+ const held=listLayoutSlots(state,"tenant-a",bank,"passbook")[0];
+ assert.equal(held.draft.elements[0].label,"LOCAL NEW");
+ assert.equal(held.incoming.draft.elements[0].label,"INCOMING");
+ assert.equal(markLayoutSynced(state,"tenant-a",bank,"passbook","layout-1",
+   local.localRevision,7,"d".repeat(64)),false);
+});
