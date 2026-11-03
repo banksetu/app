@@ -51,7 +51,7 @@ type LayoutPart = {
   preprinted: boolean;
   needsReview?: boolean;
 };
-type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; elements: LayoutPart[] };
+type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
 const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
 const fonts = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana", "Tahoma", "Noto Sans", "Noto Serif"];
@@ -124,7 +124,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [suggestedLabels, setSuggestedLabels] = useState<Array<{ id:string; label:string; fieldKey:string; source:"customer"|"bank"; page:number }>>([]);
   const [collisions, setCollisions] = useState<TextCollision[]>([]);
   const [graphicWarnings,setGraphicWarnings]=useState<string[]>([]);
-  const [graphicsChecked,setGraphicsChecked]=useState(false);
+
   const [printedLabelRule, setPrintedLabelRule] = useState<"all"|"none"|"some">("some");
   const [confirmedPreprinted, setConfirmedPreprinted] = useState<Record<string,boolean>>({});
   const [temporaryValues, setTemporaryValues] = useState<Record<string,string>>({});
@@ -191,7 +191,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setAudit(report);
     if (report.some(item=>item.severity==="error")) {setNotice("Fix all audit errors before submitting a template for Master approval.");return;}
     if(!physicalChecked || !labelChecked) {setNotice("Confirm physical dimensions and the preprinted label/PR2 separation before submission.");return;}
-    if(graphicWarnings.length&&!graphicsChecked){
+    if(draft.sourceArtworkStatus==="needsReview"){
       setNotice("Review unsupported PDF artwork against the original before submitting this shared template.");return;
     }
     if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
@@ -209,7 +209,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if (!validDraft(restored,mode,bankName)){setNotice("Catalog template is not compatible with this bank or editor version.");return;}
     setDraft(restored);setSelectedId(null);setCatalogChoice(null);setCatalogOpen(false);setDirty(true);setTemporaryValues({});undoRef.current=[];redoRef.current=[];
     setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
-    setGraphicWarnings([]);setGraphicsChecked(false);setScanSuggestion(null);setScanFrame(null);
+    setGraphicWarnings([]);setScanSuggestion(null);setScanFrame(null);
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setReferencePages([]);setReferenceVisible(false);
     setNotice("Approved generic layout copied into your local DRAFT. Verify physical size and printing; it has not been activated for customers.");
   };
@@ -435,6 +435,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         : {elements:[] as LayoutPart[],outsideCount:0};
       modify(current=>({...current,
         widthMm:bounds.widthMm,heightMm:bounds.heightMm,
+        sourceArtworkStatus:graphicWarnings.length?"needsReview":"clean",
         foldMm:bounds.foldHint?.foldMm??0,
         printStartMm:chosenPrintStart,
         elements:result.elements,
@@ -514,7 +515,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setBusy(true);
     setReferencePages([]);
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
-    setGraphicWarnings([]);setGraphicsChecked(false);
+    setGraphicWarnings([]);
     setPhysicalChecked(false);setHardwareChecked(false);
     setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
     setScanOrientation(0);setScanFineRotation(0);
@@ -686,6 +687,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           modify(current => ({
             ...current,
             pageCount,
+            sourceArtworkStatus:sourceGraphicsWarnings.length?"needsReview":"clean",
             widthMm: scannedA4 && mode === "passbook" ? current.widthMm : width,
             heightMm: scannedA4 && mode === "passbook" ? current.heightMm : height,
             elements,
@@ -772,11 +774,12 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
-    {graphicWarnings.length>0 && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
+    {(graphicWarnings.length>0||draft.sourceArtworkStatus==="needsReview") && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
       <strong>Source PDF artwork requires review — {graphicWarnings.length} warning(s)</strong>
       <p>Scanned page art, gradients, fonts and clipping cannot be silently treated as editable vectors. Check the in-memory original overlay. No uploaded customer image is shared.</p>
       {graphicWarnings.slice(0,12).map((warning,index)=><p key={index}>{warning}</p>)}
-      <label><input type="checkbox" checked={graphicsChecked} onChange={event=>setGraphicsChecked(event.target.checked)}/>
+      <label><input type="checkbox" checked={draft.sourceArtworkStatus==="reviewed"} onChange={event=>
+          modify(current=>({...current,sourceArtworkStatus:event.target.checked?"reviewed":"needsReview"}))}/>
         I checked the source PDF and manually recreated any REQUIRED unsupported artwork before template submission.</label>
     </div>}
     {pr2Proof && <details className="ls-audit"><summary>Unapproved dot-matrix proof — existing PR2 renderer</summary>
