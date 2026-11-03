@@ -18,7 +18,7 @@ export function normalizedBankKey(name) {
   const input = clean(name, 120).normalize("NFKC").toLowerCase();
   const ascii = input.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   if(!input)return "";
-  if(/^[\\x00-\\x7f]*$/.test(input))return ascii.slice(0,90);
+  if(/^[\x00-\x7f]*$/.test(input))return ascii.slice(0,90);
   // Preserve keys of all existing ASCII banks. Bank names written partly or
   // fully in Hindi must not collapse to "" or collide on their ASCII prefix.
   let hash=0xcbf29ce484222325n;
