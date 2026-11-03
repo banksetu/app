@@ -1,3 +1,4 @@
+import {typographyCompression,trackingMm} from "./layoutTypography.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import { jsPDF } from "jspdf";
 
@@ -13,7 +14,7 @@ type ProofPart = {
   x: number; y: number; width: number; height: number; z: number; rotation: number;
   font: string; size: number; bold: boolean; italic: boolean; underline: boolean;
   align: "left" | "center" | "right"; color: string; background: string;
-  borderColor: string; borderWidth: number; letterSpacing: number; opacity: number;
+  borderColor: string; borderWidth: number; letterSpacing: number; fontCompression?:number; opacity: number;
   quick: boolean; dotMatrix: boolean; preprinted: boolean;
 };
 export type ProofLayout = {
@@ -97,9 +98,16 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     pdf.setFont(font,style);
     // Onscreen font px to typographical points. Align via the same mm geometry.
     pdf.setFontSize(Math.max(4,part.size * .75));
-    const lines = pdf.splitTextToSize(partValue(part), Math.max(2,part.width));
-    pdf.text(lines.slice(0, 24), x + (part.align === "center" ? part.width / 2 : part.align === "right" ? part.width : 0),
-      y + Math.min(part.height, Math.max(2,part.size * .2646)), { align: part.align, angle: part.rotation });
+    const compression=typographyCompression(part.fontCompression);
+    const charSpace=trackingMm(part);
+    // jsPDF emits Tc (letter tracking) and Tz (horizontal glyph scaling).
+    // Set both on EACH text element so the previous bank field cannot leak
+    // its spacing/compression to the next field. Paper X/Y stay unchanged.
+    const lines=pdf.splitTextToSize(partValue(part),Math.max(2,part.width/compression),{charSpace});
+    pdf.text(lines.slice(0,24),
+      x+(part.align==="center"?part.width/2:part.align==="right"?part.width:0),
+      y+Math.min(part.height,Math.max(2,part.size*.2646)),
+      {align:part.align,angle:part.rotation,charSpace,horizontalScale:compression});
   }
   }
   return pdf.output("blob");
