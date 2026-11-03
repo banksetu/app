@@ -5,6 +5,7 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
+import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
@@ -585,14 +586,21 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             setScanSuggestion(null);setScanFrame(null);
           }
         } else setScanSuggestion(null);
-        const overlapList = findOverlappingPassbookText(elements,150);
+        // Mixed scans may report the same header twice: once as native PDF
+        // text and once through OCR. Only exact overlapping OCR duplicates are
+        // removed; distinct overprinted customer values stay independently editable.
+        const reviewedImport=reconcileImportedText(elements);
+        elements.splice(0,elements.length,...reviewedImport.elements);
+        const overlapList = findOverlappingPassbookText(textForOverlapReview(elements),150);
         setCollisions(overlapList);
         const suggestions = elements.flatMap(part => {
           const hint=suggestPassbookLabel(part.label);
           return hint ? [{id:part.id,label:part.label,fieldKey:hint.fieldKey,source:hint.source,page:part.page||1}] : [];
         });
         setSuggestedLabels(suggestions);
-        setConfirmedPreprinted(Object.fromEntries(suggestions.map(item=>[item.id,true])));
+        // No bank's paper is assumed preprinted. All suggested labels start
+        // UNCLASSIFIED until each is positively reviewed by the user.
+        setConfirmedPreprinted({});
         const overlappingPairs = overlapList.length;
         setScanHasImportedObjects(elements.length>0);
         if(elements.length) {
@@ -611,7 +619,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         setSelectedPage(1);
         setSelectedId(elements[0]?.id || null);
         setNotice(elements.length ?
-          "Imported " + elements.length + " editable objects across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+", vector shapes: "+recognizedGraphics+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
+          "Imported " + elements.length + " editable objects across "+pageCount+" PDF pages (OCR suggestions: "+recognizedFromScan+", suppressed exact duplicate OCR: "+reviewedImport.duplicateOcrCount+", vector shapes: "+recognizedGraphics+"). " + (overlappingPairs ? overlappingPairs + " possible overlapping text pairs; inspect and split layers manually. " : "") + "Graphics, OCR and actual passbook boundaries still require verification." :
           "No readable PDF text found. "+(ocrStatus||"Optional on-device OCR was unable to identify text.")+" Existing draft was preserved; reference overlay and manual crop/calibration remain available.");
         if (scannedA4 && mode === "passbook" && elements.length) setNotice("A4 scanner canvas detected. This is NOT the physical passbook size; enter/verify actual dimensions. " + elements.length + " editable text objects imported. "+(ocrStatus||""));
       } finally { await task.destroy(); }
@@ -764,11 +772,30 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       {suggestedLabels.length>0 && <div className="ls-inference-labels">
         {suggestedLabels.map(item=><div key={item.id} className="ls-inference-item">
           <span>{item.label} → <strong>{item.fieldKey}</strong> ({item.source}, page {item.page})</span>
-          {printedLabelRule==="some" && <label><input type="checkbox" checked={confirmedPreprinted[item.id]===true} onChange={event=>setConfirmedPreprinted(current=>({...current,[item.id]:event.target.checked}))}/> Already printed on paper</label>}
+          {printedLabelRule==="some" && <label>Paper layer classification
+            <select aria-label={"Preprinted status for "+item.label}
+              value={Object.prototype.hasOwnProperty.call(confirmedPreprinted,item.id)?(confirmedPreprinted[item.id]?"yes":"no"):"unknown"}
+              onChange={event=>setConfirmedPreprinted(current=>{
+                const next={...current};
+                if(event.target.value==="unknown")delete next[item.id];
+                else next[item.id]=event.target.value==="yes";
+                return next;
+              })}>
+              <option value="unknown">Not reviewed</option>
+              <option value="yes">Yes — already on paper</option>
+              <option value="no">No — print label with values</option>
+            </select>
+          </label>}
           <button type="button" onClick={()=>{setSelectedPage(item.page);setSelectedId(item.id);setPreview("quick");}}>Inspect</button>
         </div>)}
       </div>}
       <button type="button" onClick={()=>{
+        if(printedLabelRule==="some" && suggestedLabels.some(item=>!Object.prototype.hasOwnProperty.call(confirmedPreprinted,item.id))){
+          setNotice("Classify EVERY suggested label explicitly as already printed or required in dot-matrix; no unchecked box is treated as approval.");return;
+        }
+        if(suggestedLabels.some(hint=>draft.elements.find(part=>part.id===hint.id)?.needsReview)){
+          setNotice("Correct and review all OCR lines before creating automatic field mappings.");return;
+        }
         let added=0;
         modify(current=>{
           const next=[...current.elements];const existing=new Set(next.filter(p=>p.kind==="field").map(p=>(p.page||1)+":"+p.fieldKey));
