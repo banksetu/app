@@ -1,4 +1,4 @@
-import {typographyCompression,trackingMm} from "./layoutTypography.ts";
+import {typographyCompression,trackingMm,typographyIsValid} from "./layoutTypography.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import { jsPDF } from "jspdf";
 
@@ -33,6 +33,8 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
   if (!Number.isFinite(layout.widthMm) || !Number.isFinite(layout.heightMm) || layout.widthMm < 50 ||
       layout.heightMm < 50 || layout.widthMm > 500 || layout.heightMm > 500 || layout.elements.length > 500)
     throw new Error("Passbook draft dimensions or object count are invalid.");
+  if(layout.elements.some(part=>!typographyIsValid(part)))
+    throw new Error("Invalid letter spacing or font compression; review selected text before generating the proof.");
   const pdf = new jsPDF({
     orientation: layout.widthMm > layout.heightMm ? "landscape" : "portrait",
     unit: "mm",
