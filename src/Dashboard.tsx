@@ -428,6 +428,34 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [bankExtraFieldsDraft, setBankExtraFieldsDraft] = useState<Record<string,string>>({});
   const [newBankFieldLabel, setNewBankFieldLabel] = useState("");
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
+  // Warm the EXISTING local customer workspace repository with tenant-owned
+  // generic layout slots after a verified login/bank selection. This is a
+  // lazy recovery call through the existing Worker, not another sync service.
+  // It never blocks login, customer data reads, or offline print flows.
+  useEffect(()=>{
+    if(!bankSettingsReady||licenseReadOnly||
+       !["client_admin","client_user"].includes(accountRole)||
+       !bankInfo.passbookBank.trim())return;
+    let active=true,running=false;
+    const hydrate=async()=>{
+      if(!active||running||!navigator.onLine)return;
+      running=true;
+      try{
+        const {synchronizeLocalLayoutSlots}=await import("./layoutCloudRecovery");
+        for(const layoutMode of ["passbook","accountOpening"] as const){
+          if(!active)return;
+          await synchronizeLocalLayoutSlots(bankInfo.passbookBank,layoutMode);
+        }
+      }catch{
+        // Cloud unavailable: all previously cached layouts remain offline.
+        // The local repository is never cleared on network/auth errors.
+      }finally{running=false;}
+    };
+    void hydrate();
+    window.addEventListener("online",hydrate);
+    return()=>{active=false;window.removeEventListener("online",hydrate);};
+  },[bankSettingsReady,bankInfo.passbookBank,accountRole,licenseReadOnly]);
+
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
   const canManageBankSettings = (!licenseReadOnly || accountRole === "client_admin" && licensePermission.state === "pending") && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
