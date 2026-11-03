@@ -94,3 +94,8 @@ No merge or live deploy until tests and physical sign-off. The selectable runtim
 - This is a **Word-style positioning studio**, not a claim to copy 100% of Microsoft Word. Full rich-text document table editing, DOCX round-tripping, collaboration and live photo-print fidelity are not complete.
 - Validation is through draft-only Linux, Windows unsigned installer and Android debug build checks. Real-device install/launch, browser printing on varied printers and actual Epson PR2 alignment require independent on-device/physical acceptance.
 - Existing Assam Gramin, PNB, Union and Central Bank print engines stay unchanged until reviewed activation; this branch is NOT approved for deployment.
+
+### Final scope clarification — where is the MS Word-like passbook creator?
+The independent **MS Word-style manual editor is in Step 7** (and built on the early Layout Studio skeleton from Steps 1–4). It is reached through Admin > Customize Layout > Customize Passbook, then **New Blank Layout (Word-style)**. No Assam Gramin or other reference PDF is required to design from scratch. The user may type physical measurements, add editable multi-line instructions, bank and customer fields, shapes, rulers, colors, fonts, alignment, layers and print-visibility flags; then export a local draft/proof. Approval and activation are separately permissioned.
+
+Step 6 additionally prevents simultaneous Master review sessions from silently overwriting each other's decision via a conditional Firestore commit using the source document update timestamp. All operational verification still requires staging review; no production write is performed by the draft CI.
