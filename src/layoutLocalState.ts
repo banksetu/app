@@ -52,8 +52,8 @@ export function getLayoutStorage(state:LocalState,tenantId:string):LocalLayoutSt
     if(!plain(slot)||typeof slot.bankName!=="string"||
        typeof slot.mode!=="string"||typeof slot.slotId!=="string"||
        key!==layoutSlotKey(slot.bankName,slot.mode as LayoutMode,slot.slotId)||
-       !Number.isSafeInteger(slot.localRevision)||slot.localRevision<1||
-       !Number.isSafeInteger(slot.remoteRevision)||slot.remoteRevision<0||
+       typeof slot.localRevision!=="number"||!Number.isSafeInteger(slot.localRevision)||slot.localRevision<1||
+       typeof slot.remoteRevision!=="number"||!Number.isSafeInteger(slot.remoteRevision)||slot.remoteRevision<0||
        typeof slot.dirty!=="boolean"||
        !validatePersistedLayoutDraft(slot.draft,slot.mode,slot.bankName))
        throw Error("A cached layout is corrupt; original local data was retained for recovery.");
