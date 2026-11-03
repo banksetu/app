@@ -221,14 +221,16 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
   scannerPaperHeightMm:number,
   elements:T[],
   clockwiseRotation:0|90|180|270=0,
+  fineRotationDeg=0,
 ): { elements:T[]; outsideCount:number } {
   if (![scannerWidth,scannerHeight,scannerPaperWidthMm,scannerPaperHeightMm].every(n=>Number.isFinite(n)&&n>0) ||
     ![bounds.left,bounds.top,bounds.right,bounds.bottom,bounds.widthMm,bounds.heightMm].every(Number.isFinite) ||
     bounds.widthMm<=0 || bounds.heightMm<=0 ||
     bounds.left<0 || bounds.top<0 || bounds.right>scannerWidth || bounds.bottom>scannerHeight ||
     bounds.right<=bounds.left || bounds.bottom<=bounds.top) throw Error("Invalid scanner coordinate frame.");
-  if(![0,90,180,270].includes(clockwiseRotation))
-    throw Error("Unsupported scan orientation.");
+  if(![0,90,180,270].includes(clockwiseRotation)||
+     !Number.isFinite(fineRotationDeg)||Math.abs(fineRotationDeg)>8)
+    throw Error("Unsupported scan orientation or fine tilt.");
   const leftMm=bounds.left/scannerWidth*scannerPaperWidthMm;
   const topMm=bounds.top/scannerHeight*scannerPaperHeightMm;
   const sourceWidthMm=(bounds.right-bounds.left)/scannerWidth*scannerPaperWidthMm;
@@ -251,11 +253,23 @@ export function mapScannedPageToPassbook<T extends { x:number;y:number;width:num
     }else if(clockwiseRotation===270){
       [nx,ny,nw,nh]=[ny,1-(nx+nw),nh,nw];
     }
-    const x=round(nx*bounds.widthMm),y=round(ny*bounds.heightMm);
     const width=round(nw*bounds.widthMm),height=round(nh*bounds.heightMm);
+    let x=nx*bounds.widthMm,y=ny*bounds.heightMm;
+    // Rotate box CENTER in physical millimeters around the selected book center;
+    // angles are CSS/canvas clockwise degrees. Do not accidentally rotate around
+    // the entire A4 scanner page.
+    if(fineRotationDeg!==0){
+      const radians=fineRotationDeg*Math.PI/180;
+      const dx=x+width/2-bounds.widthMm/2,dy=y+height/2-bounds.heightMm/2;
+      const rotatedX=dx*Math.cos(radians)-dy*Math.sin(radians);
+      const rotatedY=dx*Math.sin(radians)+dy*Math.cos(radians);
+      x=bounds.widthMm/2+rotatedX-width/2;
+      y=bounds.heightMm/2+rotatedY-height/2;
+    }
+    x=round(x);y=round(y);
     if(x<0||y<0||x+width>bounds.widthMm+.5||y+height>bounds.heightMm+.5)outsideCount++;
     return {...part,x,y,width,height,
-      ...(typeof part.rotation==="number" ? {rotation:(part.rotation+clockwiseRotation)%360}: {})
+      ...(typeof part.rotation==="number" ? {rotation:(part.rotation+clockwiseRotation+fineRotationDeg)%360}: {})
     } as T;
   });
   return {elements:converted,outsideCount};
