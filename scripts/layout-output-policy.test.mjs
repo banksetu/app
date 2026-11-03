@@ -20,5 +20,7 @@ test("step 5: Union Bank stock keeps ALL labels preprinted and prints only dynam
  assert.equal(isLayoutLayerPrintable(item({origin:"customer"}),"dotmatrix",bank),true);
  assert.equal(isLayoutLayerPrintable(item({origin:"bank"}),"dotmatrix",bank),true);
  assert.equal(isLayoutLayerPrintable(item({kind:"text",origin:"dotmatrix"}),"dotmatrix",bank),false);
+ assert.equal(isLayoutLayerPrintable(item({kind:"text",origin:"dotmatrix",fieldKey:"accountNo"}),"dotmatrix",bank),true);
+ assert.equal(isLayoutLayerPrintable(item({kind:"text",origin:"dotmatrix",fieldKey:""}),"dotmatrix",bank),false);
  assert.equal(visibleLayoutElement(item({kind:"text",origin:"static"}),"dotmatrix",bank),false);
 });
