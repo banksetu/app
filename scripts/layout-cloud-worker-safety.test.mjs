@@ -36,7 +36,7 @@ async function call(f,route,uid,body){
   method:"POST",headers:{origin:"https://banksetu-app.web.app",
     authorization:"Bearer "+uid,"content-type":"application/json"},
   body:JSON.stringify(body)
- }),{...f.env,FIREBASE_WEB_API_KEY:"synthetic"});
+ }),{...f.env,FIREBASE_WEB_API_KEY:"synthetic",ALLOWED_ORIGINS:"https://banksetu-app.web.app"});
  return {status:result.status,data:await result.json()};
 }
 test("Steps 1-3: tenant-scoped compact cloud backup safely recovers 3 slots in other login",async()=>{
@@ -120,7 +120,7 @@ test("Step 1: all layout sync endpoints reject unauthenticated and inactive acco
     method:"POST",headers:{origin:"https://banksetu-app.web.app","content-type":"application/json"},
     body:JSON.stringify({bankName:bank,mode:"passbook",slotId:"layout-1"})
    });
-   const result=await worker.fetch(req,{...f.env,FIREBASE_WEB_API_KEY:"synthetic"});
+   const result=await worker.fetch(req,{...f.env,FIREBASE_WEB_API_KEY:"synthetic",ALLOWED_ORIGINS:"https://banksetu-app.web.app"});
    assert.equal(result.status,401);
   }
   f.put("tenants/tenant-a",{status:"offboarded"});
