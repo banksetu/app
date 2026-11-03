@@ -7,6 +7,7 @@ import {printCurrentDocument} from "./platform/print";
 import {boundLayoutValue,visibleLayoutElement,templateCanRender,type ApprovedLayout,type LayoutDynamicElement} from "./layoutRuntimeValues";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {preflightLayoutOutput} from "./layoutOutputPreflight.ts";
+import {compressedTextStyle} from "./layoutTypography.ts";
 import "./WorkspaceTemplateDocument.css";
 
 function frame(part:LayoutDynamicElement):CSSProperties {
@@ -17,7 +18,7 @@ function frame(part:LayoutDynamicElement):CSSProperties {
     color:part.color||"#000000",background:part.background||"transparent",borderColor:part.borderColor,
     borderWidth:["rectangle","ellipse","photo"].includes(part.kind)?Math.max(.1,part.borderWidth)+"px":0,
     borderStyle:"solid",borderRadius:part.kind==="ellipse"?"50%":undefined,
-    letterSpacing:part.letterSpacing+"px",opacity:part.opacity,transform:"rotate("+part.rotation+"deg)",
+    opacity:part.opacity,transform:"rotate("+part.rotation+"deg)",
     textAlign:part.align,whiteSpace:"pre-wrap",overflow:"hidden",overflowWrap:"anywhere",lineHeight:1.18,
     zIndex:part.z+1000,
   };
@@ -147,7 +148,9 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
             if(kind==="rectangle"||kind==="ellipse")return <div key={item.id} style={frame(item)} aria-hidden="true"/>;
             if(kind==="line")return <div key={item.id} aria-hidden="true" style={{...frame(item),height:Math.max(.2,item.borderWidth)+"px",width:item.width+"mm",background:item.borderColor||item.color,transform:"rotate("+item.rotation+"deg)"}}/>;
             const text=temporaryValues[item.id]??boundLayoutValue(item,customer,bankInfo);
-            return <span key={item.id} style={{...frame(item),color:output==="dotmatrix"?"#000":item.color,background:output==="dotmatrix"?"transparent":item.background}}>{text}</span>;
+            return <span key={item.id} style={{...frame(item),color:output==="dotmatrix"?"#000":item.color,background:output==="dotmatrix"?"transparent":item.background}}>
+              <span style={compressedTextStyle(item)}>{text}</span>
+            </span>;
           })}
       </div>)}
     </div></div></div>
