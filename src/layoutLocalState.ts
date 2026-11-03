@@ -47,6 +47,17 @@ export function getLayoutStorage(state:LocalState,tenantId:string):LocalLayoutSt
   if(raw===undefined)return {version:1,tenantId,slots:{}};
   if(!plain(raw)||raw.version!==1||raw.tenantId!==tenantId||!plain(raw.slots))
     throw Error("Local template workspace does not match this client. Original templates were retained.");
+  if(Object.keys(raw.slots).length>MAX_LOCAL_SLOTS)throw Error("Too many local templates; no cached data was modified.");
+  for(const [key,slot] of Object.entries(raw.slots)){
+    if(!plain(slot)||typeof slot.bankName!=="string"||
+       typeof slot.mode!=="string"||typeof slot.slotId!=="string"||
+       key!==layoutSlotKey(slot.bankName,slot.mode as LayoutMode,slot.slotId)||
+       !Number.isSafeInteger(slot.localRevision)||slot.localRevision<1||
+       !Number.isSafeInteger(slot.remoteRevision)||slot.remoteRevision<0||
+       typeof slot.dirty!=="boolean"||
+       !validatePersistedLayoutDraft(slot.draft,slot.mode,slot.bankName))
+       throw Error("A cached layout is corrupt; original local data was retained for recovery.");
+  }
   return structuredClone(raw) as LocalLayoutStorage;
 }
 export function listLayoutSlots(state:LocalState,tenantId:string,bankName:string,mode:LayoutMode):LocalLayoutSlot[]{
@@ -73,6 +84,9 @@ export function putLayoutSlot(
     slotId,bankName,mode,draft:copy,localRevision:(old?.localRevision||0)+1,
     remoteRevision:old?.remoteRevision||0,remoteHash:old?.remoteHash||"",
     dirty:true,updatedAt:new Date().toISOString(),
+    // Editing a local draft must NEVER discard another device's incoming
+    // candidate. Step 5 will add the explicit conflict-resolution UI.
+    ...(old?.incoming?{incoming:old.incoming}:{})
   };
   store.slots[key]=slot;
   state.documents={...state.documents,[LAYOUT_STORAGE_KEY]:store};
@@ -118,7 +132,7 @@ export function markLayoutSynced(
 ):boolean{
   const key=layoutSlotKey(bankName,mode,slotId),store=getLayoutStorage(state,tenantId);
   const old=store.slots[key];
-  if(!old||old.localRevision!==localRevision)return false;
+  if(!old||old.localRevision!==localRevision||old.incoming)return false;
   if(!Number.isSafeInteger(remoteRevision)||remoteRevision<1||!/^[a-f0-9]{64}$/.test(remoteHash))
     throw Error("Cloud acknowledgement was invalid.");
   store.slots[key]={...old,dirty:false,remoteRevision,remoteHash,incoming:undefined};
