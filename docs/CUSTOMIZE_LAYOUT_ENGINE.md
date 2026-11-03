@@ -71,3 +71,26 @@ No merge or live deploy until tests and physical sign-off. The selectable runtim
 **Step 3 / Reconstruct editable artwork:** digital PDF rectangles, diagonal strokes, bounded Bézier-stroke approximations and standard four-segment ellipses are independent editable shapes. The source is inspected for raster art, gradients, clipping, blending and unsupported curves. These deficits are visibly flagged, stored in local draft status and rejected by both client audit and server-side sharing until the user attests to reconstructing REQUIRED artwork. No scanned page is shared as a flattened image.
 **Step 4 / Split preprinted and overprinted lines:** printed-label classification starts UNKNOWN; users must explicitly decide which labels are on paper before applying suggestions. OCR corrections must be reviewed, and the mapped split tool creates only a generic customer/bank field — no copied OCR customer value, default or photo. Mixed PDF/OCR text and page-local collisions are reviewed independently. Local editing/Undo/Redo snapshots are not mutated by label classification.
 **Validation boundary:** draft CI runs Node layout, Cloudflare security, bank PDF, existing PR2 regression and Web build. Device-by-device Hindi OCR accuracy, severe non-planar scan warp, arbitrary raster-to-vector reconstruction, pixel-perfect bank printing and physical Epson stock/feed alignment remain unverified. These are not achieved merely by passing CI. Existing approved bank passbooks and customer data must remain unchanged; this draft must not be merged or deployed without acceptance.
+
+## November 3 — Steps 5–7 development + Word-like manual builder (DRAFT)
+
+### Step 5 — Print integration and safety
+- Live activated template, local proof PDF and existing PR2 raster path now share bank-aware text-only output rules. Union Bank direct mode prints dynamic values only; preprinted labels, photo, logos, lines, borders and ellipses are never sent as dot-matrix graphics.
+- Existing Windows PR2 bridge is **reused**; the selected approved custom template's currently bound customer/bank data is used to generate its own one-page PR2 proof raster before dialog opens, rather than mistakenly rasterizing a different pre-existing bank document.
+- No new native printer/sync/storage engine was introduced. Original bridge still handles scope, paper/probe, job ID, cancellation, duplicate-job safeguards and transport.
+- Custom PR2 completion cannot call the customer's Printed update until the operator explicitly confirms having inspected the physical printed passbook after transport completion.
+- Custom browser print and custom PR2 preflight reject missing mapped data, objects outside measured paper and obviously overflowing text; no silent fit/stretch that would alter approved physical positioning.
+- The current jsPDF proof font cannot be assumed to render every Hindi glyph: unsupported Unicode in its direct raster path is deliberately **blocked**, not falsely printed or claimed supported. Physical font correctness still needs device verification.
+
+### Step 6 — Tenant and approval safety
+- Local drafts no longer use a shared `master/local` storage fallback when session tenant/owner identity is missing. Export remains available; stale data must never silently cross workspaces.
+- Client and Cloudflare sanitize sensitive Bank Information keys (tokens/passwords/credentials/session/tenant/licensing) so approved generic field mappings cannot expose internal secrets.
+- ASCII catalog keys remain backwards-compatible. Hindi-only/mixed-script bank names now receive distinct deterministic keys without relying on a single reference bank.
+- Existing master/client permission gates and tenant-scoped selection/rollback paths remain in place. No Firebase production write or approval was performed.
+
+### Step 7 — Office/MS Word-like manual template creation + packaging QA
+- `New Blank Layout (Word-style)` allows building a passbook **without** uploading a PDF. It keeps the current manually chosen physical size, starts with empty editable content, and provides an Undo path for the previous layout. Templates remain bank-independent.
+- Insert text/labels/customer fields/bank fields, rectangles/ellipses/lines/logo placeholders/photo box, object drag/resize, coordinate X/Y, font/color/letter-spacing, style copy/paste, left/center/right and top/middle/bottom object positioning, z-order, 5 mm grid, snap, mm/cm/in measurement and ruler guides, multiple pages, zoom, light/dark/mobile and local JSON export.
+- This is a **Word-style positioning studio**, not a claim to copy 100% of Microsoft Word. Full rich-text document table editing, DOCX round-tripping, collaboration and live photo-print fidelity are not complete.
+- Validation is through draft-only Linux, Windows unsigned installer and Android debug build checks. Real-device install/launch, browser printing on varied printers and actual Epson PR2 alignment require independent on-device/physical acceptance.
+- Existing Assam Gramin, PNB, Union and Central Bank print engines stay unchanged until reviewed activation; this branch is NOT approved for deployment.
