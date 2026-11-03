@@ -1,5 +1,5 @@
 import type {LocalState} from "./core/schema";
-import {validatePersistedLayoutDraft} from "./layoutDraftValidation";
+import {validatePersistedLayoutDraft} from "./layoutDraftValidation.ts";
 
 /** Reuse BANK SETU's existing Web/Android IndexedDB + Windows SQLite
  * workspace repository. This is a NAMESPACE within LocalState.documents,
