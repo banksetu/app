@@ -26,6 +26,7 @@ on:
       - src/layoutOutputPolicy.ts
       - src/layoutOutputPreflight.ts
       - src/layoutBlankDocument.ts
+      - src/layoutTypography.ts
       - src/Pr2PrinterDialog.tsx
       - src/layoutVisualDiff.ts
       - cloudflare/layoutActivation.js
