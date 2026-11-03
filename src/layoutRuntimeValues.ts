@@ -23,12 +23,20 @@ const allowedCustomerFields=new Set([
  "firstName","middleName","lastName","addressLine1","addressLine2","addressLine3",
  "accountType","operatingMode","mode","customerPhoto",
 ]);
+/** Bank fields remain extensible for new institutions, but credentials,
+ * tenant internals and session metadata must never be exposed by a template.
+ */
+export function safeLayoutBankFieldKey(key:string):boolean{
+  return /^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key)&&
+    !/(?:password|passphrase|secret|credential|token|api_?key|private_?key|license|firebase|oauth|refresh|session|tenant|permission|admin|role|identity)/i.test(key);
+}
 const own=(data:Record<string,unknown>,key:string)=>Object.prototype.hasOwnProperty.call(data,key)?data[key]:undefined;
 const clean=(value:unknown)=>typeof value==="string"||typeof value==="number"?String(value).slice(0,500):"";
 export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<string,unknown>,bank:Record<string,unknown>):string {
   if(["static","preprinted"].includes(element.origin))return clean(element.label);
   const field=aliases[element.fieldKey]||element.fieldKey;
   if(element.origin==="bank"){
+    if(!safeLayoutBankFieldKey(field))return "";
     const value=own(bank,field);
     return clean(value)||clean(element.defaultValue);
   }
@@ -39,7 +47,8 @@ export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<st
       return value || clean(element.defaultValue);
     }
     // Bank values may be intentionally referenced from a dot-matrix line.
-    if(element.origin==="dotmatrix"&&Object.prototype.hasOwnProperty.call(bank,field))
+    if(element.origin==="dotmatrix"&&safeLayoutBankFieldKey(field)&&
+       Object.prototype.hasOwnProperty.call(bank,field))
       return clean(own(bank,field))||clean(element.defaultValue);
   }
   return clean(element.defaultValue);
