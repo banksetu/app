@@ -68,7 +68,7 @@ jobs:
       - run: node --test scripts/ocr-offline-integration.test.mjs
 
   windows-installer-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 98
     name: Windows unsigned installer smoke (draft only)
     needs: layout-studio
     runs-on: windows-latest
@@ -93,7 +93,7 @@ jobs:
           Write-Host "Unsigned draft installer built successfully; no deployment or publishing performed."
 
   android-debug-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 98
     name: Android debug build smoke (draft only)
     needs: layout-studio
     runs-on: ubuntu-latest
