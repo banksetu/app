@@ -8,7 +8,55 @@ export type ScanBounds = {
   widthMm: number; heightMm: number; confidence: "low" | "medium";
   reason: string;
   foldHint?: FoldHint;
+  skewHint?: SkewHint;
 };
+export type SkewHint={angleDeg:number;confidence:"low";reason:string};
+
+/** Estimate a possible small tilt from BOTH visible outer paper edges.
+ * Labels/text alone are not sufficient evidence of the physical boundary.
+ * The hint never changes a draft automatically.
+ */
+export function estimatePassbookSkew(
+  pixels:Uint8ClampedArray,width:number,height:number,
+  bounds:Pick<ScanBounds,"left"|"top"|"right"|"bottom">,
+):SkewHint|null{
+  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<40||height<40||
+    pixels.length<width*height*4||
+    ![bounds.left,bounds.top,bounds.right,bounds.bottom].every(Number.isFinite))return null;
+  const left=Math.max(0,Math.ceil(bounds.left)),right=Math.min(width,Math.floor(bounds.right));
+  const top=Math.max(0,Math.ceil(bounds.top)),bottom=Math.min(height,Math.floor(bounds.bottom));
+  const spanX=right-left,spanY=bottom-top;
+  if(spanX<40||spanY<40)return null;
+  const samples:Array<{y:number;left:number;right:number}>=[];
+  const step=Math.max(1,Math.floor(spanX/400));
+  for(let row=1;row<=19;row++){
+    const y=Math.floor(top+spanY*row/20);
+    let min=-1,max=-1;
+    for(let x=left;x<right;x+=step){
+      const k=(y*width+x)*4;
+      const ink=pixels[k+3]>64&&Math.max(255-pixels[k],255-pixels[k+1],255-pixels[k+2])>27;
+      if(ink){if(min<0)min=x;max=x;}
+    }
+    if(min>=0&&max-min>spanX*.60)samples.push({y,left:min,right:max});
+  }
+  if(samples.length<14)return null;
+  const fit=(which:"left"|"right")=>{
+    const avgY=samples.reduce((acc,p)=>acc+p.y,0)/samples.length;
+    const avgX=samples.reduce((acc,p)=>acc+p[which],0)/samples.length;
+    let num=0,den=0;
+    for(const p of samples){num+=(p.y-avgY)*(p[which]-avgX);den+=(p.y-avgY)**2;}
+    const slope=den?num/den:0;
+    const rmse=Math.sqrt(samples.reduce((acc,p)=>acc+(p[which]-avgX-slope*(p.y-avgY))**2,0)/samples.length);
+    return {slope,rmse};
+  };
+  const l=fit("left"),r=fit("right");
+  if(Math.abs(l.slope-r.slope)>.035||Math.max(l.rmse,r.rmse)>Math.max(2,spanX*.025))return null;
+  const angleDeg=Math.atan((l.slope+r.slope)/2)*180/Math.PI;
+  if(!Number.isFinite(angleDeg)||Math.abs(angleDeg)<.45||Math.abs(angleDeg)>8)return null;
+  return {angleDeg:Math.round(angleDeg*10)/10,confidence:"low",
+    reason:"Visible paper edges suggest a small scan tilt. Verify before optionally correcting it."};
+}
+
 export type FoldHint={foldMm:number;pageY:number;confidence:"low";reason:string};
 
 /** Suggest the quiet strip between the two printed passbook halves.
@@ -118,6 +166,7 @@ export function estimatePassbookBounds(pixels: Uint8ClampedArray, width: number,
   return {
     left, top, right, bottom, widthMm, heightMm,
     foldHint:estimatePassbookFold(pixels,width,height,{left,top,right,bottom,widthMm,heightMm,confidence:"low",reason:"estimate"}) ?? undefined,
+    skewHint:estimatePassbookSkew(pixels,width,height,{left,top,right,bottom}) ?? undefined,
     confidence: cornerHits >= 3 ? "medium" : "low",
     reason: cornerHits >= 3
       ? "Outer contrast visible near corners. Verify against the real passbook before applying."
