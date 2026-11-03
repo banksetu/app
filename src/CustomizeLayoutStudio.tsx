@@ -80,8 +80,11 @@ function validDraft(draft: unknown, mode: Mode, bankName: string): draft is Draf
   return validatePersistedLayoutDraft(draft, mode, bankName);
 }
 function draftKey(mode: Mode, bankName: string) {
-  const tenantId = sessionStorage.getItem("bankSetuTenantId") || "master";
-  const uid = sessionStorage.getItem("bankSetuWorkspaceOwner") || "local";
+  const tenantId = sessionStorage.getItem("bankSetuTenantId") || "";
+  const uid = sessionStorage.getItem("bankSetuWorkspaceOwner") || "";
+  // Never persist another tenant's template in a shared fallback 'master/local'
+  // key when the active workspace identity has not been established.
+  if(!tenantId||!uid)return null;
   return "bankSetuLayoutDraft:v1:" + tenantId + ":" + uid + ":" + mode + ":" + bankName;
 }
 
@@ -89,7 +92,7 @@ type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widt
 export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {}, accountRole = "client_user" }: { mode: Mode; bankName: string; bankValues?: Record<string,string>; accountRole?:string }) {
   const storageKey = draftKey(mode, bankName);
   const [draft, setDraft] = useState<Draft>(() => {
-    try { const saved = JSON.parse(localStorage.getItem(storageKey) || "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
+    try { const saved = JSON.parse(storageKey ? localStorage.getItem(storageKey) || "null" : "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
     return initialDraft(mode, bankName);
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -271,6 +274,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setDirty(true);
   };
   const save = () => {
+    if(!storageKey){
+      setNotice("Current tenant/owner identity is unavailable. Local draft was NOT persisted in a shared key. Export JSON or reopen the verified workspace.");
+      return;
+    }
     try {
       localStorage.setItem(storageKey, JSON.stringify(draft));
       setDirty(false);
