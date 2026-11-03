@@ -547,6 +547,18 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           if(index>1 && (Math.abs(view.width-viewport.width)>1||Math.abs(view.height-viewport.height)>1))
             throw Error("PDF pages have different dimensions or orientations. Import each physical passbook size as a separate draft.");
           const textLayer = await pdfPage.getTextContent();
+          let operatorList:Awaited<ReturnType<typeof pdfPage.getOperatorList>>|null=null;
+          let hasRasterArtwork=false;
+          try{
+            operatorList=await pdfPage.getOperatorList();
+            const {analyzePdfGraphicsCoverage}=await import("./layoutGraphicsCoverage");
+            const coverage=analyzePdfGraphicsCoverage(operatorList);
+            hasRasterArtwork=coverage.rasterImages>0;
+            sourceGraphicsWarnings.push(...coverage.warnings.map(warning=>"PDF page "+index+": "+warning));
+          }catch{
+            sourceGraphicsWarnings.push("PDF page "+index+": graphics analysis unavailable; verify the original PDF before approval.");
+          }
+
           // Import embedded PDF text BEFORE OCR or vector objects. Large raster
           // scans must never crowd out the original digitally mapped fields.
           for (const item of textLayer.items) {
@@ -576,7 +588,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               // A few digital headers do not mean the rest of the page is
               // searchable. Mixed digital+scanned PDFs still receive local OCR
               // suggestions for their raster-only regions (always reviewable).
-              if (textLayer.items.filter(item=>"str" in item && item.str.trim()).length<12) {
+              if (textLayer.items.filter(item=>"str" in item && item.str.trim()).length<12 ||
+                  (hasRasterArtwork && textLayer.items.filter(item=>"str" in item && item.str.trim()).length<32)) {
                 // Recognition at the 480px reference thumbnail loses small Hindi
                 // and dot-matrix lines. Render one temporary larger OCR canvas,
                 // without storing the high-resolution customer scan in drafts.
@@ -614,15 +627,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               previewCanvas.width=0;previewCanvas.height=0;
             } else references.push("");
           } catch { references.push(""); }
-          if (elements.length<290) {
+          if (elements.length<290 && operatorList) {
             try {
-              const [{collectEditableVectorShapes},{analyzePdfGraphicsCoverage}]=await Promise.all([
-                import("./layoutVectorImport"),import("./layoutGraphicsCoverage")
-              ]);
-              const operators=await pdfPage.getOperatorList();
-              const coverage=analyzePdfGraphicsCoverage(operators);
-              sourceGraphicsWarnings.push(...coverage.warnings.map(warning=>"PDF page "+index+": "+warning));
-              const shapes=collectEditableVectorShapes(operators,view,width,height,Math.min(80,300-elements.length));
+              const {collectEditableVectorShapes}=await import("./layoutVectorImport");
+              const shapes=collectEditableVectorShapes(operatorList,view,width,height,Math.min(80,300-elements.length));
               for(const shape of shapes){
                 if(elements.length>=300)break;
                 const part=addPart(shape.kind,"static",shape.kind==="line"?"PDF vector line":shape.kind==="ellipse"?"PDF vector ellipse":"PDF vector rectangle","",shape.x,shape.y);
