@@ -10,13 +10,14 @@ type AuditPart={
 };
 type AuditDraft={
   mode:string;bankName:string;widthMm:number;heightMm:number;
-  foldMm:number;printStartMm:number;pageCount?:number;elements:AuditPart[];
+  foldMm:number;printStartMm:number;pageCount?:number;sourceArtworkStatus?:"clean"|"needsReview"|"reviewed";elements:AuditPart[];
 };
 export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
   const issues:AuditItem[]=[];
   const error=(message:string,elementId?:string)=>issues.push({severity:"error",message,elementId});
   const warning=(message:string,elementId?:string)=>issues.push({severity:"warning",message,elementId});
   if(!draft.bankName?.trim())error("Select the bank in Bank Information.");
+  if(draft.sourceArtworkStatus==="needsReview")error("PDF raster or complex artwork requires manual recreation and explicit review.");
   if(!["passbook","accountOpening"].includes(draft.mode))error("Unknown layout mode.");
   if(!Number.isFinite(draft.widthMm)||!Number.isFinite(draft.heightMm)||draft.widthMm<50||draft.heightMm<50||draft.widthMm>500||draft.heightMm>500)error("Enter valid physical page width and height.");
   if(!Number.isFinite(draft.foldMm)||!Number.isFinite(draft.printStartMm)||draft.foldMm<0||draft.foldMm>draft.heightMm||draft.printStartMm<0||draft.printStartMm>draft.heightMm)error("Fold line and print-start must be within page bounds.");
