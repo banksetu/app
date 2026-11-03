@@ -1085,6 +1085,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={() => setSelectedId(part.id)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
       </aside>
       <div className="ls-canvas-wrap">
+        <div className="ls-paper-stage" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
         {showRulers && <div className="ls-ruler-x" aria-hidden="true" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
           {Array.from({length:Math.floor(draft.widthMm/10)+1},(_,index)=>index*10).map(mm=>
             <span key={mm} style={{left:mm*PX_PER_MM*zoom}}>{unit==="mm"?mm:valueInUnit(mm,unit)}</span>)}
@@ -1120,6 +1121,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               {selectedId===part.id && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
             </div>;
           })}
+        </div>
         </div>
         <p className="ls-canvas-note">Drag objects to position · Arrow keys: 0.1 mm · Shift+Arrow: 1 mm · Fold markers are guides only</p>
       </div>
