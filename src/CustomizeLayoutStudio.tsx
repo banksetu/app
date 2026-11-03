@@ -193,7 +193,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             if(active){
               localRevisionRef.current=saved.localRevision;
               setDraft(prior);
-              setNotice("Previous local draft migrated into BANK SETU's existing encrypted/IndexedDB workspace storage. Legacy copy was retained.");
+              setNotice("Previous local draft migrated into BANK SETU's existing SQLite/IndexedDB workspace repository. Legacy copy was retained.");
             }
           }
         }else if(info)setNotice(info);
