@@ -51,6 +51,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
         !finite(item.width, 1, 500) || !finite(item.height, 1, 500) ||
         !finite(item.z, -1000, 1000) || !finite(item.rotation, -360, 360) ||
         !finite(item.size, 4, 120) || !finite(item.letterSpacing, -5, 30) ||
+        !(item.fontCompression===undefined||finite(item.fontCompression,50,100)) ||
         !finite(item.opacity, 0, 1) || !finite(item.borderWidth, 0, 10) ||
         !aligns.has(item.align))
       throw Error("Invalid layout element " + (index + 1) + ".");
@@ -84,6 +85,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
         ? String(item.defaultValue).trim() : "",
       x:item.x, y:item.y, width:item.width, height:item.height, z:item.z,
       rotation:item.rotation, size:item.size, align:item.align, letterSpacing:item.letterSpacing,
+      fontCompression:item.fontCompression===undefined?100:item.fontCompression,
       opacity:item.opacity, borderWidth:item.borderWidth,
       bold:item.bold===true, italic:item.italic===true, underline:item.underline===true,
       font:/^[a-zA-Z ,'-]{1,60}$/.test(item.font) ? item.font : "Arial",
