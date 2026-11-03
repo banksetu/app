@@ -7,6 +7,7 @@ import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, 
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
 import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
+import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
@@ -100,6 +101,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(false);
+  const [showRulers,setShowRulers]=useState(true);
+  const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
   const [snapGrid, setSnapGrid] = useState(false);
   const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
@@ -254,6 +257,37 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     part.page = selectedPage;
     modify(current => ({ ...current, elements: [...current.elements, part] }));
     setSelectedId(part.id);
+  };
+  const startFromBlank=async()=>{
+    if(busy)return;
+    if(!await confirmAction("Create a blank, measured passbook/page on this device? The current editor is preserved in Undo; export the JSON before replacing unsaved work."))return;
+    try{
+      modify(current=>startBlankLayout(current));
+      setSelectedId(null);setSelectedPage(1);setPreview("quick");
+      setReferencePages([]);setReferenceVisible(false);
+      setScanSuggestion(null);setScanFrame(null);setScanHasImportedObjects(false);
+      setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});
+      setGraphicWarnings([]);setAudit(null);setVisualDiff(null);setPr2Proof("");
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setTemporaryValues({});setNotice("A blank, bank-independent Word-style document is ready. Add text, labels, mapped fields, shapes and exact mm/cm/in coordinates. Undo restores your previous local editor.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Blank canvas could not be created.");}
+  };
+  const moveSelectedTo=(axis:"horizontal"|"vertical",side:"start"|"center"|"end")=>{
+    if(!selected)return;
+    try{
+      const moved=alignElementToPage(selected,{widthMm:draft.widthMm,heightMm:draft.heightMm},axis,side);
+      edit({x:moved.x,y:moved.y});setPhysicalChecked(false);
+    }catch(error){setNotice(error instanceof Error?error.message:"Element exceeds the current page.");}
+  };
+  const copySelectedStyle=()=>{
+    if(!selected)return;
+    const {font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,opacity,rotation}=selected;
+    setStyleClipboard({font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,opacity,rotation});
+    setNotice("Copied formatting only — no account number, customer field, tenant data or content was copied.");
+  };
+  const pasteSelectedStyle=()=>{
+    if(!selected||!styleClipboard)return;
+    edit(styleClipboard);setNotice("Formatting applied to this element. Existing customer mapping and text remain unchanged.");
   };
   const moveZ = (increment: number) => {
     if (!selected) return;
@@ -788,7 +822,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   return <section className="layout-studio" aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
-      <div className="ls-actions"><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button>
+      <div className="ls-actions"><button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button>
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
@@ -1040,7 +1074,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
       <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
       <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
-      <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
+      <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
       <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
       <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
       <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
@@ -1051,9 +1085,23 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={() => setSelectedId(part.id)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
       </aside>
       <div className="ls-canvas-wrap">
+        {showRulers && <div className="ls-ruler-x" aria-hidden="true" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
+          {Array.from({length:Math.floor(draft.widthMm/10)+1},(_,index)=>index*10).map(mm=>
+            <span key={mm} style={{left:mm*PX_PER_MM*zoom}}>{unit==="mm"?mm:valueInUnit(mm,unit)}</span>)}
+        </div>}
+        {showRulers && <div className="ls-ruler-y" aria-hidden="true" style={{height:draft.heightMm*PX_PER_MM*zoom}}>
+          {Array.from({length:Math.floor(draft.heightMm/10)+1},(_,index)=>index*10).map(mm=>
+            <span key={mm} style={{top:mm*PX_PER_MM*zoom}}>{unit==="mm"?mm:valueInUnit(mm,unit)}</span>)}
+        </div>}
         <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Select an element then use arrow keys for fine adjustment." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
           backgroundImage:showGrid?"linear-gradient(to right,#b4d7e444 1px,transparent 1px),linear-gradient(to bottom,#b4d7e444 1px,transparent 1px)":undefined,
           backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event => {
+          if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){
+            event.preventDefault();if(event.shiftKey)redo();else undo();return;
+          }
+          if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="y"){
+            event.preventDefault();redo();return;
+          }
           if (!selected || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
           event.preventDefault();
           const step = event.shiftKey ? 1 : .1;
@@ -1137,7 +1185,19 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           <div className="ls-grid-two">{field("X (" + unit + ")", number(valueInUnit(selected.x, unit), next => edit({x:round(next * factor(unit))}), 0, 500, .1))}{field("Y (" + unit + ")", number(valueInUnit(selected.y, unit), next => edit({y:round(next * factor(unit))}), 0, 500, .1))}{field("Width (" + unit + ")", number(valueInUnit(selected.width, unit), next => edit({width:round(next * factor(unit))}), 1, 500, .1))}{field("Height (" + unit + ")", number(valueInUnit(selected.height, unit), next => edit({height:round(next * factor(unit))}), 1, 500, .1))}{field("Z layer", number(selected.z, next => edit({z:next}), -1000, 1000))}{field("Rotation (°)", number(selected.rotation, next => edit({rotation:next}), -360, 360))}</div>
           {field("Font family", <select value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select>)}
           <div className="ls-grid-two">{field("Font size (px)", number(selected.size, next => edit({size:next}), 5, 120))}{field("Letter spacing", number(selected.letterSpacing, next => edit({letterSpacing:next}), -5, 30, .1))}</div>
-          <div className="ls-toggle-row"><button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button><button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button><button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button><button type="button" onClick={() => moveZ(1)}>Bring Forward</button><button type="button" onClick={() => moveZ(-1)}>Send Back</button></div>
+          <div className="ls-toggle-row"><button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button><button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button><button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button><button type="button" onClick={() => moveZ(1)}>Bring Forward</button><button type="button" onClick={() => moveZ(-1)}>Send Back</button>
+            <button type="button" onClick={copySelectedStyle}>Copy Style</button>
+            <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste Style</button>
+          </div>
+          <div className="ls-word-align" role="toolbar" aria-label="Word-style element alignment">
+            <strong>Align object to physical page:</strong>
+            <button type="button" onClick={()=>moveSelectedTo("horizontal","start")}>Left</button>
+            <button type="button" onClick={()=>moveSelectedTo("horizontal","center")}>Center</button>
+            <button type="button" onClick={()=>moveSelectedTo("horizontal","end")}>Right</button>
+            <button type="button" onClick={()=>moveSelectedTo("vertical","start")}>Top</button>
+            <button type="button" onClick={()=>moveSelectedTo("vertical","center")}>Middle</button>
+            <button type="button" onClick={()=>moveSelectedTo("vertical","end")}>Bottom</button>
+          </div>
           {field("Text alignment", <select value={selected.align} onChange={event => edit({align:event.target.value as Align})}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>)}
           <div className="ls-grid-two">{field("Text color", <input type="color" value={selected.color} onChange={event => edit({color:event.target.value})}/>)}{field("Background color", <input type="color" value={selected.background === "transparent" ? "#ffffff" : selected.background} onChange={event => edit({background:event.target.value})}/>)}{field("Border color", <input type="color" value={selected.borderColor} onChange={event => edit({borderColor:event.target.value})}/>)}{field("Border width", number(selected.borderWidth, next => edit({borderWidth:next}), 0, 10, .5))}{field("Opacity", number(selected.opacity, next => edit({opacity:next}), 0, 1, .1))}</div>
           <label className="ls-inline-check"><input type="checkbox" checked={selected.background === "transparent"} onChange={event => edit({background:event.target.checked ? "transparent" : "#ffffff"})}/> Transparent background</label>
