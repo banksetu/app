@@ -7,6 +7,7 @@ import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, 
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
 import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
+import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
@@ -105,6 +106,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [scanMeasurements,setScanMeasurements]=useState<{widthMm:number|null;heightMm:number|null;foldMm:number|null;printStartMm:number|null}>({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
   const [scanOrientation,setScanOrientation]=useState<0|90|180|270>(0);
   const [scanFineRotation,setScanFineRotation]=useState(0);
+  const [scanPerspective,setScanPerspective]=useState(false);
+  const [scanCornerPercents,setScanCornerPercents]=useState<PerspectiveQuad|null>(null);
   const [scanHasImportedObjects,setScanHasImportedObjects]=useState(false);
   const [referencePages, setReferencePages] = useState<string[]>([]);
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
@@ -357,12 +360,20 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const applyScannerSuggestion = async () => {
     const proposal=scanSuggestion,frame=scanFrame;
     if(!proposal || !frame)return;
-    if(!await confirmAction("Apply selected scan crop and manual measurements to this local DRAFT only? This is not physical printer certification."))return;
+    if(!await confirmAction(scanHasImportedObjects
+      ? "Apply the scanned crop, optional perspective correction and manual dimensions to this local DRAFT? Printer calibration is still required."
+      : "No usable text was imported. Applying this image-only PDF will open an EMPTY editable canvas with the cropped reference; Undo can recover current editor objects. Save/export your previous draft first. Continue?"))return;
     try {
       const oriented=scanOrientation===90||scanOrientation===270
         ? {...proposal,widthMm:proposal.heightMm,heightMm:proposal.widthMm,foldHint:undefined}
         : scanOrientation===180?{...proposal,foldHint:undefined}:proposal;
       const bounds=calibrateScanBounds(oriented,scanMeasurements);
+      const perspective:PerspectiveQuad|undefined=scanPerspective&&scanCornerPercents
+        ? scanCornerPercents.map(point=>({
+            x:point.x/100*frame.pixelWidth,y:point.y/100*frame.pixelHeight
+          })) as PerspectiveQuad:undefined;
+      if(scanPerspective&&!perspective)throw Error("Set all four physical passbook corners first.");
+      if(perspective)createPerspectiveMap(perspective,frame.pixelWidth,frame.pixelHeight);
       const chosenPrintStart=scanMeasurements.printStartMm??0;
       if(chosenPrintStart<0||chosenPrintStart>bounds.heightMm)
         throw Error("Print-start distance must be within physical passbook height.");
@@ -379,13 +390,37 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         if(![cropX,cropY,cropW,cropH].every(Number.isFinite)||cropW<=0||cropH<=0)
           throw Error("Scanner crop is outside the source preview.");
         const canvas=document.createElement("canvas");
-        canvas.width=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropH:cropW));
-        canvas.height=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropW:cropH));
-        const context=canvas.getContext("2d");
-        if(!context)throw Error("Canvas cropping is unavailable on this device.");
-        context.translate(canvas.width/2,canvas.height/2);
-        context.rotate((scanOrientation+scanFineRotation)*Math.PI/180);
-        context.drawImage(image,cropX,cropY,cropW,cropH,-cropW/2,-cropH/2,cropW,cropH);
+        if(perspective){
+          const raw=document.createElement("canvas");
+          raw.width=image.width;raw.height=image.height;
+          const rawContext=raw.getContext("2d",{willReadFrequently:true});
+          if(!rawContext)throw Error("Perspective image processing is unavailable.");
+          rawContext.drawImage(image,0,0);
+          const input=rawContext.getImageData(0,0,raw.width,raw.height).data;
+          const quadInImage=perspective.map(point=>({
+            x:point.x/frame.pixelWidth*image.width,
+            y:point.y/frame.pixelHeight*image.height
+          })) as PerspectiveQuad;
+          const maximum=Math.max(1,Math.min(850,Math.round(Math.max(cropW,cropH))));
+          const ratio=bounds.widthMm/bounds.heightMm;
+          canvas.width=Math.max(1,Math.round(maximum*Math.min(1,ratio)));
+          canvas.height=Math.max(1,Math.round(maximum*Math.min(1,1/ratio)));
+          const pixels=rectifyPerspectivePixels(input,raw.width,raw.height,quadInImage,
+            canvas.width,canvas.height,scanOrientation,scanFineRotation);
+          const context=canvas.getContext("2d");
+          if(!context)throw Error("Perspective output canvas is unavailable.");
+          const output=context.createImageData(canvas.width,canvas.height);
+          output.data.set(pixels);context.putImageData(output,0,0);
+          raw.width=0;raw.height=0;
+        }else{
+          canvas.width=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropH:cropW));
+          canvas.height=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropW:cropH));
+          const context=canvas.getContext("2d");
+          if(!context)throw Error("Canvas cropping is unavailable on this device.");
+          context.translate(canvas.width/2,canvas.height/2);
+          context.rotate((scanOrientation+scanFineRotation)*Math.PI/180);
+          context.drawImage(image,cropX,cropY,cropW,cropH,-cropW/2,-cropH/2,cropW,cropH);
+        }
         croppedReference=canvas.toDataURL("image/webp",.72);
         canvas.width=0;canvas.height=0;
       }
@@ -395,8 +430,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       // has no OCR. Never shift those physical coordinates as A4 scan geometry.
       const result=scanHasImportedObjects
         ? mapScannedPageToPassbook(bounds,frame.pixelWidth,frame.pixelHeight,
-            frame.paperWidthMm,frame.paperHeightMm,draft.elements,scanOrientation,scanFineRotation)
-        : {elements:draft.elements,outsideCount:0};
+            frame.paperWidthMm,frame.paperHeightMm,draft.elements,scanOrientation,scanFineRotation,perspective)
+        : {elements:[] as LayoutPart[],outsideCount:0};
       modify(current=>({...current,
         widthMm:bounds.widthMm,heightMm:bounds.heightMm,
         foldMm:bounds.foldHint?.foldMm??0,
@@ -411,8 +446,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setScanSuggestion(null);setScanFrame(null);
       setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
       setScanOrientation(0);setScanFineRotation(0);
+      setScanPerspective(false);setScanCornerPercents(null);
       setScanHasImportedObjects(false);
-      setNotice("Scanner crop applied ONLY to draft. "+(scanHasImportedObjects?"Imported positions were recalibrated. ":"Image-only PDF had no imported text, so older draft positions were preserved. ")+result.outsideCount+
+      setNotice("Scanner crop applied ONLY to draft. "+(scanHasImportedObjects?"Imported positions were recalibrated. ":"Image-only PDF opened a blank canvas; existing editor version is recoverable using Undo. ")+result.outsideCount+
         " elements may cross the estimated border. Fold"+(bounds.foldHint?" gap":"")+
         " and print start are UNVERIFIED; physical ruler and printer re-approval required.");
     }catch(error){
@@ -481,6 +517,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setPhysicalChecked(false);setHardwareChecked(false);
     setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
     setScanOrientation(0);setScanFineRotation(0);
+    setScanPerspective(false);setScanCornerPercents(null);
     setScanHasImportedObjects(false);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
