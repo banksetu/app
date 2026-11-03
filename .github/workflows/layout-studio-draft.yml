@@ -37,6 +37,7 @@ on:
       - cloudflare/layoutActivation.js
       - cloudflare/layoutTemplates.js
       - scripts/layout-*.test.mjs
+      - scripts/license-ui.test.mjs
       - cloudflare/worker.js
       - cloudflare/worker.test.js
       - scripts/layout-studio.test.mjs
