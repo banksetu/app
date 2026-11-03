@@ -1284,7 +1284,22 @@ async function handleMasterOperation(request, env, actor, route) {
     try { sanitizeLayoutTemplate(template,template.bankName); }
     catch(error) { return json({error:"Template validation failed before approval: "+error.message},400); }
     const status=body.action==="approve"?"approved":"rejected";
-    await putDocument(env,path,{status,reviewedBy:actor.uid,reviewedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    const now=new Date().toISOString();
+    const reviewed={status,reviewedBy:actor.uid,reviewedAt:now,updatedAt:now};
+    // Another Master session may have reviewed the submission between GET and
+    // write. Preserve the current document's template fields and never let the
+    // second review silently overwrite an approved/rejected outcome.
+    const write={
+      update:{name:firestoreDocumentName(env,path),fields:encodeFields(reviewed)},
+      updateMask:{fieldPaths:Object.keys(reviewed)},
+      currentDocument:{updateTime:found.updateTime}
+    };
+    try{await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
+    catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Layout review changed in another session. Refresh before making a new decision."},409);
+      throw error;
+    }
     return json({success:true,id,status});
   }
   if (route === "/get-workspace-layout-selection" || route === "/set-workspace-layout-selection") {
