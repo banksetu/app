@@ -65,3 +65,9 @@ test("server-side catalog enforces Union Bank values-only and excludes PR2 graph
   item({id:"bad-line",kind:"line",origin:"static",fieldKey:"",dotMatrix:true})
  ]),"Central Bank of India"),/cannot include shapes/);
 });
+
+test("step 3: server blocks unreviewed source image/gradient reconstruction",()=>{
+ assert.throws(()=>sanitizeLayoutTemplate({...draft(),sourceArtworkStatus:"needsReview"},"Central Bank of India"),/Unreviewed PDF raster/);
+ const reviewed=sanitizeLayoutTemplate({...draft(),sourceArtworkStatus:"reviewed"},"Central Bank of India");
+ assert.equal(reviewed.sourceArtworkStatus,undefined);
+});
