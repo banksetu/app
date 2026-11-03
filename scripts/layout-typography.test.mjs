@@ -73,7 +73,7 @@ test("Quick PDF proof preserves actual horizontal glyph compression and letter s
  try{
    const page=await doc.getPage(1);
    const content=await page.getTextContent();
-   const items=content.items.filter(x=>typeof x.str==="string"&&x.str.replace(/\\s+/g,"")===phrase);
+   const items=content.items.filter(x=>typeof x.str==="string"&&x.str.replace(/\s+/g,"")===phrase);
    assert.equal(items.length,3,JSON.stringify(content.items.map(x=>x.str)));
    assert.ok(items[1].width<items[0].width*.72,
      "60% font width should produce a visibly narrower proof glyph run");
