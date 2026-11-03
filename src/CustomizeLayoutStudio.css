@@ -138,3 +138,11 @@ html[data-appearance="dark"] .layout-studio, .banksetu-app-shell[data-appearance
 .ls-scan-preview {position:relative;flex:0 0 min(100%,320px);width:min(100%,320px);overflow:hidden;border:1px solid var(--ls-border);border-radius:8px;background:white}
 .ls-scan-preview img {position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
 .ls-scan-selection {position:absolute;border:2px dashed #d64045;background:rgba(214,64,69,.06);box-sizing:border-box;pointer-events:none}
+
+/* Four-corner correction remains in the local OCR/calibration preview only. */
+.ls-scan-quad {position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.ls-scan-corner-controls {display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;width:100%;align-items:start}
+.ls-scan-corner {display:grid;gap:4px;padding:6px;border:1px solid var(--ls-border);border-radius:7px}
+.ls-scan-corner label {display:flex;align-items:center;gap:6px;justify-content:space-between}
+.ls-scan-corner input {min-width:0;max-width:76px}
+.ls-scan-corner-controls>p {grid-column:1/-1;color:var(--ls-muted)}
