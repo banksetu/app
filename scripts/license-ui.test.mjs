@@ -10,7 +10,7 @@ const dashboardSource=fs.readFileSync('src/Dashboard.tsx','utf8');
 const hookPosition=name=>{
   const offset=dashboardSource.indexOf('const ['+name);
   assert(offset>0,'Dashboard hook is present: '+name);
-  return (dashboardSource.slice(0,offset).match(/\\buseState(?:<[^>\\n]*>)?\\s*\\(/g)||[]).length+1;
+  return (dashboardSource.slice(0,offset).match(/\buseState(?:<[^>\n]*>)?\s*\(/g)||[]).length+1;
 };
 const activePageHook=hookPosition('activePage');
 const bankSettingsReadyHook=hookPosition('bankSettingsReady');
