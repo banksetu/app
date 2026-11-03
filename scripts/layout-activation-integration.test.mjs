@@ -29,3 +29,15 @@ test("Existing verified PR2 bridge is reused, not copied, and completion control
   assert.match(custom,/action:"markPassbookPrinted"/);
   assert.match(custom,/if\(!customerRow\)/);
 });
+
+test("step 5: custom PR2 uses its own approved values PDF and requires physical receipt",()=>{
+ const dialog=file("src/Pr2PrinterDialog.tsx");
+ const print=file("src/WorkspaceTemplateDocument.tsx");
+ assert.match(dialog,/customPdfBase64\?\?prepared\.pdf/);
+ assert.match(dialog,/requirePhysicalConfirmation/);
+ assert.match(dialog,/pendingPhysical/);
+ assert.match(print,/exportLayoutProofPdf\(/);
+ assert.match(print,/isLayoutLayerPrintable/);
+ assert.match(print,/requirePhysicalConfirmation/);
+ assert.match(print,/I inspected|onPr2Complete/);
+});
