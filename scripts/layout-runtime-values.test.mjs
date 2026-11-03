@@ -42,3 +42,16 @@ test("activated passbook rejects invalid physical calibration and page counts",(
   assert.equal(templateCanRender({...source,...diff},"Test Bank","passbook"),false,JSON.stringify(diff));
  }
 });
+
+test("step 6: renderer rejects credentials and allows normal bank identifiers",()=>{
+ const customer={};
+ const bank={branchName:"Guwahati",ifsc:"TEST001",GSTIN:"22ABCDE1234A1Z5",
+  apiKey:"NOT_FOR_TEMPLATES",sessionToken:"PRIVATE_TOKEN",tenantSecret:"PRIVATE_SECRET"};
+ for(const fieldKey of ["apiKey","sessionToken","tenantSecret","licenseKey","oauthRefreshToken"]){
+   assert.equal(boundLayoutValue(layer({origin:"bank",fieldKey}),customer,bank),"",fieldKey);
+   assert.equal(boundLayoutValue(layer({origin:"dotmatrix",fieldKey}),customer,bank),"",fieldKey);
+ }
+ for(const fieldKey of ["branchName","ifsc","GSTIN"]){
+   assert.equal(boundLayoutValue(layer({origin:"bank",fieldKey}),customer,bank),bank[fieldKey]);
+ }
+});
