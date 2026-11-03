@@ -6,6 +6,7 @@ import {requireLicensedWrite} from "./core/licenseAccess";
 import {printCurrentDocument} from "./platform/print";
 import {boundLayoutValue,visibleLayoutElement,templateCanRender,type ApprovedLayout,type LayoutDynamicElement} from "./layoutRuntimeValues";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
+import {preflightLayoutOutput} from "./layoutOutputPreflight.ts";
 import "./WorkspaceTemplateDocument.css";
 
 function frame(part:LayoutDynamicElement):CSSProperties {
@@ -34,10 +35,24 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
     return <p role="alert">The activated bank layout is incompatible. Use the existing bank print flow.</p>;
   const pages=Math.min(10,Math.max(1,template.pageCount||1));
   const width=template.widthMm,height=template.heightMm;
+  const checkPrintData=()=>{
+    const report=preflightLayoutOutput(
+      template.elements,template,output,bankName,item=>
+        temporaryValues[item.id]??boundLayoutValue(
+          item as LayoutDynamicElement,customer,bankInfo)
+    );
+    if(report.errors.length)throw Error(
+      "Custom template print blocked: "+report.errors.slice(0,3).join(" · ")+
+      (report.errors.length>3?" (+"+(report.errors.length-3)+" more)":"")
+    );
+    return report;
+  };
   const print=async()=>{
     if(printing)return;setPrinting(true);setMessage("");
     try{
       await requireLicensedWrite();
+      const report=checkPrintData();
+      if(report.warnings.length)setMessage("Tight text fit: "+report.warnings.join(" · ")+". Verify printer preview.");
       const outcome=await printCurrentDocument(false);
       setMessage(outcome.accepted?"Print job accepted by system. Confirm physical alignment before treating the passbook as printed.":outcome.cancelled?"Print was cancelled.":"Print dialog opened; verify its result.");
     }catch(error){setMessage(error instanceof Error?error.message:"Printer preview unavailable.");}
@@ -49,6 +64,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
     setDirectPreparing(true);setMessage("");
     try{
       await requireLicensedWrite();
+      checkPrintData();
       const relevant=template.elements.filter(item=>isLayoutLayerPrintable(item,"dotmatrix",bankName));
       if(!relevant.length)throw Error("No verified text/value layers are configured for the selected bank.");
       const checked=relevant.map(item=>{
