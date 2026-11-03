@@ -68,7 +68,12 @@ export async function exportLayoutProofPdf(layout: ProofLayout, mode: ProofMode)
     }
     if (part.kind === "ellipse") {
       pdf.setLineWidth(Math.max(.15,part.borderWidth*.2646));
-      pdf.ellipse(x+part.width/2,y+part.height/2,part.width/2,part.height/2,mode==="quick"&&part.background!=="transparent"?"FD":"S");
+      const filled=mode==="quick"&&part.background!=="transparent";
+      if(filled){
+        const fill=rgb(part.background);
+        pdf.setFillColor(fill[0],fill[1],fill[2]);
+      }
+      pdf.ellipse(x+part.width/2,y+part.height/2,part.width/2,part.height/2,filled?"FD":"S");
       continue;
     }
     if (part.kind === "rectangle" || part.kind === "photo") {
