@@ -515,18 +515,39 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               // A few digital headers do not mean the rest of the page is
               // searchable. Mixed digital+scanned PDFs still receive local OCR
               // suggestions for their raster-only regions (always reviewable).
-              if (textLayer.items.filter(item=>"str" in item && item.str.trim()).length<4) {
-                const {detectOfflineOpticalText}=await import("./layoutOnDeviceOCR");
-                const optical=await detectOfflineOpticalText(previewCanvas,width,height);
-                ocrStatus=optical.warning;
-                for (const found of optical.items) {
-                  if (elements.length>=300)break;
-                  const part=addPart("text","static",found.label,"",found.x,found.y);
-                  part.page=index;part.width=found.width;part.height=found.height;
-                  part.needsReview=true; // OCR text must be acknowledged against the source before Master review.
-                  part.z=elements.length+1;part.size=within(Math.round(found.height*3.2),5,60);
-                  elements.push(part);
-                  recognizedFromScan++;
+              if (textLayer.items.filter(item=>"str" in item && item.str.trim()).length<12) {
+                // Recognition at the 480px reference thumbnail loses small Hindi
+                // and dot-matrix lines. Render one temporary larger OCR canvas,
+                // without storing the high-resolution customer scan in drafts.
+                let ocrCanvas=previewCanvas;
+                try {
+                  const maxDimension=Math.max(view.width,view.height);
+                  const highScale=Math.min(1.7,1150/maxDimension);
+                  if(highScale>Math.min(.9,480/maxDimension)*1.1){
+                    const ocrView=pdfPage.getViewport({scale:highScale});
+                    const higher=document.createElement("canvas");
+                    higher.width=Math.ceil(ocrView.width);higher.height=Math.ceil(ocrView.height);
+                    const higherContext=higher.getContext("2d",{willReadFrequently:true});
+                    if(higherContext){
+                      await pdfPage.render({canvas:higher,canvasContext:higherContext,viewport:ocrView}).promise;
+                      ocrCanvas=higher;
+                    }else{higher.width=0;higher.height=0;}
+                  }
+                  const {detectOfflineOpticalText}=await import("./layoutOnDeviceOCR");
+                  const optical=await detectOfflineOpticalText(ocrCanvas,width,height);
+                  ocrStatus=optical.warning;
+                  for (const found of optical.items) {
+                    if (elements.length>=300)break;
+                    const part=addPart("text","static",found.label,"",found.x,found.y);
+                    part.page=index;part.width=found.width;part.height=found.height;
+                    part.needsReview=true; // Never accept OCR without user review.
+                    part.z=elements.length+1;part.size=within(Math.round(found.height*3.2),5,60);
+                    elements.push(part);recognizedFromScan++;
+                  }
+                }catch{
+                  ocrStatus="Offline OCR failed on this page; original reference remains available for manual correction.";
+                }finally{
+                  if(ocrCanvas!==previewCanvas){ocrCanvas.width=0;ocrCanvas.height=0;}
                 }
               }
               previewCanvas.width=0;previewCanvas.height=0;
