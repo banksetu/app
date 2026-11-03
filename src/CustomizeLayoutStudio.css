@@ -160,5 +160,5 @@ html[data-appearance="dark"] .layout-studio, .banksetu-app-shell[data-appearance
 
 /* Multi-line MS Word-style text editing for instructions and bank headings. */
 .ls-field textarea{width:100%;min-height:90px;min-width:0;resize:vertical;
- font:12px/1.4 inherit;color:var(--ls-text);background:var(--ls-surface);
+ font-family:inherit;font-size:12px;line-height:1.4;color:var(--ls-text);background:var(--ls-surface);
  border:1px solid var(--ls-border);border-radius:7px;padding:8px}
