@@ -1,3 +1,4 @@
+import {typographyCompression} from "./layoutTypography.ts";
 import {isLayoutLayerPrintable,type LayoutOutputLayer,type LayoutOutputMode} from "./layoutOutputPolicy.ts";
 
 /** Review only — preflight refuses known-clipped customer text instead of
@@ -5,7 +6,7 @@ import {isLayoutLayerPrintable,type LayoutOutputLayer,type LayoutOutputMode} fro
  */
 export type PreflightPart=LayoutOutputLayer&{
   id:string;label:string;fieldKey:string;page?:number;
-  x:number;y:number;width:number;height:number;size:number;letterSpacing?:number;
+  x:number;y:number;width:number;height:number;size:number;letterSpacing?:number;fontCompression?:number;
 };
 export type PreflightReport={errors:string[];warnings:string[]};
 export function preflightLayoutOutput(
@@ -42,7 +43,7 @@ export function preflightLayoutOutput(
     // Conservative offline diagnostic, NOT an authoritative print simulation.
     // A real font/driver can wrap differently; the UI must show a paper proof.
     const fontMm=Math.max(1,part.size*.2646);
-    const glyphMm=fontMm*.57+Math.max(0,part.letterSpacing??0)*.2646;
+    const glyphMm=(fontMm*.57+Math.max(0,part.letterSpacing??0)*.2646)*typographyCompression(part.fontCompression);
     const estimatedChars=Math.max(1,Math.floor(part.width/glyphMm));
     const estimatedLines=text.split(/\r?\n/).reduce((count,line)=>{
       return count+Math.max(1,Math.ceil(Array.from(line).length/estimatedChars));
