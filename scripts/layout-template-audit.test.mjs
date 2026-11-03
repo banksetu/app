@@ -53,3 +53,9 @@ test("unreadable OCR suggestions cannot pass draft audit until user confirms cor
  const accepted=auditPassbookTemplate(draft({elements:[part({needsReview:false})]}));
  assert.equal(accepted.some(issue=>/Unreadable/.test(issue.message)),false);
 });
+
+test("step 3: unsatisfied source-artwork review persists across local draft audit",()=>{
+ const pending=auditPassbookTemplate(draft({sourceArtworkStatus:"needsReview"}));
+ assert.ok(pending.some(issue=>issue.severity==="error"&&/PDF raster or complex artwork/.test(issue.message)));
+ assert.equal(auditPassbookTemplate(draft({sourceArtworkStatus:"reviewed"})).length,0);
+});
