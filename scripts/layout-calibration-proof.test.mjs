@@ -8,7 +8,8 @@ test("Step 8: physical ruler exports arbitrary real passbook dimensions, not sca
    [206,175,88,118],[190,173,86,101],[270,100,50,65],[120,220,110,135]
  ]){
    const blob=exportLayoutCalibrationProof({widthMm,heightMm,foldMm,printStartMm});
-   const pdf=await getDocument({data:new Uint8Array(await blob.arrayBuffer()),useSystemFonts:true}).promise;
+   const loading=getDocument({data:new Uint8Array(await blob.arrayBuffer()),useSystemFonts:true});
+   const pdf=await loading.promise;
    try{
      assert.equal(pdf.numPages,1);
      const page=await pdf.getPage(1),view=page.getViewport({scale:1});
@@ -20,7 +21,7 @@ test("Step 8: physical ruler exports arbitrary real passbook dimensions, not sca
      const labels=content.items.map(i=>i.str||"").join(" ");
      assert.match(labels,/CALIBRATION ONLY/);
      assert.doesNotMatch(labels,/customer name|account number|123456789012/i);
-   }finally{await pdf.destroy();}
+   }finally{await loading.destroy();}
  }
 });
 test("Step 8: invalid/suspicious physical sizes never export a false test ruler",()=>{
