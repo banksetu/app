@@ -10,10 +10,14 @@ Status: **NOT 100% certified**. This checklist deliberately does not equate a pa
 - [ ] A physically invalid layout, unsupported printer or failed/spooled job cannot mark a customer Printed.
 
 ## Actual reference samples and scanner calibration
-- [ ] Engine must accept **any bank/passbook shape** independently: scanned PDF in A4, letter, landscape or direct-passbook canvas. It must NEVER require a photo or an Assam Gramin reference to function.\n- [ ] Automatic ROI and tentative dimensions available; when boundaries are uncertain, users can select crop edges and manually enter physical width/height/fold/print-start in mm/cm/inches. These measurements remain optional for draft editing but must be accepted before physical printer certification.\n- [ ] Physical printer acceptance may use a sanitised example of the relevant actual stock and recorded dimensions; this is a hardware sign-off task, not a requirement for PDF import or core software construction. A4 canvas dimensions must NOT be mistaken for physical passbook size.
+- [ ] Engine must accept **any bank/passbook shape** independently: scanned PDF in A4, letter, landscape or direct-passbook canvas. It must NEVER require a photo or an Assam Gramin reference to function.
+- [ ] Automatic ROI and tentative dimensions available; when boundaries are uncertain, users can select crop edges and manually enter physical width/height/fold/print-start in mm/cm/inches. These measurements remain optional for draft editing but must be accepted before physical printer certification.
+- [ ] Physical printer acceptance may use a sanitised example of the relevant actual stock and recorded dimensions; this is a hardware sign-off task, not a requirement for PDF import or core software construction. A4 canvas dimensions must NOT be mistaken for physical passbook size.
 - [ ] Crop compared against physical outer edges; fold, upper/lower panels and print start independently checked to 1 mm or agreed printer tolerance.
 - [ ] A4 landscape and portrait, scan skew, 90/180/270-degree rotation, low-contrast, watermarks, mixed orientations and dirty page edges tested; unsure measurements must require review, not automatic activation.
-- [ ] Different-size pages are separate templates. Saved local drafts survive unusable OCR or import errors.\n- [ ] Optional 0/90/180/270-degree scan rotation keeps reference and dynamic field positions in sync. Manual physical size must rescale x, y, width and height, not merely resize the white page.\n- [ ] Client can preview actual crop boundaries before applying any irreversible geometry changes; an undetected border must offer a manually editable crop, not pretend full A4 equals the passbook.
+- [ ] Different-size pages are separate templates. Saved local drafts survive unusable OCR or import errors.
+- [ ] Optional 0/90/180/270-degree scan rotation keeps reference and dynamic field positions in sync. Manual physical size must rescale x, y, width and height, not merely resize the white page.
+- [ ] Client can preview actual crop boundaries before applying any irreversible geometry changes; an undetected border must offer a manually editable crop, not pretend full A4 equals the passbook.
 
 ## OCR and digital-PDF reconstruction
 - [ ] Offline OCR successfully tested on actual Windows, Android and browser devices, including Devanagari/Hindi and English, with user review of uncertain words.
@@ -51,3 +55,15 @@ Uploaded example images may contain real names, account numbers, signatures or i
 
 ## Known verification limitation
 The reference scan supplied during this work is a single image-only A4 sample of an already-built Assam Gramin layout. It cannot prove every layout, every scanner orientation or three physical Epson models. PLQ-35 vendor documentation lists PR2 among its supported control codes; vendor mode support is not proof that BANK SETU's bridge commands/positioning work on real hardware.
+
+## November 3 — Steps 8–10 sign-off, do not bypass
+- [ ] On a **physical Windows PC**, install and launch the final unsigned draft installer; confirm the PR2 bridge, layout editor, custom fonts and printer preview.
+- [ ] On a **physical Android device**, install and launch the final debug APK; verify new letter tracking / compression sliders and draft-only previews.
+- [ ] For each requested Epson model, photograph or note the **exact nameplate model and emulation** (including whether the requested "PLQ-80" is an actual supported device), check physical passbook detection, paper insertion and width.
+- [ ] Print a **customer-free physical calibration ruler** on compatible paper and record X/Y offsets, first/last line, fold, print-start, paper eject and a signed test result for each printer/bank pairing.
+- [ ] Check 0.5, 1, 2, 3, 4, 5 and 10 px glyph tracking, compressed font 100/90/75/60/50%, both Quick and values-only PR2, at physical size and with correct actual printable font support.
+- [ ] Repeat offline pause, cancelled job, disconnected device, paper absence, jam and retry without falsely marking Printed or duplicating a passbook.
+- [ ] Compare **all previously approved Assam Gramin, PNB, Union and Central Bank** layouts against physical print and originals; only then approve bank-specific changes.
+- [ ] Independent Master and Client Admin sign-off verifies bank rules, workspace tenant isolation, rollback and no customer/external attachment leakage.
+- [ ] All attached release checks completed; perform reviewed merge to main before the **existing** One Click Release (never create a second release engine).
+- [ ] Verify Windows/Android/Web published version URLs and downloads only AFTER a confirmed approved release, with no unreviewed Firebase production mutations.
