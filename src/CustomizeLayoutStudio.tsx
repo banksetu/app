@@ -8,6 +8,7 @@ import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision }
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
 import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
+import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
 import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
@@ -46,6 +47,7 @@ type LayoutPart = {
   borderColor: string;
   borderWidth: number;
   letterSpacing: number;
+  fontCompression?:number;
   opacity: number;
   quick: boolean;
   dotMatrix: boolean;
@@ -54,7 +56,7 @@ type LayoutPart = {
 };
 type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
-const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
+const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, fontCompression:100, opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
 const fonts = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana", "Tahoma", "Noto Sans", "Noto Serif"];
 const randomId = () => "part-" + Math.random().toString(36).slice(2, 11);
 
@@ -281,8 +283,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   };
   const copySelectedStyle=()=>{
     if(!selected)return;
-    const {font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,opacity,rotation}=selected;
-    setStyleClipboard({font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,opacity,rotation});
+    const {font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,fontCompression,opacity,rotation}=selected;
+    setStyleClipboard({font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,fontCompression,opacity,rotation});
     setNotice("Copied formatting only — no account number, customer field, tenant data or content was copied.");
   };
   const pasteSelectedStyle=()=>{
@@ -806,7 +808,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     fontStyle: part.italic ? "italic" : "normal", textDecoration: part.underline ? "underline" : "none",
     textAlign: part.align, color: part.color, background: part.background, borderColor: part.borderColor,
     borderWidth: ["rectangle","photo","ellipse","image"].includes(part.kind) ? part.borderWidth * zoom : 0,
-    borderStyle: "solid", letterSpacing: part.letterSpacing * zoom, opacity: part.opacity, borderRadius:part.kind==="ellipse"?"50%":undefined,
+    borderStyle: "solid", opacity: part.opacity, borderRadius:part.kind==="ellipse"?"50%":undefined,
   });
   const partText = (part: LayoutPart) => {
     if (part.kind === "photo") return "PHOTO";
@@ -815,6 +817,10 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
     return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix"
       ? (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
+  };
+  const displayPart=(part:LayoutPart)=>{
+    if(part.kind!=="text"&&part.kind!=="field")return partText(part);
+    return <span style={compressedTextStyle(part,zoom)}>{partText(part)}</span>;
   };
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
@@ -974,6 +980,18 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
       <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
       <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
+      <label>Letter gap <select aria-label="Letter spacing px" value={selected.letterSpacing??0}
+        onChange={event=>edit({letterSpacing:Number(event.target.value)})}>
+        {Array.from({length:21},(_,i)=>i*.5).map(n=><option key={n} value={n}>{n} px</option>)}
+        {!Array.from({length:21},(_,i)=>i*.5).includes(selected.letterSpacing)&&
+         <option value={selected.letterSpacing}>Legacy {selected.letterSpacing} px</option>}
+      </select></label>
+      <label>Font compress <select aria-label="Font compression percent" value={selected.fontCompression??100}
+        onChange={event=>edit({fontCompression:Number(event.target.value)})}>
+        {Array.from({length:11},(_,i)=>50+i*5).map(n=><option key={n} value={n}>{n}%</option>)}
+        {!Array.from({length:11},(_,i)=>50+i*5).includes(selected.fontCompression??100)&&
+         <option value={selected.fontCompression}>{selected.fontCompression}%</option>}
+      </select></label>
       <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
     </div>}
     {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
@@ -1117,7 +1135,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
             return <div key={part.id} onPointerDown={event => down(event, part)}
               className={"ls-object " + (selectedId === part.id ? "selected " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
               style={toStyle(part)} title={part.label + " · " + part.origin}>
-              {part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : partText(part)}
+              {part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : displayPart(part)}
               {selectedId===part.id && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
             </div>;
           })}
@@ -1190,7 +1208,22 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           </div>
           <div className="ls-grid-two">{field("X (" + unit + ")", number(valueInUnit(selected.x, unit), next => edit({x:round(next * factor(unit))}), 0, 500, .1))}{field("Y (" + unit + ")", number(valueInUnit(selected.y, unit), next => edit({y:round(next * factor(unit))}), 0, 500, .1))}{field("Width (" + unit + ")", number(valueInUnit(selected.width, unit), next => edit({width:round(next * factor(unit))}), 1, 500, .1))}{field("Height (" + unit + ")", number(valueInUnit(selected.height, unit), next => edit({height:round(next * factor(unit))}), 1, 500, .1))}{field("Z layer", number(selected.z, next => edit({z:next}), -1000, 1000))}{field("Rotation (°)", number(selected.rotation, next => edit({rotation:next}), -360, 360))}</div>
           {field("Font family", <select value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select>)}
-          <div className="ls-grid-two">{field("Font size (px)", number(selected.size, next => edit({size:next}), 5, 120))}{field("Letter spacing", number(selected.letterSpacing, next => edit({letterSpacing:next}), -5, 30, .1))}</div>
+          <div className="ls-grid-two">{field("Font size (px)", number(selected.size, next => edit({size:next}), 5, 120))}{field("Letter gap (px)", <input type="number" aria-label="Letter gap 0 to 10 pixels"
+            min={0} max={10} step={.5} value={selected.letterSpacing??0}
+            onChange={event=>{const n=Number(event.target.value);
+              if(Number.isFinite(n)&&n>=0&&n<=10&&Math.round(n*2)===n*2)edit({letterSpacing:n});
+            }}/>)}</div>
+          {field("Font width / compression", <div className="ls-compress-control">
+            <input type="range" aria-label="Font width compression slider" min={50} max={100} step={5}
+              value={selected.fontCompression??100}
+              onChange={event=>edit({fontCompression:Number(event.target.value)})}/>
+            <input type="number" aria-label="Font compression percentage" min={50} max={100} step={1}
+              value={selected.fontCompression??100}
+              onChange={event=>{const n=Number(event.target.value);
+                if(Number.isFinite(n)&&n>=50&&n<=100)edit({fontCompression:n});
+              }}/>
+            <span>{Math.round(typographyCompression(selected.fontCompression)*100)}% width</span>
+          </div>)}
           <div className="ls-toggle-row"><button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button><button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button><button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button><button type="button" onClick={() => moveZ(1)}>Bring Forward</button><button type="button" onClick={() => moveZ(-1)}>Send Back</button>
             <button type="button" onClick={copySelectedStyle}>Copy Style</button>
             <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste Style</button>
