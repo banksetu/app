@@ -9,6 +9,8 @@ import { reconcileImportedText, textForOverlapReview } from "./layoutImportRevie
 import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
+import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
+import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
 import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
@@ -150,10 +152,57 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const dragRef = useRef<{ id: string; pageX: number; pageY: number; x: number; y: number } | null>(null);
   const resizeRef = useRef<{id:string;pageX:number;pageY:number;width:number;height:number}|null>(null);
   const [dirty, setDirty] = useState(false);
+  const [savingLayout,setSavingLayout]=useState(false);
+  const localRevisionRef=useRef(0);
+  const editingRef=useRef(false);
+  useEffect(()=>{editingRef.current=dirty;},[dirty]);
   const selected = draft.elements.find(part => part.id === selectedId) || null;
   const canReview = accountRole === "master_owner" || accountRole === "admin";
   const canSubmit = accountRole === "client_admin";
   const ordered = useMemo(() => [...draft.elements.filter(part => (part.page||1)===selectedPage)].sort((a, b) => a.z - b.z), [draft.elements,selectedPage]);
+
+  useEffect(()=>{
+    let active=true;
+    // Existing authenticated Repository is shared by Web/Android IndexedDB
+    // and Windows SQLite. Cloud only reconciles missing/changed generic drafts.
+    void (async()=>{
+      let info="";
+      if(navigator.onLine&&["client_admin","client_user"].includes(accountRole)){
+        try{
+          const result=await synchronizeLocalLayoutSlots(bankName,mode);
+          if(result.conflicts)info="Other device changed a layout; your local edits were preserved for review.";
+          else if(result.downloaded)info="Recovered "+result.downloaded+" bank layout(s) from small cloud backups.";
+        }catch(error){info="Offline templates remain available. Cloud check: "+(error instanceof Error?error.message:"unavailable");}
+      }
+      try{
+        const local=await readLocalLayouts(bankName,mode);
+        if(!active)return;
+        const slot=local.find(item=>item.slotId==="layout-1");
+        if(slot && validDraft(slot.draft,mode,bankName)){
+          localRevisionRef.current=slot.localRevision;
+          if(!editingRef.current){
+            setDraft(slot.draft as unknown as Draft);
+            if(info)setNotice(info);
+          }
+        }else if(storageKey){
+          // One-way, non-destructive migration of older verified legacy drafts.
+          const raw=localStorage.getItem(storageKey);
+          const prior=raw?JSON.parse(raw) as unknown:null;
+          if(validDraft(prior,mode,bankName)&&!editingRef.current){
+            const saved=await saveLocalLayout(bankName,mode,"layout-1",prior,0);
+            if(active){
+              localRevisionRef.current=saved.localRevision;
+              setDraft(prior);
+              setNotice("Previous local draft migrated into BANK SETU's existing encrypted/IndexedDB workspace storage. Legacy copy was retained.");
+            }
+          }
+        }else if(info)setNotice(info);
+      }catch(error){
+        if(active)setNotice("Existing local draft was retained. Offline layout recovery: "+(error instanceof Error?error.message:"Unavailable"));
+      }
+    })();
+    return()=>{active=false;};
+  },[bankName,mode,accountRole,storageKey]);
 
   const refreshCatalog = useCallback(async (review = false) => {
     if (!bankName.trim() && !review) return;
@@ -309,18 +358,51 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setDraft(next);
     setDirty(true);
   };
-  const save = () => {
-    if(!storageKey){
-      setNotice("Current tenant/owner identity is unavailable. Local draft was NOT persisted in a shared key. Export JSON or reopen the verified workspace.");
-      return;
-    }
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(draft));
+  const save = async () => {
+    if(savingLayout||busy)return;
+    setSavingLayout(true);
+    try{
+      const saved=await saveLocalLayout(bankName,mode,"layout-1",draft,
+        localRevisionRef.current);
+      localRevisionRef.current=saved.localRevision;
       setDirty(false);
-      setNotice("Draft saved on this device only. It is not published or connected to PR2.");
-    } catch {
-      setNotice("Local storage is unavailable or full. Export JSON to keep this draft.");
-    }
+      setNotice("Editable Layout 1 saved in the existing BANK SETU offline workspace repository. Customer records and pending sync operations were not changed.");
+      if(canSubmit&&navigator.onLine){
+        try{
+          const synced=await publishLocalLayoutSlot(bankName,mode,"layout-1");
+          setNotice("Layout saved offline and a compact, customer-free recovery copy synced for this tenant (cloud revision "+synced.revision+"). Shared catalog publication still requires Master review.");
+        }catch(error){
+          setNotice("Layout SAVED offline. Cloud recovery is pending: "+(error instanceof Error?error.message:"Unavailable")+". No customer/PDF data was uploaded.");
+        }
+      }
+    }catch(error){
+      // Never mark success on quota/tenant/license/DB failures.
+      setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing drafts were retained.");
+    }finally{setSavingLayout(false);}
+  };
+  const syncNow = async () => {
+    if(savingLayout||busy)return;
+    if(dirty){setNotice("Save your unsaved changes locally before cloud recovery.");return;}
+    setSavingLayout(true);
+    try{
+      const result=await synchronizeLocalLayoutSlots(bankName,mode);
+      if(canSubmit){
+        const slots=await readLocalLayouts(bankName,mode);
+        for(const slot of slots.filter(item=>item.dirty&&!item.incoming)){
+          await publishLocalLayoutSlot(bankName,mode,slot.slotId);
+        }
+      }
+      const entries=await readLocalLayouts(bankName,mode);
+      const current=entries.find(item=>item.slotId==="layout-1");
+      if(current&&!editingRef.current&&validDraft(current.draft,mode,bankName)){
+        setDraft(current.draft as unknown as Draft);
+        localRevisionRef.current=current.localRevision;
+      }
+      setNotice(result.offline?"No network. All previously cached templates remain editable offline.":
+        "Cloud recovery checked: "+result.downloaded+" updated, "+result.conflicts+" conflicts. Existing local edits were preserved.");
+    }catch(error){
+      setNotice("Existing offline templates kept. Cloud sync: "+(error instanceof Error?error.message:"Unavailable"));
+    }finally{setSavingLayout(false);}
   };
   const exportJson = () => {
     const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
@@ -842,7 +924,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     <header className="ls-header">
       <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
       <div className="ls-actions"><button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
-        {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" onClick={save}>Save Draft{dirty ? " *" : ""}</button></div>
+        {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button></div>
     </header>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
     {(graphicWarnings.length>0||draft.sourceArtworkStatus==="needsReview") && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
