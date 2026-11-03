@@ -205,6 +205,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     const restored:Draft={version:1,bankName,mode,pageCount:(entry as CatalogEntry & {pageCount?:number}).pageCount||1,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,elements:entry.elements.map(part=>({...part,id:randomId(),value:""}))};
     if (!validDraft(restored,mode,bankName)){setNotice("Catalog template is not compatible with this bank or editor version.");return;}
     setDraft(restored);setSelectedId(null);setCatalogChoice(null);setCatalogOpen(false);setDirty(true);setTemporaryValues({});undoRef.current=[];redoRef.current=[];
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setGraphicWarnings([]);setGraphicsChecked(false);setScanSuggestion(null);setScanFrame(null);
+    setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setReferencePages([]);setReferenceVisible(false);
     setNotice("Approved generic layout copied into your local DRAFT. Verify physical size and printing; it has not been activated for customers.");
   };
   const reviewCatalog = async (entry:CatalogEntry, action:"approve"|"reject") => {
@@ -843,8 +846,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         }
         let added=0;
         modify(current=>{
-          const next=[...current.elements];const existing=new Set(next.filter(p=>p.kind==="field").map(p=>(p.page||1)+":"+p.fieldKey));
+          const next=current.elements.map(part=>({...part}));const existing=new Set(next.filter(p=>p.kind==="field").map(p=>(p.page||1)+":"+p.fieldKey));
           for(const hint of suggestedLabels){
+            if(next.length>=300)break;
             const label=next.find(p=>p.id===hint.id);if(!label)continue;
             const printed=printedLabelRule==="all" || (printedLabelRule==="some" && confirmedPreprinted[hint.id]===true);
             Object.assign(label,{origin:printed?"preprinted":"static",preprinted:printed,dotMatrix:!printed,quick:true});
