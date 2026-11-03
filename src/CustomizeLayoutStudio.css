@@ -162,3 +162,10 @@ html[data-appearance="dark"] .layout-studio, .banksetu-app-shell[data-appearance
 .ls-field textarea{width:100%;min-height:90px;min-width:0;resize:vertical;
  font-family:inherit;font-size:12px;line-height:1.4;color:var(--ls-text);background:var(--ls-surface);
  border:1px solid var(--ls-border);border-radius:7px;padding:8px}
+
+/* MS Office-style per-field font tracking and compression; affects text only. */
+.ls-compress-control{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ls-compress-control input[type=range]{flex:1 1 100px;min-width:80px}
+.ls-compress-control input[type=number]{width:65px!important;flex:0 0 auto}
+.ls-compress-control span{white-space:nowrap;font-variant-numeric:tabular-nums}
+.ls-format-ribbon select[aria-label="Letter spacing px"],.ls-format-ribbon select[aria-label="Font compression percent"]{min-width:84px}
