@@ -10,7 +10,7 @@ export type GraphicsCoverage = {
 };
 const known=(values:(number|undefined)[])=>new Set(values.filter((v):v is number=>typeof v==="number"&&Number.isFinite(v)));
 const imageOps=known([
-  OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintJpegXObject,
+  OPS.paintImageXObject, OPS.paintInlineImageXObject,
   OPS.paintImageMaskXObject, OPS.paintImageXObjectRepeat,
   OPS.paintImageMaskXObjectRepeat, OPS.paintInlineImageXObjectGroup,
 ]);
