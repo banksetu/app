@@ -103,6 +103,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [scanFrame, setScanFrame] = useState<{pixelWidth:number;pixelHeight:number;paperWidthMm:number;paperHeightMm:number}|null>(null);
   const [scanMeasurements,setScanMeasurements]=useState<{widthMm:number|null;heightMm:number|null;foldMm:number|null;printStartMm:number|null}>({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
   const [scanOrientation,setScanOrientation]=useState<0|90|180|270>(0);
+  const [scanFineRotation,setScanFineRotation]=useState(0);
   const [scanHasImportedObjects,setScanHasImportedObjects]=useState(false);
   const [referencePages, setReferencePages] = useState<string[]>([]);
   const [referenceOpacity, setReferenceOpacity] = useState(0.4);
@@ -371,10 +372,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         canvas.height=Math.max(1,Math.ceil(scanOrientation===90||scanOrientation===270?cropW:cropH));
         const context=canvas.getContext("2d");
         if(!context)throw Error("Canvas cropping is unavailable on this device.");
-        if(scanOrientation===90){context.translate(canvas.width,0);context.rotate(Math.PI/2);}
-        else if(scanOrientation===180){context.translate(canvas.width,canvas.height);context.rotate(Math.PI);}
-        else if(scanOrientation===270){context.translate(0,canvas.height);context.rotate(-Math.PI/2);}
-        context.drawImage(image,cropX,cropY,cropW,cropH,0,0,cropW,cropH);
+        context.translate(canvas.width/2,canvas.height/2);
+        context.rotate((scanOrientation+scanFineRotation)*Math.PI/180);
+        context.drawImage(image,cropX,cropY,cropW,cropH,-cropW/2,-cropH/2,cropW,cropH);
         croppedReference=canvas.toDataURL("image/webp",.72);
         canvas.width=0;canvas.height=0;
       }
@@ -384,7 +384,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       // has no OCR. Never shift those physical coordinates as A4 scan geometry.
       const result=scanHasImportedObjects
         ? mapScannedPageToPassbook(bounds,frame.pixelWidth,frame.pixelHeight,
-            frame.paperWidthMm,frame.paperHeightMm,draft.elements,scanOrientation)
+            frame.paperWidthMm,frame.paperHeightMm,draft.elements,scanOrientation,scanFineRotation)
         : {elements:draft.elements,outsideCount:0};
       modify(current=>({...current,
         widthMm:bounds.widthMm,heightMm:bounds.heightMm,
@@ -399,7 +399,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       setPhysicalChecked(false);setHardwareChecked(false);
       setScanSuggestion(null);setScanFrame(null);
       setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
-      setScanOrientation(0);
+      setScanOrientation(0);setScanFineRotation(0);
       setScanHasImportedObjects(false);
       setNotice("Scanner crop applied ONLY to draft. "+(scanHasImportedObjects?"Imported positions were recalibrated. ":"Image-only PDF had no imported text, so older draft positions were preserved. ")+result.outsideCount+
         " elements may cross the estimated border. Fold"+(bounds.foldHint?" gap":"")+
@@ -468,7 +468,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});setScanFrame(null);setScanSuggestion(null);
     setPhysicalChecked(false);setHardwareChecked(false);
     setScanMeasurements({widthMm:null,heightMm:null,foldMm:null,printStartMm:null});
-    setScanOrientation(0);
+    setScanOrientation(0);setScanFineRotation(0);
     setScanHasImportedObjects(false);
     setNotice("Reading the PDF's embedded text and coordinates...");
     try {
@@ -855,6 +855,12 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         </select>
       </label>
       <span>Rotation also rotates the crop reference and editable first-page coordinates. Sideways scans swap the estimated width and height.</span>
+      <label>Fine deskew / tilt correction (clockwise degrees, -8 to +8)
+        <input type="number" min={-8} max={8} step={0.1} value={scanFineRotation}
+          onChange={event=>{const value=Number(event.target.value);if(Number.isFinite(value)&&value>=-8&&value<=8)setScanFineRotation(value);}}/>
+      </label>
+      {scanSuggestion.skewHint && <span>Unverified outer-edge tilt suggestion: {scanSuggestion.skewHint.angleDeg}°. Copy this to the manual deskew control only after inspecting the original.</span>}
+      <span>A small rotation can clip corners unless you include enough blank paper margin in the crop.</span>
       {(["left","top","right","bottom"] as const).map(edge=><label key={edge}>
         {edge==="left"?"Left edge":edge==="top"?"Top edge":edge==="right"?"Right edge":"Bottom edge"} (%)
         <input type="number" min={0} max={100} step={0.1}
