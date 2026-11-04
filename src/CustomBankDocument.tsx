@@ -23,6 +23,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
   const [error,setError] = useState("");
   const [activeLayout,setActiveLayout]=useState<ApprovedLayout|null>(null);
   const searchEpoch=useRef(0);
+  const [workspaceEpoch,setWorkspaceEpoch]=useState(0);
   const onConfigured = useCallback(() => {}, []);
   const unionAof = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType === "accountOpening";
   const unionPassbook = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType !== "accountOpening";
@@ -39,7 +40,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
       }catch{/* Offline or no active custom template: keep the original bank print renderer unchanged. */}
     })();
     return()=>{live=false;};
-  },[layoutMode,bankInfo.passbookBank]);
+  },[layoutMode,bankInfo.passbookBank,workspaceEpoch]);
   // Changing the bank or signed-in workspace must immediately forget all
   // displayed customer data; late search responses cannot repopulate another
   // tenant's preview. This does not touch stored customer records.
@@ -50,10 +51,16 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
       setBusy(false);setError("");setActiveLayout(null);
     };
     invalidate();
-    window.addEventListener("banksetu-workspace-change",invalidate);
+    const onWorkspaceChange=()=>{
+      invalidate();
+      // Re-fetch activation in the new verified tenant and discard any
+      // pending response from the previous tenant, even for the same bank.
+      setWorkspaceEpoch(epoch=>epoch+1);
+    };
+    window.addEventListener("banksetu-workspace-change",onWorkspaceChange);
     return ()=>{
       searchEpoch.current+=1;
-      window.removeEventListener("banksetu-workspace-change",invalidate);
+      window.removeEventListener("banksetu-workspace-change",onWorkspaceChange);
     };
   },[layoutMode,bankInfo.passbookBank]);
   const request = async (body: Record<string,unknown>) => {
