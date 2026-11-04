@@ -78,28 +78,28 @@ test("Step 6: tenant-private keys do not bind to customer or bank secrets",()=>{
 test("Step 5: editor, live preview and PDF share the same bank-aware print policy",()=>{
   const editor=readFileSync(new URL("../src/CustomizeLayoutStudio.tsx",import.meta.url),"utf8");
   const browser=readFileSync(new URL("../src/WorkspaceTemplateDocument.tsx",import.meta.url),"utf8");
-  assert.match(editor,/isLayoutLayerPrintable\\(part,preview,bankName\\)/);
-  assert.match(browser,/isLayoutLayerPrintable\\(item,"dotmatrix",bankName\\)/);
-  assert.match(browser,/preflightLayoutOutput\\(/);
+  assert.match(editor,/isLayoutLayerPrintable\(part,preview,bankName\)/);
+  assert.match(browser,/isLayoutLayerPrintable\(item,"dotmatrix",bankName\)/);
+  assert.match(browser,/preflightLayoutOutput\(/);
   assert.match(browser,/requirePhysicalConfirmation/);
 });
 
 test("Step 6: changing workspaces rejects stale customer search and editor writes",()=>{
   const customer=readFileSync(new URL("../src/CustomBankDocument.tsx",import.meta.url),"utf8");
   const editor=readFileSync(new URL("../src/CustomizeLayoutStudio.tsx",import.meta.url),"utf8");
-  assert.match(customer,/const epoch=\\+\\+searchEpoch.current/);
-  assert.match(customer,/if\\(epoch!==searchEpoch.current\\)return/);
+  assert.match(customer,/const epoch=\+\+searchEpoch.current/);
+  assert.match(customer,/if\(epoch!==searchEpoch.current\)return/);
   assert.match(customer,/banksetu-workspace-change/);
   assert.match(editor,/resetForNewWorkspace/);
   assert.match(editor,/editorScopeRef.current!==storageKey/);
-  assert.match(editor,/storageKey!==draftKey\\(mode,bankName\\)/);
+  assert.match(editor,/storageKey!==draftKey\(mode,bankName\)/);
 });
 
 test("Step 5: async print preparation is guarded against stale documents and duplicates",()=>{
   const browser=readFileSync(new URL("../src/WorkspaceTemplateDocument.tsx",import.meta.url),"utf8");
   assert.match(browser,/printGate.current/);
-  assert.match(browser,/if\\(!live.current\\)return/);
-  assert.match(browser,/disabled=\\{printing\\|\\|directPreparing\\|\\|directPrinting\\}/);
+  assert.match(browser,/if\(!live.current\)return/);
+  assert.match(browser,/disabled=\{printing\|\|directPreparing\|\|directPrinting\}/);
 });
 
 test("Step 7: Word-style drag, resize and keyboard positioning respect measured paper bounds",()=>{
