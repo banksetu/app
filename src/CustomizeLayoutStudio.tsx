@@ -882,8 +882,8 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       const dx=(event.clientX-resizing.pageX)/(PX_PER_MM*zoom);
       const dy=(event.clientY-resizing.pageY)/(PX_PER_MM*zoom);
       setDraft(current=>({...current,elements:current.elements.map(part=>part.id!==resizing.id?part:{
-        ...part,width:round(Math.max(2,snapGrid?Math.round((resizing.width+dx)/5)*5:resizing.width+dx)),
-        height:round(Math.max(2,snapGrid?Math.round((resizing.height+dy)/5)*5:resizing.height+dy))
+        ...part,width:round(within(snapGrid?Math.round((resizing.width+dx)/5)*5:resizing.width+dx,1,Math.max(1,current.widthMm-part.x))),
+        height:round(within(snapGrid?Math.round((resizing.height+dy)/5)*5:resizing.height+dy,1,Math.max(1,current.heightMm-part.y)))
       })}));setDirty(true);return;
     }
     if (!dragRef.current) return;
@@ -891,7 +891,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     const dx = (event.clientX - drag.pageX) / (PX_PER_MM * zoom);
     const dy = (event.clientY - drag.pageY) / (PX_PER_MM * zoom);
     setDraft(current => ({ ...current, elements: current.elements.map(part => part.id === drag.id ? {
-      ...part, x: round(within(snapGrid?Math.round((drag.x+dx)/5)*5:drag.x + dx, 0, current.widthMm)), y: round(within(snapGrid?Math.round((drag.y+dy)/5)*5:drag.y + dy, 0, current.heightMm))
+      ...part, x: round(within(snapGrid?Math.round((drag.x+dx)/5)*5:drag.x + dx, 0, Math.max(0,current.widthMm-part.width))), y: round(within(snapGrid?Math.round((drag.y+dy)/5)*5:drag.y + dy, 0, Math.max(0,current.heightMm-part.height)))
     } : part) }));
     setDirty(true);
   };
@@ -1220,7 +1220,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           if (!selected || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
           event.preventDefault();
           const step = event.shiftKey ? 1 : .1;
-          edit({ x: round(within(selected.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0), 0, draft.widthMm)), y: round(within(selected.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0), 0, draft.heightMm)) });
+          edit({ x: round(within(selected.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0), 0, Math.max(0,draft.widthMm-selected.width))), y: round(within(selected.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0), 0, Math.max(0,draft.heightMm-selected.height))) });
         }}>
           {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
@@ -1302,7 +1302,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
               }
             }}>Split into mapped editable layers</button>
           </div>
-          <div className="ls-grid-two">{field("X (" + unit + ")", number(valueInUnit(selected.x, unit), next => edit({x:round(next * factor(unit))}), 0, 500, .1))}{field("Y (" + unit + ")", number(valueInUnit(selected.y, unit), next => edit({y:round(next * factor(unit))}), 0, 500, .1))}{field("Width (" + unit + ")", number(valueInUnit(selected.width, unit), next => edit({width:round(next * factor(unit))}), 1, 500, .1))}{field("Height (" + unit + ")", number(valueInUnit(selected.height, unit), next => edit({height:round(next * factor(unit))}), 1, 500, .1))}{field("Z layer", number(selected.z, next => edit({z:next}), -1000, 1000))}{field("Rotation (°)", number(selected.rotation, next => edit({rotation:next}), -360, 360))}</div>
+          <div className="ls-grid-two">{field("X (" + unit + ")", number(valueInUnit(selected.x, unit), next => edit({x:round(within(next * factor(unit),0,Math.max(0,draft.widthMm-selected.width)))}), 0, 500, .1))}{field("Y (" + unit + ")", number(valueInUnit(selected.y, unit), next => edit({y:round(within(next * factor(unit),0,Math.max(0,draft.heightMm-selected.height)))}), 0, 500, .1))}{field("Width (" + unit + ")", number(valueInUnit(selected.width, unit), next => edit({width:round(within(next * factor(unit),1,Math.max(1,draft.widthMm-selected.x)))}), 1, 500, .1))}{field("Height (" + unit + ")", number(valueInUnit(selected.height, unit), next => edit({height:round(within(next * factor(unit),1,Math.max(1,draft.heightMm-selected.y)))}), 1, 500, .1))}{field("Z layer", number(selected.z, next => edit({z:next}), -1000, 1000))}{field("Rotation (°)", number(selected.rotation, next => edit({rotation:next}), -360, 360))}</div>
           {field("Font family", <select value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select>)}
           <div className="ls-grid-two">{field("Font size (px)", number(selected.size, next => edit({size:next}), 5, 120))}{field("Letter gap (px)", <input type="number" aria-label="Letter gap 0 to 10 pixels"
             min={0} max={10} step={.5} value={selected.letterSpacing??0}
