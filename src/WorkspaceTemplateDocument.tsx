@@ -1,4 +1,4 @@
-import {lazy,Suspense,useState} from "react";
+import {lazy,Suspense,useEffect,useRef,useState} from "react";
 import {windowsPr2} from "./platform/pr2";
 const Pr2PrinterDialog=lazy(()=>import("./Pr2PrinterDialog"));
 import type {CSSProperties} from "react";
@@ -32,6 +32,10 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
   const [directPreparing,setDirectPreparing]=useState(false);
   const [directPdfBase64,setDirectPdfBase64]=useState("");
   const [temporaryValues,setTemporaryValues]=useState<Record<string,string>>({});
+  // A customer/template switch unmounts this document; never open a stale
+  // print dialog or PR2 payload after an async licence/PDF operation finishes.
+  const live=useRef(true),printGate=useRef(false);
+  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   if(!templateCanRender(template,bankName,template.mode))
     return <p role="alert">The activated bank layout is incompatible. Use the existing bank print flow.</p>;
   const pages=Math.min(10,Math.max(1,template.pageCount||1));
@@ -49,22 +53,27 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
     return report;
   };
   const print=async()=>{
-    if(printing)return;setPrinting(true);setMessage("");
+    if(printGate.current||printing||directPreparing||directPrinting)return;
+    printGate.current=true;setPrinting(true);setMessage("");
     try{
       await requireLicensedWrite();
+      if(!live.current)return;
       const report=checkPrintData();
       if(report.warnings.length)setMessage("Tight text fit: "+report.warnings.join(" · ")+". Verify printer preview.");
       const outcome=await printCurrentDocument(false);
+      if(!live.current)return;
       setMessage(outcome.accepted?"Print job accepted by system. Confirm physical alignment before treating the passbook as printed.":outcome.cancelled?"Print was cancelled.":"Print dialog opened; verify its result.");
-    }catch(error){setMessage(error instanceof Error?error.message:"Printer preview unavailable.");}
-    finally{setPrinting(false);}
+    }catch(error){if(live.current)setMessage(error instanceof Error?error.message:"Printer preview unavailable.");}
+    finally{printGate.current=false;if(live.current)setPrinting(false);}
   };
   const startCustomPr2=async()=>{
     if(!windowsPr2()||output!=="dotmatrix"||template.mode!=="passbook"||
-       (template.pageCount??1)!==1||directPreparing||directPrinting)return;
+       (template.pageCount??1)!==1||directPreparing||directPrinting||printing||printGate.current)return;
+    printGate.current=true;
     setDirectPreparing(true);setMessage("");
     try{
       await requireLicensedWrite();
+      if(!live.current)return;
       checkPrintData();
       const relevant=template.elements.filter(item=>isLayoutLayerPrintable(item,"dotmatrix",bankName));
       if(!relevant.length)throw Error("No verified text/value layers are configured for the selected bank.");
@@ -85,14 +94,17 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
         elements:checked
       },"dotmatrix");
       const bytes=new Uint8Array(await document.arrayBuffer());
+      if(!live.current)return;
       let binary="";
       for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
       setDirectPdfBase64(btoa(binary));
       setDirectPrinting(true);
     }catch(error){
-      setDirectPdfBase64("");
-      setMessage("Custom direct PR2 blocked: "+(error instanceof Error?error.message:"Invalid document"));
-    }finally{setDirectPreparing(false);}
+      if(live.current){
+        setDirectPdfBase64("");
+        setMessage("Custom direct PR2 blocked: "+(error instanceof Error?error.message:"Invalid document"));
+      }
+    }finally{printGate.current=false;if(live.current)setDirectPreparing(false);}
   };
   return <section className="workspace-template-document" aria-label="Activated bank passbook layout">
     <style>{`@media print {
@@ -111,7 +123,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
     <div className="workspace-template-controls">
       <p><strong>Approved Custom Template</strong> · {bankName} · {output==="quick"?"Quick Passbook":"Dot Matrix Data Only"}</p>
       <p>Preview uses this client's customer and Bank Information fields. Confirm the paper and printer settings before printing.</p>
-      <button type="button" onClick={()=>{void print();}} disabled={printing}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
+      <button type="button" onClick={()=>{void print();}} disabled={printing||directPreparing||directPrinting}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
       {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting||directPreparing}
           onClick={()=>{void startCustomPr2();}}>{directPreparing?"Preparing custom data-only raster…":"Olivetti Mode Print — Custom Layout"}</button>}
       <details className="workspace-template-temporary"><summary>Temporary Edit — this print only</summary>
