@@ -66,4 +66,8 @@ The reference scan supplied during this work is a single image-only A4 sample of
 - [ ] Compare **all previously approved Assam Gramin, PNB, Union and Central Bank** layouts against physical print and originals; only then approve bank-specific changes.
 - [ ] Independent Master and Client Admin sign-off verifies bank rules, workspace tenant isolation, rollback and no customer/external attachment leakage.
 - [ ] All attached release checks completed; perform reviewed merge to main before the **existing** One Click Release (never create a second release engine).
+## Post-release verification (not a pre-merge prerequisite)
+
+This is checked **only after** an approved, reviewed release has happened; it cannot be truthfully signed beforehand. The rest of this checklist, including actual hardware and independent tenant/bank sign-offs, remains a blocking pre-release requirement.
+
 - [ ] Verify Windows/Android/Web published version URLs and downloads only AFTER a confirmed approved release, with no unreviewed Firebase production mutations.
