@@ -49,6 +49,7 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
         !kinds.has(item.kind) || !origins.has(item.origin) ||
         !finite(item.x, 0, raw.widthMm) || !finite(item.y, 0, raw.heightMm) ||
         !finite(item.width, 1, 500) || !finite(item.height, 1, 500) ||
+        item.x + item.width > raw.widthMm + .25 || item.y + item.height > raw.heightMm + .25 ||
         !finite(item.z, -1000, 1000) || !finite(item.rotation, -360, 360) ||
         !finite(item.size, 4, 120) || !finite(item.letterSpacing, -5, 30) ||
         !(item.fontCompression===undefined||finite(item.fontCompression,50,100)) ||
