@@ -29,6 +29,7 @@ test("Step 6: activated template accepts intact old formats and rejects malforme
     template([layer({kind:"unknown"})]),template([layer({origin:"crossTenant"})]),
     template([layer({size:Infinity})]),template([layer({x:-1})]),
     template([layer({width:0})]),template([layer({rotation:361})]),
+    template([layer({x:185,width:20})]),template([layer({y:169,height:15})]),
     template([layer({page:2})]),template([layer({quick:"true"})]),
     template([layer({opacity:2})]),template([layer({fontCompression:42})]),
     template([null]),{...valid,elements:"not-an-array"}
@@ -90,7 +91,11 @@ test("Step 6: changing workspaces rejects stale customer search and editor write
   assert.match(customer,/const epoch=\+\+searchEpoch.current/);
   assert.match(customer,/if\(epoch!==searchEpoch.current\)return/);
   assert.match(customer,/banksetu-workspace-change/);
+  assert.match(customer,/setWorkspaceEpoch\(epoch=>epoch\+1\)/);
   assert.match(editor,/resetForNewWorkspace/);
+  assert.match(editor,/workspaceVersionRef.current\+=1/);
+  assert.match(editor,/runVersion!==workspaceVersionRef.current/);
+  assert.match(editor,/runVersion===workspaceVersionRef.current/);
   assert.match(editor,/editorScopeRef.current!==storageKey/);
   assert.match(editor,/storageKey!==draftKey\(mode,bankName\)/);
 });
