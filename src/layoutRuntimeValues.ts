@@ -76,7 +76,7 @@ export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"
     if(!item||typeof item!=="object"||
        !["text","field","rectangle","line","photo","image","ellipse"].includes(item.kind)||
        !["static","customer","bank","preprinted","dotmatrix"].includes(item.origin)||
-       typeof item.id!=="string"||!/^[-\\w]{1,80}$/.test(item.id)||ids.has(item.id)||
+       typeof item.id!=="string"||!/^[\\w-]{1,80}$/.test(item.id)||ids.has(item.id)||
        typeof item.label!=="string"||item.label.length>500||
        typeof item.fieldKey!=="string"||item.fieldKey.length>80||
        !["left","center","right"].includes(item.align)||
