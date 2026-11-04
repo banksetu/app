@@ -60,6 +60,14 @@ export function exportLayoutCalibrationProof(page:CalibrationPaper):Blob{
     if(printStartMm>10&&printStartMm<h-10)
       pdf.text("PRINT START",right-2,printStartMm-2,{align:"right"});
   }
-  pdf.text("CALIBRATION ONLY — NOT A CUSTOMER PASSBOOK",w/2,h-2,{align:"center"});
+  // Labels must stay INSIDE the 5 mm safe border. A footer 2 mm from the
+  // edge could be clipped by the printer even when the ruler itself fits.
+  const mm=(value:number)=>String(Math.round(value*10)/10);
+  pdf.setFontSize(6);
+  pdf.text("PAPER "+mm(w)+" x "+mm(h)+" mm | FOLD "+mm(foldMm)+" | START "+mm(printStartMm),
+    w/2,h-12,{align:"center"});
+  pdf.text(w<120?"CALIBRATION TEST ONLY":"CALIBRATION ONLY - NOT A CUSTOMER PASSBOOK",
+    w/2,h-7,{align:"center"});
+
   return pdf.output("blob");
 }
