@@ -32,3 +32,32 @@ test("Step 8: invalid/suspicious physical sizes never export a false test ruler"
    {widthMm:NaN,heightMm:173,foldMm:90,printStartMm:110}
  ])assert.throws(()=>validateCalibrationPaper(paper));
 });
+
+test("Step 8: measurement caption and safety notice stay inside 5 mm printable frame",async()=>{
+ for(const paper of [
+  {widthMm:50,heightMm:50,foldMm:0,printStartMm:0},
+  {widthMm:190,heightMm:173,foldMm:86.5,printStartMm:101},
+  {widthMm:206,heightMm:175,foldMm:87.5,printStartMm:118},
+  {widthMm:270,heightMm:100,foldMm:50,printStartMm:65},
+ ]){
+  const blob=exportLayoutCalibrationProof(paper);
+  const task=getDocument({data:new Uint8Array(await blob.arrayBuffer()),useSystemFonts:true});
+  const pdf=await task.promise;
+  try{
+   const page=await pdf.getPage(1),content=await page.getTextContent();
+   const caption=content.items.find(x=>typeof x.str==="string"&&x.str.startsWith("PAPER "));
+   const footer=content.items.find(x=>typeof x.str==="string"&&x.str.includes("CALIBRATION"));
+   assert.ok(caption&&footer,"no measurement or TEST-only warning must be omitted");
+   assert.match(caption.str,new RegExp(String(paper.widthMm)));
+   assert.match(caption.str,new RegExp(String(paper.heightMm)));
+   assert.ok(caption.str.includes("FOLD")&&caption.str.includes("START"));
+   for(const item of [caption,footer]){
+    const baselineMm=paper.heightMm-item.transform[5]*25.4/72;
+    assert.ok(baselineMm>=5&&baselineMm<=paper.heightMm-5,
+     "caption/footer text must be within 5mm page margins, not on unprintable stock edge");
+   }
+   assert.doesNotMatch(content.items.map(x=>x.str||"").join(" " ),
+     /PRIVATE|real customer|account no\.?/i);
+  }finally{await task.destroy();}
+ }
+});
