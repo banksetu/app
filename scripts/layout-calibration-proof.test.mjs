@@ -55,6 +55,11 @@ test("Step 8: measurement caption and safety notice stay inside 5 mm printable f
     const baselineMm=paper.heightMm-item.transform[5]*25.4/72;
     assert.ok(baselineMm>=5&&baselineMm<=paper.heightMm-5,
      "caption/footer text must be within 5mm page margins, not on unprintable stock edge");
+    const leftMm=item.transform[4]*25.4/72;
+    const rightMm=leftMm+item.width*25.4/72;
+    assert.ok(leftMm>=4.7&&rightMm<=paper.widthMm-4.7,
+     "caption/footer text must also remain inside the left/right 5mm paper margins");
+
    }
    assert.doesNotMatch(content.items.map(x=>x.str||"").join(" " ),
      /PRIVATE|real customer|account no\.?/i);
