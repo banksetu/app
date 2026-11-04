@@ -9,6 +9,7 @@ import { reconcileImportedText, textForOverlapReview } from "./layoutImportRevie
 import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
+import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
 import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
@@ -1225,7 +1226,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
           {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
           {ordered.map(part => {
-            const visible = preview === "quick" ? part.quick : part.dotMatrix && !part.preprinted && (part.kind==="text" || part.kind==="field");
+            const visible = isLayoutLayerPrintable(part,preview,bankName);
             if (!visible) return null;
             return <div key={part.id} onPointerDown={event => down(event, part)}
               className={"ls-object " + (selectedId === part.id ? "selected " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
