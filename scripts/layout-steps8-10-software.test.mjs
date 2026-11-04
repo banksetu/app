@@ -140,6 +140,10 @@ test("Step 10: Android APK is saved for TESTING only; no publish/release/deploy 
  for(const required of ["assembleDebug","app-debug.apk","ocr/lang/eng.traineddata",
    "ocr/lang/hin.traineddata","upload-artifact@","retention-days: 7","if-no-files-found: error"])
    assert.ok(android.includes(required),required);
+ assert.ok(ci.includes("ref: ${{ github.event.pull_request.head.sha || github.sha }}"),
+  "CI must test the exact PR head and not mislabel an artificial merge commit");
+ assert.ok(android.includes("name: banksetu-layout-draft-android-${{ github.event.pull_request.head.sha || github.sha }}"),
+  "Downloaded Android artifact must be tied to the tested PR head SHA");
  assert.doesNotMatch(android,/firebase deploy|npm run release|One Click App Release|gh release create|merge_pull_request/);
  const gradle=file("android/app/build.gradle");
  assert.match(gradle,/applicationId "in\.banksetu\.android"/);
