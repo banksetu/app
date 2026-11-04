@@ -25,6 +25,14 @@ test("Step 10: current release gate rejects an arbitrary list of 100 checked box
 test("Step 10: mandatory item deletion, duplicates, malformed markers and unsigned items fail closed",()=>{
  const full=real().replace(/- \[ \]/g,"- [x]");
  assert.equal(layoutReleaseReady(full),true,"fully reviewed original list is structurally complete only; real evidence remains human duty");
+ const postReleasePending=full.replace(
+  /- \[x\] Verify Windows\/Android\/Web published version URLs/,
+  "- [ ] Verify Windows/Android/Web published version URLs");
+ assert.equal(layoutReleaseReady(postReleasePending),true,
+  "a release cannot be blocked waiting for its own future published URLs");
+ assert.equal(inspectLayoutAcceptance(postReleasePending).pendingAfterRelease.length,1);
+ assert.equal(inspectLayoutAcceptance(postReleasePending).pendingBeforeRelease.length,0);
+
  assert.equal(layoutReleaseReady(full.replace(/- \[x\] Verify Windows\/Android\/Web published version URLs[^\n]*/,"")),false);
  assert.equal(layoutReleaseReady(full.replace(/- \[x\] Verify Windows\/Android\/Web published version URLs[^\n]*/,"- [x] DUPLICATE")),false);
  assert.equal(layoutReleaseReady(full.replace("- [x] Existing approved Assam Gramin", "- [ ] Existing approved Assam Gramin")),false);
