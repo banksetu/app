@@ -40,7 +40,7 @@ On the actual Windows/Android app verify passbook PDF upload, offline Hindi/Engl
 ## Step 10 — Existing One Click Release only after independent acceptance
 
 - Final PR head passes layout CI, Cloudflare security, bank regression, Windows unsigned installer smoke and Android debug APK smoke.
-- Complete every checklist entry in `docs/LAYOUT_ENGINE_ACCEPTANCE.md` **only after true independent evidence exists**.
+- Complete every **pre-release** checklist entry in `docs/LAYOUT_ENGINE_ACCEPTANCE.md` **only after true independent evidence exists**. The final published-download-URL check is explicitly **post-release**: do not fabricate production links before a release.
 - Run `node scripts/layout-release-gate.mjs` as a **read-only** last review; it exits nonzero if anything is pending. This is not a second release pipeline or permission to merge.
 - Request code review + bank/hardware signoff. Only after acceptance, merge reviewed PR; use the **existing One Click App Release** workflow and verify website download, Windows setup, Android APK, version number and rollout. No silent Firebase production edits.
 - **If any physical hardware is unavailable, STOP at draft.** Build success never means hardware pass or full release-ready.
