@@ -37,7 +37,7 @@ export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
     if(ids.has(item.id))error("Duplicate element ID detected.",item.id);
     ids.add(item.id);
     if(![item.x,item.y,item.width,item.height].every(Number.isFinite)||item.width<=0||item.height<=0)error("Invalid element coordinates.",item.id);
-    else if(item.x<0||item.y<0||item.x+item.width>draft.widthMm+.5||item.y+item.height>draft.heightMm+.5)warning("Element crosses the physical page boundary.",item.id);
+    else if(item.x<0||item.y<0||item.x+item.width>draft.widthMm+.5||item.y+item.height>draft.heightMm+.5)error("Element crosses the physical page boundary and cannot be approved for printing.",item.id);
     if(!Number.isSafeInteger(item.page??1)||(item.page??1)>pageCount||(item.page??1)<1)error("Element page index is out of range.",item.id);
     if(["customer","bank","dotmatrix"].includes(item.origin)&&!item.fieldKey?.trim())error("Dynamic field requires an explicit Customer or Bank Information mapping.",item.id);
     if(item.kind==="image" && (item.imageData || item.fieldKey!=="bankLogo" || item.origin!=="bank"))
