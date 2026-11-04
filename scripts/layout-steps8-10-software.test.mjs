@@ -58,11 +58,18 @@ test("Step 8: font tracking and compression never alter the physical paper geome
 test("Step 9: each bank's generic print policy remains separate; Union prints values only",async()=>{
  for(const bank of ["Assam Gramin Bank","Punjab National Bank","Union Bank of India","Central Bank of India"]){
   const data=sample(bank,[
-   part({id:"static-label",kind:"text",origin:"static",fieldKey:"",label:"ACCOUNT NO",z:0}),
+   part({id:"static-label",kind:"text",origin:"static",fieldKey:"",label:"ACCOUNT NO",z:0,
+    dotMatrix:!/union bank/i.test(bank)}),
    part({id:"account-value",value:"",z:1}),
    part({id:"photo",kind:"photo",origin:"static",fieldKey:"",label:"PHOTO",dotMatrix:false,z:2}),
    part({id:"line",kind:"line",origin:"static",fieldKey:"",label:"RULE",dotMatrix:false,z:3}),
   ]);
+  if(/union bank/i.test(bank)){
+   const wronglyConfigured=sample(bank,[part({id:"static-value",kind:"text",
+     origin:"static",fieldKey:"",label:"Preprinted Account No",dotMatrix:true})]);
+   assert.throws(()=>sanitizeLayoutTemplate(wronglyConfigured,bank),
+     /Union Bank passbooks print values only/);
+  }
   const safe=sanitizeLayoutTemplate(data,bank);
   assert.ok(safe.elements.every(x=>x.value===""),bank+" must not enter shared catalog with customer data");
   assert.equal(safe.elements.length,4);
