@@ -97,6 +97,7 @@ function draftKey(mode: Mode, bankName: string) {
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
 export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {}, accountRole = "client_user" }: { mode: Mode; bankName: string; bankValues?: Record<string,string>; accountRole?:string }) {
   const storageKey = draftKey(mode, bankName);
+  const [,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
     try { const saved = JSON.parse(storageKey ? localStorage.getItem(storageKey) || "null" : "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
     return initialDraft(mode, bankName);
@@ -156,7 +157,38 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [savingLayout,setSavingLayout]=useState(false);
   const localRevisionRef=useRef(0);
   const editingRef=useRef(false);
+  const editorScopeRef=useRef(storageKey);
   useEffect(()=>{editingRef.current=dirty;},[dirty]);
+  const resetForNewWorkspace=useCallback(()=>{
+    // Never bring another tenant's unsaved customer/template preview across.
+    // Only the existing scoped repository may restore the new owner's draft.
+    setDraft(initialDraft(mode,bankName));
+    setSelectedId(null);setSelectedPage(1);setTemporaryValues({});
+    setReferencePages([]);setReferenceVisible(false);setScanSuggestion(null);
+    setScanFrame(null);setScanHasImportedObjects(false);
+    setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});
+    setGraphicWarnings([]);setVisualDiff(null);setAudit(null);setPr2Proof("");
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setCatalog([]);setPendingReview([]);setLayoutSelection(null);
+    undoRef.current=[];redoRef.current=[];localRevisionRef.current=0;
+    editingRef.current=false;setDirty(false);
+    setNotice("Workspace or selected bank changed. Previous tenant's unsaved preview was cleared; open a saved revision from the verified current workspace.");
+  },[mode,bankName]);
+  useEffect(()=>{
+    const changed=()=>{
+      editorScopeRef.current=draftKey(mode,bankName);
+      resetForNewWorkspace();
+      refreshWorkspaceScope(n=>n+1);
+    };
+    window.addEventListener("banksetu-workspace-change",changed);
+    return()=>window.removeEventListener("banksetu-workspace-change",changed);
+  },[mode,bankName,resetForNewWorkspace]);
+  useEffect(()=>{
+    if(editorScopeRef.current!==storageKey){
+      editorScopeRef.current=storageKey;
+      resetForNewWorkspace();
+    }
+  },[storageKey,resetForNewWorkspace]);
   const selected = draft.elements.find(part => part.id === selectedId) || null;
   const canReview = accountRole === "master_owner" || accountRole === "admin";
   const canSubmit = accountRole === "client_admin";
@@ -226,6 +258,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   },[canSubmit,bankName,mode]);
   useEffect(()=>{void refreshSelection();},[refreshSelection]);
   const selectApprovedTemplate = async(action:"activate"|"rollback"|"disable",templateId?:string)=>{
+    if(!storageKey||storageKey!==draftKey(mode,bankName)){
+      setNotice("Template selection blocked: the verified tenant changed.");return;
+    }
     if(!canSubmit || busy || !physicalChecked || !labelChecked || !hardwareChecked){
       setNotice("Only the Client Admin can select a template after confirming actual paper size, preprinted labels and a real PR2 calibration test.");return;
     }
@@ -240,6 +275,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     finally{setBusy(false);}
   };
   const submitForReview = async () => {
+    if(!storageKey||storageKey!==draftKey(mode,bankName)){
+      setNotice("Submission blocked: workspace identity changed. Reopen this tenant's editor.");return;
+    }
     if (!canSubmit || busy || !bankName.trim()) return;
     if(scanFrame && scanSuggestion){
       setNotice("Review and apply or explicitly skip the source PDF crop before submitting. An A4 scanner sheet is not a physical passbook.");
@@ -360,6 +398,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     setDirty(true);
   };
   const save = async () => {
+    if(!storageKey||storageKey!==draftKey(mode,bankName)){
+      setNotice("Layout NOT saved: workspace changed; reload the verified bank and tenant first.");return;
+    }
     if(savingLayout||busy)return;
     setSavingLayout(true);
     try{
@@ -382,6 +423,9 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     }finally{setSavingLayout(false);}
   };
   const syncNow = async () => {
+    if(!storageKey||storageKey!==draftKey(mode,bankName)){
+      setNotice("Cloud sync blocked: the active tenant changed.");return;
+    }
     if(savingLayout||busy)return;
     if(dirty){setNotice("Save your unsaved changes locally before cloud recovery.");return;}
     setSavingLayout(true);
