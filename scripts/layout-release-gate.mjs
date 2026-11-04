@@ -37,25 +37,33 @@ export function inspectLayoutAcceptance(markdown){
  const repeated=identifiers.filter((item,index)=>identifiers.indexOf(item)!==index);
  const missingTopics=requiredAcceptanceTopics.filter(pattern=>
    !entries.some(item=>pattern.test(item.text))).map(pattern=>String(pattern));
+ // Published download URLs cannot be verified BEFORE the approved release.
+ // This ONE post-release check remains visible, but is not a pre-merge gate.
+ // All actual printer, Windows/Android physical, bank and tenant signoffs
+ // stay mandatory before any release.
+ const afterRelease=/^Verify Windows\/Android\/Web published version URLs and downloads only AFTER a confirmed approved release,/i;
+ const pendingBeforeRelease=entries.filter(x=>!x.complete&&!afterRelease.test(x.text)).map(x=>x.text);
+ const pendingAfterRelease=entries.filter(x=>!x.complete&&afterRelease.test(x.text)).map(x=>x.text);
  return {total:entries.length,completed:entries.filter(x=>x.complete).length,
    pending:entries.filter(x=>!x.complete).map(x=>x.text),
+   pendingBeforeRelease,pendingAfterRelease,
    invalid,duplicated:[...new Set(repeated)],missingTopics};
 }
 export function layoutReleaseReady(markdown){
  const result=inspectLayoutAcceptance(markdown);
- return result.total>=46&&result.pending.length===0&&
+ return result.total>=46&&result.pendingBeforeRelease.length===0&&
    result.invalid.length===0&&result.duplicated.length===0&&
    result.missingTopics.length===0;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  const data=readFileSync(checklist,"utf8"),result=inspectLayoutAcceptance(data);
  if(!layoutReleaseReady(data)){
-   process.stderr.write("LAYOUT DRAFT ONLY — BLOCKED. "+result.pending.length+
-     "/"+result.total+" acceptance checks remain unsigned; "+result.missingTopics.length+
+   process.stderr.write("LAYOUT DRAFT ONLY — BLOCKED. "+result.pendingBeforeRelease.length+
+     "/"+result.total+" pre-release checks remain unsigned; "+result.missingTopics.length+
      " mandatory topics absent; "+result.invalid.length+" malformed; "+result.duplicated.length+" duplicate entries.\n");
    for(const item of result.pending)process.stderr.write(" - "+item+"\n");
    process.exitCode=1;
  }else{
-   process.stdout.write("Acceptance checklist complete. Release still requires authorized GitHub review and normal One Click Release; this check performs neither.\n");
+   process.stdout.write("Pre-release checklist structurally complete. Independent evidence and authorized GitHub review remain required; post-release URL verification is separate. This gate never merges or deploys.\n");
  }
 }
