@@ -49,9 +49,9 @@ export function preflightLayoutOutput(
       return count+Math.max(1,Math.ceil(Array.from(line).length/estimatedChars));
     },0);
     const room=Math.max(1,Math.floor(part.height/(fontMm*1.18)));
-    if(estimatedLines>room+1)errors.push("Text may be clipped on the physical passbook: "+name+
+    if(estimatedLines>room)errors.push("Text may be clipped on the physical passbook: "+name+
       " ("+estimatedLines+" estimated lines, "+room+" lines of space).");
-    else if(estimatedLines>room)warnings.push("Tight text fit; inspect real print: "+name);
+    else if(estimatedLines===room)warnings.push("Tight text fit; inspect real print: "+name);
   }
   return {errors,warnings};
 }
