@@ -82,6 +82,7 @@ export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"
        !["left","center","right"].includes(item.align)||
        ![item.x,item.y,item.width,item.height,item.z,item.rotation,item.size,item.opacity].every(Number.isFinite)||
        item.x<0||item.y<0||item.width<=0||item.height<=0||
+       item.x+item.width>template.widthMm+.25||item.y+item.height>template.heightMm+.25||
        item.z< -1000||item.z>1000||Math.abs(item.rotation)>360||
        item.size<4||item.size>120||item.opacity<0||item.opacity>1||
        !Number.isSafeInteger(item.page??1)||(item.page??1)<1||(item.page??1)>pages||
