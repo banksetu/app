@@ -10,6 +10,7 @@ import {isLayoutLayerPrintable} from "../src/layoutOutputPolicy.ts";
 import {layoutSelectionKey,normalizedActivationRecord,previousApprovedVersion} from "../cloudflare/layoutActivation.js";
 import {inspectLayoutAcceptance,layoutReleaseReady} from "./layout-release-gate.mjs";
 import {typographyCompression,trackingMm} from "../src/layoutTypography.ts";
+import {bankDocumentMode} from "../src/bankDocumentPolicy.ts";
 
 const file=path=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
 const part=(changes={})=>({
@@ -144,4 +145,28 @@ test("Step 10: incomplete physical approval still blocks release after a success
  assert.ok(report.total>=46);
  assert.ok(report.pending.length>0);
  assert.equal(layoutReleaseReady(original),false);
+});
+
+test("Step 9: PNB and Central Bank are independently selectable custom formats without changing old banks",()=>{
+ const dashboard=file("src/Dashboard.tsx");
+ const start=dashboard.indexOf("const PASSBOOK_BANK_OPTIONS = ["),end=dashboard.indexOf("] as const;",start);
+ assert.ok(start>=0&&end>start);
+ const selection=dashboard.slice(start,end);
+ for(const name of ["Assam Gramin Bank","Union Bank of India","Punjab National Bank",
+   "Central Bank of India","State Bank of India (SBI)","Punjab Bank of India"]){
+  assert.ok(selection.includes('"'+name+'"'),"Bank selection missing: "+name);
+ }
+ assert.equal(bankDocumentMode("Assam Gramin Bank"),"builtin");
+ assert.equal(bankDocumentMode("Union Bank of India"),"builtin");
+ assert.equal(bankDocumentMode("Punjab National Bank"),"custom");
+ assert.equal(bankDocumentMode("Central Bank of India"),"custom");
+});
+
+test("Step 9: missing bank account-opening PDF must say upload, never inherit Assam Gramin/other bank",()=>{
+ const print=file("src/BankFormatPrint.tsx");
+ assert.match(print,/Please upload your Account Opening PDF sample\./);
+ assert.match(print,/!templateMatchesBank\(selected, bankName\)/);
+ assert.match(print,/if \(!selected\.fileId\) throw new Error\(missingSample\)/);
+ const dashboard=file("src/Dashboard.tsx");
+ assert.match(dashboard,/PASSBOOK_BANK_OPTIONS/);
 });
