@@ -177,3 +177,13 @@ test("Step 9: missing bank account-opening PDF must say upload, never inherit As
  const dashboard=file("src/Dashboard.tsx");
  assert.match(dashboard,/PASSBOOK_BANK_OPTIONS/);
 });
+
+test("Step 10: real pre-release safety checks remain blocked while post-release links are checked later",()=>{
+ const markdown=file("docs/LAYOUT_ENGINE_ACCEPTANCE.md");
+ const pending=inspectLayoutAcceptance(markdown);
+ assert.equal(pending.pendingAfterRelease.length,1);
+ assert.ok(pending.pendingBeforeRelease.length>=10,
+  "physical devices, printer models and independent approvals cannot be inferred from software tests");
+ assert.equal(layoutReleaseReady(markdown),false);
+ assert.match(file("docs/LAYOUT_HARDWARE_QA_INSTRUCTIONS.md"),/post-release/);
+});
