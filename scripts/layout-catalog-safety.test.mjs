@@ -108,3 +108,14 @@ test("step 7: Word-style multi-line generic text is shared without silent trunca
    item({id:"huge",kind:"text",origin:"static",fieldKey:"",label:"A".repeat(501),dotMatrix:false})
  ]),bank),/500 characters/);
 });
+
+test("steps 5–7: server refuses a publishable bank layer crossing the calibrated paper edge",()=>{
+  for(const coordinates of [
+    {x:180,width:25},{y:167,height:12},{x:190,width:1},{y:-1}
+  ]){
+    assert.throws(()=>sanitizeLayoutTemplate(draft([item(coordinates)]),"Central Bank of India"),
+      /Invalid layout element/,"an out-of-bounds element must be corrected before approval");
+  }
+  assert.equal(sanitizeLayoutTemplate(draft([item({x:180,width:10,y:160,height:13})]),
+    "Central Bank of India").elements.length,1);
+});
