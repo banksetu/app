@@ -17,7 +17,7 @@ test("valid draft passes static audit without claiming physical print certificat
 test("missing mappings and content outside paper are flagged",()=>{
  const report=auditPassbookTemplate(draft({elements:[part({fieldKey:"",x:180})]}));
  assert.ok(report.some(item=>item.severity==="error"&&/mapping/.test(item.message)));
- assert.ok(report.some(item=>item.severity==="warning"&&/boundary/.test(item.message)));
+ assert.ok(report.some(item=>item.severity==="error"&&/boundary/.test(item.message)));
 });
 test("Union Bank values-only guard rejects static dot-matrix labels",()=>{
  const report=auditPassbookTemplate(draft({bankName:"Union Bank of India",elements:[part({origin:"static",fieldKey:""})]}));
