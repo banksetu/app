@@ -57,13 +57,37 @@ export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<st
 export function visibleLayoutElement(element:LayoutDynamicElement,output:"quick"|"dotmatrix",bankName=""):boolean{
   return isLayoutLayerPrintable(element,output,bankName);
 }
+/** A Worker result is still untrusted input until the client has checked it.
+ * Reject malformed/partly loaded catalog documents before they reach a print
+ * preview or a device. This does not change existing approved bank layouts.
+ */
 export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"passbook"|"accountOpening"):boolean {
-  if(!template||template.mode!==mode||template.bankName.trim().toLowerCase()!==bankName.trim().toLowerCase())return false;
-  if(!Number.isFinite(template.widthMm)||!Number.isFinite(template.heightMm)||template.widthMm<50||template.heightMm<50||template.widthMm>500||template.heightMm>500)return false;
-  if(![template.foldMm,template.printStartMm].every(v=>Number.isFinite(v)&&v>=0&&v<=template.heightMm))return false;
-  if(template.pageCount!==undefined&&(!Number.isSafeInteger(template.pageCount)||template.pageCount<1||template.pageCount>10))return false;
-  if(!Array.isArray(template.elements)||!template.elements.length||template.elements.length>300)return false;
-  if(template.elements.some(item=>!typographyIsValid(item)))return false;
-  if(mode==="passbook"&&(template.pageCount||1)!==1)return false;
+  if(!template||template.mode!==mode||typeof template.bankName!=="string"||
+     template.bankName.trim().toLowerCase()!==bankName.trim().toLowerCase())return false;
+  if(![template.widthMm,template.heightMm].every(v=>Number.isFinite(v)&&v>=50&&v<=500))return false;
+  if(![template.foldMm,template.printStartMm].every(v=>
+    Number.isFinite(v)&&v>=0&&v<=template.heightMm))return false;
+  const pages=template.pageCount??1;
+  if(!Number.isSafeInteger(pages)||pages<1||pages>10)return false;
+  if(mode==="passbook"&&pages!==1)return false;
+  if(!Array.isArray(template.elements)||template.elements.length<1||template.elements.length>300)return false;
+  const ids=new Set<string>();
+  for(const item of template.elements){
+    if(!item||typeof item!=="object"||
+       !["text","field","rectangle","line","photo","image","ellipse"].includes(item.kind)||
+       !["static","customer","bank","preprinted","dotmatrix"].includes(item.origin)||
+       typeof item.id!=="string"||!/^[-\\w]{1,80}$/.test(item.id)||ids.has(item.id)||
+       typeof item.label!=="string"||item.label.length>500||
+       typeof item.fieldKey!=="string"||item.fieldKey.length>80||
+       !["left","center","right"].includes(item.align)||
+       ![item.x,item.y,item.width,item.height,item.z,item.rotation,item.size,item.opacity].every(Number.isFinite)||
+       item.x<0||item.y<0||item.width<=0||item.height<=0||
+       item.z< -1000||item.z>1000||Math.abs(item.rotation)>360||
+       item.size<4||item.size>120||item.opacity<0||item.opacity>1||
+       !Number.isSafeInteger(item.page??1)||(item.page??1)<1||(item.page??1)>pages||
+       typeof item.quick!=="boolean"||typeof item.dotMatrix!=="boolean"||
+       typeof item.preprinted!=="boolean"||!typographyIsValid(item))return false;
+    ids.add(item.id);
+  }
   return true;
 }
