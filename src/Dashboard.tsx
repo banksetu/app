@@ -123,6 +123,10 @@ const PASSBOOK_BANK_OPTIONS = [
 
   "Union Bank of India",
 
+  "Punjab National Bank",
+
+  "Central Bank of India",
+
   "State Bank of India (SBI)",
 
   "Punjab Bank of India",
