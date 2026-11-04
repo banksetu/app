@@ -97,7 +97,7 @@ function draftKey(mode: Mode, bankName: string) {
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
 export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {}, accountRole = "client_user" }: { mode: Mode; bankName: string; bankValues?: Record<string,string>; accountRole?:string }) {
   const storageKey = draftKey(mode, bankName);
-  const [,refreshWorkspaceScope]=useState(0);
+  const [scopeEpoch,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
     try { const saved = JSON.parse(storageKey ? localStorage.getItem(storageKey) || "null" : "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
     return initialDraft(mode, bankName);
@@ -158,6 +158,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const localRevisionRef=useRef(0);
   const editingRef=useRef(false);
   const editorScopeRef=useRef(storageKey);
+  const workspaceVersionRef=useRef(0);
   useEffect(()=>{editingRef.current=dirty;},[dirty]);
   const resetForNewWorkspace=useCallback(()=>{
     // Never bring another tenant's unsaved customer/template preview across.
@@ -176,6 +177,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   },[mode,bankName]);
   useEffect(()=>{
     const changed=()=>{
+      workspaceVersionRef.current+=1;
       editorScopeRef.current=draftKey(mode,bankName);
       resetForNewWorkspace();
       refreshWorkspaceScope(n=>n+1);
@@ -185,6 +187,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   },[mode,bankName,resetForNewWorkspace]);
   useEffect(()=>{
     if(editorScopeRef.current!==storageKey){
+      workspaceVersionRef.current+=1;
       editorScopeRef.current=storageKey;
       resetForNewWorkspace();
     }
@@ -196,6 +199,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
 
   useEffect(()=>{
     let active=true;
+    const runVersion=workspaceVersionRef.current;
     // Existing authenticated Repository is shared by Web/Android IndexedDB
     // and Windows SQLite. Cloud only reconciles missing/changed generic drafts.
     void (async()=>{
@@ -209,7 +213,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
       }
       try{
         const local=await readLocalLayouts(bankName,mode);
-        if(!active)return;
+        if(!active||runVersion!==workspaceVersionRef.current)return;
         const slot=local.find(item=>item.slotId==="layout-1");
         if(slot && validDraft(slot.draft,mode,bankName)){
           localRevisionRef.current=slot.localRevision;
@@ -223,7 +227,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           const prior=raw?JSON.parse(raw) as unknown:null;
           if(validDraft(prior,mode,bankName)&&!editingRef.current){
             const saved=await saveLocalLayout(bankName,mode,"layout-1",prior,0);
-            if(active){
+            if(active&&runVersion===workspaceVersionRef.current){
               localRevisionRef.current=saved.localRevision;
               setDraft(prior);
               setNotice("Previous local draft migrated into BANK SETU's existing SQLite/IndexedDB workspace repository. Legacy copy was retained.");
@@ -231,31 +235,34 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
           }
         }else if(info)setNotice(info);
       }catch(error){
-        if(active)setNotice("Existing local draft was retained. Offline layout recovery: "+(error instanceof Error?error.message:"Unavailable"));
+        if(active&&runVersion===workspaceVersionRef.current)setNotice("Existing local draft was retained. Offline layout recovery: "+(error instanceof Error?error.message:"Unavailable"));
       }
     })();
     return()=>{active=false;};
-  },[bankName,mode,accountRole,storageKey]);
+  },[bankName,mode,accountRole,storageKey,scopeEpoch]);
 
   const refreshCatalog = useCallback(async (review = false) => {
     if (!bankName.trim() && !review) return;
+    const runVersion=workspaceVersionRef.current;
     setCatalogBusy(true);
     try {
       const response = await callBankSetuWorker<{templates:CatalogEntry[]}>("/list-layout-templates",{bankName,pending:review});
+      if(runVersion!==workspaceVersionRef.current)return;
       const entries = (response.templates || []).filter(item=>item.mode === mode || review);
       if (review) setPendingReview(entries); else setCatalog(entries);
     } catch (error) {
-      setNotice("Shared layout list unavailable: "+(error instanceof Error?error.message:"Connection required")+". Local editing remains available.");
-    } finally { setCatalogBusy(false); }
-  },[bankName,mode]);
+      if(runVersion===workspaceVersionRef.current)setNotice("Shared layout list unavailable: "+(error instanceof Error?error.message:"Connection required")+". Local editing remains available.");
+    } finally { if(runVersion===workspaceVersionRef.current)setCatalogBusy(false); }
+  },[bankName,mode,scopeEpoch]);
   useEffect(()=>{void refreshCatalog();},[refreshCatalog]);
   const refreshSelection = useCallback(async()=>{
     if(!canSubmit || !bankName.trim())return;
+    const runVersion=workspaceVersionRef.current;
     try{
       const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode});
-      setLayoutSelection(state);
-    } catch {setLayoutSelection(null);}
-  },[canSubmit,bankName,mode]);
+      if(runVersion===workspaceVersionRef.current)setLayoutSelection(state);
+    } catch {if(runVersion===workspaceVersionRef.current)setLayoutSelection(null);}
+  },[canSubmit,bankName,mode,scopeEpoch]);
   useEffect(()=>{void refreshSelection();},[refreshSelection]);
   const selectApprovedTemplate = async(action:"activate"|"rollback"|"disable",templateId?:string)=>{
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
