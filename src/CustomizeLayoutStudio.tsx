@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { callBankSetuWorker } from "./workerApi";
 import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
@@ -106,6 +107,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const [unit, setUnit] = useState<Unit>("mm");
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
@@ -972,12 +974,44 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
-  return <section className="layout-studio" aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
+  // The native Windows shell gate is checked again here so a direct route
+  // import cannot bypass the hidden Admin menu on Android or the website.
+  if(!windowsLayoutEngineAvailable())return <section role="alert" className="ls-windows-only">
+    <h2>Windows EXE only</h2>
+    <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
+  </section>;
+  return <section className={"layout-studio ls-view-"+workspaceView} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
-      <div><p className="ls-eyebrow">BANK SETU · TEMPLATE STUDIO · DRAFT</p><h2>{mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}</h2><p>Editable objects, precision coordinates and separate Quick / Dot Matrix visibility. Bank: <strong>{bankName || "Not selected"}</strong></p></div>
-      <div className="ls-actions"><button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
+      <div className="ls-heading">
+        <span className="ls-brand-mark" aria-hidden="true">BS</span>
+        <div className="ls-heading-copy">
+          <p className="ls-eyebrow">BANK SETU · WINDOWS DOCUMENT STUDIO</p>
+          <h2>{mode === "passbook" ? "Passbook Layout Studio" : "Account Opening Layout Studio"}</h2>
+          <p>Design precise, editable layouts using real paper dimensions. <strong>{bankName || "Select a bank in Bank Information"}</strong></p>
+          <div className="ls-status-tags" aria-label="Current editor configuration">
+            <span>Windows EXE</span><span>Local draft</span>
+            <span>{draft.widthMm} × {draft.heightMm} mm</span>
+            <span>{draft.elements.length} elements</span>
+          </div>
+        </div>
+      </div>
+      <div className="ls-actions ls-header-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}<button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button></div>
     </header>
+    <nav className="ls-workflow-nav" aria-label="Layout Studio workspace">
+      <button type="button" aria-pressed={workspaceView==="design"} onClick={()=>setWorkspaceView("design")}>
+        <span className="ls-workflow-number">01</span><span><strong>Design workspace</strong><small>Paper setup, PDF import and visual editing</small></span>
+      </button>
+      <button type="button" aria-pressed={workspaceView==="library"} onClick={()=>setWorkspaceView("library")}>
+        <span className="ls-workflow-number">02</span><span><strong>Templates & approval</strong><small>Master review, activation and rollback</small></span>
+      </button>
+    </nav>
+    <div className="ls-workflow-context">
+      <span className="ls-workflow-indicator" aria-hidden="true"></span>
+      {workspaceView==="design"
+        ?"Edit locally with rulers, field mapping and live paper preview. Save a draft before seeking approval."
+        :"Review generic bank templates and activation history. Hardware calibration is required before production use."}
+    </div>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
     {(graphicWarnings.length>0||draft.sourceArtworkStatus==="needsReview") && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
       <strong>Source PDF artwork requires review — {graphicWarnings.length} warning(s)</strong>
@@ -1013,7 +1047,7 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
         {catalogChoice && <div className="ls-catalog-preview">
           <strong>Preview: {catalogChoice.bankName} · Generic template</strong>
           <div className="ls-catalog-mini-paper" style={{aspectRatio:catalogChoice.widthMm+"/"+catalogChoice.heightMm}}>{catalogChoice.elements.slice(0,35).map(part=><span key={part.id} style={{position:"absolute",left:(part.x/catalogChoice.widthMm*100)+"%",top:(part.y/catalogChoice.heightMm*100)+"%",fontSize:8,color:"#172334",maxWidth:(part.width/catalogChoice.widthMm*100)+"%",overflow:"hidden"}}>{part.kind==="text"||part.kind==="field"?part.origin==="customer"?"[Customer field]":part.origin==="bank"?"[Bank Information]":part.label:part.kind==="photo"?"□ PHOTO":part.kind==="line"?"────":""}</span>)}</div>
-          <div className="ls-actions"><button type="button" onClick={()=>{void useCatalogTemplate(catalogChoice);}}>Use This Template</button>{canSubmit && <button type="button" disabled={busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Activate Verified Template</button>}
+          <div className="ls-actions"><button type="button" onClick={()=>{setWorkspaceView("design");void useCatalogTemplate(catalogChoice);}}>Use This Template</button>{canSubmit && <button type="button" disabled={busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Activate Verified Template</button>}
              <button type="button" onClick={()=>{setCatalogChoice(null);setCatalogOpen(false);}}>No, Upload My Own PDF</button></div>
         </div>}
       </>}
