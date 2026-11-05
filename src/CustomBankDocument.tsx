@@ -4,6 +4,7 @@ import { localDataFetch, getDataIdToken } from "./core/localData";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {callBankSetuWorker} from "./workerApi";
 import {templateCanRender,type ApprovedLayout} from "./layoutRuntimeValues";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 const WorkspaceTemplateDocument=lazy(()=>import("./WorkspaceTemplateDocument"));
 import { auth } from "./firebase";
 import { getTenantApiUrl } from "./tenantApi";
@@ -32,6 +33,8 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
   useEffect(()=>{
     let live=true;
     setActiveLayout(null);
+    // Android/Web must not fetch or activate the Windows-only layout engine.
+    if(!windowsLayoutEngineAvailable())return ()=>{live=false;};
     void (async()=>{
       try{
         const state=await callBankSetuWorker<{active:boolean;template:ApprovedLayout|null}>("/get-workspace-layout-selection",{mode:layoutMode});
@@ -119,7 +122,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
     {matches.map(match=><button type="button" key={match.rowNumber} disabled={busy} onClick={()=>void load(match.rowNumber)}>{match.name} · {match.accountNo} · {match.enrolId}</button>)}
     {customer && !unionAof && formatType === "accountOpening" && <label>Optional bank logo <input type="file" accept="image/png,image/jpeg" onChange={event=>{const file=event.target.files?.[0];if(!file||file.size>2*1024*1024)return;const reader=new FileReader();reader.onload=()=>setTemplateLogo(String(reader.result));reader.readAsDataURL(file);}} /></label>}
     {customer && formatType === "accountOpening" && <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:12}}>{(["dateOfBirth","religion","category"] as const).map(field=><label key={field}>{field === "dateOfBirth" ? "Date of Birth ✎" : field === "religion" ? "Religion ✎" : "Category ✎"}<input aria-label={`Edit ${field}`} type={field==="dateOfBirth"?"date":"text"} value={overrides[field]} onChange={event=>setOverrides(current=>({...current,[field]:event.target.value}))} /></label>)}<small>ये edits इस print preview के लिए हैं।</small></div>}
-    {activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
+    {windowsLayoutEngineAvailable() && activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
       key={`${bankInfo.passbookBank}:${activeLayout.id}:${customerRow??""}:${customer.enrolId??customer.accountNo??""}`}
       template={activeLayout} bankName={bankInfo.passbookBank||""} customer={{...customer,...overrides}}
       bankInfo={bankInfo as Record<string,unknown>}
