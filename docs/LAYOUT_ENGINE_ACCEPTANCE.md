@@ -20,7 +20,7 @@ Status: **NOT 100% certified**. This checklist deliberately does not equate a pa
 - [ ] Client can preview actual crop boundaries before applying any irreversible geometry changes; an undetected border must offer a manually editable crop, not pretend full A4 equals the passbook.
 
 ## OCR and digital-PDF reconstruction
-- [ ] Offline OCR successfully tested on actual Windows, Android and browser devices, including Devanagari/Hindi and English, with user review of uncertain words.
+- [ ] Offline OCR successfully tested inside actual Windows EXE, including Devanagari/Hindi and English, with user review of uncertain words. Android/web must not expose or execute the advanced Layout Studio.
 - [ ] OCR unavailable mode preserves draft, explains the limitation and never silently uploads scan/customer values.
 - [ ] Embedded PDF text, simple lines/rectangles, diagonal strokes and cubic stroke approximations match the source visually.
 - [ ] Color profiles, transparency, nested graphics, gradients, images, complex Bézier paths and font substitutions compared individually with originals; approximation must be labeled, not described as pixel-perfect.
@@ -28,7 +28,7 @@ Status: **NOT 100% certified**. This checklist deliberately does not equate a pa
 - [ ] A sample with no machine-readable text is handled conservatively rather than assumed successfully reconstructed.
 
 ## Preview and document QA
-- [ ] Light/dark, small-screen/mobile, Windows preview, multi-page import, SVG-like editing, snap/grid, drag/resize, undo/redo, local draft restore and JSON export verified.
+- [ ] Light/dark, narrow-window Windows EXE Studio, Windows preview, multi-page import, visual editing, snap/grid, drag/resize, undo/redo, local draft restore and JSON export verified; Android/web editor access blocked.
 - [ ] Original-to-editor visual difference evaluated with reference scaling, correct fold coordinates and multiple passbook samples; human checks for Hindi typography.
 - [ ] Print proof and live renderer produce the same text-only direct PR2 content; Quick mode includes only user-approved dynamic graphics.
 - [ ] A4 account-opening form pages do not clip and respect existing bank-specific PDF sample requirements.
@@ -45,7 +45,7 @@ Status: **NOT 100% certified**. This checklist deliberately does not equate a pa
 ## Release validation
 - [ ] Layout Studio Draft Validation: all layout tests, Worker security tests, existing bank/PR2 regressions and web build pass at **final PR head**.
 - [ ] Windows unsigned installer packages and boots; packaged PR2 bridge present and integrity/permissions verified.
-- [ ] Android debug APK builds, installs and launches; PDF import, OCR fallback, layout preview and print/share flows tested on a physical phone.
+- [ ] Android debug APK builds, installs and launches; Customize Layout menu, catalog lookup and custom template renderer are unavailable, while original customer, passbook and account-opening print/share flows stay functional on a physical test phone.
 - [ ] Concurrent workspace activation/rollback and tenant isolation verified against staging fixtures (no destructive production writes).
 - [ ] Master/Admin permissions and feature gating audited; sign-offs recorded for each bank/printer/device.
 - [ ] Only then review merge and the existing One Click Release pipeline; do not enable live printing from draft CI alone.
@@ -58,7 +58,7 @@ The reference scan supplied during this work is a single image-only A4 sample of
 
 ## November 3 — Steps 8–10 sign-off, do not bypass
 - [ ] On a **physical Windows PC**, install and launch the final unsigned draft installer; confirm the PR2 bridge, layout editor, custom fonts and printer preview.
-- [ ] On a **physical Android device**, install and launch the final debug APK; verify new letter tracking / compression sliders and draft-only previews.
+- [ ] On a **physical Android device**, install and launch the final debug APK; verify advanced Layout Studio is entirely absent and normal existing customer/print/share functions remain intact. Do not expect Windows-only tracking/compression editors or layout previews on Android.
 - [ ] For each requested Epson model, photograph or note the **exact nameplate model and emulation** (including whether the requested "PLQ-80" is an actual supported device), check physical passbook detection, paper insertion and width.
 - [ ] Print a **customer-free physical calibration ruler** on compatible paper and record X/Y offsets, first/last line, fold, print-start, paper eject and a signed test result for each printer/bank pairing.
 - [ ] Check 0.5, 1, 2, 3, 4, 5 and 10 px glyph tracking, compressed font 100/90/75/60/50%, both Quick and values-only PR2, at physical size and with correct actual printable font support.
