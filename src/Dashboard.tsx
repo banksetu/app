@@ -50,6 +50,7 @@ import Settings from "./Settings";
 import AdvancedAdmin from "./AdvancedAdmin";
 import MasterClients from "./MasterClients";
 import LicenseManagement from "./LicenseManagement";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 const CustomizeLayoutStudio = lazy(() => import("./CustomizeLayoutStudio"));
 import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
@@ -293,7 +294,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // compatibility. It has the same global appearance permissions as the
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
-  const canCustomizeLayout = !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
+  const canCustomizeLayout = windowsLayoutEngineAvailable() && !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
   useLayoutEffect(()=>{
@@ -1469,6 +1470,12 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
           {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
+          {!windowsLayoutEngineAvailable() && (activePage === "customize-passbook" || activePage === "customize-account-opening") &&
+            <section role="status" className="layout-windows-only">
+              <h2>Customize Layout is available in BANK SETU Windows EXE</h2>
+              <p>This advanced PDF-to-passbook editor and its custom print engine are disabled on Android and web. Your existing customers, normal bank passbook printing and account-opening options are unchanged.</p>
+              <button type="button" onClick={()=>openPage("dashboard")}>Return to Dashboard</button>
+            </section>}
           {canCustomizeLayout && bankSettingsReady && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} bankValues={{...bankInfo,...bankExtraFields}} accountRole={accountRole} /></Suspense>}
           {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
