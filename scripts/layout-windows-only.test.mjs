@@ -92,8 +92,8 @@ test("Android/web builds alias away the heavyweight Windows Studio and renderer 
  const workflow=file(".github/workflows/layout-studio-draft.yml");
  assert.match(config,/mode==="web" \|\| mode==="android"/);
  assert.match(config,/BANKSETU_BUILD_TARGET==="android"/);
- assert.match(config,/CustomizeLayoutStudio\$\/);
- assert.match(config,/WorkspaceTemplateDocument\$\/);
+ assert.ok(config.includes("CustomizeLayoutStudio"));
+ assert.ok(config.includes("WorkspaceTemplateDocument"));
  assert.match(config,/layoutUnavailable\.tsx/);
  assert.equal(pkg.scripts["android:sync"],"node scripts/build-android-client.mjs");
  assert.match(pkg.scripts["build:web"],/vite build --mode web/);
