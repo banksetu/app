@@ -6,6 +6,7 @@ import {requireLicensedWrite} from "./core/licenseAccess";
 import {printCurrentDocument} from "./platform/print";
 import {boundLayoutValue,visibleLayoutElement,templateCanRender,type ApprovedLayout,type LayoutDynamicElement} from "./layoutRuntimeValues";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 import {preflightLayoutOutput} from "./layoutOutputPreflight.ts";
 import {compressedTextStyle} from "./layoutTypography.ts";
 import "./WorkspaceTemplateDocument.css";
@@ -36,6 +37,8 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
   // print dialog or PR2 payload after an async licence/PDF operation finishes.
   const live=useRef(true),printGate=useRef(false);
   useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
+  if(!windowsLayoutEngineAvailable())
+    return <p role="alert">Custom Layout printing is available only inside BANK SETU Windows EXE. Your normal bank print options remain available.</p>;
   if(!templateCanRender(template,bankName,template.mode))
     return <p role="alert">The activated bank layout is incompatible. Use the existing bank print flow.</p>;
   const pages=Math.min(10,Math.max(1,template.pageCount||1));
