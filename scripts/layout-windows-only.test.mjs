@@ -81,6 +81,6 @@ test("Android and web runtime policy is reflected in real acceptance instruction
  const android=file("docs/LAYOUT_ANDROID_DRAFT_TESTING.md");
  assert.match(acceptance,/Android\/web must not expose or execute the advanced Layout Studio/);
  assert.match(acceptance,/advanced Layout Studio is entirely absent/);
- assert.match(android,/Android APK and web/i);
+ assert.match(android,/The Android app must not fetch/);
  assert.match(android,/Do not uninstall or overwrite/);
 });
