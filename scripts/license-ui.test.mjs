@@ -33,6 +33,7 @@ function render(page,blocked){
   if(path==='./SupportCenter')return {__esModule:true,default:component('SupportCenter'),useSupportUnread:()=>0};
   if(path==='./core/licensePolicy')return {canOpenLicensePage:(name,readOnly)=>!readOnly||['dashboard','customers','all-customer-data','settings','sync-backup','license-management','support'].includes(name)};
   if(path==='./core/localData')return {localModeEnabled:()=>false};
+  if(path==='./platform/layoutEngineGate')return {windowsLayoutEngineAvailable:()=>false};
   if(path==='./core/appearance')return {storedAppearance:()=> 'light',appearanceStorageKey:()=> 'test'};
   if(path.endsWith('.png'))return {__esModule:true,default:'logo.png'};
   if(path==='./tenantApi')return {tenantStorageKey:key=>key,getTenantApiUrl:()=>''};
