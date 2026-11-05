@@ -84,3 +84,22 @@ test("Android and web runtime policy is reflected in real acceptance instruction
  assert.match(android,/The Android app must not fetch/);
  assert.match(android,/Do not uninstall or overwrite/);
 });
+
+test("Android/web builds alias away the heavyweight Windows Studio and renderer before packaging",()=>{
+ const config=file("vite.config.ts");
+ const pkg=JSON.parse(file("package.json"));
+ const wrapper=file("scripts/build-android-client.mjs");
+ const workflow=file(".github/workflows/layout-studio-draft.yml");
+ assert.match(config,/mode==="web" \|\| mode==="android"/);
+ assert.match(config,/BANKSETU_BUILD_TARGET==="android"/);
+ assert.match(config,/CustomizeLayoutStudio\$\/);
+ assert.match(config,/WorkspaceTemplateDocument\$\/);
+ assert.match(config,/layoutUnavailable\.tsx/);
+ assert.equal(pkg.scripts["android:sync"],"node scripts/build-android-client.mjs");
+ assert.match(pkg.scripts["build:web"],/vite build --mode web/);
+ assert.match(wrapper,/BANKSETU_BUILD_TARGET:"android"/);
+ assert.match(workflow,/check-layout-target-bundle\.mjs android dist/);
+ assert.match(workflow,/check-layout-target-bundle\.mjs web web-app-dist/);
+ assert.match(workflow,/check-layout-target-bundle\.mjs windows dist/);
+ assert.match(file("src/platform/layoutUnavailable.tsx"),/Windows EXE/);
+});
