@@ -45,7 +45,7 @@ test("normal approved bank printing, Android customer flows and existing PR2 bri
  const custom=file("src/CustomBankDocument.tsx");
  const ipc=file("desktop/preload.cjs");
  assert.match(selected,/return formatType === "accountOpening" \? <AccountOpeningPDF/);
- assert.match(selected,/\? <CustomBankDocument/);
+ assert.match(selected,/return <CustomBankDocument/);
  assert.match(custom,/BankFormatPrint/);
  assert.match(ipc,/contextBridge\.exposeInMainWorld\('bankSetuPr2'/);
  assert.match(ipc,/platform: process\.platform, protocol: 1/);
@@ -66,4 +66,21 @@ test("Windows studio contains guided Design and Approval spaces while preserving
  assert.match(css,/prefers-reduced-motion:reduce/);
  assert.match(css,/data-appearance="dark"/);
  assert.match(studio,/draft\.widthMm\*PX_PER_MM/,"physical paper width remains measured, not replaced by screen-based responsive scaling");
+});
+
+test("Windows test installer artifact is downloadable without invoking One Click Release",()=>{
+ const workflow=file(".github/workflows/layout-studio-draft.yml");
+ assert.ok(workflow.includes("banksetu-layout-draft-windows-${{ github.event.pull_request.head.sha || github.sha }}"));
+ assert.ok(workflow.includes("path: desktop-release/BankSetu-Setup-*.exe"));
+ assert.match(workflow,/retention-days: 7/);
+ assert.doesNotMatch(workflow,/firebase deploy|gh release create|merge_pull_request/);
+});
+
+test("Android and web runtime policy is reflected in real acceptance instructions",()=>{
+ const acceptance=file("docs/LAYOUT_ENGINE_ACCEPTANCE.md");
+ const android=file("docs/LAYOUT_ANDROID_DRAFT_TESTING.md");
+ assert.match(acceptance,/Android\/web must not expose or execute the advanced Layout Studio/);
+ assert.match(acceptance,/advanced Layout Studio is entirely absent/);
+ assert.match(android,/Android APK and web/i);
+ assert.match(android,/Do not uninstall or overwrite/);
 });
