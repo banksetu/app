@@ -1,24 +1,29 @@
-# BANK SETU layout engine — Android DRAFT APK test handoff
+# BANK SETU — Android regression after Windows-only Customize Layout decision
 
-Status: **software-build test only**. This is not a signed release, physical printer certification, Android device pass, or authorization to deploy. Source: Draft PR #98, `codex/customize-layout-engine-phase1-20261101`. Keep all real customer records out of examples.
+**Updated 5 November 2026.** Customize Layout and the automatic PDF-to-passbook editor are now **Windows EXE only**. This document replaces prior instructions to test the advanced layout editor on Android. Do not use an old Android APK to judge whether the new restriction is effective.
 
-## Produce the Android test build (no production deployment)
+## New Android behavior
 
-1. In GitHub, open **Pull Request #98** and the latest **Layout Studio Draft Validation** workflow run. Identify the run's exact **head commit SHA**; only use artifacts whose SHA is the final tested commit. The `layout-studio` job must pass the layout, Worker, local, bridge, PR2, legacy-bank and offline OCR checks.
-2. The `Android debug build smoke (draft only)` job runs `npm ci`, `npm run android:sync`, `./gradlew assembleDebug --no-daemon`, and verifies local English/Hindi OCR models are in the APK. On PASS it uploads `banksetu-layout-draft-android-<commit SHA>` as a **GitHub Actions artifact**, retained for **7 days**; download the artifact ZIP and extract `app-debug.apk`. If it expires, rerun the same draft workflow and check the new artifact's head SHA. This never publishes to the website, Play Store or Firebase.
-3. **Do not uninstall or overwrite an existing production BANK SETU installation.** The debug APK uses the application ID `in.banksetu.android` and a debug signing key. Installing it over a differently signed release will be rejected; uninstalling a production app can permanently erase its local IndexedDB/offline operations, tenant data and attachments. Test on a **separate/spare Android device or fresh test profile where no production banking data exists**. Do not disable security protections or reset the real customer's app as a workaround.
-4. Physical-device tests are **deferred** per request. A CI-built APK proves only that the software assembled; successful launch, Firebase login, background notifications, OCR quality, Android print/share and device performance must be observed later.
+- The **Admin > Customize Layout** menu and both Customize Passbook / Customize Account Opening Studio pages must be absent.
+- The Android app must not fetch Master-approved custom layout selections or render any new custom PR2 passbook template. The native Windows `banksetu:` Electron scheme and PR2 bridge are required for this engine.
+- **Normal** Android BANK SETU customer management, ordinary approved bank passbooks, existing Bank Formats, Account Opening PDF sample selection, share/print, tenant sync, offline records, support, licensing and notification behavior must remain intact. This is a narrow engine restriction, **not** a general Android block.
+- If an old saved route links to Customize Layout, a Windows-only explanation and safe return to Dashboard are shown instead.
+- A web browser receives the same feature gate; native Windows EXE access still requires the existing role/licensing guards and explicit Master/Client approval to activate layouts.
 
-## Later on-device checklist — use fictional test data only
+## Existing app safety when checking a new APK
 
-- Verify login and authorized Client Admin > **Customize Layout > Customize Passbook / Customize Account Opening Form**. The menu requires appropriate role, bank configuration and license.
-- Test a blank Word-style layout without source PDF. Move/resize text, set measured paper W/H, fold, print-start, fonts, 0–10 px tracking, 50–100% font width, ruler units, Undo/Redo, save and reload through the same tenant. Confirm paper size and objects are not distorted.
-- Import A4 scanner PDFs (English/Hindi, image-only, mixed text, landscape/portrait), correct ROI/rotation/perspective and OCR review, then export a **draft** proof. Test offline OCR after assets have been bundled. Never treat a scanner's 210 × 297 mm A4 page as the physical passbook size.
-- Verify Quick preview shows approved art/logo/photo placeholders and Direct PR2 proof omits photos, logos and shapes; Union Bank must remain **values-only**. PR2 hardware transport is a **Windows-only bridge**. Android cannot certify or directly drive Epson PR2 hardware in this draft.
-- Verify dark/light UI, mobile layout, no clipped controls, no unexpected sharing of private fields, no tenant crossover on account switch. Check normal Android app print/share dialogs only with test data and without changing a real customer's Printed state.
-- Do not activate any unverified bank template. Activation requires the existing Master-reviewed catalog plus independent **physical stock, preprinted-label, actual-printer calibration** confirmations. The Android APK build cannot satisfy those confirmations.
-- If a selected bank (including Central Bank or PNB) or format is absent in the **actual installed build**, record as a software blocker. Do not report a missing legacy format as tested merely because the generic layout engine accepts arbitrary bank names.
+**Do not uninstall or overwrite** an existing production BANK SETU installation to test a debug build. Both can share package ID `in.banksetu.android` but use different signing keys. Uninstalling an active banking app can erase its local IndexedDB, unsynced queue and offline customer attachments. Test only on a spare Android device/profile with no real banking records or use a future separately approved test package configuration.
 
-## Hardware/approval after Android trial
+To obtain a draft debug APK, open the exact-commit GitHub Actions run for PR #98, download the `banksetu-layout-draft-android-<head SHA>` artifact and extract `app-debug.apk`. Artifacts last seven days. A PASS build alone is not an actual-device usability or privacy certification.
 
-See `docs/LAYOUT_HARDWARE_QA_INSTRUCTIONS.md` and `docs/LAYOUT_ENGINE_ACCEPTANCE.md`. Physical Epson PLQ-20/20M, PLQ-35 and the requested PLQ-80 model/emulation need separate actual-paper sign-offs. Leave release gate and One Click App Release untouched until real approval. Debug APK artifacts are for local testing, not public links.
+## Android regression checklist (later)
+
+1. Log in using a **fictional test workspace**, inspect Admin dropdown and confirm Customize Layout is missing. Normal bank and customer menus must remain.
+2. Select Assam Gramin, Union Bank, PNB, Central Bank and other configured banks; ensure unchanged supported formats still open, no cross-bank template substitution, and a missing Account Opening PDF prompts upload rather than inventing AGVB defaults.
+3. Verify offline customer viewing/sync, normal preview, sharing and A4 printing with dummy data; check notifications and settings against the existing Android product requirements.
+4. Deep-link/restore an old `customize-passbook` or `customize-account-opening` page and ensure no advanced editor or custom printing executes.
+5. Record real-device pass/fail and app build SHA. Do **not** mark a printer hardware acceptance criterion PASS from Android behavior.
+
+## Windows-only completion and release
+
+Use `docs/LAYOUT_WINDOWS_ONLY_STATUS.md`, `docs/LAYOUT_ENGINE_ACCEPTANCE.md` and `docs/LAYOUT_HARDWARE_QA_INSTRUCTIONS.md`. Physical Windows installs, original-bank stock matches, actual Epson PR2 paper detection and real approvals remain required before enabling live custom passbook printing. This draft performs no merge, website deployment, production Firebase changes or One Click Release.
