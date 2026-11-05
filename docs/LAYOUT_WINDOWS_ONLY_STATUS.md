@@ -36,3 +36,7 @@
 A **draft unsigned Windows installer may be built and downloaded today for manual QA** via `Layout Studio Draft Validation`. This is not a production release or verified installer launch. The workflow also stores a draft Windows installer artifact for 7 days.
 
 **Do not declare a full live Windows release ready** merely because `npm run desktop:pack:unsigned` succeeds. Before enabling custom printer production: physically test required Epson models, prove actual passbook print/no duplicate, confirm Hindi/English data, original bank formatting, Client Admin/Master signoff and independent code review. `node scripts/layout-release-gate.mjs` intentionally blocks release while acceptance remains unsigned. An approved final release, if authorized later, must use the existing One Click App Release workflow; never create a competing release engine.
+
+## Target-specific packaging optimization
+
+The Android `npm run android:sync` builds with `BANKSETU_BUILD_TARGET=android` and then calls Capacitor sync. The web `npm run build:web` selects Vite mode `web`. Both use Vite aliases that replace the heavy `CustomizeLayoutStudio` and `WorkspaceTemplateDocument` lazy imports with the inert `src/platform/layoutUnavailable.tsx`. Windows `npm run build`/`npm run desktop:pack:unsigned` retain the complete editor. GitHub CI checks emitted JS/CSS for native-editor inclusion/exclusion before accepting draft packaging. This does not remove normal Android bank document support or alter offline sync/customer data.
