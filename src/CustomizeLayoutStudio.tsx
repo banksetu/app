@@ -96,7 +96,8 @@ function draftKey(mode: Mode, bankName: string) {
 }
 
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
-export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {}, accountRole = "client_user" }: { mode: Mode; bankName: string; bankValues?: Record<string,string>; accountRole?:string }) {
+type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string};
+function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user" }: StudioProps) {
   const storageKey = draftKey(mode, bankName);
   const [scopeEpoch,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
@@ -974,12 +975,6 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
-  // The native Windows shell gate is checked again here so a direct route
-  // import cannot bypass the hidden Admin menu on Android or the website.
-  if(!windowsLayoutEngineAvailable())return <section role="alert" className="ls-windows-only">
-    <h2>Windows EXE only</h2>
-    <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
-  </section>;
   return <section className={"layout-studio ls-view-"+workspaceView} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div className="ls-heading">
@@ -1432,4 +1427,16 @@ export default function CustomizeLayoutStudio({ mode, bankName, bankValues = {},
     </div>
     <footer className="ls-footer">Phase 1 Visual Editor: local-only, unapproved draft. PDF image OCR, artwork reconstruction, physical scan detection, shared templates and PR2 activation require separate verified implementation.</footer>
   </section>;
+}
+
+/** Keep the heavy editor hooks and cloud/draft side effects completely
+ * unmounted on Android/web. The native-shell check is not merely a hidden
+ * navigation link: direct component imports also fail closed.
+ */
+export default function CustomizeLayoutStudio(props:StudioProps) {
+  if(!windowsLayoutEngineAvailable())return <section role="alert" className="ls-windows-only">
+    <h2>Windows EXE only</h2>
+    <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
+  </section>;
+  return <CustomizeLayoutStudioCore {...props}/>;
 }
