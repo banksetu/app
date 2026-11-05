@@ -94,6 +94,15 @@ jobs:
           if ($files.Count -eq 0) { throw "No unsigned Windows test installer produced" }
           foreach ($lang in @("eng", "hin")) { if (!(Test-Path "dist/ocr/lang/$lang.traineddata")) { throw "Offline OCR $lang model missing from packaged app inputs" } }
           Write-Host "Unsigned draft installer built successfully; no deployment or publishing performed."
+      - name: Save unsigned Windows EXE for physical QA only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: banksetu-layout-draft-windows-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop-release/BankSetu-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
 
   android-debug-smoke:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 98
