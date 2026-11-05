@@ -42,6 +42,12 @@ export function boundLayoutValue(element:LayoutDynamicElement,customer:Record<st
     return clean(value)||clean(element.defaultValue);
   }
   if(element.origin==="customer"||element.origin==="dotmatrix"){
+    // A forbidden or unknown customer field must NOT substitute a free-form
+    // defaultValue from a malformed/old catalog entry. This is especially
+    // important when a local template is opened under another tenant.
+    if(element.origin==="customer"&&!allowedCustomerFields.has(field))return "";
+    if(element.origin==="dotmatrix"&&!allowedCustomerFields.has(field)&&
+       !safeLayoutBankFieldKey(field))return "";
     // Values must be from explicitly allowed fields, not arbitrary customer object properties.
     if(allowedCustomerFields.has(field)){
       const value=layoutCustomerValue(customer,field);
@@ -87,7 +93,15 @@ export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"
        item.size<4||item.size>120||item.opacity<0||item.opacity>1||
        !Number.isSafeInteger(item.page??1)||(item.page??1)<1||(item.page??1)>pages||
        typeof item.quick!=="boolean"||typeof item.dotMatrix!=="boolean"||
-       typeof item.preprinted!=="boolean"||!typographyIsValid(item))return false;
+       typeof item.preprinted!=="boolean"||!typographyIsValid(item)||
+       (["customer","bank","dotmatrix"].includes(item.origin)&&!item.fieldKey.trim())||
+       (item.origin==="customer"&&!allowedCustomerFields.has(aliases[item.fieldKey]||item.fieldKey))||
+       (item.origin==="bank"&&!safeLayoutBankFieldKey(item.fieldKey))||
+       (item.origin==="dotmatrix"&&!allowedCustomerFields.has(aliases[item.fieldKey]||item.fieldKey)&&
+         !safeLayoutBankFieldKey(item.fieldKey))||
+       (item.kind==="image"&&(item.origin!=="bank"||item.fieldKey!=="bankLogo"))||
+       (item.dotMatrix&&["image","photo","rectangle","line","ellipse"].includes(item.kind))
+       )return false;
     ids.add(item.id);
   }
   return true;
