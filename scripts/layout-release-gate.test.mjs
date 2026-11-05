@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
+import {spawnSync} from "node:child_process";
 import {inspectLayoutAcceptance,layoutReleaseReady} from "./layout-release-gate.mjs";
 
 const real=()=>readFileSync(new URL("../docs/LAYOUT_ENGINE_ACCEPTANCE.md",import.meta.url),"utf8");
@@ -50,4 +51,13 @@ test("Step 10: read-only checker contains no GitHub merge or Firebase production
  const gate=readFileSync(new URL("./layout-release-gate.mjs",import.meta.url),"utf8");
  assert.doesNotMatch(gate,/merge_pull_request|github\.rest\.pulls\.merge|firebase deploy|firestoreRequest|writeFileSync/);
  assert.match(gate,/process\.exitCode=1/);
+});
+
+test("Step 10: invoking the real release gate CLI exits nonzero with unsigned physical approvals",()=>{
+ const script=new URL("./layout-release-gate.mjs",import.meta.url);
+ const output=spawnSync(process.execPath,[script.pathname],{encoding:"utf8"});
+ assert.equal(output.status,1,"draft gate must fail closed before any merge or release");
+ assert.match(output.stderr,/LAYOUT DRAFT ONLY.*BLOCKED/);
+ assert.match(output.stderr,/pre-release checks remain unsigned/);
+ assert.equal(output.stdout,"");
 });
