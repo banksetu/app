@@ -55,3 +55,37 @@ test("step 6: renderer rejects credentials and allows normal bank identifiers",(
    assert.equal(boundLayoutValue(layer({origin:"bank",fieldKey}),customer,bank),bank[fieldKey]);
  }
 });
+
+test("Step 9: forbidden customer/bank keys cannot leak through per-object defaults",()=>{
+ const customer={name:"TEST",apiKey:"PRIVATE_CUSTOMER_API_KEY"};
+ const bank={ifsc:"SAFE",tenantSecret:"PRIVATE_BANK_SECRET"};
+ for(const key of ["apiKey","tenantSecret","sessionToken","password"]){
+   const bad={fieldKey:key,defaultValue:"FAKE_PRIVATE_FALLBACK"};
+   assert.equal(boundLayoutValue(layer({...bad,origin:"customer"}),customer,bank),"",key);
+   assert.equal(boundLayoutValue(layer({...bad,origin:"dotmatrix"}),customer,bank),"",key);
+   assert.equal(boundLayoutValue(layer({...bad,origin:"bank"}),customer,bank),"",key);
+ }
+ assert.equal(boundLayoutValue(layer({fieldKey:"customerName",defaultValue:"Saving"}),customer,bank),"TEST");
+ assert.equal(boundLayoutValue(layer({origin:"bank",fieldKey:"ifsc"}),customer,bank),"SAFE");
+});
+test("Step 9: malformed activated catalog fields and PR2 graphics fail before live print",()=>{
+ const baseline={id:"catalog",mode:"passbook",bankName:"Central Bank of India",
+  widthMm:190,heightMm:173,foldMm:86,printStartMm:101,pageCount:1,
+  elements:[layer()]};
+ assert.equal(templateCanRender(baseline,baseline.bankName,"passbook"),true);
+ for(const change of [
+  {origin:"customer",fieldKey:"sessionToken"},
+  {origin:"bank",fieldKey:"tenantSecret"},
+  {origin:"dotmatrix",fieldKey:"password"},
+  {origin:"customer",fieldKey:""},
+  {origin:"bank",fieldKey:""},
+  {origin:"dotmatrix",fieldKey:""},
+  {kind:"photo",dotMatrix:true},
+  {kind:"rectangle",dotMatrix:true},
+  {kind:"image",origin:"static",fieldKey:"bankLogo",dotMatrix:false},
+ ]){
+   const invalid={...baseline,elements:[layer(change)]};
+   assert.equal(templateCanRender(invalid,baseline.bankName,"passbook"),false,
+     "unsafe catalog layer: "+JSON.stringify(change));
+ }
+});
