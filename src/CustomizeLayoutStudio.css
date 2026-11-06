@@ -471,3 +471,32 @@ html[data-appearance="dark"] .layout-studio .ls-canvas-wrap {
 .ls-guided[data-step="check"] .ls-word-suite{display:none}
 @media(max-width:920px){.ls-tool-collection{grid-template-columns:1fr}.ls-guided[data-step="edit"] .ls-tool-collection{grid-template-columns:1fr}.ls-header-utilities{justify-content:flex-start}}
 @media(max-width:550px){.ls-tool-card{padding:11px}.ls-header-main-actions{width:100%}.ls-header-main-actions button{flex:1}.ls-header-extra-actions{max-width:100%}}
+
+
+/* First-time user wizard: same BANK SETU design language, no heavyweight animations. */
+.ls-start-wizard{--ls-bg:#f1f5fa;--ls-surface:#fff;--ls-text:#173044;--ls-muted:#526778;--ls-border:#d6e0e9;--ls-accent:#087c80;--ls-soft:#e6f7f4;color:var(--ls-text);font:14px/1.5 system-ui,"Segoe UI",sans-serif;max-width:940px;margin:20px auto;padding:clamp(16px,3vw,30px);background:var(--ls-bg);border:1px solid var(--ls-border);border-radius:18px;}
+html[data-appearance="dark"] .ls-start-wizard,.banksetu-app-shell[data-appearance="dark"] .ls-start-wizard{--ls-bg:#081925;--ls-surface:#10293a;--ls-text:#e7f2f5;--ls-muted:#a6bfcb;--ls-border:#2b4b5c;--ls-accent:#41d6c4;--ls-soft:#153f43;}
+.ls-start-wizard *{box-sizing:border-box}
+.ls-start-wizard header h2{font-size:24px;line-height:1.25;margin:6px 0}
+.ls-start-wizard p,.ls-start-wizard small,.ls-start-wizard footer{color:var(--ls-muted)}
+.ls-start-wizard h3{margin:0 0 16px;font-size:18px}
+.ls-wizard-progress{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:21px 0}
+.ls-wizard-progress span{text-align:center;padding:10px;border-bottom:3px solid var(--ls-border);color:var(--ls-muted);font-size:12px;font-weight:700}
+.ls-wizard-progress [aria-current="step"]{border-color:var(--ls-accent);color:var(--ls-accent)}
+.ls-wizard-page{padding:clamp(15px,3vw,24px);background:var(--ls-surface);border:1px solid var(--ls-border);border-radius:14px;min-height:240px}
+.ls-wizard-field{display:grid;gap:7px;margin:12px 0;font-weight:650}
+.ls-wizard-field input,.ls-wizard-field select{width:100%;min-height:43px;padding:10px;color:var(--ls-text);background:var(--ls-surface);border:1px solid var(--ls-border);border-radius:9px;font:inherit}
+.ls-wizard-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.ls-start-wizard button{font:inherit;cursor:pointer;color:var(--ls-text);background:var(--ls-surface);border:1px solid var(--ls-border);padding:10px 15px;border-radius:10px;transition:background .14s,border-color .14s,transform .14s}
+.ls-start-wizard button:hover{background:var(--ls-soft);border-color:var(--ls-accent)}
+.ls-start-wizard button:focus-visible,.ls-start-wizard input:focus-visible,.ls-start-wizard select:focus-visible{outline:2px solid var(--ls-accent);outline-offset:2px}
+.ls-start-wizard button.ls-primary{background:#087c80;color:white;border-color:#087c80;font-weight:800}
+.ls-wizard-choices button{text-align:left;min-height:100px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:7px}
+.ls-wizard-choices button[aria-pressed="true"]{background:var(--ls-soft);border-color:var(--ls-accent);box-shadow:inset 0 0 0 1px var(--ls-accent)}
+.ls-wizard-choices button small{font-size:12px;text-align:left}
+.ls-start-wizard .ls-wizard-link,.layout-studio .ls-wizard-link{background:transparent;border:0;padding:8px 2px;color:var(--ls-accent);font-weight:700}
+.ls-wizard-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:20px}
+.ls-wizard-error{color:#ba2f35!important;font-weight:700;margin:12px 0}
+.ls-start-wizard footer{font-size:12px;margin-top:14px}
+@media(max-width:600px){.ls-wizard-choices{grid-template-columns:1fr}.ls-wizard-progress span{font-size:11px;padding:7px 3px}.ls-wizard-actions>*{flex:1}}
+@media(prefers-reduced-motion:reduce){.ls-start-wizard button{transition:none!important}}
