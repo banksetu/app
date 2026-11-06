@@ -1427,6 +1427,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
           {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
+          {activeGuides.map(guide=><div key={guide.axis} aria-hidden="true"
+            title={"Aligned to "+guide.targetId}
+            style={{position:"absolute",pointerEvents:"none",zIndex:99999,
+              ...(guide.axis==="x"?{left:guide.position*PX_PER_MM*zoom,top:0,bottom:0,width:1}:
+                {top:guide.position*PX_PER_MM*zoom,left:0,right:0,height:1}),
+              background:"#0e9cbe",boxShadow:"0 0 0 1px #ffffff66"}} />)}
           {ordered.map(part => {
             const visible = isLayoutLayerPrintable(part,preview,bankName);
             if (!visible) return null;
