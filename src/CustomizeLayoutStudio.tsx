@@ -512,30 +512,39 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setDraft(next);
     setDirty(true);
   };
-  const save = async () => {
+  const save = async ():Promise<boolean> => {
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
-      setNotice("Layout NOT saved: workspace changed; reload the verified bank and tenant first.");return;
+      setNotice("Layout NOT saved: workspace changed; reopen the verified bank and tenant.");return false;
     }
-    if(savingLayout||busy)return;
+    if(savingLayout||busy)return false;
+    const startingRevision=editsRef.current;
     setSavingLayout(true);
     try{
-      const saved=await saveLocalLayout(bankName,mode,layoutSlotId,draft,
-        localRevisionRef.current);
+      const saved=await saveLocalLayout(bankName,mode,layoutSlotId,draft,localRevisionRef.current);
       localRevisionRef.current=saved.localRevision;
-      setDirty(false);
-      setNotice("Editable Layout 1 saved in the existing BANK SETU offline workspace repository. Customer records and pending sync operations were not changed.");
-      if(canSubmit&&navigator.onLine){
+      if(editsRef.current===startingRevision)setDirty(false);
+      setAutosaveStatus("Layout "+selectedLayoutSlot+" saved in the verified local workspace repository.");
+      const safeCloud=canSubmit&&Object.keys(bankValues).length>0&&navigator.onLine&&
+        !draft.elements.some(part=>part.needsReview)&&draft.sourceArtworkStatus!=="needsReview";
+      if(safeCloud){
         try{
           const synced=await publishLocalLayoutSlot(bankName,mode,layoutSlotId);
-          setNotice("Layout saved offline and a compact, customer-free recovery copy synced for this tenant (cloud revision "+synced.revision+"). Shared catalog publication still requires Master review.");
+          setNotice("Local layout saved; private tenant cloud recovery synced (revision "+synced.revision+"). Master approval is separate.");
         }catch(error){
-          setNotice("Layout SAVED offline. Cloud recovery is pending: "+(error instanceof Error?error.message:"Unavailable")+". No customer/PDF data was uploaded.");
+          setNotice("Layout SAVED locally. Cloud recovery pending: "+(error instanceof Error?error.message:"Offline"));
         }
+      }else{
+        setNotice("Layout "+selectedLayoutSlot+" saved locally. Cloud backup deferred until source text is reviewed, this bank is configured and the connection is online.");
       }
+      return true;
     }catch(error){
-      // Never mark success on quota/tenant/license/DB failures.
-      setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing drafts were retained.");
+      setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing data was retained.");
+      return false;
     }finally{setSavingLayout(false);}
+  };
+  const saveAndSubmit=async()=>{
+    const saved=await save();
+    if(saved&&canSubmit)await submitForReview(); // Original Master approval audit remains mandatory.
   };
   // Debounced, tenant-scoped autosave through the EXISTING local repository and Worker.
   // Never publish unreviewed OCR/Word content or actual customer preview values to cloud.
@@ -1252,7 +1261,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div>
       </div>
       <div className="ls-header-utilities">
-      <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button></div>
+      <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>Save & Send to Master</button>}</div>
       <details className="ls-header-extra">
         <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
         <div className="ls-header-extra-actions">
