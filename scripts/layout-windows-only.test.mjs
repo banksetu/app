@@ -54,7 +54,7 @@ test("normal approved bank printing, Android customer flows and existing PR2 bri
 test("Windows studio contains guided Design and Approval spaces while preserving physical paper and editing",()=>{
  const studio=file("src/CustomizeLayoutStudio.tsx");
  const css=file("src/CustomizeLayoutStudio.css");
- for(const label of ["Design workspace","Templates & approval","Windows EXE",
+ for(const label of ["Layout Designer","Shared Bank Layouts","मास्टर स्वीकृति","Windows EXE",
      "New Blank Layout (Word-style)","Export Physical Calibration Ruler",
      "Save Draft to Offline DB","Run Layout Audit","ls-workflow-nav"]){
    assert.ok(studio.includes(label),label);
@@ -66,6 +66,14 @@ test("Windows studio contains guided Design and Approval spaces while preserving
  assert.match(css,/prefers-reduced-motion:reduce/);
  assert.match(css,/data-appearance="dark"/);
  assert.match(studio,/draft\.widthMm\*PX_PER_MM/,"physical paper width remains measured, not replaced by screen-based responsive scaling");
+ const referenceCss=file("src/CustomizeLayoutReferenceLock.css");
+ assert.match(referenceCss,/grid-template-columns:192px minmax\(0,1fr\)/);
+ assert.match(referenceCss,/\.ls-field-panel-list/);
+ assert.match(studio,/aria-label="Passbook Designer sidebar"/);
+ assert.match(studio,/aria-label="Editor status and zoom"/);
+ assert.match(studio,/Map selected|Mapped /);
+ assert.match(studio,/Make My Own Copy/);
+
 });
 
 test("Windows test installer artifact is downloadable without invoking One Click Release",()=>{
