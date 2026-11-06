@@ -61,7 +61,7 @@ test("Layout tab provides actual physical page controls and live book-fold guide
  const ui=readFileSync(new URL("../src/CustomizeLayoutStudio.tsx",import.meta.url),"utf8");
  const setup=readFileSync(new URL("../src/PassbookPageSetup.tsx",import.meta.url),"utf8");
  for(const key of ["Full open width","Full open height","Fold exactly in half","Gap after fold",
-  "Left","Right","Top","Bottom","Live Size Guide","Fold direction"])
+  "Left","Right","Top","Bottom","Live Passbook Size Guide","Open Book","Folded Book","Fold direction"])
   assert.ok(setup.includes(key),key);
  for(const key of ["pageSetupFor(draft)","PassbookPageSetup","ls-paper-safe-area",
   "ls-book-vertical-fold","setPhysicalChecked(false)"])
