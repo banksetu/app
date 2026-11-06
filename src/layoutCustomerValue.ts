@@ -12,6 +12,7 @@ export function layoutCustomerValue(customer:Record<string,unknown>,field:string
   const nameWords=name.trim().split(/\s+/).filter(Boolean);
   const aadhaar=text(customer.uidaiNo||customer.aadhaar).replace(/\s/g,"");
   const data:Record<string,string>={
+    customerName:name,accountNumber:text(customer.accountNo),
     name,firstName:nameWords.length>1?nameWords[0]:"",middleName:nameWords.length>2?nameWords.slice(1,-1).join(" "):"",lastName:nameWords.at(-1)||"",
     accountNo:text(customer.accountNo),
     customerId:text(customer.enrolId)||text(customer.customerId),
