@@ -1,4 +1,4 @@
-import type {CSSProperties} from "react";
+import {useState,type CSSProperties} from "react";
 import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type FoldAxis,type MeasuredPage,type PageSetup} from "./layoutPageSetup.ts";
 type Unit="mm"|"cm"|"in";
 type Props={
@@ -12,7 +12,9 @@ const toUnit=(mm:number,u:Unit)=>Number((mm/unitFactor(u)).toFixed(u==="mm"?2:3)
 export default function PassbookPageSetup({
   page,unit,onUnit,onMeasurement,onPageSetup,onPreset,onOrientation
 }:Props){
+  const [foldedView,setFoldedView]=useState(false);
   const cfg=pageSetupFor(page),measure=pageMeasurements(page);
+  const showFolded=foldedView&&cfg.foldAxis!=="none";
   const p=Math.max(0.00001,page.widthMm),h=Math.max(.00001,page.heightMm);
   const axis=cfg.foldAxis;
   const mmNumber=(title:string,value:number,update:(n:number)=>void,min=0,max=500)=>
@@ -23,8 +25,12 @@ export default function PassbookPageSetup({
           if(Number.isFinite(n))update(Math.round(n*1000)/1000);}}/>
     </label>;
   const foldMax=axis==="vertical"?page.widthMm:page.heightMm;
-  const pageWidth=Math.min(330,Math.max(150,page.widthMm*.95));
-  const pageHeight=pageWidth*page.heightMm/page.widthMm;
+  const viewedWidth=showFolded&&axis==="vertical"?
+    Math.max(page.foldMm,page.widthMm-page.foldMm):page.widthMm;
+  const viewedHeight=showFolded&&axis==="horizontal"?
+    Math.max(page.foldMm,page.heightMm-page.foldMm):page.heightMm;
+  const pageWidth=Math.min(330,Math.max(130,viewedWidth*.95));
+  const pageHeight=pageWidth*viewedHeight/viewedWidth;
   const foldStyle:CSSProperties=axis==="vertical"?
     {left:(page.foldMm/p*100)+"%",top:0,bottom:0,borderLeft:"2px dashed #e19933"}:
     {top:(page.foldMm/h*100)+"%",left:0,right:0,borderTop:"2px dashed #e19933"};
@@ -96,22 +102,31 @@ export default function PassbookPageSetup({
         </div>
       </div>
       <div className="ls-page-fold-visual">
-        <strong>Full Open Book — Live Size Guide</strong>
-        <p>{page.widthMm} mm × {page.heightMm} mm · {axis==="none"?"Flat":axis==="horizontal"?"Top + Bottom":"Left + Right"}</p>
+        <strong>Live Passbook Size Guide</strong>
+        <p>Open size: {page.widthMm} mm × {page.heightMm} mm ·
+          {axis==="none"?" Flat":axis==="horizontal"?" Top + Bottom":" Left + Right"}</p>
+        <div className="ls-page-view-toggle" role="group" aria-label="Open or folded passbook view">
+          <button type="button" aria-pressed={!showFolded} onClick={()=>setFoldedView(false)}>Open Book</button>
+          <button type="button" aria-pressed={showFolded} disabled={axis==="none"}
+            onClick={()=>setFoldedView(true)}>Folded Book</button>
+        </div>
         <div className="ls-page-preview-scroll">
-          <div className="ls-open-passbook" role="img"
+          <div className={"ls-open-passbook"+(showFolded?" ls-closed-passbook":"")} role="img"
             aria-label={"Passbook fold at "+page.foldMm+" mm, data start "+page.printStartMm+" mm, full open size "+page.widthMm+" by "+page.heightMm+" millimetres"}
             style={{width:pageWidth,height:pageHeight}}>
-            {axis!=="none"&&<div className="ls-open-passbook-fold" style={foldStyle}><span>FOLD · {page.foldMm} mm</span></div>}
-            {page.printStartMm>0&&<div className="ls-open-passbook-start" style={startStyle}><span>DATA START · {page.printStartMm} mm</span></div>}
-            <div className="ls-open-passbook-margins" style={{
+            {!showFolded&&axis!=="none"&&<div className="ls-open-passbook-fold" style={foldStyle}><span>FOLD · {page.foldMm} mm</span></div>}
+            {!showFolded&&page.printStartMm>0&&<div className="ls-open-passbook-start" style={startStyle}><span>DATA START · {page.printStartMm} mm</span></div>}
+            {!showFolded&&<div className="ls-open-passbook-margins" style={{
               top:(cfg.marginTopMm/h*100)+"%",bottom:(cfg.marginBottomMm/h*100)+"%",
               left:(cfg.marginLeftMm/p*100)+"%",right:(cfg.marginRightMm/p*100)+"%"
-            }}/>
-            {axis==="horizontal"&&<div className="ls-fold-panel-title" style={{top:"15%"}}>Upper / Cover Half</div>}
-            {axis==="horizontal"&&<div className="ls-fold-panel-title" style={{bottom:"11%"}}>Lower / Print Half</div>}
-            {axis==="vertical"&&<div className="ls-fold-panel-title" style={{top:"12%",left:"8%"}}>Left Half</div>}
-            {axis==="vertical"&&<div className="ls-fold-panel-title" style={{bottom:"11%",right:"8%"}}>Right Half</div>}
+            }}/>} 
+            {!showFolded&&axis==="horizontal"&&<div className="ls-fold-panel-title" style={{top:"15%"}}>Upper / Cover Half</div>}
+            {!showFolded&&axis==="horizontal"&&<div className="ls-fold-panel-title" style={{bottom:"11%"}}>Lower / Print Half</div>}
+            {!showFolded&&axis==="vertical"&&<div className="ls-fold-panel-title" style={{top:"12%",left:"8%"}}>Left Half</div>}
+            {!showFolded&&axis==="vertical"&&<div className="ls-fold-panel-title" style={{bottom:"11%",right:"8%"}}>Right Half</div>}
+            {showFolded&&<div className="ls-book-closed-label">Folded Passbook
+              <small>{viewedWidth.toFixed(1)} × {viewedHeight.toFixed(1)} mm</small>
+            </div>}
           </div>
         </div>
         <div className="ls-page-zone-stats">
