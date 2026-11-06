@@ -105,8 +105,8 @@ function draftKey(mode: Mode, bankName: string) {
 
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
 type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[]};
-type StudioCoreProps=StudioProps & {setup:LayoutSetup};
-function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup }: StudioCoreProps) {
+type StudioCoreProps=StudioProps & {setup:LayoutSetup;onBackToSetup:()=>void};
+function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup,onBackToSetup }: StudioCoreProps) {
   const storageKey = draftKey(mode, bankName);
   const [scopeEpoch,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
@@ -983,6 +983,60 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } finally { setBusy(false); }
   };
 
+  const importPdf=(event:ChangeEvent<HTMLInputElement>)=>{
+    const file=event.target.files?.[0];event.target.value="";
+    if(file)void importPdfFile(file);
+  };
+  const importWordFile=async(file:File)=>{
+    if(busy)return;
+    setBusy(true);
+    setNotice("Reading local Word document. The original file stays on this device.");
+    try{
+      const result=await importWordDocx(file);
+      if(!result.paragraphs.length)throw Error("No editable text found. Check the document or create a new layout.");
+      const nextParts:LayoutPart[]=[];
+      let y=12,dropped=0;
+      const usableHeight=draft.heightMm-12;
+      for(const paragraph of result.paragraphs){
+        const lines=paragraph.text.split("\n").length+Math.ceil(paragraph.text.length/54)-1;
+        const height=within(Math.max(9,lines*4.4),9,40);
+        if(y+height>usableHeight||nextParts.length>=280){dropped++;continue;}
+        const part=addPart("text","static",paragraph.text,"",12,y);
+        part.width=Math.max(30,draft.widthMm-24);
+        part.height=height;part.align=paragraph.align;part.page=1;
+        part.dotMatrix=setup.output==="dotmatrix";
+        part.needsReview=true; // Unverified Word text must never leak through generic Master catalog.
+        part.z=nextParts.length+1;
+        nextParts.push(part);y+=height+3;
+      }
+      if(!nextParts.length)throw Error("Word text does not fit this paper. Correct the physical measurements first.");
+      modify(current=>({...startBlankLayout(current),elements:nextParts,
+        sourceArtworkStatus:result.warnings.length?"needsReview":"clean"}));
+      setSelectedId(nextParts[0].id);setWordSelectedIds([nextParts[0].id]);
+      setSelectedPage(1);setReferencePages([]);setGraphicWarnings(result.warnings);
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setGuidedStep("edit");
+      setNotice(nextParts.length+" editable Word paragraph(s) imported. Every line needs review before Master approval. "+
+        (dropped?dropped+" paragraph(s) did not fit the measured page. ":"")+
+        result.warnings.join(" "));
+    }catch(error){setNotice("Word import could not be completed: "+(error instanceof Error?error.message:"Invalid file"));}
+    finally{setBusy(false);}
+  };
+  useEffect(()=>{
+    if(initialImportRef.current)return;
+    initialImportRef.current=true;
+    if(setup.method==="continue")return;
+    editingRef.current=true;
+    if(setup.method==="blank"){
+      modify(current=>startBlankLayout(current));
+      setGuidedStep("edit");
+      setNotice("New blank document created. Choose fields, design your page, then review it.");
+    }else if(setup.method==="pdf"&&setup.file){void importPdfFile(setup.file);}
+    else if(setup.method==="word"&&setup.file){void importWordFile(setup.file);}
+  // A wizard selection is immutable for the life of this keyed studio instance.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   const down=(event:ReactPointerEvent<HTMLDivElement>,part:LayoutPart)=>{
     if(event.button!==0)return;
     event.preventDefault();event.stopPropagation();
@@ -1063,6 +1117,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
   return <section data-step={guidedStep} className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
+      <button type="button" className="ls-wizard-link" onClick={onBackToSetup}>← Bank / Method / Print Type</button>
       <div className="ls-heading">
         <span className="ls-brand-mark" aria-hidden="true">BS</span>
         <div className="ls-heading-copy">
@@ -1686,9 +1741,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
  * navigation link: direct component imports also fail closed.
  */
 export default function CustomizeLayoutStudio(props:StudioProps) {
+  const [setup,setSetup]=useState<LayoutSetup|null>(null);
   if(!windowsLayoutEngineAvailable())return <section role="alert" className="ls-windows-only">
     <h2>Windows EXE only</h2>
     <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
   </section>;
-  return <CustomizeLayoutStudioCore {...props}/>;
+  if(!setup)return <LayoutSetupWizard currentBank={props.bankName} banks={props.bankOptions??[props.bankName]}
+    accountOpening={props.mode==="accountOpening"} onOpen={setSetup}/>;
+  const sameBank=setup.bankName.trim().toLowerCase()===props.bankName.trim().toLowerCase();
+  return <CustomizeLayoutStudioCore key={setup.bankName+":"+setup.output+":"+setup.method}
+    {...props} bankName={setup.bankName} bankValues={sameBank?props.bankValues:{}} setup={setup}
+    onBackToSetup={()=>setSetup(null)}/>;
 }
