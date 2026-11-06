@@ -1409,8 +1409,10 @@ async function handleMasterOperation(request, env, actor, route) {
       return json({error:"Only the Client Admin can select or roll back a verified template."},403);
     const body=await request.json().catch(()=>({}));
     const mode=String(body.mode||"");
+    const output=body.output===undefined?"quick":String(body.output);
+    const slot=body.slot===undefined?1:Number(body.slot);
     let id;
-    try { id=layoutSelectionKey(actor.profile.tenantId,mode); }
+    try { id=layoutSelectionKey(actor.profile.tenantId,mode,output,slot); }
     catch(error){return json({error:error.message},400);}
     const tenantId=String(actor.profile.tenantId),settingsPath="/tenantSettings/"+encodeURIComponent(tenantId);
     const settingsDoc=await firestoreRequest(env,settingsPath).catch(error=>error.status===404?null:Promise.reject(error));
@@ -1421,12 +1423,22 @@ async function handleMasterOperation(request, env, actor, route) {
     const oldDoc=await firestoreRequest(env,selectionPath).catch(error=>error.status===404?null:Promise.reject(error));
     const old=decodeFields(oldDoc?.fields||{});
     if (route === "/get-workspace-layout-selection") {
-      if(!old.templateId || old.bankKey!==bankKey) return json({active:false,bankKey,mode,revision:old.revision||0,template:null});
-      const templateDoc=await firestoreRequest(env,"/layoutTemplateCatalog/"+old.templateId).catch(error=>error.status===404?null:Promise.reject(error));
+      // Legacy versions stored one approved passbook selection shared by both
+      // outputs. Keep its verified PR2 visibility until a distinct PR2 slot-1
+      // is activated; never write to or overwrite the legacy record here.
+      let effective=old;
+      if(mode==="passbook"&&output==="dotmatrix"&&slot===1&&!old.templateId){
+        const legacyPath="/tenantLayoutSelections/"+layoutSelectionKey(tenantId,mode);
+        const legacyDoc=await firestoreRequest(env,legacyPath).catch(error=>error.status===404?null:Promise.reject(error));
+        const legacy=decodeFields(legacyDoc?.fields||{});
+        if(legacy.templateId&&legacy.bankKey===bankKey)effective=legacy;
+      }
+      if(!effective.templateId || effective.bankKey!==bankKey) return json({active:false,bankKey,mode,output,slot,revision:effective.revision||0,template:null});
+      const templateDoc=await firestoreRequest(env,"/layoutTemplateCatalog/"+effective.templateId).catch(error=>error.status===404?null:Promise.reject(error));
       const template=decodeFields(templateDoc?.fields||{});
       if(template.status!=="approved" || template.mode!==mode || template.bankKey!==bankKey)
-        return json({active:false,bankKey,mode,revision:old.revision||0,template:null});
-      return json({active:true,bankKey,mode,revision:old.revision,activatedAt:old.activatedAt,template:{
+        return json({active:false,bankKey,mode,output,slot,revision:effective.revision||0,template:null});
+      return json({active:true,bankKey,mode,output,slot,revision:effective.revision,activatedAt:effective.activatedAt,template:{
         id:template.id,bankName:template.bankName,mode:template.mode,
         widthMm:template.widthMm,heightMm:template.heightMm,foldMm:template.foldMm,
         printStartMm:template.printStartMm,pageCount:template.pageCount||1,elements:template.elements
@@ -1453,12 +1465,12 @@ async function handleMasterOperation(request, env, actor, route) {
     let next;
     try { next=normalizedActivationRecord(old,templateId||null,actor.uid,new Date().toISOString()); }
     catch(error){return json({error:error.message},409);}
-    const saved={...next,tenantId,mode,bankKey,updatedBy:actor.uid,updatedAt:new Date().toISOString()};
+    const saved={...next,tenantId,mode,output,slot,bankKey,updatedBy:actor.uid,updatedAt:new Date().toISOString()};
     const write={update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
       currentDocument:oldDoc?{updateTime:oldDoc.updateTime}:{exists:false}};
     try {await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
     catch(error){if(error.status===409 || error.status===400)return json({error:"Template version changed. Refresh before retrying."},409);throw error;}
-    return json({success:true,active:Boolean(templateId),mode,revision:next.revision,templateId:templateId||null});
+    return json({success:true,active:Boolean(templateId),mode,output,slot,revision:next.revision,templateId:templateId||null});
   }
   if (route === "/list-layout-templates") {
     if (!["master_owner","admin","client_admin","client_user"].includes(role))
