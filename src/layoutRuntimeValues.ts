@@ -1,4 +1,4 @@
-import {geometryErrors,type PageSetup} from "./layoutPageSetup";
+import {geometryErrors,type PageSetup} from "./layoutPageSetup.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {typographyIsValid} from "./layoutTypography.ts";
 import { layoutCustomerValue } from "./layoutCustomerValue.ts";
