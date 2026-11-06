@@ -26,3 +26,10 @@ Existing PR2 custom rendering still intentionally rejects unembedded non-ASCII t
 - Client Admin must submit a sanitized template; Master must approve; Client Admin must confirm physical dimensions/labels/print alignment before activating.
 - Switching banks or clients invalidates selected template and protects tenant boundary.
 - Direct PR2 prints only the bank-approved text/values, never photos/graphics or preprinted fields. Existing printer bridge remains authoritative.
+
+## November 6 — Optional smart alignment guides (draft)
+- Added a Windows canvas checkbox **Smart alignment guides**, independent of the legacy 5 mm grid snap.
+- While dragging a single object or selected group, matching left/center/right and top/middle/bottom edges on other objects on the same page are magnetically aligned within a small screen-scale threshold, and non-printing cyan guides appear.
+- Guides are ephemeral UI decorations: they are not saved to customer records, template JSON, catalog, proof PDF or print data. They disappear on drag end. Existing group bounds and paper clipping remain enforced; grid snap takes precedence if enabled.
+- Added isolated guide math tests for edge/center alignment, no cross-page snapping, selected-group exclusion, distant objects, and invalid inputs.
+- Not equivalent to the remaining full Microsoft Word functions (rich inline runs, tables, headers/footers, DOCX fidelity, pagination/reflow, revision tracking, collaboration, spelling/reference tools); those are **not completed** by this addition. Build/CI and physical acceptance still required; PR remains Draft.
