@@ -39,3 +39,9 @@ Existing PR2 custom rendering still intentionally rejects unembedded non-ASCII t
 - Customer/bank field values, mapped field keys, preprinted layers, locked objects and unrelated pages are not silently changed. Locked matches stop replace rather than partially overwriting a draft. Uses existing undo/redo and re-requires physical confirmation.
 - Automated tests cover replacement counts, case-insensitive matching, page scope, sensitive/dynamic exclusion, and input guards.
 - Still no DOCX document parser/export, table editor, rich inline runs, flowing sections, comments or track changes. These gaps remain open.
+
+## November 6 — usability redesign (draft, no deployment)
+- Client-facing **Easy Layout Builder** opens in three clear stages: **Start** (choose Blank/PDF, enter physical dimensions and fold), **Design** (insert common text/customer/bank fields and select objects), and **Check & save** (compare Quick/PR2 modes, run audit, save offline). Steps do not erase draft data.
+- Existing advanced editor, PDF calibration, label-splitting, OCR review, graphics, precision tools, multi-page controls, catalog and Master approval remain available under **Advanced tools**. Easy mode is UI-only and cannot activate/print without original approvals and safeguards.
+- Added readable numbered step cards, contextual explanations, action emphasis, BANK SETU theme variables, responsive widths and reduced-motion CSS. No new images, fonts, heavy animation, sync/print engines or production backend changes.
+- Source-level regression checks cover the three-stage UI, Windows-only runtime gating and approval flow. Automated build and real client testing are still required. This is not verified as professionally usable on every Windows display until human QA.
