@@ -22,6 +22,8 @@ import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
+import PassbookPageSetup from "./PassbookPageSetup";
+import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,type PageSetup} from "./layoutPageSetup";
 import {importWordDocx} from "./layoutWordDocumentImport";
 import {importLegacyWordDoc} from "./layoutLegacyWordImport";
 import {customerRepository} from "./core/customerRepository";
@@ -71,7 +73,7 @@ type LayoutPart = {
   preprinted: boolean;
   needsReview?: boolean;
 };
-type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
+type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; pageSetup?:PageSetup; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
 const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, fontCompression:100, lineHeight:1.18,locked:false,opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
 const customerFieldKeys = ["name","customerName","accountNo","accountNumber","customerId","dateOfBirth","fatherName","address","addressLine1","addressLine2","addressLine3","mobile","aadhaar","pan","nominee","accountOpeningDate","accountType","mode","operatingMode","pinCode","postOffice","ifsc","status","gender","religion","category","branchName"];
@@ -95,7 +97,8 @@ function initialDraft(mode: Mode, bankName: string): Draft {
   const account = addPart("field", "customer", "Account Number", "accountNumber", 16, 124);
   account.defaultValue = "Account Number"; account.width = 110;
   const fold = mode === "passbook" ? 88 : 0;
-  return { version: 1, mode, bankName, pageCount:1, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0, elements: [heading, name, account] };
+  return { version: 1, mode, bankName, pageCount:1, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0,
+    pageSetup:{...defaultPageSetup(),foldAxis:mode==="passbook"?"horizontal":"none"}, elements: [heading, name, account] };
 }
 function validDraft(draft: unknown, mode: Mode, bankName: string): draft is Draft {
   return validatePersistedLayoutDraft(draft, mode, bankName);
@@ -131,7 +134,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [easyMode,setEasyMode]=useState(true);
-  const [wordTab,setWordTab]=useState<"home"|"insert"|"layout"|"design"|"review"|"view">("home");
+  const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help">("home");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
@@ -451,13 +454,48 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (!selectedId||selected?.locked===true) return;
     modify(current => ({ ...current, elements: current.elements.map(part => part.id === selectedId ? { ...part, ...change } : part) }));
   };
-  const setMeasure = (key: "widthMm" | "heightMm" | "foldMm" | "printStartMm", value: string) => {
-    const mm = valueInMm(value, unit);
-    if (!Number.isFinite(mm)) return;
-    modify(current => ({ ...current, [key]: round(within(mm, key === "widthMm" || key === "heightMm" ? 50 : 0, 500)) }));
-    // Any physical-size, crease or start-position edit invalidates past approvals.
-    setPhysicalChecked(false);
-    setHardwareChecked(false);
+  // Page Setup always measures the OPEN book, not scanner A4 size.
+  const updatePageGeometry=(patch:Partial<Draft>,description:string)=>{
+    const candidate={...draft,...patch};
+    const errors=geometryErrors(candidate);
+    if(errors.length){setNotice("Page Setup: "+errors.join(" "));return;}
+    const outside=candidate.elements.find(part=>
+      part.x<0||part.y<0||part.x+part.width>candidate.widthMm+.25||
+      part.y+part.height>candidate.heightMm+.25);
+    if(outside){
+      setNotice("Page size blocked: '"+outside.label.slice(0,50)+
+        "' would fall outside the paper. Reposition that object first.");return;
+    }
+    modify(current=>({...current,...patch}));
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setPr2Proof("");
+    setNotice(description+" · Physical alignment and printer approval must be rechecked.");
+  };
+  const changePageMeasurement=(key:"widthMm"|"heightMm"|"foldMm"|"printStartMm",mm:number)=>{
+    if(!Number.isFinite(mm))return;
+    updatePageGeometry({[key]:Math.round(mm*1000)/1000},"Changed "+key);
+  };
+  const changePageSetup=(next:PageSetup)=>{
+    const old=pageSetupFor(draft),foldChanged=old.foldAxis!==next.foldAxis;
+    const max=next.foldAxis==="vertical"?draft.widthMm:draft.heightMm;
+    const fold=next.foldAxis==="none"?0:foldChanged?Math.round(max/2*1000)/1000:draft.foldMm;
+    const printStart=next.foldAxis==="none"?0:foldChanged?
+      Math.min(max,Math.round((fold+12)*1000)/1000):draft.printStartMm;
+    updatePageGeometry({pageSetup:next,foldMm:fold,printStartMm:printStart},"Changed fold or margins");
+  };
+  const choosePaperPreset=(presetId:string)=>{
+    const preset=presetGeometry(presetId);if(!preset)return;
+    updatePageGeometry({...preset},"Selected measured sample preset");
+  };
+  const changePageOrientation=(orientation:"portrait"|"landscape")=>{
+    const isPortrait=draft.heightMm>=draft.widthMm;
+    if((orientation==="portrait")===isPortrait)return;
+    const setup=pageSetupFor(draft),w=draft.heightMm,h=draft.widthMm;
+    const limit=setup.foldAxis==="vertical"?w:h;
+    const fold=setup.foldAxis==="none"?0:limit/2;
+    updatePageGeometry({widthMm:w,heightMm:h,foldMm:fold,
+      printStartMm:setup.foldAxis==="none"?0:Math.min(limit,fold+12)},
+      "Changed orientation to "+orientation);
   };
   const append = (kind: Kind, origin: Origin, label: string, fieldKey = "") => {
     const part = addPart(kind, origin, label, fieldKey, 14, draft.foldMm ? draft.foldMm + 12 : 25);
