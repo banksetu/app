@@ -20,6 +20,8 @@ import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } 
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
+import {importWordDocx} from "./layoutWordDocumentImport";
 
 type Mode = "passbook" | "accountOpening";
 type Kind = "text" | "field" | "rectangle" | "line" | "photo" | "image" | "ellipse";
@@ -102,8 +104,9 @@ function draftKey(mode: Mode, bankName: string) {
 }
 
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
-type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string};
-function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user" }: StudioProps) {
+type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[]};
+type StudioCoreProps=StudioProps & {setup:LayoutSetup};
+function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup }: StudioCoreProps) {
   const storageKey = draftKey(mode, bankName);
   const [scopeEpoch,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
@@ -121,14 +124,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [easyMode,setEasyMode]=useState(true);
-  const [guidedStep,setGuidedStep]=useState<"start"|"edit"|"check">("start");
+  const [guidedStep,setGuidedStep]=useState<"start"|"edit"|"check">("edit");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
   const [snapGrid, setSnapGrid] = useState(false);
   const [smartGuidesEnabled,setSmartGuidesEnabled]=useState(false);
   const [activeGuides,setActiveGuides]=useState<SnapGuide[]>([]);
-  const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
+  const [preview, setPreview] = useState<"quick" | "dotmatrix">(setup.output);
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
@@ -173,6 +176,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const resizeRef = useRef<{id:string;pageX:number;pageY:number;width:number;height:number}|null>(null);
   const [dirty, setDirty] = useState(false);
   const [savingLayout,setSavingLayout]=useState(false);
+  const initialImportRef=useRef(false);
+  const [mappingSource,setMappingSource]=useState<"customer"|"bank"|null>(null);
+  const mapStartRef=useRef<{x:number;y:number}|null>(null);
+  const editsRef=useRef(0);
   const localRevisionRef=useRef(0);
   const editingRef=useRef(false);
   const editorScopeRef=useRef(storageKey);
@@ -233,7 +240,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     // and Windows SQLite. Cloud only reconciles missing/changed generic drafts.
     void (async()=>{
       let info="";
-      if(navigator.onLine&&["client_admin","client_user"].includes(accountRole)){
+      if(setup.method==="continue"&&navigator.onLine&&["client_admin","client_user"].includes(accountRole)){
         try{
           const result=await synchronizeLocalLayoutSlots(bankName,mode);
           if(result.conflicts)info="Other device changed a layout; your local edits were preserved for review.";
@@ -246,7 +253,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         const slot=local.find(item=>item.slotId==="layout-1");
         if(slot && validDraft(slot.draft,mode,bankName)){
           localRevisionRef.current=slot.localRevision;
-          if(!editingRef.current){
+          if(!editingRef.current&&setup.method==="continue"){
             setDraft(slot.draft as unknown as Draft);
             if(info)setNotice(info);
           }
@@ -254,7 +261,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           // One-way, non-destructive migration of older verified legacy drafts.
           const raw=localStorage.getItem(storageKey);
           const prior=raw?JSON.parse(raw) as unknown:null;
-          if(validDraft(prior,mode,bankName)&&!editingRef.current){
+          if(validDraft(prior,mode,bankName)&&!editingRef.current&&setup.method==="continue"){
             const saved=await saveLocalLayout(bankName,mode,"layout-1",prior,0);
             if(active&&runVersion===workspaceVersionRef.current){
               localRevisionRef.current=saved.localRevision;
@@ -268,7 +275,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       }
     })();
     return()=>{active=false;};
-  },[bankName,mode,accountRole,storageKey,scopeEpoch]);
+  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method]);
 
   const refreshCatalog = useCallback(async (review = false) => {
     if (!bankName.trim() && !review) return;
@@ -765,10 +772,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } catch(error) { setNotice("Graphic import failed: "+(error instanceof Error?error.message:"Unknown error")); }
     finally { URL.revokeObjectURL(objectUrl); }
   };
-  const importPdf = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
+  const importPdfFile = async (file:File) => {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) { setNotice("Please choose a PDF sample."); return; }
     if (file.size > 12 * 1024 * 1024) { setNotice("Please choose a PDF up to 12 MB."); return; }
     setBusy(true);
