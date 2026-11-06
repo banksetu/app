@@ -135,6 +135,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [easyMode,setEasyMode]=useState(true);
+  const [simplePaperOpen,setSimplePaperOpen]=useState(false);
   const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help">("home");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
@@ -1536,6 +1537,60 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <span className="ls-workflow-number">02</span><span><strong>Templates & approval</strong><small>Master review, activation and rollback</small></span>
       </button>
     </nav>
+    {easyMode&&workspaceView==="design"&&<section className="ls-simple-flow" aria-label="Simple passbook editing and saving">
+      <div className="ls-simple-head">
+        <div><strong>Easy Passbook Designer</strong>
+          <p>Make your design in 4 steps. The original full Word tools are available under Advanced Tools.</p></div>
+        <span>{setup.output==="dotmatrix"?"Direct PR2 Draft":"Quick Passbook Draft"} · Layout {selectedLayoutSlot}</span>
+      </div>
+      <div className="ls-simple-step-row">
+        <button type="button" aria-expanded={simplePaperOpen} onClick={()=>setSimplePaperOpen(v=>!v)}>
+          <b>1</b><span><strong>Page Size & Fold</strong><small>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</small></span>
+        </button>
+        <button type="button" onClick={()=>{append("text","static","New text");setNotice("New editable text inserted. Click the text on the paper to change it.");}}>
+          <b>2</b><span><strong>Add Text</strong><small>Click it on the page to edit</small></span>
+        </button>
+        <button type="button" onClick={()=>{setMappingSource("customer");setNotice("Drag a rectangle on the passbook to choose a customer field.");}}>
+          <b>3</b><span><strong>Customer Data</strong><small>Drag a box on the page</small></span>
+        </button>
+        <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>
+          <b>4</b><span><strong>{previewOpen?"Hide Preview":"Preview Design"}</strong>
+            <small>{previewOnly?"With sample customer":"With selected customer"}</small></span>
+        </button>
+      </div>
+      {simplePaperOpen&&<PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
+        onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
+        onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>}
+      <div className="ls-simple-save-row" role="group" aria-label="Save and submit design">
+        <div className="ls-simple-save-status" role="status">
+          <strong>{dirty?"Unsaved changes":"Design ready to save"}</strong>
+          <small>{previewOnly?"Codespaces browser demo — no Firebase or Master Admin connection":
+            "Save your draft first; Client Admin can request Master approval after safety checks."}</small>
+        </div>
+        <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy} onClick={()=>{void save();}}>
+          {savingLayout?"Saving…":"Save Design"}
+        </button>
+        <button type="button" className="ls-simple-backup" disabled={busy||savingLayout}
+          onClick={()=>{void (async()=>{const ok=await save();if(ok)exportJson();})();}}>
+          Save & Download Backup
+        </button>
+        {previewOnly?
+          <button type="button" disabled title="Codespaces is an isolated demo. Export an editable JSON backup and use the authorized Windows Client Admin workflow for approval.">
+            Send to Master — Windows Only
+          </button>:
+          canSubmit?<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>
+            Send to Master for Approval
+          </button>:<span className="ls-simple-permission">Master approval is available to Client Admin only.</span>}
+      </div>
+      {previewOnly&&<p className="ls-simple-help">
+        Your design is saved only in this browser. Use <strong>Save & Download Backup</strong> to keep
+        the editable file. In the authorized Windows app, restore it under the same bank and
+        have the Client Admin submit it for Master review. Codespaces cannot send approvals.
+      </p>}
+      <button type="button" className="ls-simple-advanced" onClick={()=>setEasyMode(false)}>
+        Show All Word / Advanced Tools
+      </button>
+    </section>}
     <div className="ls-workflow-context">
       <span className="ls-workflow-indicator" aria-hidden="true"></span>
       {workspaceView==="design"
