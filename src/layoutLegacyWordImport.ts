@@ -22,8 +22,8 @@ function compoundStreams(bytes:Uint8Array){
   const sectorSize=2**v16(bytes,30),miniSize=2**v16(bytes,32);
   if(![512,4096].includes(sectorSize)||miniSize!==64)throw Error("Unsupported Word compound sector size.");
   const sector=(id:number)=>{
-    if(!Number.isInteger(id)||id<0||id>=Math.ceil(bytes.length/sectorSize))throw Error("Invalid DOC sector pointer.");
-    return bounds(bytes,512+id*sectorSize,sectorSize);
+    if(!Number.isInteger(id)||id<0||Math.max(512,sectorSize)+id*sectorSize+sectorSize>bytes.length)throw Error("Invalid DOC sector pointer.");
+    return bounds(bytes,Math.max(512,sectorSize)+id*sectorSize,sectorSize);
   };
   const fatSectorIds:number[]=[];
   for(let i=0;i<109;i++){const n=v32(bytes,76+i*4);if(n<0xfffffffa)fatSectorIds.push(n);}
