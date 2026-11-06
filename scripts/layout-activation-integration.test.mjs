@@ -52,3 +52,25 @@ test("step 6: Master approval is compare-and-swap and preserves template data on
  assert.match(section,/Refresh before making a new decision/);
  assert.doesNotMatch(section,/await putDocument\(env,path/);
 });
+
+test("Master approval auto-applies a separately calibrated target Quick/PR2 slot atomically",()=>{
+ const begin=worker.indexOf('if (route === "/submit-layout-template")');
+ const end=worker.indexOf('if (route === "/get-workspace-layout-selection"',begin);
+ const text=worker.slice(begin,end);
+ for(const expected of [
+   "requestedOutput","requestedSlot","autoActivateOnApproval",
+   "body.confirmedPhysicalSample===true",
+   "body.confirmedPrintedLabels===true",
+   "body.confirmedPrinterCalibration===true",
+   "layoutSelectionKey(tenantId,template.mode,template.requestedOutput,template.requestedSlot)",
+   "normalizedActivationRecord(oldSelection,id,actor.uid,now)",
+   "currentDocument:oldSelectionDoc?{updateTime:oldSelectionDoc.updateTime}:{exists:false}",
+   "JSON.stringify({writes})"
+ ])assert.ok(text.includes(expected),expected);
+ assert.match(text,/Master approval cannot auto-activate a different bank/);
+ assert.match(text,/The submitting workspace changed bank/);
+ const studio=file("src/CustomizeLayoutStudio.tsx");
+ assert.match(studio,/autoActivateOnApproval:true/);
+ assert.match(studio,/confirmedPrinterCalibration:hardwareChecked/);
+ assert.match(studio,/requestedOutput/);
+});
