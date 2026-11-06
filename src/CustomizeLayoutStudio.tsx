@@ -183,6 +183,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const initialImportRef=useRef(false);
   const [mappingSource,setMappingSource]=useState<"customer"|"bank"|null>(null);
   const mapStartRef=useRef<{x:number;y:number}|null>(null);
+  const [mapPendingRect,setMapPendingRect]=useState<{x:number;y:number;width:number;height:number}|null>(null);
   const editsRef=useRef(0);
   const [autosaveStatus,setAutosaveStatus]=useState("Draft autosave is enabled after editing.");
   const [previewOpen,setPreviewOpen]=useState(false);
@@ -1167,6 +1168,29 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if(part.kind!=="text"&&part.kind!=="field")return partText(part);
     return <span style={compressedTextStyle(part,zoom)}>{partText(part)}</span>;
   };
+  const mapPointer=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    const bounds=event.currentTarget.getBoundingClientRect();
+    return {x:round(within((event.clientX-bounds.left)/(PX_PER_MM*zoom),0,draft.widthMm)),
+      y:round(within((event.clientY-bounds.top)/(PX_PER_MM*zoom),0,draft.heightMm))};
+  };
+  const finishMapping=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    const start=mapStartRef.current;
+    if(!mappingSource||!start)return;
+    mapStartRef.current=null;
+    const end=mapPointer(event);
+    const x=within(Math.min(start.x,end.x),0,draft.widthMm-10);
+    const y=within(Math.min(start.y,end.y),0,draft.heightMm-8);
+    const width=round(within(Math.abs(end.x-start.x),10,draft.widthMm-x));
+    const height=round(within(Math.abs(end.y-start.y),8,draft.heightMm-y));
+    if(draft.elements.length>=300){setNotice("Maximum layout elements reached.");setMappingSource(null);setMapPendingRect(null);return;}
+    const key=mappingSource==="customer"?"name":(Object.keys(bankValues).sort()[0]||"branchName");
+    const part=addPart("field",mappingSource,mappingSource==="customer"?"Customer Data":"Bank Information",key,x,y);
+    part.width=width;part.height=height;part.page=selectedPage;part.z=Math.max(0,...draft.elements.map(item=>item.z))+1;
+    modify(current=>({...current,elements:[...current.elements,part]}));
+    setSelectedId(part.id);setWordSelectedIds([part.id]);setShowProps(true);
+    setMappingSource(null);setMapPendingRect(null);
+    setNotice("Field box created. Choose its exact field key in the Properties panel on the right.");
+  };
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
@@ -1276,6 +1300,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div>
       </>}
     </section>}
+    {mappingSource&&<div className="ls-map-alert" role="status">Drag a box on the passbook paper, then choose the correct {mappingSource} field in Properties.
+      <button type="button" onClick={()=>{setMappingSource(null);mapStartRef.current=null;setMapPendingRect(null);}}>Cancel mapping</button>
+    </div>}
     <div className="ls-preview-strip" role="group" aria-label="Read-only customer preview and draft status">
       <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>👁 {previewOpen?"Hide Customer Preview":"Preview with Customer Data"}</button>
       {previewOpen&&<label>Customer <select value={previewCustomerKey} onChange={e=>setPreviewCustomerKey(e.target.value)}>
@@ -1360,6 +1387,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
       <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
       <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
+      <button type="button" aria-pressed={mappingSource==="customer"} onClick={()=>setMappingSource("customer")}>Draw Customer Data Box</button>
+      <button type="button" aria-pressed={mappingSource==="bank"} onClick={()=>setMappingSource("bank")}>Draw Bank Data Box</button>
         </div>
       </div>
       <details className="ls-tool-card ls-tool-secondary">
@@ -1664,6 +1693,25 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             modify(current=>({...current,elements:next}));setPhysicalChecked(false);setHardwareChecked(false);
           }catch(error){setNotice(error instanceof Error?error.message:"Cannot move selection.");}
         }}>
+          {mappingSource&&<div className="ls-map-overlay" role="presentation"
+            title="Drag over the paper to create a mapped field box"
+            onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();
+              const start=mapPointer(event);mapStartRef.current=start;
+              setMapPendingRect({...start,width:0,height:0});event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={event=>{
+              if(!mapStartRef.current)return;
+              const start=mapStartRef.current,end=mapPointer(event);
+              setMapPendingRect({x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),
+                width:Math.abs(end.x-start.x),height:Math.abs(end.y-start.y)});
+            }}
+            onPointerUp={event=>{event.stopPropagation();finishMapping(event);}}
+            onPointerCancel={()=>{mapStartRef.current=null;setMapPendingRect(null);}}>
+            <span className="ls-map-hint">Draw {mappingSource==="customer"?"Customer":"Bank"} Data Box</span>
+            {mapPendingRect&&<div className="ls-map-preview" style={{left:mapPendingRect.x*PX_PER_MM*zoom,
+              top:mapPendingRect.y*PX_PER_MM*zoom,width:mapPendingRect.width*PX_PER_MM*zoom,
+              height:mapPendingRect.height*PX_PER_MM*zoom}}/>}
+          </div>}
           {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
           {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
