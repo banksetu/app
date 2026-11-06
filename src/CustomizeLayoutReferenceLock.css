@@ -225,3 +225,66 @@ html[data-appearance="dark"] .ls-start-wizard,
   --ls-border:#b5cbe2;--ls-accent:#135bad;--ls-soft:#e8f2ff;
   background:#e9eff8;color:#132842;
 }
+
+/* First usable viewport: the real ribbon now precedes the paper in DOM.
+   Former setup/import cards are available only in the disclosure below. */
+.layout-studio > .ls-word-suite {order:2;grid-column:2}
+.layout-studio > .ls-workspace {order:3;grid-column:2}
+.layout-studio > .ls-designer-status {order:4;grid-column:2}
+.layout-studio > .ls-extra-tools {order:70;grid-column:2}
+.layout-studio .ls-word-suite {
+  border:0;border-bottom:1px solid #b9cee4;min-height:99px;overflow:visible;
+}
+.layout-studio .ls-word-suite .ls-word-tabs {background:#edf4fc}
+.layout-studio .ls-word-suite .ls-word-tab-content {
+  display:flex;align-items:center;gap:5px;min-height:68px;
+  box-shadow:none;overflow-x:auto;scrollbar-width:thin
+}
+.layout-studio .ls-word-suite .ls-word-tab-content > button,
+.layout-studio .ls-word-suite .ls-word-tab-content > label {
+  flex:0 0 auto
+}
+.layout-studio .ls-word-layout-commands button {border:1px solid #b0c8e4}
+.layout-studio .ls-word-layout-commands span {font-size:11px;color:#416386}
+.layout-studio > .ls-extra-tools {
+  margin:12px 12px 5px;border:1px solid #bfd0e4;border-radius:6px;
+  background:#f9fcff;overflow:hidden
+}
+.layout-studio > .ls-extra-tools > summary {
+  cursor:pointer;list-style:auto;font-size:11px;font-weight:700;
+  padding:9px 13px;color:#275584
+}
+.layout-studio .ls-extra-tools .ls-tool-collection {
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;
+  margin:8px;padding:0
+}
+.layout-studio .ls-extra-tools .ls-page-card {margin:8px}
+.layout-studio > .ls-page-setup-backdrop {
+  position:fixed;inset:0;z-index:2147480000;display:flex;
+  justify-content:center;align-items:center;padding:24px;
+  background:rgba(5,25,48,.62)
+}
+.layout-studio .ls-page-setup-dialog {
+  display:flex;flex-direction:column;gap:10px;
+  max-width:min(100%,1020px);width:100%;max-height:min(90vh,950px);
+  padding:0 12px 14px;border-radius:9px;border:1px solid #b7cbe4;
+  background:#f8fbff;color:#152c48;box-shadow:0 25px 90px #061b3e55;
+  overflow:auto
+}
+.layout-studio .ls-page-setup-dialog > header {
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:10;gap:14px;padding:12px 5px;
+  border-bottom:1px solid #c7d9eb;background:#f8fbff;color:#153967
+}
+.layout-studio .ls-page-setup-dialog > header strong {font-size:15px}
+.layout-studio .ls-page-setup-dialog > footer {
+  display:flex;justify-content:flex-end;padding:8px 5px 0
+}
+.layout-studio .ls-page-setup-dialog button:focus-visible {
+  outline:2px solid #0a63c7;outline-offset:2px
+}
+@media(max-width:810px){
+  .layout-studio > .ls-page-setup-backdrop {padding:9px}
+  .layout-studio .ls-page-setup-dialog {max-height:94vh}
+  .layout-studio .ls-extra-tools .ls-tool-collection {grid-template-columns:1fr}
+}
