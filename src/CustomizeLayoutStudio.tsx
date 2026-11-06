@@ -1725,7 +1725,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
             <option key={symbol+index} value={symbol}>{symbol}</option>)}
         </select></label>
-      </div>
+      </div>}
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls">
         <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
           {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
