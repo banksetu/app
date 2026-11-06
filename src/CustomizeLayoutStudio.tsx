@@ -285,12 +285,37 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             }
           }
         }else if(info)setNotice(info);
+        // Continue Editing checks a private tenant draft without overwriting any
+        // different local revision. The user can resolve a conflict explicitly.
+        if(setup.method==="continue"&&canSubmit&&navigator.onLine&&
+           Object.keys(bankValues).length>0&&!editingRef.current){
+          try{
+            const cloud=await readPrivateLayoutDraft(bankName,mode,layoutSlotId);
+            if(!active||runVersion!==workspaceVersionRef.current||editingRef.current)return;
+            if(cloud.draft){
+              if(slot&&validDraft(slot.draft,mode,bankName)){
+                if(JSON.stringify(slot.draft)===JSON.stringify(cloud.draft)){
+                  privateRevisionRef.current=cloud.revision;
+                  setAutosaveStatus("Local and private cloud versions match.");
+                }else{
+                  setAutosaveStatus("Different private cloud draft exists; use Restore Private Cloud Draft to review.");
+                  setNotice("Your local draft and private cloud draft differ. Nothing was overwritten.");
+                }
+              }else{
+                privateRevisionRef.current=cloud.revision;
+                setDraft(cloud.draft as Draft);setDirty(true);editingRef.current=true;
+                setNotice("Continued editing private cloud draft revision "+cloud.revision+". Local save is pending.");
+              }
+            }else privateRevisionRef.current=0;
+          }catch(error){setAutosaveStatus("Offline draft available. Private cloud check: "+
+              (error instanceof Error?error.message:"Unavailable"));}
+        }
       }catch(error){
         if(active&&runVersion===workspaceVersionRef.current)setNotice("Existing local draft was retained. Offline layout recovery: "+(error instanceof Error?error.message:"Unavailable"));
       }
     })();
     return()=>{active=false;};
-  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method,layoutSlotId]);
+  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method,layoutSlotId,canSubmit,bankValues]);
 
   const refreshCatalog = useCallback(async (review = false) => {
     if (!bankName.trim() && !review) return;
