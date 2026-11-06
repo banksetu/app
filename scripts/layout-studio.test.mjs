@@ -62,7 +62,7 @@ import "./layout-runtime-values.test.mjs";
 import "./layout-activation-integration.test.mjs";
 
 test("steps 1–4: import prioritizes digital text, then OCR, with perspective and safety review",()=>{
- const start=editor.indexOf("const importPdf = async");
+ const start=editor.indexOf("const importPdfFile = async");
  assert.ok(start>0);
  const part=editor.slice(start);
  const digital=part.indexOf("for (const item of textLayer.items)");
