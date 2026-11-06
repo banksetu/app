@@ -473,7 +473,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   };
   const changePageMeasurement=(key:"widthMm"|"heightMm"|"foldMm"|"printStartMm",mm:number)=>{
     if(!Number.isFinite(mm))return;
-    updatePageGeometry({[key]:Math.round(mm*1000)/1000},"Changed "+key);
+    const value=Math.round(mm*1000)/1000;
+    if(key==="foldMm"&&value>draft.printStartMm&&
+       pageSetupFor(draft).foldAxis!=="none"){
+      const max=pageSetupFor(draft).foldAxis==="vertical"?draft.widthMm:draft.heightMm;
+      const previousGap=Math.max(0,draft.printStartMm-draft.foldMm);
+      updatePageGeometry({foldMm:value,printStartMm:Math.min(max,value+previousGap)},
+        "Moved fold and preserved the data-start offset");return;
+    }
+    updatePageGeometry({[key]:value},"Changed "+key);
   };
   const changePageSetup=(next:PageSetup)=>{
     const old=pageSetupFor(draft),foldChanged=old.foldAxis!==next.foldAxis;
@@ -498,7 +506,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       "Changed orientation to "+orientation);
   };
   const append = (kind: Kind, origin: Origin, label: string, fieldKey = "") => {
-    const part = addPart(kind, origin, label, fieldKey, 14, draft.foldMm ? draft.foldMm + 12 : 25);
+    const axis=pageSetupFor(draft).foldAxis;
+    const x=axis==="vertical"&&draft.printStartMm>0?
+      Math.min(Math.max(5,draft.widthMm-85),draft.printStartMm+4):14;
+    const y=axis==="vertical"?Math.max(14,pageSetupFor(draft).marginTopMm+5):
+      Math.min(Math.max(15,draft.heightMm-16),draft.printStartMm>0?draft.printStartMm+3:
+        draft.foldMm>0?draft.foldMm+12:25);
+    const part = addPart(kind, origin, label, fieldKey, x, y);
     part.z = Math.max(0, ...draft.elements.map(p => p.z)) + 1;
     part.page = selectedPage;
     modify(current => ({ ...current, elements: [...current.elements, part] }));
@@ -507,11 +521,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   // Word-like insert commands use the existing editable object model.
   const insertEditableTable=(rows:number,columns:number)=>{
     const margin=pageSetupFor(draft);
-    const cellWidth=Math.min(35,(draft.widthMm-margin.marginLeftMm-margin.marginRightMm)/columns);
+    const x=margin.foldAxis==="vertical"?
+      Math.max(margin.marginLeftMm+3,draft.printStartMm+3):margin.marginLeftMm+3;
+    const cellWidth=Math.min(35,(draft.widthMm-margin.marginRightMm-x)/columns);
     const cellHeight=10;
-    const x=margin.marginLeftMm+3;
-    const y=Math.max(margin.marginTopMm+4,draft.printStartMm?draft.printStartMm+4:22);
-    if(rows<1||rows>8||columns<1||columns>8||
+    const y=margin.foldAxis==="vertical"?Math.max(18,margin.marginTopMm+4):
+      Math.max(margin.marginTopMm+4,draft.printStartMm?draft.printStartMm+4:22);
+    if(rows<1||rows>8||columns<1||columns>8||cellWidth<5||
        draft.elements.length+rows*columns*2>300||
        x+columns*cellWidth>draft.widthMm-margin.marginRightMm||
        y+rows*cellHeight>draft.heightMm-margin.marginBottomMm){
