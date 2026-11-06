@@ -27,7 +27,7 @@ export default function LayoutSetupWizard({currentBank,banks,accountOpening,onOp
     if(method==="pdf"&&(file?.name.toLowerCase().endsWith(".pdf")!==true||file.size>12*1024*1024))
       return setError("Choose a PDF sample up to 12 MB.");
     if(method==="word"&&(!file||!/\.docx?$/i.test(file.name)||file.size>8*1024*1024))
-      return setError("Choose a DOCX document up to 8 MB. Older DOC files require conversion to DOCX.");
+      return setError("Choose a Word DOC or DOCX document up to 8 MB.");
     setError("");onOpen({bankName:bank.trim(),method,output:accountOpening?"quick":output,file:file||undefined});
   };
   return <section className="ls-start-wizard" aria-label="Passbook layout setup">
@@ -51,7 +51,7 @@ export default function LayoutSetupWizard({currentBank,banks,accountOpening,onOp
     {step==="method"&&<div className="ls-wizard-page">
       <h3>How would you like to start?</h3>
       <div className="ls-wizard-choices">
-      {([["pdf","Upload PDF Sample","Auto-read PDF text/OCR and open editable layout"],["word","Upload Word DOC/DOCX","Import DOCX text; older DOC must be converted to DOCX"],["blank","Create New Layout","Start with an empty measured page"]] as const).map(([id,label,desc])=>
+      {([["pdf","Upload PDF Sample","Auto-read PDF text/OCR and open editable layout"],["word","Upload Word DOC/DOCX","Import editable Word DOC/DOCX text and basic styles"],["blank","Create New Layout","Start with an empty measured page"]] as const).map(([id,label,desc])=>
         <button key={id} type="button" aria-pressed={method===id} onClick={()=>{setMethod(id);setFile(null);setError("");setStep("output");}}>
           <strong>{label}</strong><small>{desc}</small>
         </button>)}</div>
