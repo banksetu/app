@@ -10,6 +10,7 @@ import { reconcileImportedText, textForOverlapReview } from "./layoutImportRevie
 import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
+import {wordTransform,wordNudge,wordGroup,wordGroupIds,type WordAction} from "./layoutWordGeometry.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
@@ -21,7 +22,7 @@ import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 type Mode = "passbook" | "accountOpening";
 type Kind = "text" | "field" | "rectangle" | "line" | "photo" | "image" | "ellipse";
 type Origin = "static" | "customer" | "bank" | "preprinted" | "dotmatrix";
-type Align = "left" | "center" | "right";
+type Align = "left" | "center" | "right" | "justify";
 type Unit = "mm" | "cm" | "in";
 
 type LayoutPart = {
@@ -52,6 +53,9 @@ type LayoutPart = {
   borderWidth: number;
   letterSpacing: number;
   fontCompression?:number;
+  lineHeight?:number;
+  locked?:boolean;
+  groupId?:string;
   opacity: number;
   quick: boolean;
   dotMatrix: boolean;
@@ -60,7 +64,7 @@ type LayoutPart = {
 };
 type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
-const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, fontCompression:100, opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
+const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, fontCompression:100, lineHeight:1.18,locked:false,opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
 const fonts = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana", "Tahoma", "Noto Sans", "Noto Serif"];
 const randomId = () => "part-" + Math.random().toString(36).slice(2, 11);
 
@@ -105,6 +109,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     return initialDraft(mode, bankName);
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [wordSelectedIds,setWordSelectedIds]=useState<string[]>([]);
+  const [wordGapMm,setWordGapMm]=useState(5);
   const [unit, setUnit] = useState<Unit>("mm");
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -154,7 +160,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [showProps, setShowProps] = useState(true);
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
-  const dragRef = useRef<{ id: string; pageX: number; pageY: number; x: number; y: number } | null>(null);
+  const dragRef = useRef<{id:string;pageX:number;pageY:number;members:Array<{id:string;x:number;y:number;width:number;height:number}>}|null>(null);
   const resizeRef = useRef<{id:string;pageX:number;pageY:number;width:number;height:number}|null>(null);
   const [dirty, setDirty] = useState(false);
   const [savingLayout,setSavingLayout]=useState(false);
@@ -167,7 +173,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     // Never bring another tenant's unsaved customer/template preview across.
     // Only the existing scoped repository may restore the new owner's draft.
     setDraft(initialDraft(mode,bankName));
-    setSelectedId(null);setSelectedPage(1);setTemporaryValues({});
+    setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);setTemporaryValues({});
     setReferencePages([]);setReferenceVisible(false);setScanSuggestion(null);
     setScanFrame(null);setScanHasImportedObjects(false);
     setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});
@@ -196,6 +202,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     }
   },[storageKey,resetForNewWorkspace]);
   const selected = draft.elements.find(part => part.id === selectedId) || null;
+  const liveWordIds=selectedId?(wordSelectedIds.includes(selectedId)?wordSelectedIds:[selectedId]):[];
+  const selectedWordParts=draft.elements.filter(p=>liveWordIds.includes(p.id)&&(p.page??1)===selectedPage);
+  const selectWordObject=(part:LayoutPart,additive=false)=>{
+    const members=wordGroupIds(draft.elements,part);
+    if(additive){
+      const current=new Set(liveWordIds),allPresent=members.every(id=>current.has(id));
+      for(const id of members){if(allPresent)current.delete(id);else current.add(id);}
+      const next=[...current];setWordSelectedIds(next);
+      setSelectedId(next.includes(part.id)?part.id:(next[next.length-1]??null));
+    }else{setWordSelectedIds(members);setSelectedId(part.id);}
+  };
   const canReview = accountRole === "master_owner" || accountRole === "admin";
   const canSubmit = accountRole === "client_admin";
   const ordered = useMemo(() => [...draft.elements.filter(part => (part.page||1)===selectedPage)].sort((a, b) => a.z - b.z), [draft.elements,selectedPage]);
@@ -340,7 +357,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setDirty(true);
   }, []);
   const edit = (change: Partial<LayoutPart>) => {
-    if (!selectedId) return;
+    if (!selectedId||selected?.locked===true) return;
     modify(current => ({ ...current, elements: current.elements.map(part => part.id === selectedId ? { ...part, ...change } : part) }));
   };
   const setMeasure = (key: "widthMm" | "heightMm" | "foldMm" | "printStartMm", value: string) => {
@@ -356,14 +373,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     part.z = Math.max(0, ...draft.elements.map(p => p.z)) + 1;
     part.page = selectedPage;
     modify(current => ({ ...current, elements: [...current.elements, part] }));
-    setSelectedId(part.id);
+    setSelectedId(part.id);setWordSelectedIds([part.id]);
   };
   const startFromBlank=async()=>{
     if(busy)return;
     if(!await confirmAction("Create a blank, measured passbook/page on this device? The current editor is preserved in Undo; export the JSON before replacing unsaved work."))return;
     try{
       modify(current=>startBlankLayout(current));
-      setSelectedId(null);setSelectedPage(1);setPreview("quick");
+      setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);setPreview("quick");
       setReferencePages([]);setReferenceVisible(false);
       setScanSuggestion(null);setScanFrame(null);setScanHasImportedObjects(false);
       setSuggestedLabels([]);setCollisions([]);setConfirmedPreprinted({});
@@ -371,6 +388,46 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
       setTemporaryValues({});setNotice("A blank, bank-independent Word-style document is ready. Add text, labels, mapped fields, shapes and exact mm/cm/in coordinates. Undo restores your previous local editor.");
     }catch(error){setNotice(error instanceof Error?error.message:"Blank canvas could not be created.");}
+  };
+  const applyWordAction=(action:WordAction)=>{
+    try{
+      const next=wordTransform(draft.elements,liveWordIds,
+        {widthMm:draft.widthMm,heightMm:draft.heightMm},action,selectedId??undefined);
+      modify(current=>({...current,elements:next}));
+      setPhysicalChecked(false);setHardwareChecked(false);
+      setNotice("Word alignment applied to "+liveWordIds.length+" selected object(s). Recheck the paper proof before activation.");
+    }catch(error){setNotice("Word alignment blocked: "+(error instanceof Error?error.message:"Invalid selection."));}
+  };
+  const groupWordSelection=()=>{
+    if(selectedWordParts.length<2){setNotice("Select at least two objects to Group.");return;}
+    try{
+      const groupId="group-"+Math.random().toString(36).slice(2,12);
+      const next=wordGroup(draft.elements,liveWordIds,groupId);
+      modify(current=>({...current,elements:next}));
+      setNotice("Selected objects grouped. Drag a group member to move the group together.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Could not group objects.");}
+  };
+  const ungroupWordSelection=()=>{
+    const ids=[...new Set(selectedWordParts.flatMap(p=>p.groupId?
+      draft.elements.filter(x=>x.groupId===p.groupId&&(x.page??1)===(p.page??1)).map(x=>x.id):[p.id]))];
+    try{
+      const next=wordGroup(draft.elements,ids,null);
+      modify(current=>({...current,elements:next}));
+      setWordSelectedIds(ids);if(ids.length)setSelectedId(ids[0]);
+      setNotice("Object group removed; fields and customer mapping remain unchanged.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Could not ungroup objects.");}
+  };
+  const lockWordSelection=(locked:boolean)=>{
+    if(!liveWordIds.length)return;
+    const keys=new Set(liveWordIds);
+    modify(current=>({...current,elements:current.elements.map(p=>keys.has(p.id)?{...p,locked}:p)}));
+    setNotice(locked?"Selected design objects locked. Unlock before editing geometry.":"Selected objects unlocked.");
+  };
+  const deleteWordSelection=()=>{
+    if(selectedWordParts.some(p=>p.locked)){setNotice("Unlock objects before deleting.");return;}
+    const keys=new Set(liveWordIds);
+    modify(current=>({...current,elements:current.elements.filter(p=>!keys.has(p.id))}));
+    setSelectedId(null);setWordSelectedIds([]);
   };
   const moveSelectedTo=(axis:"horizontal"|"vertical",side:"start"|"center"|"end")=>{
     if(!selected)return;
@@ -381,8 +438,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   };
   const copySelectedStyle=()=>{
     if(!selected)return;
-    const {font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,fontCompression,opacity,rotation}=selected;
-    setStyleClipboard({font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,fontCompression,opacity,rotation});
+    const {font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,fontCompression,lineHeight,opacity,rotation}=selected;
+    setStyleClipboard({font,size,bold,italic,underline,align,color,background,borderColor,borderWidth,letterSpacing,fontCompression,lineHeight,opacity,rotation});
     setNotice("Copied formatting only — no account number, customer field, tenant data or content was copied.");
   };
   const pasteSelectedStyle=()=>{
