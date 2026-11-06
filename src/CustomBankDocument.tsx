@@ -110,7 +110,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
         style={{minHeight:36,borderRadius:7,padding:"6px 10px"}}>
         {[1,2,3].map(n=><option key={n} value={n}>Layout {n}</option>)}
       </select>
-    </label>
+    </label>}
     {clientSearch ? <form className="client-document-search" onSubmit={search}>
       <label htmlFor="client-document-query">UNIVERSAL CUSTOMER SEARCH</label>
       <div><input id="client-document-query" placeholder="Account No. / Customer ID / Aadhaar / Mobile / AOF No. / Name" value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off" />
