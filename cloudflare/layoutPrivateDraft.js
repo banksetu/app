@@ -1,3 +1,4 @@
+import {sanitizePageSetup} from "./layoutPageGeometry.js";
 import {layoutManifestId,validCloudSlot} from "./layoutCloudSync.js";
 const KINDS=new Set(["text","field","rectangle","line","photo","image","ellipse"]);
 const ORIGINS=new Set(["static","customer","bank","preprinted","dotmatrix"]);
@@ -14,16 +15,17 @@ export function privateLayoutDraftPath(tenantId,bankKey,mode,slotId){
  */
 export function validatePrivateLayoutDraft(raw,bankName,mode){
   if(!raw||typeof raw!=="object"||Array.isArray(raw))throw Error("Draft must be a layout object.");
-  const keys=["version","mode","bankName","pageCount","widthMm","heightMm","foldMm","printStartMm","sourceArtworkStatus","elements"];
+  const keys=["version","mode","bankName","pageCount","widthMm","heightMm","foldMm","printStartMm","sourceArtworkStatus","pageSetup","elements"];
   if(Object.keys(raw).some(k=>!keys.includes(k)))throw Error("Unexpected private draft metadata.");
   if(raw.version!==1||raw.mode!==mode||raw.bankName!==bankName||
      !finite(raw.widthMm,50,500)||!finite(raw.heightMm,50,500)||
-     !finite(raw.foldMm,0,raw.heightMm)||!finite(raw.printStartMm,0,raw.heightMm)||
+     !finite(raw.foldMm,0,500)||!finite(raw.printStartMm,0,500)||
      !Number.isSafeInteger(raw.pageCount??1)||(raw.pageCount??1)<1||(raw.pageCount??1)>10||
      (mode==="passbook"&&(raw.pageCount??1)!==1)||
      ![undefined,"clean","needsReview","reviewed"].includes(raw.sourceArtworkStatus)||
      !Array.isArray(raw.elements)||raw.elements.length>300)
      throw Error("Invalid paper dimensions, bank, mode or elements.");
+  sanitizePageSetup(raw);
   const allowed=new Set(["id","kind","origin","label","fieldKey","value","defaultValue","x","y","width","height","z","page",
     "rotation","font","size","bold","italic","underline","align","color","background","borderColor","borderWidth","letterSpacing",
     "fontCompression","lineHeight","locked","groupId","opacity","quick","dotMatrix","preprinted","needsReview","imageData"]);
