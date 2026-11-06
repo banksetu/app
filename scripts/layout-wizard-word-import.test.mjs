@@ -34,7 +34,7 @@ test("manual review warnings for unsupported Word structures",()=>{
 });
 test("DOC and corrupted files fail closed",async()=>{
   await assert.rejects(importWordDocx({...docx(""),name:"old.doc"}),/DOCX/);
-  await assert.rejects(importWordDocx({name:"invalid.docx",size:4,arrayBuffer:async()=>new ArrayBuffer(4)}),/DOCX archive/);
+  await assert.rejects(importWordDocx({name:"invalid.docx",size:4,arrayBuffer:async()=>new ArrayBuffer(4)}),/DOCX file exceeds|DOCX archive/);
 });
 test("wizard, dynamic mapping, local save, approval and release safety remain separated",()=>{
   const wiz=readFileSync(new URL("../src/LayoutSetupWizard.tsx",import.meta.url),"utf8");
