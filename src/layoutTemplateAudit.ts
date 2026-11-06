@@ -1,3 +1,4 @@
+import {geometryErrors,type PageSetup} from "./layoutPageSetup.ts";
 /** Non-destructive audit of a draft bank layout.
  * Passing this audit does not substitute for original PDF comparison or
  * physical Epson PLQ / PR2 printing acceptance.
@@ -11,7 +12,7 @@ type AuditPart={
 };
 type AuditDraft={
   mode:string;bankName:string;widthMm:number;heightMm:number;
-  foldMm:number;printStartMm:number;pageCount?:number;sourceArtworkStatus?:"clean"|"needsReview"|"reviewed";elements:AuditPart[];
+  foldMm:number;printStartMm:number;pageSetup?:PageSetup;pageCount?:number;sourceArtworkStatus?:"clean"|"needsReview"|"reviewed";elements:AuditPart[];
 };
 export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
   const issues:AuditItem[]=[];
@@ -21,7 +22,7 @@ export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
   if(draft.sourceArtworkStatus==="needsReview")error("PDF raster or complex artwork requires manual recreation and explicit review.");
   if(!["passbook","accountOpening"].includes(draft.mode))error("Unknown layout mode.");
   if(!Number.isFinite(draft.widthMm)||!Number.isFinite(draft.heightMm)||draft.widthMm<50||draft.heightMm<50||draft.widthMm>500||draft.heightMm>500)error("Enter valid physical page width and height.");
-  if(!Number.isFinite(draft.foldMm)||!Number.isFinite(draft.printStartMm)||draft.foldMm<0||draft.foldMm>draft.heightMm||draft.printStartMm<0||draft.printStartMm>draft.heightMm)error("Fold line and print-start must be within page bounds.");
+  for(const message of geometryErrors(draft))error(message);
   if(draft.mode==="passbook"&&draft.foldMm>0&&draft.printStartMm<draft.foldMm)warning("Print start precedes the fold line; verify physical passbook fold.");
   const pageCount=draft.pageCount??1;
   if(!Number.isSafeInteger(pageCount)||pageCount<1||pageCount>10)error("The layout must have between one and ten valid pages.");
