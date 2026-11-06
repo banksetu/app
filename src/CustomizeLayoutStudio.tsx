@@ -307,10 +307,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if(!canSubmit || !bankName.trim())return;
     const runVersion=workspaceVersionRef.current;
     try{
-      const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode});
+      const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode,output:mode==="accountOpening"?"quick":setup.output,slot:mode==="accountOpening"?1:selectedLayoutSlot});
       if(runVersion===workspaceVersionRef.current)setLayoutSelection(state);
     } catch {if(runVersion===workspaceVersionRef.current)setLayoutSelection(null);}
-  },[canSubmit,bankName,mode,scopeEpoch]);
+  },[canSubmit,bankName,mode,scopeEpoch,setup.output,selectedLayoutSlot]);
   useEffect(()=>{void refreshSelection();},[refreshSelection]);
   const selectApprovedTemplate = async(action:"activate"|"rollback"|"disable",templateId?:string)=>{
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
@@ -323,7 +323,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setBusy(true);
     try{
       const response=await callBankSetuWorker<{success:boolean;revision:number;active:boolean}>("/set-workspace-layout-selection",{
-        mode,action,templateId,confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,confirmedPrinterCalibration:hardwareChecked,
+        mode,output:mode==="accountOpening"?"quick":setup.output,slot:mode==="accountOpening"?1:selectedLayoutSlot,
+        action,templateId,confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,confirmedPrinterCalibration:hardwareChecked,
       });
       await refreshSelection();setNotice("Workspace layout selection updated to revision "+response.revision+". You can revert or disable it using the same controls.");
     }catch(error){setNotice("Template activation was blocked: "+(error instanceof Error?error.message:"Unknown error"));}
@@ -1352,8 +1353,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <button type="button" disabled={busy} onClick={()=>{void submitForReview();}}>Submit Generic Template for Master Review</button>
         </>}
         {canSubmit && <div className="ls-selection-status">
-           <strong>Workspace Layout Selection</strong>
-           <span>{layoutSelection?.active ? "Approved template "+layoutSelection.template?.id+" · revision "+layoutSelection.revision : "Custom layout not active. Existing bank print layout is unchanged."}</span>
+           <strong>Approved Live Layout · {setup.output==="dotmatrix"?"Passbook PR2":"Quick Passbook"} · Slot {selectedLayoutSlot}</strong>
+           <span>{layoutSelection?.active ? "Approved template "+layoutSelection.template?.id+" · revision "+layoutSelection.revision : "This slot is not active. Original bank printing remains unchanged."}</span>
            <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("rollback");}}>Rollback Version</button>
            <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("disable");}}>Disable Custom Layout</button>
            <button type="button" onClick={()=>{void refreshSelection();}}>Refresh</button>
