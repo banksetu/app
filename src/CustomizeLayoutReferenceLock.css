@@ -206,3 +206,22 @@
   overflow:hidden;white-space:nowrap;text-overflow:clip;color:#19446c;
 }
 .layout-studio .ls-catalog-card {gap:9px;align-items:center}
+
+/* The approved reference has one fixed navy/white editor palette, even when
+   the surrounding BANK SETU application is in dark mode. */
+html[data-appearance="dark"] .layout-studio,
+.banksetu-app-shell[data-appearance="dark"] .layout-studio {
+  --ls-bg:#eaf0f7;--ls-surface:#fff;--ls-text:#15263e;--ls-muted:#556780;
+  --ls-border:#b9cce2;--ls-accent:#1264b7;--ls-soft:#e6f2ff;
+  background:#e8eef7;color:#15263e;border-color:#a9c2dc;
+}
+html[data-appearance="dark"] .layout-studio .ls-canvas-wrap,
+.banksetu-app-shell[data-appearance="dark"] .layout-studio .ls-canvas-wrap {
+  background:#e4eaf2;background-image:none;
+}
+html[data-appearance="dark"] .ls-start-wizard,
+.banksetu-app-shell[data-appearance="dark"] .ls-start-wizard {
+  --ls-bg:#eaf0f7;--ls-surface:#fff;--ls-text:#132842;--ls-muted:#52677c;
+  --ls-border:#b5cbe2;--ls-accent:#135bad;--ls-soft:#e8f2ff;
+  background:#e9eff8;color:#132842;
+}
