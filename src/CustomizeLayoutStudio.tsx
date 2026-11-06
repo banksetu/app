@@ -1112,6 +1112,24 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {guidedStep==="start" ? <>
             <strong>Step 1 · Choose how to begin</strong>
             <p>For a new design, use Blank Layout. If you have a scanned sample, import its PDF below. Check the actual paper width, height and fold before continuing.</p>
+            <div className="ls-easy-paper">
+              <label>Measurement unit
+                <select value={unit} onChange={e=>setUnit(e.target.value as Unit)}><option value="mm">Millimetres</option><option value="cm">Centimetres</option><option value="in">Inches</option></select>
+              </label>
+              <label>Paper width ({unit})
+                <input type="number" min={50/factor(unit)} max={500/factor(unit)} step={0.1}
+                  value={valueInUnit(draft.widthMm,unit)} onChange={e=>setMeasure("widthMm",e.target.value)}/>
+              </label>
+              <label>Paper height ({unit})
+                <input type="number" min={50/factor(unit)} max={500/factor(unit)} step={0.1}
+                  value={valueInUnit(draft.heightMm,unit)} onChange={e=>setMeasure("heightMm",e.target.value)}/>
+              </label>
+              <label>Fold from top ({unit}, optional)
+                <input type="number" min={0} max={500/factor(unit)} step={0.1}
+                  value={valueInUnit(draft.foldMm,unit)} onChange={e=>setMeasure("foldMm",e.target.value)}/>
+              </label>
+            </div>
+            <small className="ls-easy-warning">Scanner A4 is not the passbook size. Confirm real paper measurements before printing.</small>
             <div className="ls-easy-cta">
               <button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>Create blank layout</button>
               <label className="ls-file-action">Import sample PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event=>{void importPdf(event);}}/></label>
