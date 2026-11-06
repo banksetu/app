@@ -1545,7 +1545,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);}}>
         <span className="ls-workflow-number">◎</span><span><strong>Shared Bank Layouts</strong><small>Approved same-bank templates</small></span>
       </button>
-      <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
+      <button type="button" disabled={!canReview} title={canReview?"Review pending bank layouts":"Only Master Admin can approve shared layouts"} onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
         <span className="ls-workflow-number">✓</span><span><strong>मास्टर स्वीकृति</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setShowLayers(v=>!v);}}>
@@ -2203,7 +2203,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           </div>
           <p>Select a box on the paper to map it, or click a field to add a new box.</p>
           <div className="ls-field-panel-list">
-            {(fieldPanelTab==="bank"?[...new Set(["bankName","branchName","branchAddress","phone","branchEmail","ifsc","micr","gstin",...Object.keys(bankValues)])]:customerFieldKeys).map(key=>
+            {(fieldPanelTab==="bank"?[...new Set(["bankName","branchName","branchAddress","phone","branchEmail","ifsc","micr","gstin",...Object.keys(bankValues).filter(key=>/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key)&&!/(?:password|secret|credential|token|api_?key|private_?key|license|firebase|oauth|session|tenant|permission|admin|role|identity)/i.test(key))])]:customerFieldKeys).map(key=>
               <button key={key} type="button" title={"Map "+key}
                 onClick={()=>{
                   if(selected && ["rectangle","text","field"].includes(selected.kind)){
