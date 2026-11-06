@@ -23,6 +23,7 @@ import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
 import {importWordDocx} from "./layoutWordDocumentImport";
+import {importLegacyWordDoc} from "./layoutLegacyWordImport";
 import {customerRepository} from "./core/customerRepository";
 import {currentLayoutScope} from "./layoutLocalStore";
 import {layoutCustomerValue} from "./layoutCustomerValue";
@@ -1153,7 +1154,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setBusy(true);
     setNotice("Reading local Word document. The original file stays on this device.");
     try{
-      const result=await importWordDocx(file);
+      const result=file.name.toLowerCase().endsWith(".doc")?await importLegacyWordDoc(file):await importWordDocx(file);
       if(!result.paragraphs.length)throw Error("No editable text found. Check the document or create a new layout.");
       const nextParts:LayoutPart[]=[];
       let y=12,dropped=0;
@@ -1429,7 +1430,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <div className="ls-tool-card ls-tool-primary">
         <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
         <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
-      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">Upload Word DOCX<input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);}} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
+      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">Upload Word DOC/DOCX<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);}} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
         </div>
       </div>
       <div className="ls-tool-card ls-tool-primary">
