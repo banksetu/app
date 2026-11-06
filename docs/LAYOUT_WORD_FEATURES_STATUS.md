@@ -33,3 +33,9 @@ Existing PR2 custom rendering still intentionally rejects unembedded non-ASCII t
 - Guides are ephemeral UI decorations: they are not saved to customer records, template JSON, catalog, proof PDF or print data. They disappear on drag end. Existing group bounds and paper clipping remain enforced; grid snap takes precedence if enabled.
 - Added isolated guide math tests for edge/center alignment, no cross-page snapping, selected-group exclusion, distant objects, and invalid inputs.
 - Not equivalent to the remaining full Microsoft Word functions (rich inline runs, tables, headers/footers, DOCX fidelity, pagination/reflow, revision tracking, collaboration, spelling/reference tools); those are **not completed** by this addition. Build/CI and physical acceptance still required; PR remains Draft.
+
+## November 6 — Find and replace generic labels (draft)
+- Windows Design workspace now has a scoped Find / Replace control for editable static text labels, optionally across all pages.
+- Customer/bank field values, mapped field keys, preprinted layers, locked objects and unrelated pages are not silently changed. Locked matches stop replace rather than partially overwriting a draft. Uses existing undo/redo and re-requires physical confirmation.
+- Automated tests cover replacement counts, case-insensitive matching, page scope, sensitive/dynamic exclusion, and input guards.
+- Still no DOCX document parser/export, table editor, rich inline runs, flowing sections, comments or track changes. These gaps remain open.
