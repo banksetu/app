@@ -1,0 +1,197 @@
+/* BANK SETU reference-locked Windows designer shell.
+   Presentation only: no print geometry, tenant data, OCR or PR2 engine changes. */
+.layout-studio {
+  --ls-bg:#eaf0f7;
+  --ls-surface:#ffffff;
+  --ls-text:#15263e;
+  --ls-muted:#556780;
+  --ls-border:#b9cce2;
+  --ls-accent:#1264b7;
+  --ls-soft:#e6f2ff;
+  display:grid;
+  grid-template-columns:192px minmax(0,1fr);
+  gap:0;
+  padding:0;
+  border:1px solid #a9c2dc;
+  border-radius:12px;
+  overflow:hidden;
+  background:#e8eef7;
+  box-shadow:0 6px 23px #103f7024;
+  font-family:"Segoe UI","Nirmala UI",Arial,sans-serif;
+}
+.layout-studio > :not(.ls-header):not(.ls-workflow-nav) {grid-column:2;min-width:0;order:20}
+.layout-studio > .ls-header {
+  order:0;grid-column:1/-1;display:flex!important;align-items:center;
+  flex-wrap:wrap;justify-content:space-between;gap:7px 11px;
+  background:linear-gradient(180deg,#1166bd 0%,#00417e 100%)!important;
+  border:0!important;border-radius:0!important;margin:0!important;
+  padding:8px 14px!important;box-shadow:none!important;min-height:52px;color:#fff;
+}
+.layout-studio .ls-header .ls-wizard-link {color:#fff;background:transparent;border:1px solid #9bc6ef66;padding:5px 7px;border-radius:4px}
+.layout-studio .ls-header > button:not(.ls-wizard-link) {background:#1869b8;color:#fff;border-color:#6bade0;padding:5px 7px;border-radius:5px}
+.layout-studio .ls-heading {flex:1 1 270px;align-items:center;gap:9px}
+.layout-studio .ls-brand-mark {
+  background:transparent;box-shadow:none;border:1px solid #a0d2ff;
+  border-radius:6px;width:34px;height:34px;flex-basis:34px;font-size:11px
+}
+.layout-studio .ls-header .ls-heading-copy h2 {font-size:18px;line-height:1.15;margin:0;color:#fff;letter-spacing:0}
+.layout-studio .ls-header .ls-heading-copy p,.layout-studio .ls-header .ls-status-tags {display:none}
+.layout-studio .ls-header .ls-header-utilities {justify-content:flex-end;flex:2 1 580px;gap:5px}
+.layout-studio .ls-header-main-actions {gap:5px}
+.layout-studio .ls-header-main-actions button,.layout-studio .ls-header-extra>summary {
+  background:#fff;color:#15416b;border:1px solid #d1dfef;
+  padding:6px 8px;min-height:32px;border-radius:5px;font-size:11px;font-weight:700;box-shadow:none
+}
+.layout-studio .ls-header-main-actions .ls-primary {background:#fff;color:#144b8e;border-color:#9fc2e7}
+.layout-studio .ls-header-main-actions button:last-child:not(:disabled) {background:#15933f;color:#fff;border-color:#15933f}
+.layout-studio .ls-header .ls-codespaces-warning {flex:1 1 100%;padding:5px 8px;margin:0;max-width:none}
+.layout-studio > .ls-workflow-nav {
+  order:1;grid-column:1;grid-row:2 / span 40;
+  display:flex;flex-direction:column;align-items:stretch;gap:0;
+  margin:0;padding:9px 0 14px;
+  background:linear-gradient(115deg,#064278,#003066 78%,#00264e);
+  border-right:1px solid #1b6aab;box-shadow:inset -3px 0 11px #001e4020;
+}
+.layout-studio .ls-sidebar-brand {display:grid;gap:4px;padding:8px 13px 17px;color:#fff;border-bottom:1px solid #ffffff30}
+.layout-studio .ls-sidebar-brand strong {font-size:17px;letter-spacing:.2px}
+.layout-studio .ls-sidebar-brand small {font-size:10px;color:#bfdbfa}
+.layout-studio .ls-workflow-nav button {
+  display:flex;align-items:center;justify-content:flex-start;gap:9px;
+  min-height:39px;padding:7px 9px;border:0;border-bottom:1px solid #ffffff13;
+  border-radius:0;background:transparent;color:#f2f8ff;text-align:left;box-shadow:none;
+}
+.layout-studio .ls-workflow-nav button:hover,
+.layout-studio .ls-workflow-nav button[aria-pressed="true"] {
+  background:#2079c5;border-color:#ffffff30;box-shadow:inset 3px 0 0 #bfe3ff;
+}
+.layout-studio .ls-workflow-nav strong {font-size:11px;font-weight:700;color:inherit}
+.layout-studio .ls-workflow-nav small {font-size:9px;color:#cee4fb}
+.layout-studio .ls-workflow-number,
+.layout-studio .ls-workflow-nav button[aria-pressed="true"] .ls-workflow-number {
+  width:22px;height:22px;flex-basis:22px;background:transparent;border:0;border-radius:3px;
+  color:#e4f2ff;font-size:16px;font-weight:700;
+}
+.layout-studio .ls-sidebar-foot {margin-top:auto;padding:19px 12px;font-size:9px;color:#c2d7ef}
+.layout-studio > .ls-word-suite {order:2;margin:0;border:0;border-radius:0;padding:0 10px 8px;box-shadow:none;background:#f9fbff}
+.layout-studio .ls-word-suite > summary {display:none}
+.layout-studio .ls-word-tabs {margin:0;padding:1px 0 0;border:0;gap:1px;background:#eaf1fa}
+.layout-studio .ls-word-tabs button {padding:6px 12px;min-height:30px!important;font-size:11px;border-radius:3px 3px 0 0!important;color:#194574}
+.layout-studio .ls-word-tabs button[aria-pressed="true"] {background:#fff!important;color:#0a4d9b!important;border:1px solid #aac7e6!important;border-bottom:0!important}
+.layout-studio .ls-word-suite .ls-tool-note {display:none}
+.layout-studio .ls-word-tab-content {margin:0;min-height:69px;padding:9px 8px;background:#fff;border:1px solid #d9e4f0;border-radius:0;gap:6px}
+.layout-studio .ls-word-tab-content button,.layout-studio .ls-word-tab-content .ls-file-action {border-radius:3px;padding:5px 8px;min-height:30px;font-size:11px}
+.layout-studio .ls-word-suite .ls-format-ribbon {margin:0;padding:7px 9px;border-radius:0;box-shadow:none;background:#fff}
+.layout-studio > .ls-workspace {order:3}
+.layout-studio .ls-workspace {display:grid;grid-template-columns:minmax(0,1fr) minmax(235px,278px);align-items:start;gap:0;background:#dce6f2}
+.layout-studio .ls-canvas-wrap {
+  grid-column:1;min-height:520px;max-height:calc(100vh - 215px);overflow:auto;
+  padding:19px 15px 22px;border:0;border-radius:0;
+  background:#e4eaf2;background-image:none;
+}
+.layout-studio .ls-workspace .ls-layers {grid-column:1/-1;border-radius:0;max-height:160px;overflow:auto}
+.layout-studio .ls-properties {grid-column:2;border-radius:0;border:0;border-left:1px solid #adc7e0;box-shadow:none;background:#f8fbff;min-height:520px}
+.layout-studio .ls-properties .ls-panel-title {color:#003e7b;background:#e8f2fd!important;font-weight:800!important}
+.layout-studio .ls-paper {box-shadow:0 5px 17px #243b5c3b,0 0 0 1px #8aa0b877}
+.layout-studio .ls-insert-fields {padding:9px;border-bottom:1px solid #bed2e6;display:grid;gap:7px}
+.layout-studio .ls-insert-fields p {font-size:10px;line-height:1.35}
+.layout-studio .ls-field-panel-tabs {display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.layout-studio .ls-field-panel-tabs button {border-radius:5px 5px 0 0;padding:7px 3px;font-size:11px}
+.layout-studio .ls-field-panel-tabs button[aria-pressed=true] {background:#fff;color:#084586;font-weight:800;border-bottom:2px solid #0a60bd}
+.layout-studio .ls-field-panel-list {display:grid;max-height:225px;overflow:auto;border:1px solid #e3e9f2;background:#fff}
+.layout-studio .ls-field-panel-list button {
+  display:flex;justify-content:flex-start;gap:10px;padding:7px 9px;
+  min-height:29px;border:0;border-bottom:1px solid #e0e8f1;border-radius:0;
+  background:#fff;font-size:11px;text-align:left;white-space:normal;word-break:break-word
+}
+.layout-studio .ls-field-panel-list button:hover {background:#e6f2ff}
+.layout-studio .ls-field-panel-list button>span {color:#145f9f}
+.layout-studio .ls-properties-body {max-height:530px;overflow:auto;padding:11px}
+.layout-studio > .ls-designer-status {
+  order:4;display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;
+  padding:6px 12px;border-top:1px solid #9fbad8;background:#fff;color:#245078;font-size:11px
+}
+.layout-studio .ls-designer-status > span:nth-child(2) {margin-left:auto}
+.layout-studio .ls-designer-status button {padding:3px 8px;min-height:26px;border-radius:3px}
+.layout-studio .ls-zoom-controls {display:inline-flex;align-items:center;gap:7px}
+.layout-studio .ls-designer-status strong {font-variant-numeric:tabular-nums}
+.layout-studio > .ls-preview-strip {order:5}
+.layout-studio > .ls-slot-strip {order:6}
+.layout-studio > .ls-workflow-context {order:7}
+.layout-studio > .ls-notice {order:8}
+.layout-studio > .ls-map-alert {order:9}
+.layout-studio > .ls-page-card {order:10}
+.layout-studio > .ls-tool-collection {order:11}
+.layout-studio > .ls-inference-panel {order:12}
+.layout-studio > .ls-scan-proposal {order:13}
+.layout-studio > .ls-catalog-panel {order:14}
+.layout-studio > .ls-simple-flow {order:15}
+.layout-studio > .ls-footer {order:99;font-size:10px;padding:9px 13px;background:#f7fbff;margin:0}
+.layout-studio > .ls-audit {order:16}
+.layout-studio > .ls-catalog-preview {order:17}
+.layout-studio > .ls-simple-bottom-save {order:18}
+.layout-studio > .ls-preview-strip,.layout-studio > .ls-slot-strip,
+.layout-studio > .ls-workflow-context,.layout-studio > .ls-page-card,
+.layout-studio > .ls-tool-collection {margin:7px 12px}
+.layout-studio > .ls-tool-collection {margin-top:16px}
+.layout-studio .ls-tool-card {border-radius:6px;box-shadow:none}
+.layout-studio .ls-catalog-card {background:#fff}
+.layout-studio.ls-view-library > .ls-word-suite,
+.layout-studio.ls-view-library > .ls-workspace,
+.layout-studio.ls-view-library > .ls-designer-status,
+.layout-studio.ls-view-library > .ls-tool-collection,
+.layout-studio.ls-view-library > .ls-page-card,
+.layout-studio.ls-view-library > .ls-simple-flow,
+.layout-studio.ls-view-library > .ls-preview-strip,
+.layout-studio.ls-view-library > .ls-slot-strip {display:none!important}
+.layout-studio.ls-view-library > .ls-workflow-context {order:2;margin:12px}
+.layout-studio.ls-view-library > .ls-catalog-panel {order:3;display:grid!important;margin:8px 12px;padding:17px;border-radius:7px}
+.layout-studio.ls-view-library > .ls-notice {order:4}
+.layout-studio.ls-view-design > .ls-catalog-panel {display:none!important}
+.layout-studio .ls-catalog-preview {background:#f8fbff}
+.layout-studio .ls-catalog-preview .ls-actions {display:flex;flex-wrap:wrap;gap:8px}
+/* Guided bank/method/output pages use the same approved navy-blue palette. */
+.ls-start-wizard {
+  --ls-bg:#eaf0f7;--ls-surface:#fff;--ls-text:#132842;
+  --ls-muted:#52677c;--ls-border:#b5cbe2;--ls-accent:#135bad;--ls-soft:#e8f2ff;
+  max-width:970px;padding:0;background:#e9eff8;border-radius:12px;
+  overflow:hidden;box-shadow:0 9px 30px #173e7026
+}
+.ls-start-wizard > header {background:linear-gradient(180deg,#135eb7,#003b78);color:white;padding:18px 24px}
+.ls-start-wizard > header h2,.ls-start-wizard > header p,.ls-start-wizard > header .ls-eyebrow {color:#fff}
+.ls-start-wizard .ls-wizard-progress {margin:0;padding:12px 18px;background:#e3effd}
+.ls-start-wizard .ls-wizard-progress [aria-current="step"] {border-color:#135bad;background:#fff}
+.ls-start-wizard .ls-wizard-page {margin:14px 18px;min-height:270px;border-radius:6px;box-shadow:0 2px 5px #1d507019}
+.ls-start-wizard .ls-wizard-choices button {border-radius:6px;background:linear-gradient(#f9fcff,#edf4fb);border-color:#bad2ec}
+.ls-start-wizard .ls-wizard-choices button[aria-pressed="true"] {border-color:#1b70cd;background:#dfedff}
+.ls-start-wizard button.ls-primary {background:#0b5fb6;border-color:#0b5fb6}
+.ls-start-wizard > footer {padding:8px 20px 16px;margin:0}
+@media(max-width:1120px){
+ .layout-studio {grid-template-columns:162px minmax(0,1fr)}
+ .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(200px,240px)}
+ .layout-studio .ls-workflow-nav strong {font-size:10px}
+ .layout-studio .ls-word-tabs button {padding:6px 8px}
+}
+@media(max-width:810px){
+ .layout-studio {display:flex;flex-direction:column}
+ .layout-studio > .ls-header {order:0}
+ .layout-studio > .ls-workflow-nav {
+   order:1;display:flex;flex-direction:row;overflow-x:auto;overflow-y:hidden;flex:0 0 auto;
+   padding:0;border:0;min-height:45px;max-width:100%
+ }
+ .layout-studio .ls-sidebar-brand,.layout-studio .ls-sidebar-foot {display:none}
+ .layout-studio .ls-workflow-nav button {flex:0 0 auto;min-height:43px}
+ .layout-studio > .ls-word-suite {order:2}
+ .layout-studio .ls-word-tabs {flex-wrap:nowrap;overflow-x:auto;max-width:100%}
+ .layout-studio .ls-word-tabs button {flex:0 0 auto}
+ .layout-studio > .ls-workspace {order:3}
+ .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr)}
+ .layout-studio .ls-workspace .ls-canvas-wrap,.layout-studio .ls-workspace .ls-properties {grid-column:1}
+ .layout-studio .ls-canvas-wrap {min-height:390px;max-height:590px}
+ .layout-studio .ls-properties {min-height:0;border-left:0;border-top:1px solid #adc7e0}
+ .layout-studio .ls-field-panel-list {max-height:165px}
+ .layout-studio .ls-properties-body {max-height:none}
+ .layout-studio .ls-designer-status > span:nth-child(2) {margin-left:0}
+}
+@media(prefers-reduced-motion:reduce) {
+ .layout-studio * {scroll-behavior:auto!important;transition:none!important}
+}
