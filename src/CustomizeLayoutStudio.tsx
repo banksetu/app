@@ -1506,14 +1506,18 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <h2>{mode === "passbook" ? "Passbook Layout Studio" : "Account Opening Layout Studio"}</h2>
           <p>Design precise, editable layouts using real paper dimensions. <strong>{bankName || "Select a bank in Bank Information"}</strong></p>
           <div className="ls-status-tags" aria-label="Current editor configuration">
-            <span>Windows EXE</span><span>Local draft</span>
+            <span>{previewOnly?"CODESPACES UI DEMO":"Windows EXE"}</span><span>{previewOnly?"Synthetic browser-only draft":"Local draft"}</span>
             <span>{draft.widthMm} × {draft.heightMm} mm</span>
             <span>{draft.elements.length} elements</span>
           </div>
         </div>
       </div>
+      {previewOnly&&<p className="ls-codespaces-warning" role="status">
+        Codespaces UI demo · No login, real customers, Firebase saves, Master approvals or PR2 hardware operations.
+        PDF/Word conversion, page settings, editable objects and proof export use the real draft editor.
+      </p>}
       <div className="ls-header-utilities">
-      <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>Save & Send to Master</button>}</div>
+      <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving…":previewOnly?"Save Browser Demo Draft":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={previewOnly||savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>Save & Send to Master</button>}</div>
       <details className="ls-header-extra">
         <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
         <div className="ls-header-extra-actions">
@@ -2224,7 +2228,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
  */
 export default function CustomizeLayoutStudio(props:StudioProps) {
   const [setup,setSetup]=useState<LayoutSetup|null>(null);
-  if(!windowsLayoutEngineAvailable())return <section role="alert" className="ls-windows-only">
+  const previewOnly=props.previewOnly===true&&codespacesLayoutPreviewAvailable();
+  if(!windowsLayoutEngineAvailable()&&!previewOnly)return <section role="alert" className="ls-windows-only">
     <h2>Windows EXE only</h2>
     <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
   </section>;
@@ -2232,6 +2237,6 @@ export default function CustomizeLayoutStudio(props:StudioProps) {
     accountOpening={props.mode==="accountOpening"} onOpen={setSetup}/>;
   const sameBank=setup.bankName.trim().toLowerCase()===props.bankName.trim().toLowerCase();
   return <CustomizeLayoutStudioCore key={setup.bankName+":"+setup.output+":"+setup.method}
-    {...props} bankName={setup.bankName} bankValues={sameBank?props.bankValues:{}} setup={setup}
+    {...props} previewOnly={previewOnly} bankName={setup.bankName} bankValues={sameBank?props.bankValues:{}} setup={setup}
     onBackToSetup={()=>setSetup(null)}/>;
 }
