@@ -45,3 +45,16 @@ test("shared templates cannot include duplicated layer IDs or out-of-bounds PDF 
   const invalid=template();invalid.elements[1].page=11;
   assert.throws(()=>sanitizeLayoutTemplate(invalid,invalid.bankName),/page/);
 });
+
+test("Master-approved template preserves safe page margins, measured fold orientation and print baseline",()=>{
+  const source=template();
+  source.pageSetup={foldAxis:"horizontal",marginTopMm:9,marginBottomMm:8,marginLeftMm:8,marginRightMm:8};
+  const result=sanitizeLayoutTemplate(source,source.bankName);
+  assert.deepEqual(result.pageSetup,source.pageSetup);
+  assert.equal(result.foldMm,87);
+  assert.equal(result.printStartMm,100);
+  const wrong={...source,pageSetup:{...source.pageSetup,apiKey:"secret"}};
+  assert.throws(()=>sanitizeLayoutTemplate(wrong,wrong.bankName),/page setup|metadata/i);
+  const invalid={...source,pageSetup:{...source.pageSetup,marginLeftMm:110,marginRightMm:110}};
+  assert.throws(()=>sanitizeLayoutTemplate(invalid,invalid.bankName),/margins|measurements/i);
+});
