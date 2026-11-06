@@ -137,6 +137,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [easyMode,setEasyMode]=useState(false);
   const [simplePaperOpen,setSimplePaperOpen]=useState(false);
+  const [pageSetupOpen,setPageSetupOpen]=useState(false);
   const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help">("home");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
@@ -1551,7 +1552,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={()=>{setWorkspaceView("design");setShowLayers(v=>!v);}}>
         <span className="ls-workflow-number">▦</span><span><strong>Layout मैनेज / Layers</strong></span>
       </button>
-      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("layout");}}>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("layout");setPageSetupOpen(true);}}>
         <span className="ls-workflow-number">▱</span><span><strong>Page Size / Margins</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
@@ -1565,6 +1566,199 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </button>
       <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
     </nav>
+    <details className="ls-tool-card ls-word-suite" open>
+      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
+      <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
+      <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
+        {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
+          <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
+            {tab[0].toUpperCase()+tab.slice(1)}
+          </button>)}
+      </nav>
+      {wordTab==="file"&&<div className="ls-word-tab-content" role="toolbar" aria-label="File and backup">
+        <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>Save Draft</button>
+        <button type="button" onClick={exportJson}>Download Editable Backup</button>
+        <label className="ls-file-action">Restore Editable Backup
+          <input type="file" accept=".json,application/json" onChange={event=>{void restoreDraftBackup(event);}}/>
+        </label>
+        <button type="button" onClick={()=>{void calibrationPdf();}}>Export Calibration PDF</button>
+        <label className="ls-file-action">Open Word
+          <input type="file" accept=".doc,.docx,application/msword" onChange={event=>{
+            const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);
+          }}/>
+        </label>
+        <label className="ls-file-action">Open PDF Sample
+          <input type="file" accept=".pdf,application/pdf" onChange={event=>{void importPdf(event);}}/>
+        </label>
+      </div>}
+      {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools">
+        <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
+        <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
+        <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
+        <button type="button" disabled={!selected||!styleClipboard} onClick={pasteSelectedStyle}>Paste Format</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{
+          if(!selected)return;
+          const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
+            y:Math.min(draft.heightMm-selected.height,selected.y+3),z:selected.z+1,locked:false};
+          modify(current=>({...current,elements:[...current.elements,newPart]}));
+          setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
+        }}>Duplicate Object</button>
+      </div>}
+      {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes">
+        <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
+        <button type="button" onClick={()=>append("rectangle","static","Box")}>Draw Rectangle</button>
+        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Draw Ellipse</button>
+        <button type="button" onClick={()=>setMappingSource("bank")}>Draw Bank Field Box</button>
+        <button type="button" onClick={()=>setMappingSource("customer")}>Draw Customer Field Box</button>
+        <small>Drag the field box over the passbook, then choose its data mapping.</small>
+      </div>}
+      {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes">
+        <button type="button" onClick={()=>append("text","static","Reference / note:")}>Insert Editable Note</button>
+        <button type="button" onClick={()=>append("text","static","Terms and conditions")}>Insert Terms</button>
+        <button type="button" onClick={()=>append("field","bank","Bank IFSC","ifsc")}>Reference Bank IFSC</button>
+        <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Reference Customer CIF</button>
+        <small>Word bibliographies, citations and academic indexes are not part of a direct passbook print template.</small>
+      </div>}
+      {wordTab==="mailings"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Bank and customer merge fields">
+        <button type="button" onClick={()=>append("field","customer","Account holder","name")}>Customer Name</button>
+        <button type="button" onClick={()=>append("field","customer","Account number","accountNo")}>Account Number</button>
+        <button type="button" onClick={()=>append("field","customer","Address","address")}>Customer Address</button>
+        <button type="button" onClick={()=>append("field","bank","IFSC","ifsc")}>Bank IFSC</button>
+        <button type="button" onClick={()=>append("field","bank","Branch Address","branchAddress")}>Branch Address</button>
+        <button type="button" onClick={()=>{void loadPreviewCustomers();}}>Preview Merge with Customer</button>
+        <small>Fields resolve only against the active tenant's customer and bank data.</small>
+      </div>}
+      {wordTab==="help"&&<div className="ls-word-tab-content" role="note" aria-label="Editing help and shortcuts">
+        <strong>Word-style Editing Shortcuts</strong>
+        <span>Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+A Select visible · Ctrl/Shift+Click multi-select ·
+        Ctrl+G Group · Ctrl+Shift+G Ungroup · Arrow keys move by 0.1 mm · Shift+Arrows 1 mm</span>
+        <button type="button" onClick={()=>setWordTab("layout")}>Open Page Setup</button>
+        <button type="button" onClick={()=>setWordTab("mailings")}>Open Data Mapping</button>
+        <small>Specialized Office features such as macros, email merge, full bibliography
+        management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
+      </div>}
+      {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects">
+        <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
+        <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
+        <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
+        <button type="button" onClick={()=>append("photo","static","Photo Box")}>Photo Box</button>
+        <button type="button" onClick={()=>append("rectangle","static","Rectangle")}>Rectangle</button>
+        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Circle</button>
+        <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
+        <button type="button" onClick={()=>insertEditableTable(2,3)}>Insert 2×3 Table</button>
+        <button type="button" onClick={()=>insertEditableTable(3,4)}>Insert 3×4 Table</button>
+        <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
+          onChange={event=>insertWordSymbol(event.target.value)}>
+          <option value="">Insert symbol…</option>
+          {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
+            <option key={symbol+index} value={symbol}>{symbol}</option>)}
+        </select></label>
+      </div>}
+      {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls">
+        <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
+          {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
+        </select></label>
+        <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label>
+        <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> Grid</label>
+        <label>Print preview <select value={preview} onChange={e=>setPreview(e.target.value as "quick"|"dotmatrix")}>
+          <option value="quick">Quick Passbook</option><option value="dotmatrix">PR2 Text-Only</option>
+        </select></label>
+      </div>}
+      {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors">
+        {selected?<><label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
+          <label>Border color <input type="color" value={selected.borderColor} onChange={e=>edit({borderColor:e.target.value})}/></label>
+          <button type="button" onClick={copySelectedStyle}>Copy style</button>
+          <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste style</button></>:<span>Select an object to change its colors and style.</span>}
+      </div>}
+      {wordTab==="layout"&&<div className="ls-word-tab-content ls-word-layout-commands" role="toolbar" aria-label="Page layout tools">
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>▤ Margins</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>▣ Orientation</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>▱ Size</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
+        <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
+      </div>}}
+
+      {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
+      <strong>Format:</strong>
+      <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
+      <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
+      <input aria-label="Font size" type="number" min={5} max={120} value={selected.size} onChange={event => edit({size:within(Number(event.target.value)||5,5,120)})}/>
+      <button type="button" title="Increase font size" onClick={() => edit({size:Math.min(120,selected.size+1)})}>A+</button>
+      <button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button>
+      <button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button>
+      <button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button>
+      <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
+      <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
+      <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
+      <button type="button" title="Justify paragraph" aria-pressed={selected.align==="justify"} onClick={()=>edit({align:"justify"})}>Justify</button>
+      <label>Line spacing <select aria-label="Line spacing ratio" value={selected.lineHeight??1.18} onChange={event=>edit({lineHeight:Number(event.target.value)})}>
+        {[.8,1,1.15,1.18,1.5,2,2.5,3].map(n=><option key={n} value={n}>{n}×</option>)}
+      </select></label>
+      <label>Letter gap <select aria-label="Letter spacing px" value={selected.letterSpacing??0}
+        onChange={event=>edit({letterSpacing:Number(event.target.value)})}>
+        {Array.from({length:21},(_,i)=>i*.5).map(n=><option key={n} value={n}>{n} px</option>)}
+        {!Array.from({length:21},(_,i)=>i*.5).includes(selected.letterSpacing)&&
+         <option value={selected.letterSpacing}>Legacy {selected.letterSpacing} px</option>}
+      </select></label>
+      <label>Font compress <select aria-label="Font compression percent" value={selected.fontCompression??100}
+        onChange={event=>edit({fontCompression:Number(event.target.value)})}>
+        {Array.from({length:11},(_,i)=>50+i*5).map(n=><option key={n} value={n}>{n}%</option>)}
+        {!Array.from({length:11},(_,i)=>50+i*5).includes(selected.fontCompression??100)&&
+         <option value={selected.fontCompression}>{selected.fontCompression}%</option>}
+      </select></label>
+      <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
+    </div>}
+    {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
+      <strong>Find / Replace static text</strong>
+      <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
+      <label>Replace with <input type="text" maxLength={500} value={replaceWord} onChange={e=>setReplaceWord(e.target.value)} placeholder="New label text"/></label>
+      <label><input type="checkbox" checked={findAllPages} onChange={e=>setFindAllPages(e.target.checked)}/> All pages</label>
+      <button type="button" onClick={()=>{
+        const hits=findEditableLabels(draft.elements,findWord,findAllPages?undefined:selectedPage);
+        if(hits.length){setSelectedId(draft.elements[hits[0]].id);setWordSelectedIds([draft.elements[hits[0]].id]);setSelectedPage(draft.elements[hits[0]].page??1);}
+        setNotice(hits.length+" editable text object(s) found. Customer fields and preprinted layers are excluded.");
+      }}>Find</button>
+      <button type="button" onClick={()=>{
+        try{
+          const result=replaceEditableLabels(draft.elements,findWord,replaceWord,findAllPages?undefined:selectedPage);
+          if(result.changed){modify(current=>({...current,elements:result.parts}));setPhysicalChecked(false);setHardwareChecked(false);}
+          setNotice(result.changed+" static label occurrence(s) replaced. Recheck physical layout before approval.");
+        }catch(error){setNotice(error instanceof Error?error.message:"Cannot replace text.");}
+      }}>Replace all</button>
+    </div>}
+    {wordTab==="layout" && selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
+      <strong>Align selected ({selectedWordParts.length})</strong>
+      <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
+      <div className="ls-word-buttons">
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"left",target:"selection"})}>Left edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"center",target:"selection"})}>Horizontal centers</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"right",target:"selection"})}>Right edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"top",target:"selection"})}>Top edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"middle",target:"selection"})}>Vertical centers</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"bottom",target:"selection"})}>Bottom edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"baseline",target:"selection"})}>Baseline</button>
+        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal"})}>Distribute horizontally</button>
+        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical"})}>Distribute vertically</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"width"})}>Equal width</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"height"})}>Equal height</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"both"})}>Equal size</button>
+      </div>
+      <div className="ls-word-gaps">
+        <label>Exact gap (mm) <input type="number" min={0} max={50} step={.1} value={wordGapMm}
+          onChange={event=>{const value=Number(event.target.value);if(Number.isFinite(value)&&value>=0&&value<=50)setWordGapMm(value);}}/></label>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal",gapMm:wordGapMm})}>Horizontal exact gap</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical",gapMm:wordGapMm})}>Vertical exact gap</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
+        <button type="button" disabled={!selectedWordParts.some(p=>p.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
+        <button type="button" disabled={selectedWordParts.length===0||selectedWordParts.every(p=>p.locked)} onClick={()=>lockWordSelection(true)}>Lock</button>
+        <button type="button" disabled={!selectedWordParts.some(p=>p.locked)} onClick={()=>lockWordSelection(false)}>Unlock</button>
+        <button type="button" disabled={selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete selected</button>
+      </div>
+    </div>}
+    </details>
     {easyMode&&workspaceView==="design"&&<section className="ls-simple-flow" aria-label="Simple passbook editing and saving">
       <div className="ls-simple-head">
         <div><strong>Easy Passbook Designer</strong>
@@ -1716,37 +1910,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{void reviewCatalog(item,"reject");}}>Reject</button>
       </div>)}</div>}
     </div>
-    <section className="ls-tool-collection" aria-label="Document tools">
-      <div className="ls-tool-card ls-tool-primary">
-        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
-        <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
-      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">Upload Word DOC/DOCX<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);}} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
-        </div>
-      </div>
-      <div className="ls-tool-card ls-tool-primary">
-        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">02</span><div><strong>Text & Customer Data</strong><small>Common fields used on passbooks</small></div></div>
-        <div className="ls-ribbon" role="toolbar" aria-label="Add text and customer fields">
-      <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
-      <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
-      <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
-      <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
-      <button type="button" aria-pressed={mappingSource==="customer"} onClick={()=>setMappingSource("customer")}>Draw Customer Data Box</button>
-      <button type="button" aria-pressed={mappingSource==="bank"} onClick={()=>setMappingSource("bank")}>Draw Bank Data Box</button>
-        </div>
-      </div>
-      <details className="ls-tool-card ls-tool-secondary">
-        <summary><span className="ls-tool-icon" aria-hidden="true">03</span><span><strong>Graphics & Shapes</strong><small>Photo, logo, boxes, circles and lines</small></span><span aria-hidden="true">⌄</span></summary>
-        <div className="ls-ribbon" role="toolbar" aria-label="Insert graphics and shapes">
-      <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
-      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
-      <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
-      <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
-      <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
-      <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
-      <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
-        </div>
-      </details>
-    </section>
+
     {(suggestedLabels.length>0 || collisions.length>0) && <div className="ls-inference-panel">
       <strong>Review PDF labels and overlapping lines (not automatically approved)</strong>
       <p>{suggestedLabels.length} possible bank/customer labels · {collisions.length} possible overlapping text pairs. OCR can miss printed layers; confirm the physical passbook.</p>
@@ -1807,194 +1971,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{setSelectedPage(collision.page);setSelectedId(collision.secondId);}}>Second layer</button>
       </div>)}</div>}
     </div>}
-    <details className="ls-tool-card ls-word-suite" open>
-      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
-      <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
-      <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
-        {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
-          <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
-            {tab[0].toUpperCase()+tab.slice(1)}
-          </button>)}
-      </nav>
-      {wordTab==="file"&&<div className="ls-word-tab-content" role="toolbar" aria-label="File and backup">
-        <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>Save Draft</button>
-        <button type="button" onClick={exportJson}>Download Editable Backup</button>
-        <label className="ls-file-action">Restore Editable Backup
-          <input type="file" accept=".json,application/json" onChange={event=>{void restoreDraftBackup(event);}}/>
-        </label>
-        <button type="button" onClick={()=>{void calibrationPdf();}}>Export Calibration PDF</button>
-        <label className="ls-file-action">Open Word
-          <input type="file" accept=".doc,.docx,application/msword" onChange={event=>{
-            const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);
-          }}/>
-        </label>
-        <label className="ls-file-action">Open PDF Sample
-          <input type="file" accept=".pdf,application/pdf" onChange={event=>{void importPdf(event);}}/>
-        </label>
-      </div>}
-      {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools">
-        <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
-        <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
-        <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
-        <button type="button" disabled={!selected||!styleClipboard} onClick={pasteSelectedStyle}>Paste Format</button>
-        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
-        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>{
-          if(!selected)return;
-          const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
-            y:Math.min(draft.heightMm-selected.height,selected.y+3),z:selected.z+1,locked:false};
-          modify(current=>({...current,elements:[...current.elements,newPart]}));
-          setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
-        }}>Duplicate Object</button>
-      </div>}
-      {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes">
-        <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
-        <button type="button" onClick={()=>append("rectangle","static","Box")}>Draw Rectangle</button>
-        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Draw Ellipse</button>
-        <button type="button" onClick={()=>setMappingSource("bank")}>Draw Bank Field Box</button>
-        <button type="button" onClick={()=>setMappingSource("customer")}>Draw Customer Field Box</button>
-        <small>Drag the field box over the passbook, then choose its data mapping.</small>
-      </div>}
-      {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes">
-        <button type="button" onClick={()=>append("text","static","Reference / note:")}>Insert Editable Note</button>
-        <button type="button" onClick={()=>append("text","static","Terms and conditions")}>Insert Terms</button>
-        <button type="button" onClick={()=>append("field","bank","Bank IFSC","ifsc")}>Reference Bank IFSC</button>
-        <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Reference Customer CIF</button>
-        <small>Word bibliographies, citations and academic indexes are not part of a direct passbook print template.</small>
-      </div>}
-      {wordTab==="mailings"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Bank and customer merge fields">
-        <button type="button" onClick={()=>append("field","customer","Account holder","name")}>Customer Name</button>
-        <button type="button" onClick={()=>append("field","customer","Account number","accountNo")}>Account Number</button>
-        <button type="button" onClick={()=>append("field","customer","Address","address")}>Customer Address</button>
-        <button type="button" onClick={()=>append("field","bank","IFSC","ifsc")}>Bank IFSC</button>
-        <button type="button" onClick={()=>append("field","bank","Branch Address","branchAddress")}>Branch Address</button>
-        <button type="button" onClick={()=>{void loadPreviewCustomers();}}>Preview Merge with Customer</button>
-        <small>Fields resolve only against the active tenant's customer and bank data.</small>
-      </div>}
-      {wordTab==="help"&&<div className="ls-word-tab-content" role="note" aria-label="Editing help and shortcuts">
-        <strong>Word-style Editing Shortcuts</strong>
-        <span>Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+A Select visible · Ctrl/Shift+Click multi-select ·
-        Ctrl+G Group · Ctrl+Shift+G Ungroup · Arrow keys move by 0.1 mm · Shift+Arrows 1 mm</span>
-        <button type="button" onClick={()=>setWordTab("layout")}>Open Page Setup</button>
-        <button type="button" onClick={()=>setWordTab("mailings")}>Open Data Mapping</button>
-        <small>Specialized Office features such as macros, email merge, full bibliography
-        management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
-      </div>}
-      {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects">
-        <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
-        <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
-        <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
-        <button type="button" onClick={()=>append("photo","static","Photo Box")}>Photo Box</button>
-        <button type="button" onClick={()=>append("rectangle","static","Rectangle")}>Rectangle</button>
-        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Circle</button>
-        <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
-        <button type="button" onClick={()=>insertEditableTable(2,3)}>Insert 2×3 Table</button>
-        <button type="button" onClick={()=>insertEditableTable(3,4)}>Insert 3×4 Table</button>
-        <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
-          onChange={event=>insertWordSymbol(event.target.value)}>
-          <option value="">Insert symbol…</option>
-          {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
-            <option key={symbol+index} value={symbol}>{symbol}</option>)}
-        </select></label>
-      </div>}
-      {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls">
-        <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
-          {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
-        </select></label>
-        <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label>
-        <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> Grid</label>
-        <label>Print preview <select value={preview} onChange={e=>setPreview(e.target.value as "quick"|"dotmatrix")}>
-          <option value="quick">Quick Passbook</option><option value="dotmatrix">PR2 Text-Only</option>
-        </select></label>
-      </div>}
-      {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors">
-        {selected?<><label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
-          <label>Border color <input type="color" value={selected.borderColor} onChange={e=>edit({borderColor:e.target.value})}/></label>
-          <button type="button" onClick={copySelectedStyle}>Copy style</button>
-          <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste style</button></>:<span>Select an object to change its colors and style.</span>}
-      </div>}
-      {wordTab==="layout"&&<PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
-        onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
-        onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>}
 
-      {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
-      <strong>Format:</strong>
-      <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
-      <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
-      <input aria-label="Font size" type="number" min={5} max={120} value={selected.size} onChange={event => edit({size:within(Number(event.target.value)||5,5,120)})}/>
-      <button type="button" title="Increase font size" onClick={() => edit({size:Math.min(120,selected.size+1)})}>A+</button>
-      <button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button>
-      <button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button>
-      <button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button>
-      <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
-      <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
-      <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
-      <button type="button" title="Justify paragraph" aria-pressed={selected.align==="justify"} onClick={()=>edit({align:"justify"})}>Justify</button>
-      <label>Line spacing <select aria-label="Line spacing ratio" value={selected.lineHeight??1.18} onChange={event=>edit({lineHeight:Number(event.target.value)})}>
-        {[.8,1,1.15,1.18,1.5,2,2.5,3].map(n=><option key={n} value={n}>{n}×</option>)}
-      </select></label>
-      <label>Letter gap <select aria-label="Letter spacing px" value={selected.letterSpacing??0}
-        onChange={event=>edit({letterSpacing:Number(event.target.value)})}>
-        {Array.from({length:21},(_,i)=>i*.5).map(n=><option key={n} value={n}>{n} px</option>)}
-        {!Array.from({length:21},(_,i)=>i*.5).includes(selected.letterSpacing)&&
-         <option value={selected.letterSpacing}>Legacy {selected.letterSpacing} px</option>}
-      </select></label>
-      <label>Font compress <select aria-label="Font compression percent" value={selected.fontCompression??100}
-        onChange={event=>edit({fontCompression:Number(event.target.value)})}>
-        {Array.from({length:11},(_,i)=>50+i*5).map(n=><option key={n} value={n}>{n}%</option>)}
-        {!Array.from({length:11},(_,i)=>50+i*5).includes(selected.fontCompression??100)&&
-         <option value={selected.fontCompression}>{selected.fontCompression}%</option>}
-      </select></label>
-      <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
-    </div>}
-    {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
-      <strong>Find / Replace static text</strong>
-      <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
-      <label>Replace with <input type="text" maxLength={500} value={replaceWord} onChange={e=>setReplaceWord(e.target.value)} placeholder="New label text"/></label>
-      <label><input type="checkbox" checked={findAllPages} onChange={e=>setFindAllPages(e.target.checked)}/> All pages</label>
-      <button type="button" onClick={()=>{
-        const hits=findEditableLabels(draft.elements,findWord,findAllPages?undefined:selectedPage);
-        if(hits.length){setSelectedId(draft.elements[hits[0]].id);setWordSelectedIds([draft.elements[hits[0]].id]);setSelectedPage(draft.elements[hits[0]].page??1);}
-        setNotice(hits.length+" editable text object(s) found. Customer fields and preprinted layers are excluded.");
-      }}>Find</button>
-      <button type="button" onClick={()=>{
-        try{
-          const result=replaceEditableLabels(draft.elements,findWord,replaceWord,findAllPages?undefined:selectedPage);
-          if(result.changed){modify(current=>({...current,elements:result.parts}));setPhysicalChecked(false);setHardwareChecked(false);}
-          setNotice(result.changed+" static label occurrence(s) replaced. Recheck physical layout before approval.");
-        }catch(error){setNotice(error instanceof Error?error.message:"Cannot replace text.");}
-      }}>Replace all</button>
-    </div>}
-    {wordTab==="layout" && selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
-      <strong>Align selected ({selectedWordParts.length})</strong>
-      <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
-      <div className="ls-word-buttons">
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"left",target:"selection"})}>Left edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"center",target:"selection"})}>Horizontal centers</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"right",target:"selection"})}>Right edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"top",target:"selection"})}>Top edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"middle",target:"selection"})}>Vertical centers</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"bottom",target:"selection"})}>Bottom edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"baseline",target:"selection"})}>Baseline</button>
-        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal"})}>Distribute horizontally</button>
-        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical"})}>Distribute vertically</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"width"})}>Equal width</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"height"})}>Equal height</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"both"})}>Equal size</button>
-      </div>
-      <div className="ls-word-gaps">
-        <label>Exact gap (mm) <input type="number" min={0} max={50} step={.1} value={wordGapMm}
-          onChange={event=>{const value=Number(event.target.value);if(Number.isFinite(value)&&value>=0&&value<=50)setWordGapMm(value);}}/></label>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal",gapMm:wordGapMm})}>Horizontal exact gap</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical",gapMm:wordGapMm})}>Vertical exact gap</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
-        <button type="button" disabled={!selectedWordParts.some(p=>p.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
-        <button type="button" disabled={selectedWordParts.length===0||selectedWordParts.every(p=>p.locked)} onClick={()=>lockWordSelection(true)}>Lock</button>
-        <button type="button" disabled={!selectedWordParts.some(p=>p.locked)} onClick={()=>lockWordSelection(false)}>Unlock</button>
-        <button type="button" disabled={selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete selected</button>
-      </div>
-    </div>}
-    </details>
     {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
       <strong>Bank-independent scan calibration (unverified)</strong>
       {referencePages[0] && <div className="ls-scan-preview" style={{aspectRatio:scanFrame.pixelWidth+"/"+scanFrame.pixelHeight}}>
@@ -2081,24 +2058,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply crop and measurements to local draft</button>
       <button type="button" onClick={() => {setScanSuggestion(null);setScanFrame(null);setScanPerspective(false);setScanCornerPercents(null);}}>Skip scan calibration</button>
     </div>}
-    <section className="ls-tool-card ls-page-card" aria-label="Page setup">
-      <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
-    <div className="ls-settings">
-      <button type="button" onClick={()=>setWordTab("layout")}>Page Setup: Size / Fold / Margins</button>
-      <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
-      <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
-      <span>Full open book {draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm · Start {draft.printStartMm} mm</span>
-      <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
-      {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
-      <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
-      <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
-      <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
-      <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
-      <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
-      <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
-      <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
-    </div>
-    </section>
+
     <div className="ls-workspace">
       {showLayers && <aside className="ls-panel ls-layers">
         <button type="button" className="ls-panel-title" onClick={() => setShowLayers(false)} aria-expanded={true}>Layers ({draft.elements.length}) ▾</button>
@@ -2326,6 +2286,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div> : <p className="ls-empty">Select an object to edit every property: text, dynamic mapping, font, color, size, layers, coordinates and print behavior.</p>)}
       </aside>
     </div>
+    {pageSetupOpen&&workspaceView==="design"&&<div className="ls-page-setup-backdrop">
+      <section className="ls-page-setup-dialog" role="dialog" aria-modal="true" aria-label="Passbook Page Setup">
+        <header><strong>Page Setup — Size, Margins & Fold</strong><button type="button" autoFocus onClick={()=>setPageSetupOpen(false)}>✕ Close</button></header>
+        <PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
+          onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
+          onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>
+        <footer><button type="button" className="ls-primary" onClick={()=>setPageSetupOpen(false)}>Done · Return to Document</button></footer>
+      </section>
+    </div>}
     <div className="ls-designer-status" aria-label="Editor status and zoom">
       <span>Page {selectedPage}/{Math.max(1,draft.pageCount||1)} · {draft.widthMm} × {draft.heightMm} mm</span>
       <span>{dirty?"Unsaved changes":"Draft saved"} · {setup.output==="dotmatrix"?"PR2 text-only":"Quick Passbook"}</span>
@@ -2333,6 +2302,58 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>Grid</button>
       <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=0.6} onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>−</button><strong>{Math.round(zoom*100)}%</strong><button type="button" aria-label="Zoom in" disabled={zoom>=2} onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>＋</button></span>
     </div>
+    <details className="ls-extra-tools" aria-label="More document actions">
+      <summary>Additional tools and import shortcuts · Keep the editor visible above</summary>
+    <section className="ls-tool-collection" aria-label="Document tools">
+      <div className="ls-tool-card ls-tool-primary">
+        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
+        <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
+      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">Upload Word DOC/DOCX<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);}} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
+        </div>
+      </div>
+      <div className="ls-tool-card ls-tool-primary">
+        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">02</span><div><strong>Text & Customer Data</strong><small>Common fields used on passbooks</small></div></div>
+        <div className="ls-ribbon" role="toolbar" aria-label="Add text and customer fields">
+      <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
+      <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
+      <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
+      <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
+      <button type="button" aria-pressed={mappingSource==="customer"} onClick={()=>setMappingSource("customer")}>Draw Customer Data Box</button>
+      <button type="button" aria-pressed={mappingSource==="bank"} onClick={()=>setMappingSource("bank")}>Draw Bank Data Box</button>
+        </div>
+      </div>
+      <details className="ls-tool-card ls-tool-secondary">
+        <summary><span className="ls-tool-icon" aria-hidden="true">03</span><span><strong>Graphics & Shapes</strong><small>Photo, logo, boxes, circles and lines</small></span><span aria-hidden="true">⌄</span></summary>
+        <div className="ls-ribbon" role="toolbar" aria-label="Insert graphics and shapes">
+      <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
+      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
+      <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
+      <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
+      <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
+      <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
+      <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
+        </div>
+      </details>
+    </section>
+    <section className="ls-tool-card ls-page-card" aria-label="Page setup">
+      <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
+    <div className="ls-settings">
+      <button type="button" onClick={()=>setWordTab("layout")}>Page Setup: Size / Fold / Margins</button>
+      <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
+      <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
+      <span>Full open book {draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm · Start {draft.printStartMm} mm</span>
+      <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
+      {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
+      <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
+      <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
+      <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
+      <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
+      <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
+      <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
+      <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
+    </div>
+    </section>
+    </details>
     {easyMode&&workspaceView==="design"&&<div className="ls-simple-bottom-save" role="group" aria-label="Always visible Save and Backup">
       <span>{dirty?"Design changed":"Layout "+selectedLayoutSlot}</span>
       <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy}
