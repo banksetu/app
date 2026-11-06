@@ -1157,19 +1157,45 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       const result=file.name.toLowerCase().endsWith(".doc")?await importLegacyWordDoc(file):await importWordDocx(file);
       if(!result.paragraphs.length)throw Error("No editable text found. Check the document or create a new layout.");
       const nextParts:LayoutPart[]=[];
-      let y=12,dropped=0;
+      let y=12,dropped=0,tableId=0,tableY=0,tableBottom=0;
       const usableHeight=draft.heightMm-12;
       for(const paragraph of result.paragraphs){
-        const lines=paragraph.text.split("\n").length+Math.ceil(paragraph.text.length/54)-1;
-        const height=within(Math.max(9,lines*4.4),9,40);
-        if(y+height>usableHeight||nextParts.length>=280){dropped++;continue;}
-        const part=addPart("text","static",paragraph.text,"",12,y);
-        part.width=Math.max(30,draft.widthMm-24);
-        part.height=height;part.align=paragraph.align;part.page=1;
-        part.dotMatrix=setup.output==="dotmatrix";
-        part.needsReview=true; // Unverified Word text must never leak through generic Master catalog.
-        part.z=nextParts.length+1;
-        nextParts.push(part);y+=height+3;
+        const table=paragraph.table;
+        if(table&&table.id!==tableId){
+          if(tableId)y=Math.max(y,tableBottom+4);
+          tableId=table.id;tableY=y;tableBottom=y;
+        }else if(!table&&tableId){
+          y=Math.max(y,tableBottom+4);tableId=0;
+        }
+        const cellWidth=table?(draft.widthMm-24)/table.columns:draft.widthMm-24;
+        const x=table?12+table.col*cellWidth:12;
+        const baseline=table?tableY+table.row*13:y;
+        const chunks=paragraph.text.match(/[\s\S]{1,500}/g)||[];
+        let segmentY=baseline;
+        for(const content of chunks){
+          const lines=content.split("\n").length+Math.max(0,Math.ceil(content.length/(table?25:54))-1);
+          const height=within(Math.max(9,lines*4.4),9,40);
+          if(segmentY+height>usableHeight||nextParts.length>=280){dropped++;continue;}
+          if(table&&nextParts.length<279){
+            const border=addPart("rectangle","static","Word table cell","",x,segmentY);
+            border.width=cellWidth;border.height=height+1;border.borderWidth=.5;
+            border.quick=true;border.dotMatrix=false;border.page=1;
+            border.z=nextParts.length+1;nextParts.push(border);
+          }
+          const part=addPart("text","static",content,"",table?x+1:x,table?segmentY+1:segmentY);
+          part.width=Math.max(5,table?cellWidth-2:cellWidth);
+          part.height=height;part.align=paragraph.align;part.page=1;
+          if(paragraph.font)part.font=paragraph.font.slice(0,100);
+          if(paragraph.size)part.size=paragraph.size;
+          part.bold=paragraph.bold??false;part.italic=paragraph.italic??false;
+          part.underline=paragraph.underline??false;if(paragraph.color)part.color=paragraph.color;
+          part.dotMatrix=setup.output==="dotmatrix";
+          part.needsReview=true; // Verify source before any Master publication.
+          part.z=nextParts.length+1;nextParts.push(part);
+          segmentY+=height+2;
+        }
+        if(table)tableBottom=Math.max(tableBottom,segmentY);
+        else y=Math.max(y,segmentY+3);
       }
       if(!nextParts.length)throw Error("Word text does not fit this paper. Correct the physical measurements first.");
       modify(current=>({...startBlankLayout(current),elements:nextParts,
