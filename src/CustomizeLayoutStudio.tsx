@@ -109,7 +109,8 @@ function draftKey(mode: Mode, bankName: string) {
   return "bankSetuLayoutDraft:v1:" + tenantId + ":" + uid + ":" + mode + ":" + bankName;
 }
 
-type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
+type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string;
+  requestedOutput?:"quick"|"dotmatrix";requestedSlot?:number;autoActivateOnApproval?:boolean; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
 type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[]};
 type StudioCoreProps=StudioProps & {setup:LayoutSetup;onBackToSetup:()=>void};
 function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup,onBackToSetup }: StudioCoreProps) {
@@ -379,7 +380,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
     setBusy(true);
     try {
-      const response=await callBankSetuWorker<{success:boolean;id:string}>("/submit-layout-template",{template:draft});
+      const response=await callBankSetuWorker<{success:boolean;id:string}>("/submit-layout-template",{
+        template:draft,output:mode==="accountOpening"?"quick":setup.output,
+        slot:mode==="accountOpening"?1:selectedLayoutSlot,autoActivateOnApproval:true,
+        confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,
+        confirmedPrinterCalibration:hardwareChecked
+      });
       setNotice("Generic layout submitted for Master Admin review: "+response.id+". Nothing was published or activated.");
     } catch(error) {
       setNotice("Submission failed: "+(error instanceof Error?error.message:"Review the template's coordinates and labels."));
@@ -399,8 +405,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (!canReview || !await confirmAction(action === "approve" ? "Approve this generic layout for use by other tenants? Check that all text is generic and contains no private customer information." : "Reject this unapproved shared template?")) return;
     setCatalogBusy(true);
     try {
-      await callBankSetuWorker("/review-layout-template",{id:entry.id,action});
-      setNotice("Template review decision saved. "+(action==="approve"?"Approved layouts will be discoverable by bank.":"Submission rejected."));
+      const result=await callBankSetuWorker<{success:boolean;activatedSlot?:{output:string;slot:number;revision:number}|null}>(
+        "/review-layout-template",{id:entry.id,action});
+      setNotice(result.activatedSlot?
+        "Master approved and automatically applied "+result.activatedSlot.output+" Layout "+
+          result.activatedSlot.slot+" (revision "+result.activatedSlot.revision+") using existing print workflows.":
+        "Template review decision saved. "+(action==="approve"?
+          "Approved design is available. Live PR2 activation requires recorded physical calibration checks.":
+          "Submission rejected."));
       await refreshCatalog(true);
     } catch(error){setNotice("Review failed: "+(error instanceof Error?error.message:"Unknown error"));}
     finally {setCatalogBusy(false);}
@@ -1446,7 +1458,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </div>
       {canReview && pendingReview.length>0 && <div className="ls-catalog-list">{pendingReview.map(item=><div key={item.id} className="ls-catalog-card">
         <span>{item.bankName} · {item.mode} · {item.elements.length} elements</span>
-        <small>Pending Master Review — inspect all text, physical measurements and customer-data safety</small>
+        <small>Requested {item.requestedOutput??"quick"} Layout {item.requestedSlot??1} ·
+          {item.autoActivateOnApproval?" Auto-activate only after verified physical checks":" Approval only; calibration still required"} ·
+          inspect source text, bank and customer-data safety</small>
         <button type="button" onClick={()=>setCatalogChoice(item)}>Inspect</button>
         <button type="button" onClick={()=>{void reviewCatalog(item,"approve");}}>Approve</button>
         <button type="button" onClick={()=>{void reviewCatalog(item,"reject");}}>Reject</button>
