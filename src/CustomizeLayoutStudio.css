@@ -460,3 +460,42 @@ html[data-appearance="dark"] .ls-start-wizard,.banksetu-app-shell[data-appearanc
 .ls-word-tab-content label{display:flex;align-items:center;gap:5px}
 .ls-word-tab-content button{min-height:36px}
 @media(max-width:600px){.ls-word-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.ls-word-tab-content{align-items:flex-start}}
+
+
+/* Full-open passbook Page Setup: Fold/print-start are guides, not a second print engine. */
+.ls-page-setup{width:100%;padding:14px;background:var(--ls-surface,#fff);color:var(--ls-text,#203a4b);border:1px solid var(--ls-border,#d8e2e9);border-radius:12px}
+.ls-page-setup *{box-sizing:border-box}
+.ls-page-setup-heading{display:flex;gap:14px;justify-content:space-between;align-items:start;flex-wrap:wrap;margin-bottom:14px}
+.ls-page-setup-heading strong{font-size:17px}
+.ls-page-setup-heading p{margin:4px 0 0;font-size:12px;color:var(--ls-muted,#59707c)}
+.ls-page-setup-heading label,.ls-page-settings-controls label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:650}
+.ls-page-setup input,.ls-page-setup select{color:var(--ls-text,#203a4b);border:1px solid var(--ls-border,#d0dde6);border-radius:8px;padding:7px;background:var(--ls-surface,#fff);min-width:0}
+.ls-page-setup input:focus-visible,.ls-page-setup select:focus-visible,.ls-page-setup button:focus-visible{outline:2px solid var(--ls-accent,#118c8b);outline-offset:2px}
+.ls-page-setup-columns{display:grid;grid-template-columns:minmax(280px,1.15fr) minmax(250px,1fr);gap:16px}
+.ls-page-settings-controls{display:grid;gap:12px}
+.ls-page-settings-group{display:grid;gap:9px;padding:11px;border:1px solid var(--ls-border,#d7e0ea);border-radius:10px;background:var(--ls-bg,#f8fafc)}
+.ls-page-settings-group>strong{font-size:13px}
+.ls-page-settings-group>small{font-size:11px;color:var(--ls-muted,#59707c)}
+.ls-page-measure-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.ls-page-metric input{width:100%;max-width:100%}
+.ls-page-settings-group>button{max-width:max-content;border-radius:8px;border:1px solid var(--ls-accent,#198a8a);background:var(--ls-soft,#e9f8f6);color:var(--ls-text,#203a4b);padding:7px 10px;cursor:pointer}
+.ls-page-fold-visual{display:flex;flex-direction:column;gap:8px;border:1px solid var(--ls-border,#d8e2eb);border-radius:11px;padding:13px;background:var(--ls-bg,#f6f9fc);min-width:0}
+.ls-page-fold-visual>p{margin:0;color:var(--ls-muted,#5c7181);font-size:12px}
+.ls-page-preview-scroll{overflow:auto;display:flex;justify-content:center;min-height:250px;max-height:500px;align-items:flex-start;padding:16px 0}
+.ls-open-passbook{position:relative;flex:none;background:linear-gradient(180deg,#fbfcff,#edf4f9);color:#234354;border:2px solid #8699a8;border-radius:5px;box-shadow:0 10px 28px #1c354922;overflow:hidden}
+.ls-open-passbook::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,transparent 48%,#718b9b12 50%,transparent 52%);opacity:.6}
+.ls-open-passbook-fold,.ls-open-passbook-start{position:absolute;z-index:3;pointer-events:none}
+.ls-open-passbook-fold{color:#b46b09}
+.ls-open-passbook-start{color:#087865}
+.ls-open-passbook-fold span,.ls-open-passbook-start span{position:absolute;top:4px;left:5px;white-space:nowrap;background:#ffffffec;color:inherit;border-radius:5px;padding:2px 5px;font:700 10px/1.3 system-ui}
+.ls-open-passbook-margins{position:absolute;z-index:2;border:1.5px dashed #597d9e88;background:#65b8eb09;pointer-events:none}
+.ls-fold-panel-title{position:absolute;font:700 11px/1.25 system-ui;letter-spacing:.01em;color:#8aa0ad;text-align:center;left:8%;right:8%;pointer-events:none}
+.ls-page-zone-stats{display:grid;gap:6px}
+.ls-page-zone-stats span{display:block;font-size:12px;padding:7px;border-radius:7px;background:var(--ls-surface,#fff)}
+.ls-paper-safe-area{position:absolute;z-index:4;border:1px dashed #628cb9aa;pointer-events:none}
+.ls-book-vertical-fold,.ls-book-vertical-start{position:absolute;top:0;bottom:0;z-index:7;pointer-events:none;border-left:2px dashed #d8a54d}
+.ls-book-vertical-start{border-left-color:#118f7f}
+.ls-book-vertical-fold span,.ls-book-vertical-start span{position:absolute;top:4px;left:3px;font:700 10px system-ui;white-space:nowrap;background:#ffffffe6;padding:2px 4px;color:#885e2f}
+.ls-book-vertical-start span{color:#007263}
+@media(max-width:800px){.ls-page-setup-columns{grid-template-columns:1fr}.ls-page-setup-heading{flex-direction:column}.ls-page-preview-scroll{justify-content:flex-start}}
+@media(max-width:410px){.ls-page-measure-grid{grid-template-columns:1fr}.ls-open-passbook{max-width:none}}
