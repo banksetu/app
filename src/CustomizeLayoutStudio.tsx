@@ -16,6 +16,7 @@ import {findEditableLabels,replaceEditableLabels} from "./layoutWordFindReplace.
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
+import {readPrivateLayoutDraft,savePrivateLayoutDraft} from "./layoutPrivateDraftRecovery";
 import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
@@ -188,6 +189,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [mapPendingRect,setMapPendingRect]=useState<{x:number;y:number;width:number;height:number}|null>(null);
   const editsRef=useRef(0);
   const lastCloudAutosaveRef=useRef(0);
+  const privateRevisionRef=useRef(0);
   const [autosaveStatus,setAutosaveStatus]=useState("Draft autosave is enabled after editing.");
   const [previewOpen,setPreviewOpen]=useState(false);
   const [previewCustomers,setPreviewCustomers]=useState<Array<{key:string;display:string;data:Record<string,unknown>}>>([]);
@@ -209,6 +211,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
     setCatalog([]);setPendingReview([]);setLayoutSelection(null);
     undoRef.current=[];redoRef.current=[];localRevisionRef.current=0;
+    privateRevisionRef.current=0;lastCloudAutosaveRef.current=0;
     editingRef.current=false;setDirty(false);
     setNotice("Workspace or selected bank changed. Previous tenant's unsaved preview was cleared; open a saved revision from the verified current workspace.");
   },[mode,bankName]);
@@ -514,6 +517,29 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setDraft(next);
     setDirty(true);
   };
+  const restorePrivateCloudDraft=async()=>{
+    if(dirty||busy||savingLayout){setNotice("Save local unsaved edits before choosing the online draft.");return;}
+    if(!canSubmit||!Object.keys(bankValues).length){
+      setNotice("Use a configured Client Admin bank workspace to restore cloud drafts.");return;
+    }
+    setSavingLayout(true);
+    try{
+      const result=await readPrivateLayoutDraft(bankName,mode,layoutSlotId);
+      if(!result.draft){privateRevisionRef.current=0;setNotice("No private cloud draft exists for this slot.");return;}
+      if(!await confirmAction("Load the private cloud draft for this bank and slot? Your currently displayed draft will be replaced in the editor."))
+        return;
+      privateRevisionRef.current=result.revision;
+      setDraft(result.draft as Draft);
+      setDirty(true);editingRef.current=true;
+      setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);
+      setReferencePages([]);setReferenceVisible(false);setScanFrame(null);setScanSuggestion(null);
+      setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+      setPreviewOpen(false);setPreviewCustomers([]);
+      setNotice("Private cloud design recovered (revision "+result.revision+"). Check source artwork, mapping and physical print alignment.");
+    }catch(error){setNotice("Private cloud recovery was blocked; existing local design is safe: "+
+      (error instanceof Error?error.message:"Connection unavailable"));}
+    finally{setSavingLayout(false);}
+  };
   const save = async ():Promise<boolean> => {
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
       setNotice("Layout NOT saved: workspace changed; reopen the verified bank and tenant.");return false;
@@ -526,18 +552,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       localRevisionRef.current=saved.localRevision;
       if(editsRef.current===startingRevision)setDirty(false);
       setAutosaveStatus("Layout "+selectedLayoutSlot+" saved in the verified local workspace repository.");
-      const safeCloud=canSubmit&&Object.keys(bankValues).length>0&&navigator.onLine&&
-        !draft.elements.some(part=>part.needsReview)&&draft.sourceArtworkStatus!=="needsReview";
-      if(safeCloud){
+      if(canSubmit&&Object.keys(bankValues).length>0&&navigator.onLine){
         try{
-          const synced=await publishLocalLayoutSlot(bankName,mode,layoutSlotId);
-          setNotice("Local layout saved; private tenant cloud recovery synced (revision "+synced.revision+"). Master approval is separate.");
+          const result=await savePrivateLayoutDraft(bankName,mode,layoutSlotId,draft,privateRevisionRef.current);
+          privateRevisionRef.current=result.revision;
+          setNotice("Private tenant Firebase draft saved (revision "+result.revision+"). Master review remains separate.");
         }catch(error){
-          setNotice("Layout SAVED locally. Cloud recovery pending: "+(error instanceof Error?error.message:"Offline"));
+          setNotice("Layout SAVED locally. Private cloud draft pending: "+
+            (error instanceof Error?error.message:"Unavailable")+
+            ". If another device edited this slot, use Restore Private Cloud Draft to review.");
         }
-      }else{
-        setNotice("Layout "+selectedLayoutSlot+" saved locally. Cloud backup deferred until source text is reviewed, this bank is configured and the connection is online.");
-      }
+      }else setNotice("Layout saved locally. Cloud save will resume when online in the configured Client Admin workspace.");
       return true;
     }catch(error){
       setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing data was retained.");
@@ -563,13 +588,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           if(editsRef.current===editNumber)setDirty(false);
           setAutosaveStatus("Draft saved locally · "+new Date().toLocaleTimeString());
           if(canSubmit&&navigator.onLine&&Object.keys(bankValues).length>0&&
-              Date.now()-lastCloudAutosaveRef.current>=30000&&
-              !draft.elements.some(p=>p.needsReview)&&draft.sourceArtworkStatus!=="needsReview"){
+              Date.now()-lastCloudAutosaveRef.current>=30000){
             lastCloudAutosaveRef.current=Date.now();
-            try{await publishLocalLayoutSlot(bankName,mode,layoutSlotId);
-              setAutosaveStatus("Local draft and private cloud recovery synced");
-            }catch{setAutosaveStatus("Saved offline · cloud sync pending");}
-          }else{setAutosaveStatus("Saved offline · cloud review/sync pending");}
+            try{
+              const saved=await savePrivateLayoutDraft(bankName,mode,layoutSlotId,draft,privateRevisionRef.current);
+              privateRevisionRef.current=saved.revision;
+              setAutosaveStatus("Private Firebase draft synced · revision "+saved.revision);
+            }catch(error){setAutosaveStatus("Saved offline · cloud recovery pending: "+
+                (error instanceof Error?error.message:"Unable to sync"));}
+          }else{setAutosaveStatus("Saved offline · cloud autosave on the next available interval");}
         }catch(error){setAutosaveStatus("Autosave pending: "+(error instanceof Error?error.message:"Database unavailable"));}
         finally{setSavingLayout(false);}
       })();
@@ -612,6 +639,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       const saved=slots.find(item=>item.slotId===slotId);
       if(saved&&!validDraft(saved.draft,mode,bankName))throw Error("Saved layout requires review before opening.");
       setSelectedLayoutSlot(next);
+      privateRevisionRef.current=0;lastCloudAutosaveRef.current=0;
       localRevisionRef.current=saved?.localRevision||0;
       setDraft(saved?(saved.draft as unknown as Draft):startBlankLayout(initialDraft(mode,bankName)));
       setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);
@@ -1292,6 +1320,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={()=>{setMappingSource(null);mapStartRef.current=null;setMapPendingRect(null);}}>Cancel mapping</button>
     </div>}
     <div className="ls-slot-strip" role="group" aria-label="Editable layout slots">
+      {canSubmit&&<button type="button" onClick={()=>{void restorePrivateCloudDraft();}} disabled={busy||savingLayout||dirty}>
+        Restore Private Cloud Draft
+      </button>}
       <label>{setup.output==="quick"?"Quick Passbook":"Passbook Print / PR2"} draft slot
         <select value={selectedLayoutSlot} onChange={event=>{void changeDraftSlot(Number(event.target.value));}}>
           {[1,2,3].map(no=><option key={no} value={no}>Layout {no}</option>)}
