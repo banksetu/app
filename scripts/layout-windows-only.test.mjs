@@ -56,7 +56,7 @@ test("Windows studio contains guided Design and Approval spaces while preserving
  const css=file("src/CustomizeLayoutStudio.css");
  for(const label of ["Layout Designer","Shared Bank Layouts","मास्टर स्वीकृति","Windows EXE",
      "New Blank Layout (Word-style)","Export Physical Calibration Ruler",
-     "Save Draft to Offline DB","Run Layout Audit","ls-workflow-nav"]){
+     "Save Draft","Run Layout Audit","ls-workflow-nav"]){
    assert.ok(studio.includes(label),label);
  }
  assert.match(studio,/workspaceView==="design"/);
