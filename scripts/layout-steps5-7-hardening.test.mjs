@@ -109,9 +109,15 @@ test("Step 5: async print preparation is guarded against stale documents and dup
 
 test("Step 7: Word-style drag, resize and keyboard positioning respect measured paper bounds",()=>{
   const editor=readFileSync(new URL("../src/CustomizeLayoutStudio.tsx",import.meta.url),"utf8");
-  assert.match(editor,/current.widthMm-part.width/);
-  assert.match(editor,/current.heightMm-part.height/);
+  const word=readFileSync(new URL("../src/layoutWordGeometry.ts",import.meta.url),"utf8");
+  // Multi-selection drag limits the displacement of EVERY member, not only the active layer.
+  assert.match(editor,/draft.widthMm-p.x-p.width/);
+  assert.match(editor,/draft.heightMm-p.y-p.height/);
   assert.match(editor,/current.widthMm-part.x/);
-  assert.match(editor,/draft.widthMm-selected.width/);
-  assert.match(editor,/draft.heightMm-selected.height/);
+  assert.match(editor,/current.heightMm-part.y/);
+  assert.match(editor,/wordNudge\(draft.elements,liveWordIds/);
+  // Keyboard movement is bounded by the selected group's tightest page edge.
+  assert.match(word,/paper.widthMm-p.x-p.width/);
+  assert.match(word,/paper.heightMm-p.y-p.height/);
+  assert.match(word,/throw Error\("Alignment would place "/);
 });
