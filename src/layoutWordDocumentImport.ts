@@ -1,7 +1,12 @@
 /** Private, bounded DOCX text importer. No HTML insertion, scripts, external resources or network.
  * This is NOT a full Word layout engine: tables and drawings need manual review.
  */
-export type WordParagraph={text:string;align:"left"|"center"|"right"|"justify"};
+export type WordParagraph={
+  text:string;align:"left"|"center"|"right"|"justify";
+  bold?:boolean;italic?:boolean;underline?:boolean;
+  font?:string;size?:number;color?:string;
+  table?:{id:number;row:number;col:number;columns:number;rows:number};
+};
 export type WordImport={paragraphs:WordParagraph[];warnings:string[]};
 const MAX_BYTES=8*1024*1024;
 const MAX_XML=3*1024*1024;
@@ -76,28 +81,70 @@ async function unzipWordDocument(raw:ArrayBuffer):Promise<string>{
   }
   throw Error("DOCX is missing word/document.xml.");
 }
-/** Extracts visible plain text and basic paragraph alignment without evaluating markup. */
+/** Bounded extraction of editable Word paragraphs, basic run formatting,
+ * and table cell geometry. Other Word drawing features are review warnings.
+ */
+function parseParagraph(block:string):WordParagraph|null{
+  const parts:string[]=[];
+  const tokens=/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:(tab|br|cr)\b[^>]*\/>/g;
+  let token:RegExpExecArray|null;
+  while((token=tokens.exec(block))!==null)
+    parts.push(token[2]==="tab"?"\t":token[2]?"\n":xmlEntities(token[1]));
+  const text=parts.join("").slice(0,4500);
+  if(!text.trim())return null;
+  const jc=block.match(/<w:jc\b[^>]*w:val="(left|center|right|both)"/)?.[1];
+  const rPr=block.match(/<w:rPr(?:\s[^>]*)?>([\s\S]*?)<\/w:rPr>/)?.[1]||"";
+  const size=Number(rPr.match(/<w:sz\b[^>]*w:val="(\d+)"/)?.[1]||"")/2;
+  const font=rPr.match(/<w:rFonts\b[^>]*(?:w:ascii|w:hAnsi)="([^"]{1,100})"/)?.[1];
+  const color=rPr.match(/<w:color\b[^>]*w:val="([0-9a-fA-F]{6})"/)?.[1];
+  return {
+    text,align:jc==="both"?"justify":(jc||"left") as WordParagraph["align"],
+    bold:/<w:b(?:\s|\/?>)/.test(rPr)&&!/w:val="(?:0|false|off)"/.test(rPr.match(/<w:b\b[^>]*>/)?.[0]||""),
+    italic:/<w:i(?:\s|\/?>)/.test(rPr)&&!/w:val="(?:0|false|off)"/.test(rPr.match(/<w:i\b[^>]*>/)?.[0]||""),
+    underline:/<w:u(?:\s|\/?>)/.test(rPr)&&!/w:val="(?:none|0)"/.test(rPr.match(/<w:u\b[^>]*>/)?.[0]||""),
+    ...(Number.isFinite(size)&&size>=5&&size<=72?{size}:{}),
+    ...(font?{font:xmlEntities(font)}:{}),...(color?{color:"#"+color.toLowerCase()}:{}),
+  };
+}
 export function extractWordParagraphs(xml:string):WordImport{
   if(xml.length>MAX_XML)throw Error("Document XML is too large.");
   const paragraphs:WordParagraph[]=[];
   const warnings:string[]=[];
-  if(/<w:tbl(?:\s|\/?>)/.test(xml))warnings.push("Word tables must be manually checked and rebuilt.");
-  if(/<w:(?:drawing|pict|object)(?:\s|\/?>)/.test(xml))warnings.push("Word drawings/images were not reconstructed.");
-  if(/<w:(?:sectPr|hdr|ftr)(?:\s|\/?>)/.test(xml))warnings.push("Word page sections, headers or footers need manual inspection.");
-  const blocks=xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[];
-  for(const block of blocks){
-    const parts:string[]=[];
-    const tokens=/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:(tab|br|cr)\b[^>]*\/>/g;
-    let token:RegExpExecArray|null;
-    while((token=tokens.exec(block))!==null){
-      parts.push(token[2]==="tab"?"\t":token[2]?"\n":xmlEntities(token[1]));
-    }
-    const text=parts.join("").slice(0,4500);
-    if(!text.trim())continue;
-    const jc=block.match(/<w:jc\b[^>]*w:val="(left|center|right|both)"/)?.[1];
-    paragraphs.push({text,align:jc==="both"?"justify":(jc||"left") as WordParagraph["align"]});
-    if(paragraphs.length>=240){warnings.push("Only the first 240 nonempty paragraphs were imported.");break;}
+  if(/<w:(?:drawing|pict|object)(?:\s|\/?>)/.test(xml))
+    warnings.push("Word drawings/images were not reconstructed; inspect the original.");
+  if(/<w:(?:sectPr|hdr|ftr)(?:\s|\/?>)/.test(xml))
+    warnings.push("Word page sections, headers or footers need manual inspection.");
+  if(/<w:(?:vMerge|gridSpan)(?:\s|\/?>)/.test(xml))
+    warnings.push("Merged Word table cells need manual alignment review.");
+  const tables=[...xml.matchAll(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g)];
+  const records:Array<{position:number;part:WordParagraph}>=[];
+  for(const match of xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)){
+    if(tables.some(t=>match.index>=t.index&&match.index<t.index+t[0].length))continue;
+    const part=parseParagraph(match[0]);if(part)records.push({position:match.index,part});
   }
+  let tableId=0;
+  for(const table of tables){
+    tableId++;
+    const rows=[...table[0].matchAll(/<w:tr(?:\s[^>]*)?>[\s\S]*?<\/w:tr>/g)];
+    const cellsByRow=rows.map(row=>[...row[0].matchAll(/<w:tc(?:\s[^>]*)?>[\s\S]*?<\/w:tc>/g)]);
+    const columns=Math.min(24,Math.max(1,...cellsByRow.map(row=>row.length)));
+    for(let row=0;row<cellsByRow.length;row++){
+      for(let col=0;col<cellsByRow[row].length;col++){
+        if(col>=24)continue;
+        const cell=cellsByRow[row][col];
+        const sub=[...cell[0].matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)];
+        const parsed=sub.map(m=>parseParagraph(m[0])).filter((x):x is WordParagraph=>x!==null);
+        if(!parsed.length)continue;
+        const part:WordParagraph={...parsed[0],text:parsed.map(p=>p.text).join("\n"),
+          table:{id:tableId,row,col,columns,rows:rows.length}};
+        records.push({position:table.index+cell.index+rows[row].index,part});
+      }
+    }
+  }
+  records.sort((a,b)=>a.position-b.position);
+  paragraphs.push(...records.slice(0,240).map(row=>row.part));
+  if(records.length>240)warnings.push("Only the first 240 nonempty paragraphs were imported.");
+  if(tables.length)warnings.push("Word table cells were reconstructed as editable positioned elements; inspect exact borders and dimensions.");
   if(!paragraphs.length)warnings.push("No editable text found in the Word document.");
   return {paragraphs,warnings};
 }
