@@ -1486,7 +1486,7 @@ async function handleMasterOperation(request, env, actor, route) {
       // outputs. Keep its verified PR2 visibility until a distinct PR2 slot-1
       // is activated; never write to or overwrite the legacy record here.
       let effective=old;
-      if(mode==="passbook"&&output==="dotmatrix"&&slot===1&&!old.templateId){
+      if(mode==="passbook"&&output==="dotmatrix"&&slot===1&&!oldDoc){
         const legacyPath="/tenantLayoutSelections/"+layoutSelectionKey(tenantId,mode);
         const legacyDoc=await firestoreRequest(env,legacyPath).catch(error=>error.status===404?null:Promise.reject(error));
         const legacy=decodeFields(legacyDoc?.fields||{});
