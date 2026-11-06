@@ -11,6 +11,7 @@ import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
 import {wordTransform,wordNudge,wordGroup,wordGroupIds,type WordAction} from "./layoutWordGeometry.ts";
+import {smartSnap,type SnapGuide} from "./layoutSmartGuides.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
@@ -119,6 +120,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
   const [snapGrid, setSnapGrid] = useState(false);
+  const [smartGuidesEnabled,setSmartGuidesEnabled]=useState(false);
+  const [activeGuides,setActiveGuides]=useState<SnapGuide[]>([]);
   const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
@@ -1005,8 +1008,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     const mx=(event.clientX-drag.pageX)/(PX_PER_MM*zoom);
     const my=(event.clientY-drag.pageY)/(PX_PER_MM*zoom);
     const anchor=drag.members.find(p=>p.id===drag.id)??drag.members[0];
-    const snapX=snapGrid?Math.round((anchor.x+mx)/5)*5-anchor.x:mx;
-    const snapY=snapGrid?Math.round((anchor.y+my)/5)*5-anchor.y:my;
+    const proposed=smartGuidesEnabled&&!snapGrid?
+      smartSnap(drag.members,draft.elements.filter(p=>!drag.members.some(m=>m.id===p.id)),
+        mx,my,Math.min(1.5,2/(PX_PER_MM*zoom))):null;
+    setActiveGuides(proposed?.guides??[]);
+    const snapX=snapGrid?Math.round((anchor.x+mx)/5)*5-anchor.x:proposed?.dx??mx;
+    const snapY=snapGrid?Math.round((anchor.y+my)/5)*5-anchor.y:proposed?.dy??my;
     const dx=within(snapX,Math.max(...drag.members.map(p=>-p.x)),
       Math.min(...drag.members.map(p=>draft.widthMm-p.x-p.width)));
     const dy=within(snapY,Math.max(...drag.members.map(p=>-p.y)),
@@ -1017,7 +1024,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       return original?{...p,x:round(original.x+dx),y:round(original.y+dy)}:p;
     })}));setDirty(true);
   };
-  const dragEnd=()=>{dragRef.current=null;resizeRef.current=null;};
+  const dragEnd=()=>{dragRef.current=null;resizeRef.current=null;setActiveGuides([]);};
 
   const toStyle = (part: LayoutPart): React.CSSProperties => ({
     position: "absolute", left: part.x * PX_PER_MM * zoom, top: part.y * PX_PER_MM * zoom,
@@ -1372,6 +1379,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
       <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
       <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
+      <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
       <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
       <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
     </div>
