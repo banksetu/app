@@ -1501,8 +1501,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
   return <section className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
-      <button type="button" className="ls-wizard-link" onClick={onBackToSetup}>← Bank / Method / Print Type</button>
-      <button type="button" onClick={()=>setEasyMode(mode=>!mode)}>{easyMode?"Advanced Tools":"Easy Tools"}</button>
       <div className="ls-heading">
         <span className="ls-brand-mark" aria-hidden="true">BS</span>
         <div className="ls-heading-copy">
@@ -1521,10 +1519,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         PDF/Word conversion, page settings, editable objects and proof export use the real draft editor.
       </p>}
       <div className="ls-header-utilities">
-      <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving…":previewOnly?"Save Browser Demo Draft":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={previewOnly||savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>Save & Send to Master</button>}</div>
+      <div className="ls-header-main-actions"><button type="button" className="ls-primary" disabled={savingLayout||busy} onClick={()=>{void save();}} title="Save this draft">▣ Save Draft{dirty ? " *" : ""}</button><button type="button" onClick={()=>{setWorkspaceView("design");if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}} title="Preview customer values without saving them">◉ {previewOpen?"Hide Preview":"Preview"}</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}} title="Submit for Master review">✓ Send to Master</button>}</div>
       <details className="ls-header-extra">
         <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
         <div className="ls-header-extra-actions">
+          <button type="button" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button>
+          <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings.");}}>Run Layout Audit</button>
+          <button type="button" disabled={previewOnly||savingLayout||busy} onClick={()=>{void syncNow();}}>Sync / Recover Layouts</button>
           <label className="ls-file-action">Restore Layout Backup (JSON)<input type="file" accept=".json,application/json"
             onChange={event=>{void restoreDraftBackup(event);}}/></label>
           <button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
@@ -1576,7 +1577,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           </button>)}
       </nav>
       {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
-        <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>Save Draft</button>
+        <button type="button" disabled={busy} onClick={()=>{void startFromBlank();}}>▤ New Blank</button>
+        <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>▣ Save Draft</button>
+        <button type="button" disabled={busy} onClick={()=>{void proofPdf();}}>◉ Preview / Proof PDF</button>
         <button type="button" onClick={exportJson}>Download Editable Backup</button>
         <label className="ls-file-action">Restore Editable Backup
           <input type="file" accept=".json,application/json" onChange={event=>{void restoreDraftBackup(event);}}/>
@@ -1640,7 +1643,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
       </div>}
       {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects"><span className="ls-ribbon-group-label">Text · Tables · Illustrations · Fields · Symbols</span>
-        <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
+        <button type="button" onClick={()=>append("text","static","New text")}>+ Text Box</button>
+        <button type="button" onClick={()=>append("text","preprinted","Printed Label")}>+ Label</button>
+        <label className="ls-file-action">◩ Picture<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}} /></label>
+        <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>{const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);setWordSelectedIds([part.id]);}}>Bank Logo</button>
         <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
         <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
         <button type="button" onClick={()=>append("photo","static","Photo Box")}>Photo Box</button>
