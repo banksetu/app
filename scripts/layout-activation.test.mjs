@@ -27,3 +27,22 @@ test("disable keeps history without losing the old approved template",()=>{
  assert.equal(disabled.templateId,"");
  assert.equal(previousApprovedVersion(disabled),first);
 });
+
+test("3 Quick and 3 PR2 slots are independent with legacy slot-1 compatibility",()=>{
+ const keys=new Set();
+ for(const output of ["quick","dotmatrix"]){
+   for(let slot=1;slot<=3;slot++){
+     const key=layoutSelectionKey("tenant-one","passbook",output,slot);
+     assert.equal(keys.has(key),false);
+     keys.add(key);
+   }
+ }
+ assert.equal(keys.size,6);
+ assert.equal(layoutSelectionKey("tenant-one","passbook","quick",1),"tenant-one-passbook");
+ assert.equal(layoutSelectionKey("tenant-one","passbook","dotmatrix",1),"tenant-one-passbook-dotmatrix-1");
+ assert.equal(layoutSelectionKey("tenant-one","accountOpening"),"tenant-one-accountOpening");
+ for(const [out,slot] of [["dotmatrix",4],["quick",0],["admin",1]])assert.throws(()=>
+   layoutSelectionKey("tenant-one","passbook",out,slot));
+ assert.throws(()=>layoutSelectionKey("tenant-one","accountOpening","dotmatrix",1));
+ assert.throws(()=>layoutSelectionKey("tenant-one","accountOpening","quick",2));
+});
