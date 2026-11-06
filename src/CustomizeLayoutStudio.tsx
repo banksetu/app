@@ -12,6 +12,7 @@ import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
 import {wordTransform,wordNudge,wordGroup,wordGroupIds,type WordAction} from "./layoutWordGeometry.ts";
 import {smartSnap,type SnapGuide} from "./layoutSmartGuides.ts";
+import {findEditableLabels,replaceEditableLabels} from "./layoutWordFindReplace.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
@@ -112,6 +113,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [wordSelectedIds,setWordSelectedIds]=useState<string[]>([]);
   const [wordGapMm,setWordGapMm]=useState(5);
+  const [findWord,setFindWord]=useState("");
+  const [replaceWord,setReplaceWord]=useState("");
+  const [findAllPages,setFindAllPages]=useState(false);
   const [unit, setUnit] = useState<Unit>("mm");
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -1250,6 +1254,24 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </select></label>
       <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
     </div>}
+    <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
+      <strong>Find / Replace static text</strong>
+      <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
+      <label>Replace with <input type="text" maxLength={500} value={replaceWord} onChange={e=>setReplaceWord(e.target.value)} placeholder="New label text"/></label>
+      <label><input type="checkbox" checked={findAllPages} onChange={e=>setFindAllPages(e.target.checked)}/> All pages</label>
+      <button type="button" onClick={()=>{
+        const hits=findEditableLabels(draft.elements,findWord,findAllPages?undefined:selectedPage);
+        if(hits.length){setSelectedId(draft.elements[hits[0]].id);setWordSelectedIds([draft.elements[hits[0]].id]);setSelectedPage(draft.elements[hits[0]].page??1);}
+        setNotice(hits.length+" editable text object(s) found. Customer fields and preprinted layers are excluded.");
+      }}>Find</button>
+      <button type="button" onClick={()=>{
+        try{
+          const result=replaceEditableLabels(draft.elements,findWord,replaceWord,findAllPages?undefined:selectedPage);
+          if(result.changed){modify(current=>({...current,elements:result.parts}));setPhysicalChecked(false);setHardwareChecked(false);}
+          setNotice(result.changed+" static label occurrence(s) replaced. Recheck physical layout before approval.");
+        }catch(error){setNotice(error instanceof Error?error.message:"Cannot replace text.");}
+      }}>Replace all</button>
+    </div>
     {selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
       <strong>Align selected ({selectedWordParts.length})</strong>
       <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
