@@ -128,7 +128,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [easyMode,setEasyMode]=useState(true);
-  const [guidedStep,setGuidedStep]=useState<"start"|"edit"|"check">("edit");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
@@ -1094,7 +1093,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setSelectedId(nextParts[0].id);setWordSelectedIds([nextParts[0].id]);
       setSelectedPage(1);setReferencePages([]);setGraphicWarnings(result.warnings);
       setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
-      setGuidedStep("edit");
       setNotice(nextParts.length+" editable Word paragraph(s) imported. Every line needs review before Master approval. "+
         (dropped?dropped+" paragraph(s) did not fit the measured page. ":"")+
         result.warnings.join(" "));
@@ -1108,7 +1106,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     editingRef.current=true;
     if(setup.method==="blank"){
       modify(current=>startBlankLayout(current));
-      setGuidedStep("edit");
       setNotice("New blank document created. Choose fields, design your page, then review it.");
     }else if(setup.method==="pdf"&&setup.file){void importPdfFile(setup.file);}
     else if(setup.method==="word"&&setup.file){void importWordFile(setup.file);}
@@ -1218,9 +1215,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
-  return <section data-step={guidedStep} className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
+  return <section className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <button type="button" className="ls-wizard-link" onClick={onBackToSetup}>← Bank / Method / Print Type</button>
+      <button type="button" onClick={()=>setEasyMode(mode=>!mode)}>{easyMode?"Advanced Tools":"Easy Tools"}</button>
       <div className="ls-heading">
         <span className="ls-brand-mark" aria-hidden="true">BS</span>
         <div className="ls-heading-copy">
@@ -1260,73 +1258,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         ?"Edit locally with rulers, field mapping and live paper preview. Save a draft before seeking approval."
         :"Review generic bank templates and activation history. Hardware calibration is required before production use."}
     </div>
-    {workspaceView==="design" && <section className="ls-easy-guide" aria-label="Simple step-by-step layout creation">
-      <div className="ls-easy-heading">
-        <div><strong>Easy Layout Builder</strong><p>Make your passbook or account form in three simple steps. Your existing draft is not reset when switching steps.</p></div>
-        <button type="button" aria-pressed={!easyMode} onClick={()=>{setEasyMode(v=>!v);setActiveGuides([]);}}>
-          {easyMode?"Advanced tools":"Back to Easy Mode"}
-        </button>
-      </div>
-      {easyMode && <>
-        <div className="ls-easy-steps" role="group" aria-label="Layout steps">
-          {([
-            ["start","1","Start","Choose a blank page or import PDF"],
-            ["edit","2","Design","Add fields and adjust the preview"],
-            ["check","3","Check & save","Review print modes and save a draft"]
-          ] as const).map(([value,no,title,description])=>
-            <button key={value} type="button" aria-current={guidedStep===value?"step":undefined}
-              onClick={()=>setGuidedStep(value)}>
-              <span className="ls-easy-step-number">{no}</span><span><strong>{title}</strong><small>{description}</small></span>
-            </button>)}
-        </div>
-        <div className="ls-easy-explain">
-          {guidedStep==="start" ? <>
-            <strong>Step 1 · Choose how to begin</strong>
-            <p>For a new design, use Blank Layout. If you have a scanned sample, import its PDF below. Check the actual paper width, height and fold before continuing.</p>
-            <div className="ls-easy-paper">
-              <label>Measurement unit
-                <select value={unit} onChange={e=>setUnit(e.target.value as Unit)}><option value="mm">Millimetres</option><option value="cm">Centimetres</option><option value="in">Inches</option></select>
-              </label>
-              <label>Paper width ({unit})
-                <input type="number" min={50/factor(unit)} max={500/factor(unit)} step={0.1}
-                  value={valueInUnit(draft.widthMm,unit)} onChange={e=>setMeasure("widthMm",e.target.value)}/>
-              </label>
-              <label>Paper height ({unit})
-                <input type="number" min={50/factor(unit)} max={500/factor(unit)} step={0.1}
-                  value={valueInUnit(draft.heightMm,unit)} onChange={e=>setMeasure("heightMm",e.target.value)}/>
-              </label>
-              <label>Fold from top ({unit}, optional)
-                <input type="number" min={0} max={500/factor(unit)} step={0.1}
-                  value={valueInUnit(draft.foldMm,unit)} onChange={e=>setMeasure("foldMm",e.target.value)}/>
-              </label>
-            </div>
-            <small className="ls-easy-warning">Scanner A4 is not the passbook size. Confirm real paper measurements before printing.</small>
-            <div className="ls-easy-cta">
-              <button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>Create blank layout</button>
-              <label className="ls-file-action">Import sample PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event=>{void importPdf(event);}}/></label>
-              <button type="button" onClick={()=>setGuidedStep("edit")}>Next: Design →</button>
-            </div>
-          </> : guidedStep==="edit" ? <>
-            <strong>Step 2 · Build your page</strong>
-            <p>Use Add Text, Customer Field, Bank Field or Photo Box. Select any object to change it on the right. Drag to move; use the paper preview to verify placement.</p>
-            <div className="ls-easy-cta">
-              <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
-              <button type="button" onClick={()=>append("field","customer","Customer Field","customerName")}>+ Customer field</button>
-              <button type="button" onClick={()=>append("field","bank","Bank Information","branchName")}>+ Bank field</button>
-              <button type="button" className="ls-primary" onClick={()=>setGuidedStep("check")}>Next: Check & save →</button>
-            </div>
-          </> : <>
-            <strong>Step 3 · Review before saving</strong>
-            <p>Compare Quick (graphics) and Dot Matrix (text only). Inspect scan/OCR warnings and physical boundaries. Save Draft to Offline DB; sharing or activation still requires approval.</p>
-            <div className="ls-easy-cta">
-              <button type="button" onClick={()=>setGuidedStep("edit")}>← Back to design</button>
-              <button type="button" onClick={()=>{const results=auditPassbookTemplate(draft);setAudit(results);setNotice("Draft audit: "+results.filter(x=>x.severity==="error").length+" error(s). Review every warning before approval.");}}>Check layout</button>
-              <button type="button" className="ls-primary" disabled={busy||savingLayout} onClick={()=>{void save();}}>Save draft</button>
-            </div>
-          </>}
-        </div>
-      </>}
-    </section>}
     {mappingSource&&<div className="ls-map-alert" role="status">Drag a box on the passbook paper, then choose the correct {mappingSource} field in Properties.
       <button type="button" onClick={()=>{setMappingSource(null);mapStartRef.current=null;setMapPendingRect(null);}}>Cancel mapping</button>
     </div>}
