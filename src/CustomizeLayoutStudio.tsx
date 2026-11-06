@@ -1601,6 +1601,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||!styleClipboard} onClick={pasteSelectedStyle}>Paste Format</button>
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>edit({label:selected.label.toLocaleUpperCase()})}>UPPERCASE</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>edit({label:selected.label.toLocaleLowerCase()})}>lowercase</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{
           if(!selected)return;
           const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
@@ -1663,6 +1666,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </select></label>
       </div>}
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
+        <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
+        <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
+        <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
+        <button type="button" disabled={!referencePages[selectedPage-1]} aria-pressed={referenceVisible} onClick={()=>setReferenceVisible(v=>!v)}>Original Overlay</button>
+        <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>Customer Preview</button>
         <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
           {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
         </select></label>
@@ -1673,7 +1681,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </select></label>
       </div>}
       {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors"><span className="ls-ribbon-group-label">Styles · Colors · Borders</span>
-        {selected?<><label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
+        {selected?<><label>Background <input type="color" value={selected.background==="transparent"?"#ffffff":selected.background} onChange={e=>edit({background:e.target.value})}/></label>
+          <button type="button" disabled={selected.background==="transparent"} onClick={()=>edit({background:"transparent"})}>No Fill</button>
+          <label>Border width <input type="number" min={0} max={10} step={0.5} value={selected.borderWidth} onChange={e=>{const n=Number(e.target.value);if(Number.isFinite(n))edit({borderWidth:within(n,0,10)});}}/></label>
+          <label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
           <label>Border color <input type="color" value={selected.borderColor} onChange={e=>edit({borderColor:e.target.value})}/></label>
           <button type="button" onClick={copySelectedStyle}>Copy style</button>
           <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste style</button></>:<span>Select an object to change its colors and style.</span>}
@@ -1684,6 +1695,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>setPageSetupOpen(true)}>▱ Size</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({rotation:(selected.rotation+90)%360})}>Rotate 90°</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1)}>Bring Forward</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1)}>Send Backward</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
+        <button type="button" disabled={!selectedWordParts.some(part=>part.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
         <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
       </div>}
 
@@ -1728,6 +1744,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </select></label>
       <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
     </div>}
+    {wordTab==="review"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Document verification and audit">
+        <span className="ls-ribbon-group-label">Review · OCR · Proof</span>
+        <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors and "+result.filter(x=>x.severity==="warning").length+" warnings. Review before approval.");}}>Run Layout Audit</button>
+        <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
+        <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
+        <span>{draft.elements.filter(item=>item.needsReview).length} unreadable/OCR lines to correct</span>
+      </div>}
     {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
       <strong>Find / Replace static text</strong>
       <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
