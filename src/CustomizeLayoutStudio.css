@@ -432,3 +432,42 @@ html[data-appearance="dark"] .layout-studio .ls-canvas-wrap {
 .ls-easy-warning {display:block;margin:5px 0 12px;color:var(--ls-muted)}
 @media(max-width:850px){.ls-easy-paper{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.ls-easy-paper{grid-template-columns:1fr}}
+
+
+/* Professional task cards share the BANK SETU theme; no new UI framework. */
+.ls-tool-collection{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
+.ls-tool-card{min-width:0;min-height:0;background:var(--ls-surface);border:1px solid var(--ls-border);border-radius:15px;box-shadow:var(--ls-shadow);padding:14px}
+.ls-tool-heading,.ls-tool-card>summary{display:flex;align-items:center;gap:11px;min-width:0}
+.ls-tool-heading strong,.ls-tool-card>summary strong{display:block;font-weight:800;font-size:14px;color:var(--ls-text)}
+.ls-tool-heading small,.ls-tool-card>summary small{display:block;color:var(--ls-muted);font-size:11px;margin-top:3px;line-height:1.45}
+.ls-tool-icon{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--ls-soft);color:var(--ls-accent);font-weight:800}
+.ls-tool-card .ls-ribbon{border:0;box-shadow:none;padding:12px 0 0;gap:8px}
+.ls-tool-card .ls-ribbon button,.ls-tool-card .ls-ribbon .ls-file-action{min-height:36px}
+.ls-tool-card>summary{cursor:pointer;list-style:none;user-select:none}
+.ls-tool-card>summary::-webkit-details-marker,.ls-header-extra>summary::-webkit-details-marker{display:none}
+.ls-tool-card>summary>span:last-child{margin-left:auto}
+.ls-tool-card[open]>summary>span:last-child{transform:rotate(180deg)}
+.ls-word-suite{margin:12px 0}
+.ls-word-suite .ls-format-ribbon,.ls-word-suite .ls-word-precision,.ls-word-suite .ls-word-gaps{margin-top:12px}
+.ls-tool-note{padding:11px 0 0!important;line-height:1.5}
+.ls-page-card{margin:12px 0}
+.ls-page-card .ls-settings{border:0;box-shadow:none;margin:8px 0 0;padding:8px 0 0}
+.ls-header-utilities{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:9px;min-width:0}
+.ls-header-main-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.ls-header-extra{position:relative;min-width:0}
+.ls-header-extra>summary{display:flex;align-items:center;gap:8px;cursor:pointer;border:1px solid var(--ls-border);border-radius:9px;padding:9px 11px;background:var(--ls-surface);color:var(--ls-text);font-weight:700}
+.ls-header-extra-actions{display:flex;flex-wrap:wrap;gap:7px;padding:12px;margin-top:7px;background:var(--ls-surface);border:1px solid var(--ls-border);border-radius:12px;max-width:580px}
+.ls-header-extra[open]>summary{border-color:var(--ls-accent);background:var(--ls-soft)}
+/* Cards remain individually reachable in every guided step. */
+.ls-guided[data-step="start"] .ls-tool-collection,.ls-guided[data-step="start"] .ls-page-card{display:none}
+.ls-guided[data-step="start"] .ls-word-suite{display:none}
+.ls-guided[data-step="edit"] .ls-tool-collection,.ls-guided[data-step="edit"] .ls-page-card{display:grid}
+.ls-guided[data-step="edit"] .ls-tool-collection{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ls-guided[data-step="edit"] .ls-tool-collection .ls-ribbon{display:flex}
+.ls-guided[data-step="edit"] .ls-word-suite{display:block}
+.ls-guided[data-step="edit"] .ls-word-suite .ls-word-gaps,.ls-guided[data-step="edit"] .ls-word-suite .ls-word-precision{display:flex}
+.ls-guided[data-step="check"] .ls-tool-collection{display:none}
+.ls-guided[data-step="check"] .ls-page-card{display:block}
+.ls-guided[data-step="check"] .ls-word-suite{display:none}
+@media(max-width:920px){.ls-tool-collection{grid-template-columns:1fr}.ls-guided[data-step="edit"] .ls-tool-collection{grid-template-columns:1fr}.ls-header-utilities{justify-content:flex-start}}
+@media(max-width:550px){.ls-tool-card{padding:11px}.ls-header-main-actions{width:100%}.ls-header-main-actions button{flex:1}.ls-header-extra-actions{max-width:100%}}
