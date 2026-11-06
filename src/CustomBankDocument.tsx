@@ -23,6 +23,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [activeLayout,setActiveLayout]=useState<ApprovedLayout|null>(null);
+  const [activeSlot,setActiveSlot]=useState(1);
   const searchEpoch=useRef(0);
   const [workspaceEpoch,setWorkspaceEpoch]=useState(0);
   const onConfigured = useCallback(() => {}, []);
@@ -30,6 +31,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
   const unionPassbook = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType !== "accountOpening";
   const title = formatType === "accountOpening" ? "Account Opening PDF" : formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print";
   const layoutMode=formatType==="accountOpening"?"accountOpening":"passbook";
+  const layoutOutput=formatType==="passbook"?"dotmatrix":"quick";
   useEffect(()=>{
     let live=true;
     setActiveLayout(null);
@@ -37,13 +39,13 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
     if(!windowsLayoutEngineAvailable())return ()=>{live=false;};
     void (async()=>{
       try{
-        const state=await callBankSetuWorker<{active:boolean;template:ApprovedLayout|null}>("/get-workspace-layout-selection",{mode:layoutMode});
+        const state=await callBankSetuWorker<{active:boolean;template:ApprovedLayout|null}>("/get-workspace-layout-selection",{mode:layoutMode,output:layoutOutput,slot:layoutMode==="accountOpening"?1:activeSlot});
         if(live && state.active && state.template && templateCanRender(state.template,bankInfo.passbookBank||"",layoutMode))
           setActiveLayout(state.template);
       }catch{/* Offline or no active custom template: keep the original bank print renderer unchanged. */}
     })();
     return()=>{live=false;};
-  },[layoutMode,bankInfo.passbookBank,workspaceEpoch]);
+  },[layoutMode,layoutOutput,activeSlot,bankInfo.passbookBank,workspaceEpoch]);
   // Changing the bank or signed-in workspace must immediately forget all
   // displayed customer data; late search responses cannot repopulate another
   // tenant's preview. This does not touch stored customer records.
@@ -51,7 +53,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
     const invalidate=()=>{
       searchEpoch.current+=1;
       setCustomer(null);setCustomerRow(null);setMatches([]);
-      setBusy(false);setError("");setActiveLayout(null);
+      setBusy(false);setError("");setActiveLayout(null);setActiveSlot(1);
     };
     invalidate();
     const onWorkspaceChange=()=>{
@@ -102,6 +104,13 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
   return <section className="custom-bank-document" style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
+    {windowsLayoutEngineAvailable()&&layoutMode==="passbook"&&<label style={{display:"inline-flex",alignItems:"center",gap:9,marginBottom:12}}>
+      {layoutOutput==="dotmatrix"?"PR2 Passbook Print Layout":"Quick Passbook Layout"}
+      <select value={activeSlot} aria-label="Approved passbook layout slot" onChange={event=>setActiveSlot(Number(event.target.value))}
+        style={{minHeight:36,borderRadius:7,padding:"6px 10px"}}>
+        {[1,2,3].map(n=><option key={n} value={n}>Layout {n}</option>)}
+      </select>
+    </label>
     {clientSearch ? <form className="client-document-search" onSubmit={search}>
       <label htmlFor="client-document-query">UNIVERSAL CUSTOMER SEARCH</label>
       <div><input id="client-document-query" placeholder="Account No. / Customer ID / Aadhaar / Mobile / AOF No. / Name" value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off" />
