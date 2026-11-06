@@ -113,7 +113,7 @@ function draftKey(mode: Mode, bankName: string) {
 }
 
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string;
-  requestedOutput?:"quick"|"dotmatrix";requestedSlot?:number;autoActivateOnApproval?:boolean; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
+  requestedOutput?:"quick"|"dotmatrix";requestedSlot?:number;autoActivateOnApproval?:boolean; widthMm:number; heightMm:number; foldMm:number; printStartMm:number;pageSetup?:PageSetup; elements:LayoutPart[]; updatedAt?:string };
 type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[]};
 type StudioCoreProps=StudioProps & {setup:LayoutSetup;onBackToSetup:()=>void};
 function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup,onBackToSetup }: StudioCoreProps) {
@@ -396,7 +396,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   };
   const useCatalogTemplate = async (entry:CatalogEntry) => {
     if (!await confirmAction("Use this approved generic layout as a new local draft? Your current unsaved layout will be replaced. Customer data is never copied.")) return;
-    const restored:Draft={version:1,bankName,mode,pageCount:(entry as CatalogEntry & {pageCount?:number}).pageCount||1,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,elements:entry.elements.map(part=>({...part,id:randomId(),value:""}))};
+    const restored:Draft={version:1,bankName,mode,pageCount:(entry as CatalogEntry & {pageCount?:number}).pageCount||1,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,pageSetup:entry.pageSetup,elements:entry.elements.map(part=>({...part,id:randomId(),value:""}))};
     if (!validDraft(restored,mode,bankName)){setNotice("Catalog template is not compatible with this bank or editor version.");return;}
     setDraft(restored);setSelectedId(null);setCatalogChoice(null);setCatalogOpen(false);setDirty(true);setTemporaryValues({});undoRef.current=[];redoRef.current=[];
     setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
