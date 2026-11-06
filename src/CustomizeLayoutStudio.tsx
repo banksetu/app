@@ -1575,7 +1575,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             {tab[0].toUpperCase()+tab.slice(1)}
           </button>)}
       </nav>
-      {wordTab==="file"&&<div className="ls-word-tab-content" role="toolbar" aria-label="File and backup">
+      {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
         <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>Save Draft</button>
         <button type="button" onClick={exportJson}>Download Editable Backup</button>
         <label className="ls-file-action">Restore Editable Backup
@@ -1591,7 +1591,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <input type="file" accept=".pdf,application/pdf" onChange={event=>{void importPdf(event);}}/>
         </label>
       </div>}
-      {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools">
+      {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools"><span className="ls-ribbon-group-label">Clipboard · Paragraph · Editing</span>
         <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
         <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
         <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
@@ -1606,7 +1606,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
         }}>Duplicate Object</button>
       </div>}
-      {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes">
+      {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes"><span className="ls-ribbon-group-label">Drawing · Field Boxes</span>
         <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
         <button type="button" onClick={()=>append("rectangle","static","Box")}>Draw Rectangle</button>
         <button type="button" onClick={()=>append("ellipse","static","Circle")}>Draw Ellipse</button>
@@ -1614,14 +1614,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>setMappingSource("customer")}>Draw Customer Field Box</button>
         <small>Drag the field box over the passbook, then choose its data mapping.</small>
       </div>}
-      {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes">
+      {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes"><span className="ls-ribbon-group-label">References · Notes</span>
         <button type="button" onClick={()=>append("text","static","Reference / note:")}>Insert Editable Note</button>
         <button type="button" onClick={()=>append("text","static","Terms and conditions")}>Insert Terms</button>
         <button type="button" onClick={()=>append("field","bank","Bank IFSC","ifsc")}>Reference Bank IFSC</button>
         <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Reference Customer CIF</button>
         <small>Word bibliographies, citations and academic indexes are not part of a direct passbook print template.</small>
       </div>}
-      {wordTab==="mailings"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Bank and customer merge fields">
+      {wordTab==="mailings"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Bank and customer merge fields"><span className="ls-ribbon-group-label">Bank / Customer Merge Fields</span>
         <button type="button" onClick={()=>append("field","customer","Account holder","name")}>Customer Name</button>
         <button type="button" onClick={()=>append("field","customer","Account number","accountNo")}>Account Number</button>
         <button type="button" onClick={()=>append("field","customer","Address","address")}>Customer Address</button>
@@ -1639,7 +1639,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <small>Specialized Office features such as macros, email merge, full bibliography
         management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
       </div>}
-      {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects">
+      {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects"><span className="ls-ribbon-group-label">Text · Tables · Illustrations · Fields · Symbols</span>
         <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
         <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
         <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
@@ -1656,7 +1656,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             <option key={symbol+index} value={symbol}>{symbol}</option>)}
         </select></label>
       </div>}
-      {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls">
+      {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
         <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
           {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
         </select></label>
@@ -1666,7 +1666,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <option value="quick">Quick Passbook</option><option value="dotmatrix">PR2 Text-Only</option>
         </select></label>
       </div>}
-      {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors">
+      {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors"><span className="ls-ribbon-group-label">Styles · Colors · Borders</span>
         {selected?<><label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
           <label>Border color <input type="color" value={selected.borderColor} onChange={e=>edit({borderColor:e.target.value})}/></label>
           <button type="button" onClick={copySelectedStyle}>Copy style</button>
@@ -1681,6 +1681,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
       </div>}
 
+      {wordTab==="home" && !selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Font and alignment tools — select text to enable">
+        <span className="ls-ribbon-group-label">Font · Paragraph</span>
+        <select aria-label="Font family" value="Arial" disabled><option>Arial</option></select>
+        <input aria-label="Font size" type="number" value={11} disabled/>
+        <button type="button" disabled title="Select a text object">B</button>
+        <button type="button" disabled title="Select a text object"><em>I</em></button>
+        <button type="button" disabled title="Select a text object"><u>U</u></button>
+        <button type="button" disabled title="Select a text object">≡</button>
+        <button type="button" disabled title="Select a text object">☷</button>
+        <small>Select a text or field box on the document to format it.</small>
+      </div>}
       {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
       <strong>Format:</strong>
       <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
