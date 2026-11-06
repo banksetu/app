@@ -1219,12 +1219,25 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{void reviewCatalog(item,"reject");}}>Reject</button>
       </div>)}</div>}
     </div>
-    <div className="ls-ribbon" role="toolbar" aria-label="Add and edit layout elements">
+    <section className="ls-tool-collection" aria-label="Document tools">
+      <div className="ls-tool-card ls-tool-primary">
+        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
+        <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
       <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
+        </div>
+      </div>
+      <div className="ls-tool-card ls-tool-primary">
+        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">02</span><div><strong>Text & Customer Data</strong><small>Common fields used on passbooks</small></div></div>
+        <div className="ls-ribbon" role="toolbar" aria-label="Add text and customer fields">
       <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
       <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
       <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
       <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
+        </div>
+      </div>
+      <details className="ls-tool-card ls-tool-secondary">
+        <summary><span className="ls-tool-icon" aria-hidden="true">03</span><span><strong>Graphics & Shapes</strong><small>Photo, logo, boxes, circles and lines</small></span><span aria-hidden="true">⌄</span></summary>
+        <div className="ls-ribbon" role="toolbar" aria-label="Insert graphics and shapes">
       <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
       <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
       <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
@@ -1232,7 +1245,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
       <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
       <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
-    </div>
+        </div>
+      </details>
+    </section>
     {(suggestedLabels.length>0 || collisions.length>0) && <div className="ls-inference-panel">
       <strong>Review PDF labels and overlapping lines (not automatically approved)</strong>
       <p>{suggestedLabels.length} possible bank/customer labels · {collisions.length} possible overlapping text pairs. OCR can miss printed layers; confirm the physical passbook.</p>
@@ -1293,7 +1308,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{setSelectedPage(collision.page);setSelectedId(collision.secondId);}}>Second layer</button>
       </div>)}</div>}
     </div>}
-    {selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
+    <details className="ls-tool-card ls-word-suite" open={!easyMode}>
+      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
+      <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
+      {selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
       <strong>Format:</strong>
       <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
       <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
@@ -1370,6 +1388,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete selected</button>
       </div>
     </div>}
+    </details>
     {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
       <strong>Bank-independent scan calibration (unverified)</strong>
       {referencePages[0] && <div className="ls-scan-preview" style={{aspectRatio:scanFrame.pixelWidth+"/"+scanFrame.pixelHeight}}>
@@ -1456,6 +1475,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply crop and measurements to local draft</button>
       <button type="button" onClick={() => {setScanSuggestion(null);setScanFrame(null);setScanPerspective(false);setScanCornerPercents(null);}}>Skip scan calibration</button>
     </div>}
+    <section className="ls-tool-card ls-page-card" aria-label="Page setup">
+      <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
     <div className="ls-settings">
       <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
       <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
@@ -1474,6 +1495,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
       <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
     </div>
+    </section>
     <div className="ls-workspace">
       <aside className="ls-panel ls-layers">
         <button type="button" className="ls-panel-title" onClick={() => setShowLayers(!showLayers)} aria-expanded={showLayers}>Layers ({draft.elements.length}) {showLayers ? "▾" : "▸"}</button>
