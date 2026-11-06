@@ -1,4 +1,4 @@
-import {geometryErrors,type MeasuredPage} from "./layoutPageSetup";
+import {geometryErrors,type MeasuredPage} from "./layoutPageSetup.ts";
 /** Defensive validation of local, tenant-scoped JSON drafts.
  * This must never mutate customer records or change published template formats.
  * Validation is intentionally tolerant of older valid drafts with optional metadata.
