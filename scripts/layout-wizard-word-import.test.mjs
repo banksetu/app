@@ -43,3 +43,17 @@ test("wizard, dynamic mapping, local save, approval and release safety remain se
   for(const label of ["importWordDocx","Draw Customer Data Box","Draw Bank Data Box","Preview with Customer Data","Restore Layout Backup","publishLocalLayoutSlot","submitForReview","selectApprovedTemplate"])assert.ok(ui.includes(label),label);
   assert.match(ui,/windowsLayoutEngineAvailable/);
 });
+
+test("DOCX preserves editable table cell positions and basic Word paragraph styles",()=>{
+ const xml='<w:document><w:body><w:p><w:r><w:t>Heading.</w:t></w:r></w:p>'+
+   '<w:tbl><w:tr><w:tc><w:p><w:r><w:rPr><w:b/><w:sz w:val="24"/><w:color w:val="223344"/></w:rPr><w:t>नाम:</w:t></w:r></w:p></w:tc>'+
+   '<w:tc><w:p><w:r><w:t>राम; x:y</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'+
+   '<w:p><w:r><w:t>Footer</w:t></w:r></w:p></w:body></w:document>';
+ const result=extractWordParagraphs(xml);
+ assert.deepEqual(result.paragraphs.map(p=>p.text),["Heading.","नाम:","राम; x:y","Footer"]);
+ assert.deepEqual(result.paragraphs[1].table,{id:1,row:0,col:0,columns:2,rows:1});
+ assert.deepEqual(result.paragraphs[2].table,{id:1,row:0,col:1,columns:2,rows:1});
+ assert.equal(result.paragraphs[1].bold,true);
+ assert.equal(result.paragraphs[1].size,12);
+ assert.equal(result.paragraphs[1].color,"#223344");
+});
