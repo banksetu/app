@@ -1595,11 +1595,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{setSelectedPage(collision.page);setSelectedId(collision.secondId);}}>Second layer</button>
       </div>)}</div>}
     </div>}
-    <details className="ls-tool-card ls-word-suite">
+    <details className="ls-tool-card ls-word-suite" open>
       <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
       <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
       <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
-        {(["home","insert","layout","design","review","view"] as const).map(tab=>
+        {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
           <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
             {tab[0].toUpperCase()+tab.slice(1)}
           </button>)}
@@ -1629,10 +1629,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <button type="button" onClick={copySelectedStyle}>Copy style</button>
           <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste style</button></>:<span>Select an object to change its colors and style.</span>}
       </div>}
-      {wordTab==="layout"&&<div className="ls-word-tab-content" role="group" aria-label="Physical document layout">
-        <span>Paper: {draft.widthMm} × {draft.heightMm} mm · Fold: {draft.foldMm} mm · Print start: {draft.printStartMm} mm</span>
-        <span>Use Page & Preview to edit real physical measurements.</span>
-      </div>}
+      {wordTab==="layout"&&<PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
+        onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
+        onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>}
 
       {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
       <strong>Format:</strong>
@@ -1801,13 +1800,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     <section className="ls-tool-card ls-page-card" aria-label="Page setup">
       <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
     <div className="ls-settings">
+      <button type="button" onClick={()=>setWordTab("layout")}>Page Setup: Size / Fold / Margins</button>
       <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
       <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
-      <label>Units <select value={unit} onChange={event => setUnit(event.target.value as Unit)}><option value="mm">mm</option><option value="cm">cm</option><option value="in">inch</option></select></label>
-      <label>Width {number(valueInUnit(draft.widthMm, unit), next => setMeasure("widthMm", String(next)), 0, 500, .1)}</label>
-      <label>Height {number(valueInUnit(draft.heightMm, unit), next => setMeasure("heightMm", String(next)), 0, 500, .1)}</label>
-      <label>Fold from top {number(valueInUnit(draft.foldMm, unit), next => setMeasure("foldMm", String(next)), 0, 500, .1)}</label>
-      <label>Print start {number(valueInUnit(draft.printStartMm, unit), next => setMeasure("printStartMm", String(next)), 0, 500, .1)}</label>
+      <span>Full open book {draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm · Start {draft.printStartMm} mm</span>
       <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
       {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
       <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
@@ -1880,8 +1876,20 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
               height:mapPendingRect.height*PX_PER_MM*zoom}}/>}
           </div>}
           {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
-          {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
-          {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
+          <div className="ls-paper-safe-area" aria-hidden="true" style={{
+            left:pageSetupFor(draft).marginLeftMm*PX_PER_MM*zoom,
+            top:pageSetupFor(draft).marginTopMm*PX_PER_MM*zoom,
+            right:pageSetupFor(draft).marginRightMm*PX_PER_MM*zoom,
+            bottom:pageSetupFor(draft).marginBottomMm*PX_PER_MM*zoom
+          }}/>
+          {pageSetupFor(draft).foldAxis==="horizontal"&&draft.foldMm>0&&
+            <div className="ls-fold" style={{top:draft.foldMm*PX_PER_MM*zoom}}><span>BOOK FOLD</span></div>}
+          {pageSetupFor(draft).foldAxis==="vertical"&&draft.foldMm>0&&
+            <div className="ls-book-vertical-fold" style={{left:draft.foldMm*PX_PER_MM*zoom}}><span>BOOK FOLD</span></div>}
+          {draft.printStartMm>0&&pageSetupFor(draft).foldAxis==="vertical"?
+            <div className="ls-book-vertical-start" style={{left:draft.printStartMm*PX_PER_MM*zoom}}>
+              <span>DATA START</span></div>:draft.printStartMm>0?
+            <div className="ls-print-start" style={{top:draft.printStartMm*PX_PER_MM*zoom}}><span>DATA START</span></div>:null}
           {activeGuides.map(guide=><div key={guide.axis} aria-hidden="true"
             title={"Aligned to "+guide.targetId}
             style={{position:"absolute",pointerEvents:"none",zIndex:99999,
