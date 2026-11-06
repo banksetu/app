@@ -1,33 +1,31 @@
 {
-  "latestVersion": "1.0.141",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.141/BankSetu-Setup-1.0.141-x64.exe",
+  "latestVersion": "1.0.142",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.142/BankSetu-Setup-1.0.142-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.141",
-  "releaseTag": "v1.0.141",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.141",
-  "releaseDate": "2026-11-01",
-  "windowsVersion": "1.0.141",
-  "androidBuild": 1000141,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.141/BankSetu-Setup-1.0.141-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.141/BankSetu-Android-1000141.apk",
+  "version": "1.0.142",
+  "releaseTag": "v1.0.142",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.142",
+  "releaseDate": "2026-11-06",
+  "windowsVersion": "1.0.142",
+  "androidBuild": 1000142,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.142/BankSetu-Setup-1.0.142-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.142/BankSetu-Android-1000142.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.141",
-      "releaseDate": "2026-11-01",
+      "version": "1.0.142",
+      "releaseDate": "2026-11-06",
       "categories": {
         "Improvements": [
-          "Fix A4 forms, notification icon and print margins (97).",
-          "Premium login and cinematic authentication transition (96)."
+          "Merge safe MS Office layout engine RC (99)."
         ]
       }
     },
     "android": {
-      "version": "1.0.141",
-      "releaseDate": "2026-11-01",
+      "version": "1.0.142",
+      "releaseDate": "2026-11-06",
       "categories": {
         "Improvements": [
-          "Fix A4 forms, notification icon and print margins (97).",
-          "Premium login and cinematic authentication transition (96)."
+          "Merge safe MS Office layout engine RC (99)."
         ]
       }
     }
