@@ -504,6 +504,47 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     modify(current => ({ ...current, elements: [...current.elements, part] }));
     setSelectedId(part.id);setWordSelectedIds([part.id]);
   };
+  // Word-like insert commands use the existing editable object model.
+  const insertEditableTable=(rows:number,columns:number)=>{
+    const margin=pageSetupFor(draft);
+    const cellWidth=Math.min(35,(draft.widthMm-margin.marginLeftMm-margin.marginRightMm)/columns);
+    const cellHeight=10;
+    const x=margin.marginLeftMm+3;
+    const y=Math.max(margin.marginTopMm+4,draft.printStartMm?draft.printStartMm+4:22);
+    if(rows<1||rows>8||columns<1||columns>8||
+       draft.elements.length+rows*columns*2>300||
+       x+columns*cellWidth>draft.widthMm-margin.marginRightMm||
+       y+rows*cellHeight>draft.heightMm-margin.marginBottomMm){
+      setNotice("The table cannot fit this measured passbook. Reduce rows/columns or change Page Setup.");return;
+    }
+    const parts:LayoutPart[]=[];const z=Math.max(0,...draft.elements.map(item=>item.z));
+    for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){
+      const left=x+col*cellWidth,top=y+row*cellHeight;
+      const border=addPart("rectangle","static","Table cell "+(row+1)+":"+(col+1),"",left,top);
+      border.width=cellWidth;border.height=cellHeight;border.borderWidth=.5;
+      border.quick=true;border.dotMatrix=false;border.z=z+parts.length+1;border.page=selectedPage;
+      parts.push(border);
+      const cell=addPart("text","static","Edit cell","",left+1,top+1);
+      cell.label="Cell "+(row+1)+":"+(col+1);cell.x=left+1;cell.y=top+1;
+      cell.width=Math.max(3,cellWidth-2);cell.height=cellHeight-2;cell.page=selectedPage;
+      cell.dotMatrix=setup.output==="dotmatrix";cell.z=z+parts.length+1;
+      parts.push(cell);
+    }
+    modify(current=>({...current,elements:[...current.elements,...parts]}));
+    setSelectedId(parts[1].id);setWordSelectedIds([parts[1].id]);
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice(rows+" × "+columns+" editable table grid inserted. PR2 output prints only the text, never the borders.");
+  };
+  const insertWordSymbol=(symbol:string)=>{
+    if(!symbol||symbol.length>12)return;
+    if(selected&&selected.kind==="text"&&selected.origin==="static"&&!selected.locked)
+      edit({label:selected.label+symbol});
+    else append("text","static",symbol);
+  };
+  const prefixSelectedText=(prefix:string)=>{
+    if(!selected||selected.kind!=="text"||selected.origin!=="static"||selected.locked)return;
+    edit({label:prefix+selected.label});
+  };
   const startFromBlank=async()=>{
     if(busy)return;
     if(!await confirmAction("Create a blank, measured passbook/page on this device? The current editor is preserved in Undo; export the JSON before replacing unsaved work."))return;
@@ -1604,6 +1645,70 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             {tab[0].toUpperCase()+tab.slice(1)}
           </button>)}
       </nav>
+      {wordTab==="file"&&<div className="ls-word-tab-content" role="toolbar" aria-label="File and backup">
+        <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>Save Draft</button>
+        <button type="button" onClick={exportJson}>Download Editable Backup</button>
+        <label className="ls-file-action">Restore Editable Backup
+          <input type="file" accept=".json,application/json" onChange={event=>{void restoreDraftBackup(event);}}/>
+        </label>
+        <button type="button" onClick={()=>{void calibrationPdf();}}>Export Calibration PDF</button>
+        <label className="ls-file-action">Open Word
+          <input type="file" accept=".doc,.docx,application/msword" onChange={event=>{
+            const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);
+          }}/>
+        </label>
+        <label className="ls-file-action">Open PDF Sample
+          <input type="file" accept=".pdf,application/pdf" onChange={event=>{void importPdf(event);}}/>
+        </label>
+      </div>}
+      {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools">
+        <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
+        <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
+        <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
+        <button type="button" disabled={!selected||!styleClipboard} onClick={pasteSelectedStyle}>Paste Format</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{
+          if(!selected)return;
+          const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
+            y:Math.min(draft.heightMm-selected.height,selected.y+3),z:selected.z+1,locked:false};
+          modify(current=>({...current,elements:[...current.elements,newPart]}));
+          setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
+        }}>Duplicate Object</button>
+      </div>}
+      {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes">
+        <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
+        <button type="button" onClick={()=>append("rectangle","static","Box")}>Draw Rectangle</button>
+        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Draw Ellipse</button>
+        <button type="button" onClick={()=>setMappingSource("bank")}>Draw Bank Field Box</button>
+        <button type="button" onClick={()=>setMappingSource("customer")}>Draw Customer Field Box</button>
+        <small>Drag the field box over the passbook, then choose its data mapping.</small>
+      </div>}
+      {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes">
+        <button type="button" onClick={()=>append("text","static","Reference / note:")}>Insert Editable Note</button>
+        <button type="button" onClick={()=>append("text","static","Terms and conditions")}>Insert Terms</button>
+        <button type="button" onClick={()=>append("field","bank","Bank IFSC","ifsc")}>Reference Bank IFSC</button>
+        <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Reference Customer CIF</button>
+        <small>Word bibliographies, citations and academic indexes are not part of a direct passbook print template.</small>
+      </div>}
+      {wordTab==="mailings"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Bank and customer merge fields">
+        <button type="button" onClick={()=>append("field","customer","Account holder","name")}>Customer Name</button>
+        <button type="button" onClick={()=>append("field","customer","Account number","accountNo")}>Account Number</button>
+        <button type="button" onClick={()=>append("field","customer","Address","address")}>Customer Address</button>
+        <button type="button" onClick={()=>append("field","bank","IFSC","ifsc")}>Bank IFSC</button>
+        <button type="button" onClick={()=>append("field","bank","Branch Address","branchAddress")}>Branch Address</button>
+        <button type="button" onClick={()=>{void loadPreviewCustomers();}}>Preview Merge with Customer</button>
+        <small>Fields resolve only against the active tenant's customer and bank data.</small>
+      </div>}
+      {wordTab==="help"&&<div className="ls-word-tab-content" role="note" aria-label="Editing help and shortcuts">
+        <strong>Word-style Editing Shortcuts</strong>
+        <span>Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+A Select visible · Ctrl/Shift+Click multi-select ·
+        Ctrl+G Group · Ctrl+Shift+G Ungroup · Arrow keys move by 0.1 mm · Shift+Arrows 1 mm</span>
+        <button type="button" onClick={()=>setWordTab("layout")}>Open Page Setup</button>
+        <button type="button" onClick={()=>setWordTab("mailings")}>Open Data Mapping</button>
+        <small>Specialized Office features such as macros, email merge, full bibliography
+        management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
+      </div>}
       {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects">
         <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
         <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
@@ -1612,7 +1717,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>append("rectangle","static","Rectangle")}>Rectangle</button>
         <button type="button" onClick={()=>append("ellipse","static","Circle")}>Circle</button>
         <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
-      </div>}
+        <button type="button" onClick={()=>insertEditableTable(2,3)}>Insert 2×3 Table</button>
+        <button type="button" onClick={()=>insertEditableTable(3,4)}>Insert 3×4 Table</button>
+        <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
+          onChange={event=>insertWordSymbol(event.target.value)}>
+          <option value="">Insert symbol…</option>
+          {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
+            <option key={symbol+index} value={symbol}>{symbol}</option>)}
+        </select></label>
+      </div>
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls">
         <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
           {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
