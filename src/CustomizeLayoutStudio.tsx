@@ -1225,6 +1225,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
       <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
       <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
+      <button type="button" title="Justify paragraph" aria-pressed={selected.align==="justify"} onClick={()=>edit({align:"justify"})}>Justify</button>
+      <label>Line spacing <select aria-label="Line spacing ratio" value={selected.lineHeight??1.18} onChange={event=>edit({lineHeight:Number(event.target.value)})}>
+        {[.8,1,1.15,1.18,1.5,2,2.5,3].map(n=><option key={n} value={n}>{n}×</option>)}
+      </select></label>
       <label>Letter gap <select aria-label="Letter spacing px" value={selected.letterSpacing??0}
         onChange={event=>edit({letterSpacing:Number(event.target.value)})}>
         {Array.from({length:21},(_,i)=>i*.5).map(n=><option key={n} value={n}>{n} px</option>)}
@@ -1238,6 +1242,35 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
          <option value={selected.fontCompression}>{selected.fontCompression}%</option>}
       </select></label>
       <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
+    </div>}
+    {selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
+      <strong>Align selected ({selectedWordParts.length})</strong>
+      <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
+      <div className="ls-word-buttons">
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"left",target:"selection"})}>Left edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"center",target:"selection"})}>Horizontal centers</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"right",target:"selection"})}>Right edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"top",target:"selection"})}>Top edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"middle",target:"selection"})}>Vertical centers</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"bottom",target:"selection"})}>Bottom edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"baseline",target:"selection"})}>Baseline</button>
+        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal"})}>Distribute horizontally</button>
+        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical"})}>Distribute vertically</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"width"})}>Equal width</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"height"})}>Equal height</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"both"})}>Equal size</button>
+      </div>
+      <div className="ls-word-gaps">
+        <label>Exact gap (mm) <input type="number" min={0} max={50} step={.1} value={wordGapMm}
+          onChange={event=>{const value=Number(event.target.value);if(Number.isFinite(value)&&value>=0&&value<=50)setWordGapMm(value);}}/></label>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal",gapMm:wordGapMm})}>Horizontal exact gap</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical",gapMm:wordGapMm})}>Vertical exact gap</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
+        <button type="button" disabled={!selectedWordParts.some(p=>p.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
+        <button type="button" disabled={selectedWordParts.length===0||selectedWordParts.every(p=>p.locked)} onClick={()=>lockWordSelection(true)}>Lock</button>
+        <button type="button" disabled={!selectedWordParts.some(p=>p.locked)} onClick={()=>lockWordSelection(false)}>Unlock</button>
+        <button type="button" disabled={selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete selected</button>
+      </div>
     </div>}
     {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
       <strong>Bank-independent scan calibration (unverified)</strong>
@@ -1470,6 +1503,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             onChange={event=>{const n=Number(event.target.value);
               if(Number.isFinite(n)&&n>=0&&n<=10&&Math.round(n*2)===n*2)edit({letterSpacing:n});
             }}/>)}</div>
+          {field("Line spacing (multiple)", number(selected.lineHeight??1.18,next=>edit({lineHeight:next}),.8,3,.05))}
           {field("Font width / compression", <div className="ls-compress-control">
             <input type="range" aria-label="Font width compression slider" min={50} max={100} step={5}
               value={selected.fontCompression??100}
@@ -1494,7 +1528,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             <button type="button" onClick={()=>moveSelectedTo("vertical","center")}>Middle</button>
             <button type="button" onClick={()=>moveSelectedTo("vertical","end")}>Bottom</button>
           </div>
-          {field("Text alignment", <select value={selected.align} onChange={event => edit({align:event.target.value as Align})}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>)}
+          {field("Text alignment", <select value={selected.align} onChange={event => edit({align:event.target.value as Align})}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="justify">Justify</option></select>)}
           <div className="ls-grid-two">{field("Text color", <input type="color" value={selected.color} onChange={event => edit({color:event.target.value})}/>)}{field("Background color", <input type="color" value={selected.background === "transparent" ? "#ffffff" : selected.background} onChange={event => edit({background:event.target.value})}/>)}{field("Border color", <input type="color" value={selected.borderColor} onChange={event => edit({borderColor:event.target.value})}/>)}{field("Border width", number(selected.borderWidth, next => edit({borderWidth:next}), 0, 10, .5))}{field("Opacity", number(selected.opacity, next => edit({opacity:next}), 0, 1, .1))}</div>
           <label className="ls-inline-check"><input type="checkbox" checked={selected.background === "transparent"} onChange={event => edit({background:event.target.checked ? "transparent" : "#ffffff"})}/> Transparent background</label>
           <div className="ls-checks"><label><input type="checkbox" checked={selected.quick} onChange={event => edit({quick:event.target.checked})}/> Quick Passbook</label><label><input type="checkbox" checked={selected.dotMatrix} onChange={event => edit({dotMatrix:event.target.checked})}/> Dot Matrix output</label><label><input type="checkbox" checked={selected.preprinted} onChange={event => {
@@ -1502,11 +1536,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
               edit({preprinted,origin:preprinted?"preprinted":selected.origin==="preprinted"?"static":selected.origin,dotMatrix:preprinted?false:selected.dotMatrix});
               setLabelChecked(false);
             }}/> Preprinted on paper</label></div>
-          <div className="ls-actions"><button type="button" onClick={() => { const duplicate={...selected,id:randomId(),x:selected.x+3,y:selected.y+3,z:selected.z+1};modify(current=>({...current,elements:[...current.elements,duplicate]}));setSelectedId(duplicate.id); }}>Duplicate</button><button type="button" className="ls-danger" onClick={() => { modify(current=>({...current,elements:current.elements.filter(item=>item.id!==selected.id)}));setSelectedId(null); }}>Delete</button></div>
+          <div className="ls-actions"><button type="button" onClick={() => { const duplicate={...selected,id:randomId(),x:selected.x+3,y:selected.y+3,z:selected.z+1,groupId:undefined,locked:false};modify(current=>({...current,elements:[...current.elements,duplicate]}));setSelectedId(duplicate.id);setWordSelectedIds([duplicate.id]); }}>Duplicate</button><button type="button" className="ls-danger" onClick={deleteWordSelection} disabled={selectedWordParts.some(part=>part.locked)}>Delete</button></div>
         </div> : <p className="ls-empty">Select an object to edit every property: text, dynamic mapping, font, color, size, layers, coordinates and print behavior.</p>)}
       </aside>
     </div>
-    <footer className="ls-footer">Phase 1 Visual Editor: local-only, unapproved draft. PDF image OCR, artwork reconstruction, physical scan detection, shared templates and PR2 activation require separate verified implementation.</footer>
+    <footer className="ls-footer">Draft Windows Document Studio · Precision geometry and line spacing must be proofed on real paper. Only Master-approved and physically calibrated layouts may be activated. Existing bank printing and customer data remain unchanged.</footer>
   </section>;
 }
 
