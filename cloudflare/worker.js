@@ -1538,7 +1538,7 @@ async function handleMasterOperation(request, env, actor, route) {
       return json({active:true,bankKey,mode,output,slot,revision:effective.revision,activatedAt:effective.activatedAt,template:{
         id:template.id,bankName:template.bankName,mode:template.mode,
         widthMm:template.widthMm,heightMm:template.heightMm,foldMm:template.foldMm,
-        printStartMm:template.printStartMm,pageCount:template.pageCount||1,elements:template.elements
+        printStartMm:template.printStartMm,pageSetup:template.pageSetup,pageCount:template.pageCount||1,elements:template.elements
       }});
     }
     const action=String(body.action||"");
@@ -1594,7 +1594,7 @@ async function handleMasterOperation(request, env, actor, route) {
       .slice(0,25).map(item=>({
         id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,
         widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,printStartMm:item.printStartMm,
-        elements:item.elements,updatedAt:item.updatedAt||item.createdAt||"",
+        elements:item.elements,pageSetup:item.pageSetup,updatedAt:item.updatedAt||item.createdAt||"",
         requestedOutput:item.requestedOutput||"quick",requestedSlot:item.requestedSlot||1,
         autoActivateOnApproval:item.autoActivateOnApproval===true
       }));
