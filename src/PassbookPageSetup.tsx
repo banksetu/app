@@ -1,5 +1,5 @@
 import type {CSSProperties} from "react";
-import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type FoldAxis,type MeasuredPage,type PageSetup} from "./layoutPageSetup";
+import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type FoldAxis,type MeasuredPage,type PageSetup} from "./layoutPageSetup.ts";
 type Unit="mm"|"cm"|"in";
 type Props={
   page:MeasuredPage;unit:Unit;onUnit:(unit:Unit)=>void;
