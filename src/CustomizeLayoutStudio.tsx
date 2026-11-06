@@ -2273,6 +2273,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div> : <p className="ls-empty">Select an object to edit every property: text, dynamic mapping, font, color, size, layers, coordinates and print behavior.</p>)}
       </aside>
     </div>
+    {easyMode&&workspaceView==="design"&&<div className="ls-simple-bottom-save" role="group" aria-label="Always visible Save and Backup">
+      <span>{dirty?"Design changed":"Layout "+selectedLayoutSlot}</span>
+      <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy}
+        onClick={()=>{void save();}}>{savingLayout?"Saving…":"Save Design"}</button>
+      <button type="button" disabled={savingLayout||busy} onClick={exportJson}>Download Backup</button>
+    </div>}
     <footer className="ls-footer">Draft Windows Document Studio · Precision geometry and line spacing must be proofed on real paper. Only Master-approved and physically calibrated layouts may be activated. Existing bank printing and customer data remain unchanged.</footer>
   </section>;
 }
