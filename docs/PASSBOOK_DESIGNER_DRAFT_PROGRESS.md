@@ -39,3 +39,40 @@ The known-good production version reported by the owner is v1.0.141; do not assu
 3. Implement typed 3+3 approved live slot routing with backward-compatible tenant data migration, Worker authorization and runtime-specific test coverage.
 4. Add secure server-side reviewed/pending-draft cloud recovery or local-only incomplete draft policy without introducing private data leakage.
 5. Run unsigned Windows installer/Android smoke and manual paper checks; keep main/production unchanged.
+
+
+## Measured book-fold Page Setup (2026-11-06 draft addition)
+
+The passbook designer now exposes a single **Layout → Page Setup** control group with:
+- Full OPEN book Width × Height in mm, cm or inches, Portrait/Landscape and measured sample presets.
+- Horizontal book crease, vertical spine or flat document. Fold Exactly in Half, absolute data-start baseline and calculated distance after fold.
+- Four independent margins (left/right/top/bottom) with validated editable-region geometry and real-scale ruler guides.
+- Open Book vs Folded Book preview to visualize the physical closed cover and both printable halves; actual drafts and proof PDFs use measured open-paper width and height.
+- Blank-page creation no longer discards an existing measured fold / printer-start coordinate; object placement starts after the selected baseline where geometry permits.
+- Optional pageSetup is validated in local drafts, tenant-private Firestore backup, generic cloud backup, Master catalog and active runtime; historical layouts without it remain backward compatible.
+- Any changed fold, paper size or margin revokes previous sample/label/printer calibration sign-offs and cannot activate PR2 without fresh verification.
+- The fold lines and margins are **preview/editing guides**; they do not silently move existing bank-approved X/Y values or create a competing printer driver.
+- Vertical fold/side-spine must be confirmed with actual physical PR2 positioning; hardware-specific output quality cannot be established by UI/software checks.
+
+## Word ribbon tool inventory (Microsoft Word-inspired, not Word itself)
+
+Reference: https://support.microsoft.com/en-us/accessibility/word/keyboard-shortcuts-in-word
+
+| Tab | Working passbook designer actions |
+| --- | --- |
+| File | Save draft, export/restore editable backup, calibration PDF, import PDF/DOC/DOCX |
+| Home | Font family/size, B/I/U, paragraph alignment, letter/line spacing, undo/redo, format copy/paste, bullet/number prefix, object duplicate |
+| Insert | Static text, mapped bank/customer fields, images/placeholders, shapes/line, editable table grids, symbols and special characters |
+| Draw | Editable rectangles/circles/lines and drag-to-create customer/bank data boxes |
+| Design | Object text/border colors, style copy and paste |
+| Layout | Full open book, physical size, custom margins, fold, print start, orientation and object alignment/distribution |
+| References | Editable notes/terms and bank/customer reference fields |
+| Mailings | Dynamic tenant-safe bank/customer merge fields and preview with customer data |
+| Review | Static-label find/replace and manual OCR/label review from existing editor |
+| View | Ruler, grid, zoom and Quick vs PR2 preview |
+| Help | Keyboard shortcuts and guided links to the relevant workspace tool groups |
+
+**Scope honesty:** This is a banking document layout editor, not a clone/license of the Microsoft Word application. Word-only capabilities such as VBA/macros, native academic bibliography, email mail-merge delivery, exact DOC/DOCX roundtrip, rich-text sections/headers/footers, full tracked-changes semantics, SmartArt and arbitrary embedded Office objects require separate substantial engineering. No dead buttons were added to claim parity.
+
+### Validation
+Run `scripts/layout-page-setup.test.mjs`, `cloudflare/layoutTemplates.test.js`, full node/Worker tests and the draft Windows unsigned / Android debug packaging workflow. Check the actual Windows Page Setup and Epson samples separately; do not promote this draft to main automatically.
