@@ -34,7 +34,7 @@ test("Windows-only engine cannot fetch/activate or render template on Android",(
  const studio=file("src/CustomizeLayoutStudio.tsx");
  assert.match(custom,/if\(!windowsLayoutEngineAvailable\(\)\)return \(\)=>\{live=false;\};/);
  assert.match(custom,/windowsLayoutEngineAvailable\(\) && activeLayout && customer/);
- assert.match(document,/if\(!windowsLayoutEngineAvailable\(\)&&!previewOnly\)/);
+ assert.match(document,/if\(!windowsLayoutEngineAvailable\(\)\)/);
  assert.match(studio,/if\(!windowsLayoutEngineAvailable\(\)&&!previewOnly\)return/);
  assert.ok(document.indexOf("if(!windowsLayoutEngineAvailable())")<
    document.indexOf("if(!templateCanRender("),"platform gate before any template output");
