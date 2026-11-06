@@ -76,3 +76,15 @@ Reference: https://support.microsoft.com/en-us/accessibility/word/keyboard-short
 
 ### Validation
 Run `scripts/layout-page-setup.test.mjs`, `cloudflare/layoutTemplates.test.js`, full node/Worker tests and the draft Windows unsigned / Android debug packaging workflow. Check the actual Windows Page Setup and Epson samples separately; do not promote this draft to main automatically.
+
+## November 6 follow-up: implemented software gates
+
+The original progress table above is a historical snapshot, not the current source of truth. New draft code now includes:
+- Read-only legacy Word 97–2003 DOC text extraction (not full binary Word fidelity) and improved DOCX text/table/run import; unsupported structures are explicitly flagged.
+- Private, tenant-scoped draft cloud read/save for unfinished layouts using the existing Worker, Firestore document revisions and authorization checks. This is distinct from the generic Master catalog and does not publish drafts.
+- Quick and PR2 three-slot selection in the Windows customer document workflow, with approved-template lookup and fallback to the original bank print format. Draft slots are not automatically activated without original Master and physical gates.
+- A release-gate evaluator, calibration proof PDFs, layout preflight, worker tests and platform target checks.
+- A conservative read-only unused-code report at `node scripts/audit-layout-unused.mjs`; it does **not** delete modules or backups.
+- Draft-only CI with Linux unit/build tests and unsigned Windows/Android debug jobs. **CI green does not certify physical Epson printer alignment or that the installer launches on the owner's PC.**
+
+The acceptance target is software completeness, not a false claim of Microsoft Word 100% feature parity. Arbitrary Word sections, all binary DOC formatting, exact Epson mechanical calibration and actual Windows install remain outside what can be proven in this environment. Production stays untouched.
