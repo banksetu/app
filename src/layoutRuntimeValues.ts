@@ -1,3 +1,4 @@
+import {geometryErrors,type PageSetup} from "./layoutPageSetup";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {typographyIsValid} from "./layoutTypography.ts";
 import { layoutCustomerValue } from "./layoutCustomerValue.ts";
@@ -9,7 +10,7 @@ export type LayoutDynamicElement = {
 };
 export type ApprovedLayout = {
  id:string;bankName:string;mode:"passbook"|"accountOpening";
- widthMm:number;heightMm:number;foldMm:number;printStartMm:number;pageCount?:number;elements:LayoutDynamicElement[];
+ widthMm:number;heightMm:number;foldMm:number;printStartMm:number;pageSetup?:PageSetup;pageCount?:number;elements:LayoutDynamicElement[];
 };
 const aliases:Record<string,string>={
   customerName:"name",customerId:"customerId",cifId:"customerId",cif:"customerId",
