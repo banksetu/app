@@ -10,7 +10,7 @@ test("layout actions are grouped into independent task cards",()=>{
   assert.ok(ui.includes(action),action);
 });
 test("Word features stay grouped and printer/approval safeguards remain",()=>{
- const start=ui.indexOf('className="ls-word-suite"'),end=ui.indexOf('className="ls-scan-proposal"',start);
+ const start=ui.indexOf('className="ls-tool-card ls-word-suite"'),end=ui.indexOf('className="ls-scan-proposal"',start);
  const suite=ui.slice(start,end);
  for(const feature of ["ls-format-ribbon","Find / Replace static text","ls-word-precision","Group","Unlock","Letter gap","Font compress"])assert.ok(suite.includes(feature),feature);
  assert.match(ui,/if\(!windowsLayoutEngineAvailable\(\)\)/);
