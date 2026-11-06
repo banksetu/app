@@ -1,3 +1,4 @@
+import {sanitizePageSetup} from "./layoutPageGeometry.js";
 /**
  * BANK SETU shared bank-layout catalog. Only generic layout coordinates and
  * bank labels can be submitted. Never copy tenant/customer photos or records.
@@ -35,10 +36,9 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
   if (!pdfFormats.has(raw.mode)) throw Error("Invalid bank layout type.");
   if(raw.sourceArtworkStatus!==undefined && !["clean","reviewed"].includes(raw.sourceArtworkStatus))
     throw Error("Unreviewed PDF raster/complex graphics require manual reconstruction before template sharing.");
-  if (!finite(raw.widthMm, 50, 500) || !finite(raw.heightMm, 50, 500) ||
-      !finite(raw.foldMm, 0, 500) || !finite(raw.printStartMm, 0, 500) ||
-      raw.foldMm > raw.heightMm || raw.printStartMm > raw.heightMm)
-    throw Error("Invalid template physical measurements.");
+  let pageSetup;
+  try{pageSetup=sanitizePageSetup(raw);}
+  catch(error){throw Error("Invalid template physical measurements: "+error.message);}
   const pageCount = raw.pageCount === undefined ? 1 : raw.pageCount;
   if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > 10) throw Error("Template can contain 1–10 pages.");
   if (!Array.isArray(raw.elements) || !raw.elements.length || raw.elements.length > 300)
@@ -110,7 +110,8 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
   const template = {
     version:1, bankName, bankKey:normalizedBankKey(bankName), mode:raw.mode, pageCount,
     widthMm:raw.widthMm, heightMm:raw.heightMm,
-    foldMm:raw.foldMm, printStartMm:raw.printStartMm, elements,
+    foldMm:raw.foldMm, printStartMm:raw.printStartMm,
+    ...(pageSetup?{pageSetup}:{}), elements,
   };
   if (JSON.stringify(template).length > 160000) throw Error("Template exceeds the catalog size limit.");
   return template;
