@@ -179,6 +179,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const resizeRef = useRef<{id:string;pageX:number;pageY:number;width:number;height:number}|null>(null);
   const [dirty, setDirty] = useState(false);
   const [savingLayout,setSavingLayout]=useState(false);
+  const [selectedLayoutSlot,setSelectedLayoutSlot]=useState(1);
+  const layoutSlotId="layout-"+(selectedLayoutSlot+(setup.output==="dotmatrix"?3:0));
   const initialImportRef=useRef(false);
   const [mappingSource,setMappingSource]=useState<"customer"|"bank"|null>(null);
   const mapStartRef=useRef<{x:number;y:number}|null>(null);
@@ -259,7 +261,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       try{
         const local=await readLocalLayouts(bankName,mode);
         if(!active||runVersion!==workspaceVersionRef.current)return;
-        const slot=local.find(item=>item.slotId==="layout-1");
+        const slot=local.find(item=>item.slotId===layoutSlotId);
         if(slot && validDraft(slot.draft,mode,bankName)){
           localRevisionRef.current=slot.localRevision;
           if(!editingRef.current&&setup.method==="continue"){
@@ -270,7 +272,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           // One-way, non-destructive migration of older verified legacy drafts.
           const raw=localStorage.getItem(storageKey);
           const prior=raw?JSON.parse(raw) as unknown:null;
-          if(validDraft(prior,mode,bankName)&&!editingRef.current&&setup.method==="continue"){
+          if(validDraft(prior,mode,bankName)&&!editingRef.current&&setup.method==="continue"&&layoutSlotId==="layout-1"){
             const saved=await saveLocalLayout(bankName,mode,"layout-1",prior,0);
             if(active&&runVersion===workspaceVersionRef.current){
               localRevisionRef.current=saved.localRevision;
@@ -284,7 +286,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       }
     })();
     return()=>{active=false;};
-  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method]);
+  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method,layoutSlotId]);
 
   const refreshCatalog = useCallback(async (review = false) => {
     if (!bankName.trim() && !review) return;
@@ -517,14 +519,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if(savingLayout||busy)return;
     setSavingLayout(true);
     try{
-      const saved=await saveLocalLayout(bankName,mode,"layout-1",draft,
+      const saved=await saveLocalLayout(bankName,mode,layoutSlotId,draft,
         localRevisionRef.current);
       localRevisionRef.current=saved.localRevision;
       setDirty(false);
       setNotice("Editable Layout 1 saved in the existing BANK SETU offline workspace repository. Customer records and pending sync operations were not changed.");
       if(canSubmit&&navigator.onLine){
         try{
-          const synced=await publishLocalLayoutSlot(bankName,mode,"layout-1");
+          const synced=await publishLocalLayoutSlot(bankName,mode,layoutSlotId);
           setNotice("Layout saved offline and a compact, customer-free recovery copy synced for this tenant (cloud revision "+synced.revision+"). Shared catalog publication still requires Master review.");
         }catch(error){
           setNotice("Layout SAVED offline. Cloud recovery is pending: "+(error instanceof Error?error.message:"Unavailable")+". No customer/PDF data was uploaded.");
@@ -545,7 +547,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setSavingLayout(true);
       void (async()=>{
         try{
-          const slot=await saveLocalLayout(bankName,mode,"layout-1",draft,localRevisionRef.current);
+          const slot=await saveLocalLayout(bankName,mode,layoutSlotId,draft,localRevisionRef.current);
           localRevisionRef.current=slot.localRevision;
           if(editsRef.current===editNumber)setDirty(false);
           setAutosaveStatus("Draft saved locally · "+new Date().toLocaleTimeString());
@@ -553,7 +555,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
               Date.now()-lastCloudAutosaveRef.current>=30000&&
               !draft.elements.some(p=>p.needsReview)&&draft.sourceArtworkStatus!=="needsReview"){
             lastCloudAutosaveRef.current=Date.now();
-            try{await publishLocalLayoutSlot(bankName,mode,"layout-1");
+            try{await publishLocalLayoutSlot(bankName,mode,layoutSlotId);
               setAutosaveStatus("Local draft and private cloud recovery synced");
             }catch{setAutosaveStatus("Saved offline · cloud sync pending");}
           }else{setAutosaveStatus("Saved offline · cloud review/sync pending");}
@@ -562,7 +564,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       })();
     },4000);
     return()=>window.clearTimeout(timer);
-  },[draft,dirty,busy,savingLayout,storageKey,bankName,mode,canSubmit]);
+  },[draft,dirty,busy,savingLayout,storageKey,bankName,mode,canSubmit,layoutSlotId,bankValues]);
   const syncNow = async () => {
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
       setNotice("Cloud sync blocked: the active tenant changed.");return;
@@ -579,7 +581,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         }
       }
       const entries=await readLocalLayouts(bankName,mode);
-      const current=entries.find(item=>item.slotId==="layout-1");
+      const current=entries.find(item=>item.slotId===layoutSlotId);
       if(current&&!editingRef.current&&validDraft(current.draft,mode,bankName)){
         setDraft(current.draft as unknown as Draft);
         localRevisionRef.current=current.localRevision;
@@ -589,6 +591,23 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     }catch(error){
       setNotice("Existing offline templates kept. Cloud sync: "+(error instanceof Error?error.message:"Unavailable"));
     }finally{setSavingLayout(false);}
+  };
+  const changeDraftSlot=async(next:number)=>{
+    if(next===selectedLayoutSlot||busy||savingLayout)return;
+    if(dirty){setNotice("Save or export your current changes before switching to another layout slot.");return;}
+    try{
+      const slotId="layout-"+(next+(setup.output==="dotmatrix"?3:0));
+      const slots=await readLocalLayouts(bankName,mode);
+      const saved=slots.find(item=>item.slotId===slotId);
+      if(saved&&!validDraft(saved.draft,mode,bankName))throw Error("Saved layout requires review before opening.");
+      setSelectedLayoutSlot(next);
+      localRevisionRef.current=saved?.localRevision||0;
+      setDraft(saved?(saved.draft as unknown as Draft):startBlankLayout(initialDraft(mode,bankName)));
+      setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);
+      setPreviewOpen(false);setPreviewCustomers([]);setTemporaryValues({});
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice(saved?"Opened existing layout draft slot "+next:"Empty layout slot "+next+" is ready for a new design.");
+    }catch(error){setNotice("Cannot change slot: "+(error instanceof Error?error.message:"Local database unavailable"));}
   };
   const exportJson = () => {
     const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
@@ -1261,6 +1280,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     {mappingSource&&<div className="ls-map-alert" role="status">Drag a box on the passbook paper, then choose the correct {mappingSource} field in Properties.
       <button type="button" onClick={()=>{setMappingSource(null);mapStartRef.current=null;setMapPendingRect(null);}}>Cancel mapping</button>
     </div>}
+    <div className="ls-slot-strip" role="group" aria-label="Editable layout slots">
+      <label>{setup.output==="quick"?"Quick Passbook":"Passbook Print / PR2"} draft slot
+        <select value={selectedLayoutSlot} onChange={event=>{void changeDraftSlot(Number(event.target.value));}}>
+          {[1,2,3].map(no=><option key={no} value={no}>Layout {no}</option>)}
+        </select>
+      </label>
+      <small>Draft slot selection never changes the approved live print layout. Master approval and physical calibration remain separate.</small>
+    </div>
     <div className="ls-preview-strip" role="group" aria-label="Read-only customer preview and draft status">
       <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>👁 {previewOpen?"Hide Customer Preview":"Preview with Customer Data"}</button>
       {previewOpen&&<label>Customer <select value={previewCustomerKey} onChange={e=>setPreviewCustomerKey(e.target.value)}>
