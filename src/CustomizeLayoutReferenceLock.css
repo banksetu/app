@@ -288,3 +288,17 @@ html[data-appearance="dark"] .ls-start-wizard,
   .layout-studio .ls-page-setup-dialog {max-height:94vh}
   .layout-studio .ls-extra-tools .ls-tool-collection {grid-template-columns:1fr}
 }
+
+/* Word-like labeled command groups; these labels never impersonate unsupported commands. */
+.layout-studio .ls-ribbon-group-label {
+  align-self:stretch;display:flex;align-items:center;justify-content:center;
+  flex:0 0 90px;min-width:82px;max-width:116px;
+  padding:0 8px 0 0;margin-right:4px;border-right:1px solid #b6cae1;
+  font-size:10px;font-weight:750;text-align:center;line-height:1.35;color:#46617e
+}
+.layout-studio .ls-format-ribbon .ls-ribbon-group-label {flex:0 0 70px}
+.layout-studio .ls-format-ribbon small {font-size:10px;color:#637f9b}
+.layout-studio .ls-word-tab-content button:disabled {opacity:.48;cursor:not-allowed}
+@media(max-width:810px){
+ .layout-studio .ls-ribbon-group-label {flex:0 0 70px}
+}
