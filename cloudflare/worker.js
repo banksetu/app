@@ -5,7 +5,8 @@ import { parseGoogleResource, validateResourceOwnership } from "./googleConnecti
 import { createSupportMediaService } from "./supportMedia.js";
 import { normalizedBankKey, sanitizeLayoutTemplate } from "./layoutTemplates.js";
 import { layoutSelectionKey, normalizedActivationRecord, previousApprovedVersion } from "./layoutActivation.js";
-import {layoutCloudPaths,safeCloudManifest,changedLayoutSlots,nextCloudManifest,compactLayoutTemplate,validCloudSlot} from "./layoutCloudSync.js";
+import {layoutCloudPaths,safeCloudManifest,changedLayoutSlots,nextCloudManifest,compactLayoutTemplate,inflateLayoutTemplate,validCloudSlot} from "./layoutCloudSync.js";
+import {privateLayoutDraftPath,privateDraftRevision,validatePrivateLayoutDraft} from "./layoutPrivateDraft.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -1251,6 +1252,64 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({ success: true, tenantId });
   }
 
+  // PRIVATE unfinished design recovery: same authenticated Worker, separate
+  // tenant-only document. Never publish it to the Master-approved public catalog.
+  if(["/layout-private-read","/layout-private-save"].includes(route)){
+    if(!["client_admin","client_user"].includes(role)||!actor.profile.tenantId)
+      return json({error:"A verified client workspace is required."},403);
+    if(route==="/layout-private-save"&&role!=="client_admin")
+      return json({error:"Only the Client Admin can update private layout drafts."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(actor.profile.tenantId);
+    const mode=String(body.mode||"");
+    const slotId=String(body.slotId||"");
+    let path;
+    try{path=privateLayoutDraftPath(tenantId,normalizedBankKey(String(body.bankName||"")),mode,slotId);}
+    catch(error){return json({error:error.message},400);}
+    const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const currentBank=String(settings.passbookBank||settings.bankInfo?.passbookBank||"").trim();
+    if(!currentBank||normalizedBankKey(currentBank)!==normalizedBankKey(String(body.bankName||"")))
+      return json({error:"Private layout belongs to another or unconfigured bank."},403);
+    const bankKey=normalizedBankKey(currentBank);
+    const found=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+    const row=decodeFields(found?.fields||{});
+    let revision=0;
+    try{revision=privateDraftRevision(found?row:null,tenantId,bankKey,mode,slotId);}
+    catch(error){return json({error:error.message},409);}
+    if(route==="/layout-private-read"){
+      if(!found)return json({success:true,revision:0,bankName:currentBank,mode,slotId,draft:null});
+      let draft;
+      try{draft=validatePrivateLayoutDraft(await inflateLayoutTemplate(row),currentBank,mode);}
+      catch(error){return json({error:"Private draft integrity check failed: "+error.message},409);}
+      return json({success:true,revision,bankName:currentBank,mode,slotId,draft});
+    }
+    if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision!==revision)
+      return json({error:"Private draft changed on another device. Download and review before overwriting."},409);
+    let template,compressed;
+    try{
+      template=validatePrivateLayoutDraft(body.draft,currentBank,mode);
+      compressed=await compactLayoutTemplate(template);
+    }catch(error){return json({error:error.message},400);}
+    const next={
+      tenantId,bankKey,bankName:currentBank,mode,slotId,
+      revision:revision+1,hash:compressed.hash,size:compressed.size,
+      encoding:compressed.encoding,payload:compressed.payload,
+      updatedBy:actor.uid,updatedAt:new Date().toISOString()
+    };
+    try{
+      await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[{
+        update:{name:firestoreDocumentName(env,path),fields:encodeFields(next)},
+        currentDocument:found?{updateTime:found.updateTime}:{exists:false}
+      }]})});
+    }catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Private draft changed while saving. Local draft is safe; review cloud copy."},409);
+      throw error;
+    }
+    return json({success:true,revision:next.revision,hash:compressed.hash});
+  }
   // Private compact layout recovery is an extension of the EXISTING
   // authenticated Worker / Firestore tenant service, NOT a second sync engine.
   // No scanned PDF, full customer value, credential, AI model or image is uploaded.
@@ -1963,7 +2022,7 @@ export default {
         "/account-action", "/delete-user", "/create-client-user", "/create-client", "/create-client-invite",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
-        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
+        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-private-read", "/layout-private-save", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
         "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
       ];
@@ -1986,7 +2045,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
+      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-private-read", "/layout-private-save", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
         : route.startsWith('/support-media-')
