@@ -1421,9 +1421,19 @@ async function handleMasterOperation(request, env, actor, route) {
     let template;
     try { template=sanitizeLayoutTemplate(body.template,bankName); }
     catch(error){return json({error:error.message},400);}
+    const requestedOutput=String(body.output||"quick");
+    const requestedSlot=body.slot===undefined?1:Number(body.slot);
+    try{layoutSelectionKey(tenantId,template.mode,requestedOutput,requestedSlot);}
+    catch(error){return json({error:error.message},400);}
+    // Do not auto-apply unless the submitting Client Admin has explicitly
+    // certified the physical sample, printed labels and printer calibration.
+    const autoActivateOnApproval=body.autoActivateOnApproval===true &&
+      body.confirmedPhysicalSample===true&&body.confirmedPrintedLabels===true&&
+      body.confirmedPrinterCalibration===true;
     const id=crypto.randomUUID();
     await putDocument(env,"/layoutTemplateCatalog/"+id,{
       ...template,id,status:"pending",originTenantId:tenantId,
+      requestedOutput,requestedSlot,autoActivateOnApproval,
       submittedBy:actor.uid,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
     });
     return json({success:true,id,status:"pending"});
@@ -1453,13 +1463,41 @@ async function handleMasterOperation(request, env, actor, route) {
       updateMask:{fieldPaths:Object.keys(reviewed)},
       currentDocument:{updateTime:found.updateTime}
     };
-    try{await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
+    const writes=[write];
+    let activatedSlot=null;
+    if(status==="approved"&&template.autoActivateOnApproval===true){
+      const tenantId=String(template.originTenantId||"");
+      let selectionId;
+      try{selectionId=layoutSelectionKey(tenantId,template.mode,template.requestedOutput,template.requestedSlot);}
+      catch(error){return json({error:"Auto-activation target is invalid: "+error.message},409);}
+      const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const settings=decodeFields(settingsDoc?.fields||{});
+      if(normalizedBankKey(settings.passbookBank||settings.bankInfo?.passbookBank||"")!==template.bankKey)
+        return json({error:"The submitting workspace changed bank. Master approval cannot auto-activate a different bank."},409);
+      const selectionPath="/tenantLayoutSelections/"+selectionId;
+      const oldSelectionDoc=await firestoreRequest(env,selectionPath)
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const oldSelection=decodeFields(oldSelectionDoc?.fields||{});
+      if(oldSelection.templateId&&oldSelection.bankKey!==template.bankKey)
+        return json({error:"A different bank owns the requested slot. Disable it before approval."},409);
+      let nextSelection;
+      try{nextSelection=normalizedActivationRecord(oldSelection,id,actor.uid,now);}
+      catch(error){return json({error:"Cannot auto-apply template: "+error.message},409);}
+      const saved={...nextSelection,tenantId,mode:template.mode,bankKey:template.bankKey,
+        output:template.requestedOutput,slot:template.requestedSlot,
+        updatedBy:actor.uid,updatedAt:now};
+      writes.push({update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
+        currentDocument:oldSelectionDoc?{updateTime:oldSelectionDoc.updateTime}:{exists:false}});
+      activatedSlot={output:template.requestedOutput,slot:template.requestedSlot,revision:nextSelection.revision};
+    }
+    try{await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes})});}
     catch(error){
       if(error.status===409||error.status===400)
         return json({error:"Layout review changed in another session. Refresh before making a new decision."},409);
       throw error;
     }
-    return json({success:true,id,status});
+    return json({success:true,id,status,activatedSlot});
   }
   if (route === "/get-workspace-layout-selection" || route === "/set-workspace-layout-selection") {
     if (!["client_admin","client_user"].includes(role) || !actor.profile.tenantId)
@@ -1556,7 +1594,9 @@ async function handleMasterOperation(request, env, actor, route) {
       .slice(0,25).map(item=>({
         id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,
         widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,printStartMm:item.printStartMm,
-        elements:item.elements,updatedAt:item.updatedAt||item.createdAt||""
+        elements:item.elements,updatedAt:item.updatedAt||item.createdAt||"",
+        requestedOutput:item.requestedOutput||"quick",requestedSlot:item.requestedSlot||1,
+        autoActivateOnApproval:item.autoActivateOnApproval===true
       }));
     return json({success:true,templates});
   }
