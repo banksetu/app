@@ -444,3 +444,10 @@ html[data-appearance="dark"] .ls-start-wizard,.banksetu-app-shell[data-appearanc
 .ls-preview-strip small{color:var(--ls-muted)}
 .ls-preview-strip button[aria-pressed="true"],.ls-tool-card button[aria-pressed="true"]{border-color:var(--ls-accent);background:var(--ls-soft)}
 @media(max-width:700px){.ls-preview-strip>*{max-width:100%}.ls-preview-strip select{width:100%}}
+
+
+.ls-slot-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0;padding:10px 13px;border:1px solid var(--ls-border);border-radius:12px;background:var(--ls-surface)}
+.ls-slot-strip label{display:flex;align-items:center;gap:7px;color:var(--ls-text);font-weight:750}
+.ls-slot-strip select{min-width:105px}
+.ls-slot-strip small{max-width:700px;color:var(--ls-muted);line-height:1.5}
+@media(max-width:650px){.ls-slot-strip label{width:100%;justify-content:space-between}.ls-slot-strip select{max-width:60%}}
