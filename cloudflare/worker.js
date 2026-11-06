@@ -1592,7 +1592,7 @@ async function handleMasterOperation(request, env, actor, route) {
     const templates=(Array.isArray(rows)?rows:[]).filter(row=>row.document).map(row=>decodeFields(row.document.fields||{}))
       .filter(item=>pending?item.status==="pending":item.status==="approved")
       .slice(0,25).map(item=>({
-        id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,
+        id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,version:Number(item.version)||1,
         widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,printStartMm:item.printStartMm,
         elements:item.elements,pageSetup:item.pageSetup,updatedAt:item.updatedAt||item.createdAt||"",
         requestedOutput:item.requestedOutput||"quick",requestedSlot:item.requestedSlot||1,
