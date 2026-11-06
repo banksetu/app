@@ -5,6 +5,7 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 import {codespacesLayoutPreviewAvailable,previewLayoutKey} from "./platform/layoutCodespacesPreview";
 import "./CustomizeLayoutStudio.css";
+import "./CustomizeLayoutReferenceLock.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
@@ -134,7 +135,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
-  const [easyMode,setEasyMode]=useState(true);
+  const [easyMode,setEasyMode]=useState(false);
   const [simplePaperOpen,setSimplePaperOpen]=useState(false);
   const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help">("home");
   const [showGrid, setShowGrid] = useState(false);
@@ -182,6 +183,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [layoutSelection, setLayoutSelection] = useState<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}|null>(null);
   const [hardwareChecked, setHardwareChecked] = useState(false);
   const [showProps, setShowProps] = useState(true);
+  const [fieldPanelTab,setFieldPanelTab]=useState<"bank"|"customer">("bank");
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
   const dragRef = useRef<{id:string;pageX:number;pageY:number;members:Array<{id:string;x:number;y:number;width:number;height:number}>}|null>(null);
@@ -1529,13 +1531,39 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </details>
     </div>
     </header>
-    <nav className="ls-workflow-nav" aria-label="Layout Studio workspace">
+    <nav className="ls-workflow-nav" aria-label="Passbook Designer sidebar">
+      <div className="ls-sidebar-brand"><strong>◉ BANK SETU</strong><small>Passbook Layout Designer</small></div>
       <button type="button" aria-pressed={workspaceView==="design"} onClick={()=>setWorkspaceView("design")}>
-        <span className="ls-workflow-number">01</span><span><strong>Design workspace</strong><small>Paper setup, PDF import and visual editing</small></span>
+        <span className="ls-workflow-number">⌂</span><span><strong>Layout Designer</strong></span>
       </button>
-      <button type="button" aria-pressed={workspaceView==="library"} onClick={()=>setWorkspaceView("library")}>
-        <span className="ls-workflow-number">02</span><span><strong>Templates & approval</strong><small>Master review, activation and rollback</small></span>
+      <button type="button" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>
+        <span className="ls-workflow-number">＋</span><span><strong>नया डिजाइन बनाएँ</strong></span>
       </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
+        <span className="ls-workflow-number">▤</span><span><strong>ड्राफ्ट / मेरे डिजाइन</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);}}>
+        <span className="ls-workflow-number">◎</span><span><strong>Shared Bank Layouts</strong><small>Approved same-bank templates</small></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
+        <span className="ls-workflow-number">✓</span><span><strong>मास्टर स्वीकृति</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setShowLayers(v=>!v);}}>
+        <span className="ls-workflow-number">▦</span><span><strong>Layout मैनेज / Layers</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("layout");}}>
+        <span className="ls-workflow-number">▱</span><span><strong>Page Size / Margins</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
+        <span className="ls-workflow-number">⇩</span><span><strong>बैकअप / रिकवर</strong></span>
+      </button>
+      <button type="button" onClick={onBackToSetup}>
+        <span className="ls-workflow-number">⚙</span><span><strong>बैंक चयन / सेटिंग</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("help");}}>
+        <span className="ls-workflow-number">?</span><span><strong>सहायता</strong></span>
+      </button>
+      <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
     </nav>
     {easyMode&&workspaceView==="design"&&<section className="ls-simple-flow" aria-label="Simple passbook editing and saving">
       <div className="ls-simple-head">
@@ -1641,19 +1669,19 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={()=>setAudit(null)}>Close Audit</button>
     </div>}
     <div className="ls-catalog-panel">
-      <div className="ls-catalog-heading"><strong>Existing Approved Bank Templates</strong><button type="button" onClick={()=>setCatalogOpen(value=>!value)} aria-expanded={catalogOpen}>{catalogOpen?"Hide":"Show"}</button><button type="button" disabled={catalogBusy} onClick={()=>{setCatalogOpen(true);void refreshCatalog();}}>Refresh</button></div>
+      <div className="ls-catalog-heading"><strong>Shared Bank Layouts · Master Approved</strong><button type="button" onClick={()=>setCatalogOpen(value=>!value)} aria-expanded={catalogOpen}>{catalogOpen?"Hide":"Show"}</button><button type="button" disabled={catalogBusy} onClick={()=>{setCatalogOpen(true);void refreshCatalog();}}>Refresh</button></div>
       {catalogOpen && <>
         <p>Existing templates for {bankName || "the selected bank"} can be previewed and copied without recreating the layout. No other tenant's customer records are shared.</p>
         {catalog.length===0 ? <p>No verified shared template is available for this bank. Upload your own passbook PDF or design manually.</p> :
           <div className="ls-catalog-list">{catalog.filter(item=>item.mode===mode).map(item=><div key={item.id} className="ls-catalog-card">
-            <span>{item.bankName} · {item.mode==="passbook"?"Passbook":"Account Opening"}</span>
-            <small>{item.widthMm} × {item.heightMm} mm · {item.elements.length} editable elements</small>
+            <span>{item.bankName} · {item.requestedOutput==="dotmatrix"?"Passbook Print (PR2)":item.mode==="accountOpening"?"Account Opening":"Quick Passbook"}</span>
+            <small>Master Approved · {item.widthMm} × {item.heightMm} mm · {item.elements.length} elements · {item.updatedAt?"Updated "+new Date(item.updatedAt).toLocaleDateString():"Catalog version"} · Generic source</small>
             <button type="button" onClick={()=>setCatalogChoice(item)}>Preview</button>
           </div>)}</div>}
         {catalogChoice && <div className="ls-catalog-preview">
           <strong>Preview: {catalogChoice.bankName} · Generic template</strong>
           <div className="ls-catalog-mini-paper" style={{aspectRatio:catalogChoice.widthMm+"/"+catalogChoice.heightMm}}>{catalogChoice.elements.slice(0,35).map(part=><span key={part.id} style={{position:"absolute",left:(part.x/catalogChoice.widthMm*100)+"%",top:(part.y/catalogChoice.heightMm*100)+"%",fontSize:8,color:"#172334",maxWidth:(part.width/catalogChoice.widthMm*100)+"%",overflow:"hidden"}}>{part.kind==="text"||part.kind==="field"?part.origin==="customer"?"[Customer field]":part.origin==="bank"?"[Bank Information]":part.label:part.kind==="photo"?"□ PHOTO":part.kind==="line"?"────":""}</span>)}</div>
-          <div className="ls-actions"><button type="button" onClick={()=>{setWorkspaceView("design");void useCatalogTemplate(catalogChoice);}}>Use This Template</button>{canSubmit && <button type="button" disabled={busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Activate Verified Template</button>}
+          <div className="ls-actions"><button type="button" disabled={!canSubmit||busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Use Layout (Verified Slot)</button><button type="button" onClick={()=>{setWorkspaceView("design");void useCatalogTemplate(catalogChoice);}}>Make My Own Copy</button>
              <button type="button" onClick={()=>{setCatalogChoice(null);setCatalogOpen(false);}}>No, Upload My Own PDF</button></div>
         </div>}
       </>}
@@ -2067,10 +2095,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     </div>
     </section>
     <div className="ls-workspace">
-      <aside className="ls-panel ls-layers">
-        <button type="button" className="ls-panel-title" onClick={() => setShowLayers(!showLayers)} aria-expanded={showLayers}>Layers ({draft.elements.length}) {showLayers ? "▾" : "▸"}</button>
-        {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={event=>selectWordObject(part,event.ctrlKey||event.metaKey||event.shiftKey)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
-      </aside>
+      {showLayers && <aside className="ls-panel ls-layers">
+        <button type="button" className="ls-panel-title" onClick={() => setShowLayers(false)} aria-expanded={true}>Layers ({draft.elements.length}) ▾</button>
+        <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={event=>selectWordObject(part,event.ctrlKey||event.metaKey||event.shiftKey)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>
+      </aside>}
       <div className="ls-canvas-wrap">
         <div className="ls-paper-stage" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
         {showRulers && <div className="ls-ruler-x" aria-hidden="true" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
@@ -2162,7 +2190,27 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <p className="ls-canvas-note">Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
       </div>
       <aside className="ls-panel ls-properties">
-        <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
+        <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Insert Field · फील्ड जोड़ें {showProps ? "▾" : "▸"}</button>
+        {showProps && <div className="ls-insert-fields">
+          <div className="ls-field-panel-tabs" role="group" aria-label="Field mapping source">
+            <button type="button" aria-pressed={fieldPanelTab==="bank"} onClick={()=>setFieldPanelTab("bank")}>Bank Info</button>
+            <button type="button" aria-pressed={fieldPanelTab==="customer"} onClick={()=>setFieldPanelTab("customer")}>Customer Data</button>
+          </div>
+          <p>Select a box on the paper to map it, or click a field to add a new box.</p>
+          <div className="ls-field-panel-list">
+            {(fieldPanelTab==="bank"?[...new Set(["bankName","branchName","branchAddress","phone","branchEmail","ifsc","micr","gstin",...Object.keys(bankValues)])]:customerFieldKeys).map(key=>
+              <button key={key} type="button" title={"Map "+key}
+                onClick={()=>{
+                  if(selected && ["rectangle","text","field"].includes(selected.kind)){
+                    edit({kind:"field",origin:fieldPanelTab,fieldKey:key,label:key,value:"",defaultValue:"",preprinted:false,
+                      dotMatrix:setup.output==="dotmatrix",quick:setup.output==="quick"});
+                  }else append("field",fieldPanelTab,key,key);
+                  setNotice("Mapped "+key+" to the selected tenant's "+(fieldPanelTab==="bank"?"Bank Information":"Customer Data")+". No preview customer value is saved.");
+                }}>
+                <span aria-hidden="true">{fieldPanelTab==="bank"?"♧":"◇"}</span>{key.replace(/([A-Z])/g," $1")}
+              </button>)}
+          </div>
+        </div>}
         {showProps && (selected ? <div className="ls-properties-body">
           {field(selected.kind==="text"?"Editable text / Paragraph":"Element name / Label",
             selected.kind==="text"?
@@ -2272,6 +2320,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <div className="ls-actions"><button type="button" onClick={() => { const duplicate={...selected,id:randomId(),x:selected.x+3,y:selected.y+3,z:selected.z+1,groupId:undefined,locked:false};modify(current=>({...current,elements:[...current.elements,duplicate]}));setSelectedId(duplicate.id);setWordSelectedIds([duplicate.id]); }}>Duplicate</button><button type="button" className="ls-danger" onClick={deleteWordSelection} disabled={selectedWordParts.some(part=>part.locked)}>Delete</button></div>
         </div> : <p className="ls-empty">Select an object to edit every property: text, dynamic mapping, font, color, size, layers, coordinates and print behavior.</p>)}
       </aside>
+    </div>
+    <div className="ls-designer-status" aria-label="Editor status and zoom">
+      <span>Page {selectedPage}/{Math.max(1,draft.pageCount||1)} · {draft.widthMm} × {draft.heightMm} mm</span>
+      <span>{dirty?"Unsaved changes":"Draft saved"} · {setup.output==="dotmatrix"?"PR2 text-only":"Quick Passbook"}</span>
+      <button type="button" aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>Ruler</button>
+      <button type="button" aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>Grid</button>
+      <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=0.6} onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>−</button><strong>{Math.round(zoom*100)}%</strong><button type="button" aria-label="Zoom in" disabled={zoom>=2} onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>＋</button></span>
     </div>
     {easyMode&&workspaceView==="design"&&<div className="ls-simple-bottom-save" role="group" aria-label="Always visible Save and Backup">
       <span>{dirty?"Design changed":"Layout "+selectedLayoutSlot}</span>
