@@ -1,3 +1,4 @@
+import type {WordImport} from "./layoutWordDocumentImport";
 /** Bounded, read-only Word 97–2003 .doc text import.
  * Reads OLE2 WordDocument/0Table/1Table piece table locally without running
  * VBA/macros, embedded OLE objects, linked resources or any native software.
@@ -120,7 +121,7 @@ function extractPieceTable(word:Uint8Array,table:Uint8Array):Piece[]{
   }
   throw Error("DOC text piece table missing.");
 }
-export async function importLegacyWordDoc(file:File){
+export async function importLegacyWordDoc(file:File):Promise<WordImport>{
   if(!file.name.toLowerCase().endsWith(".doc"))throw Error("Choose an old binary .doc file.");
   if(file.size>MAX_BYTES)throw Error("Choose a legacy DOC under 8 MB.");
   const raw=new Uint8Array(await file.arrayBuffer());
