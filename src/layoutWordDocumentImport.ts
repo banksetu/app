@@ -81,9 +81,9 @@ export function extractWordParagraphs(xml:string):WordImport{
   if(xml.length>MAX_XML)throw Error("Document XML is too large.");
   const paragraphs:WordParagraph[]=[];
   const warnings:string[]=[];
-  if(/<w:tbl(?:\s|>)/.test(xml))warnings.push("Word tables must be manually checked and rebuilt.");
-  if(/<w:(?:drawing|pict|object)(?:\s|>)/.test(xml))warnings.push("Word drawings/images were not reconstructed.");
-  if(/<w:(?:sectPr|hdr|ftr)(?:\s|>)/.test(xml))warnings.push("Word page sections, headers or footers need manual inspection.");
+  if(/<w:tbl(?:\s|\/?>)/.test(xml))warnings.push("Word tables must be manually checked and rebuilt.");
+  if(/<w:(?:drawing|pict|object)(?:\s|\/?>)/.test(xml))warnings.push("Word drawings/images were not reconstructed.");
+  if(/<w:(?:sectPr|hdr|ftr)(?:\s|\/?>)/.test(xml))warnings.push("Word page sections, headers or footers need manual inspection.");
   const blocks=xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)||[];
   for(const block of blocks){
     const parts:string[]=[];
