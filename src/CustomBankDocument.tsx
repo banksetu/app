@@ -1,42 +1,71 @@
 import UnionAccountOpening from "./UnionAccountOpening";
 import UnionPassbook from "./UnionPassbook";
 import { localDataFetch, getDataIdToken } from "./core/localData";
-import { useCallback, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import {callBankSetuWorker} from "./workerApi";
+import {templateCanRender,type ApprovedLayout} from "./layoutRuntimeValues";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
+const WorkspaceTemplateDocument=lazy(()=>import("./WorkspaceTemplateDocument"));
 import { auth } from "./firebase";
 import { getTenantApiUrl } from "./tenantApi";
 import BankFormatPrint from "./BankFormatPrint";
 import type { BankDocumentType } from "./bankDocumentPolicy";
 import type { PassbookBankInfo } from "./AssamQuickPassbook";
-import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
-import { savedPrintOffset } from "./printAlignmentStorage";
-import PrintAlignmentChoice from "./PrintAlignmentChoice";
-import Pr2PrinterDialog from "./Pr2PrinterDialog";
-import { windowsPr2, WINDOWS_PR2_MESSAGE } from "./platform/pr2";
-import { printCurrentDocument } from "./platform/print";
-import { requireLicensedWrite } from "./core/licenseAccess";
-import { showMessage } from "./uiDialogs";
 type Match = { rowNumber: number; name?: string; accountNo?: string; enrolId?: string };
-export default function CustomBankDocument({ formatType, bankInfo }: { formatType: BankDocumentType; bankInfo: PassbookBankInfo }) {
+export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: { formatType: BankDocumentType; bankInfo: PassbookBankInfo; bankLogo?:string }) {
   const clientSearch = sessionStorage.getItem("bankSetuAccountRole") === "client_admin";
   const [templateLogo,setTemplateLogo]=useState("");
   const [overrides,setOverrides]=useState({dateOfBirth:"",religion:"",category:""});
   const [query,setQuery] = useState("");
   const [customer,setCustomer] = useState<Record<string,unknown> | null>(null);
-  const [rowNumber,setRowNumber] = useState<number | null>(null);
+  const [customerRow,setCustomerRow] = useState<number|null>(null);
   const [matches,setMatches] = useState<Match[]>([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
-  const [configured,setConfigured] = useState(false);
-  const [alignmentOpen,setAlignmentOpen] = useState(false);
-  const [alignmentChoice,setAlignmentChoice] = useState<"system"|"pr2"|null>(null);
-  const [alignmentMode,setAlignmentMode] = useState<"system"|"pr2">("system");
-  const [directPrinting,setDirectPrinting] = useState(false);
-  const [directOffset,setDirectOffset] = useState<PrintOffset>({x:0,y:0});
-  const [directTestOnly,setDirectTestOnly] = useState(false);
-  const onConfigured = useCallback((active:boolean) => setConfigured(active), []);
+  const [activeLayout,setActiveLayout]=useState<ApprovedLayout|null>(null);
+  const searchEpoch=useRef(0);
+  const [workspaceEpoch,setWorkspaceEpoch]=useState(0);
+  const onConfigured = useCallback(() => {}, []);
   const unionAof = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType === "accountOpening";
   const unionPassbook = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType !== "accountOpening";
   const title = formatType === "accountOpening" ? "Account Opening PDF" : formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print";
+  const layoutMode=formatType==="accountOpening"?"accountOpening":"passbook";
+  useEffect(()=>{
+    let live=true;
+    setActiveLayout(null);
+    // Android/Web must not fetch or activate the Windows-only layout engine.
+    if(!windowsLayoutEngineAvailable())return ()=>{live=false;};
+    void (async()=>{
+      try{
+        const state=await callBankSetuWorker<{active:boolean;template:ApprovedLayout|null}>("/get-workspace-layout-selection",{mode:layoutMode});
+        if(live && state.active && state.template && templateCanRender(state.template,bankInfo.passbookBank||"",layoutMode))
+          setActiveLayout(state.template);
+      }catch{/* Offline or no active custom template: keep the original bank print renderer unchanged. */}
+    })();
+    return()=>{live=false;};
+  },[layoutMode,bankInfo.passbookBank,workspaceEpoch]);
+  // Changing the bank or signed-in workspace must immediately forget all
+  // displayed customer data; late search responses cannot repopulate another
+  // tenant's preview. This does not touch stored customer records.
+  useEffect(()=>{
+    const invalidate=()=>{
+      searchEpoch.current+=1;
+      setCustomer(null);setCustomerRow(null);setMatches([]);
+      setBusy(false);setError("");setActiveLayout(null);
+    };
+    invalidate();
+    const onWorkspaceChange=()=>{
+      invalidate();
+      // Re-fetch activation in the new verified tenant and discard any
+      // pending response from the previous tenant, even for the same bank.
+      setWorkspaceEpoch(epoch=>epoch+1);
+    };
+    window.addEventListener("banksetu-workspace-change",onWorkspaceChange);
+    return ()=>{
+      searchEpoch.current+=1;
+      window.removeEventListener("banksetu-workspace-change",onWorkspaceChange);
+    };
+  },[layoutMode,bankInfo.passbookBank]);
   const request = async (body: Record<string,unknown>) => {
     const user=auth.currentUser, url=getTenantApiUrl();
     if (!user || !url) throw new Error("Connect this workspace's Google account first.");
@@ -46,26 +75,31 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     return result;
   };
   const load = async (rowNumber?: number) => {
-    setBusy(true); setError(""); setCustomer(null); setRowNumber(null); setMatches([]);
+    const epoch=++searchEpoch.current;
+    setBusy(true); setError(""); setCustomer(null); setMatches([]);setCustomerRow(null);
     try {
       const result=await request(rowNumber ? {action:"getCustomerByRowNumber",rowNumber} : {action:"searchCustomer",query:query.trim()});
+      if(epoch!==searchEpoch.current)return;
       if(result.multipleMatches && result.matches?.length) {setMatches(result.matches);return;}
       if(!result.customer) throw new Error("No customer found.");
       setOverrides({dateOfBirth:String(result.customer.dateOfBirth || result.customer.dob || ""),religion:String(result.customer.religion || ""),category:String(result.customer.category || "")});
-      setRowNumber(Number(result.rowNumber)||rowNumber||null);
+      setCustomerRow(Number.isSafeInteger(Number(rowNumber||result.rowNumber||result.customer.rowNumber)) && Number(rowNumber||result.rowNumber||result.customer.rowNumber)>0
+        ?Number(rowNumber||result.rowNumber||result.customer.rowNumber):null);
       setCustomer({...result.customer,branchName:bankInfo.branchName,ifsc:bankInfo.ifsc});
-    } catch(reason) {setError(reason instanceof Error ? reason.message : "Search failed.");}
-    finally {setBusy(false);}
+    } catch(reason) {if(epoch===searchEpoch.current)setError(reason instanceof Error ? reason.message : "Search failed.");}
+    finally {if(epoch===searchEpoch.current)setBusy(false);}
   };
   const search=(event:FormEvent)=>{event.preventDefault();if(query.trim())void load();};
-  const markPrinted=async()=>{if(!rowNumber)return;await request({action:"markPassbookPrinted",rowNumber});setCustomer(current=>current?{...current,passbookStatus:"Printed"}:current);};
-  const openNormal=()=>setAlignmentChoice("system");
-  const openDirect=async()=>{if(!windowsPr2()){await showMessage(WINDOWS_PR2_MESSAGE);return;}if(!customer||!rowNumber){setError("Search and load a customer first.");return;}if(!configured){setError("The selected bank format is not ready.");return;}try{await requireLicensedWrite();setError("");setAlignmentChoice("pr2");}catch(reason){setError(reason instanceof Error?reason.message:"Printing is unavailable.");}};
-  const alignedPrint=async(offset:PrintOffset,test:boolean,duplex:boolean)=>{if(alignmentMode==="pr2"){setDirectOffset(offset);setDirectTestOnly(test);setAlignmentOpen(false);setDirectPrinting(true);return;}const root=document.querySelector<HTMLElement>(".custom-bank-document");if(!root)throw Error("Bank format layout is unavailable.");try{root.style.setProperty("--alignment-x",`${offset.x}mm`);root.style.setProperty("--alignment-y",`${offset.y}mm`);root.classList.add("alignment-print-active");const result=await printCurrentDocument(duplex);if(!test&&result.accepted)await markPrinted();return result;}finally{root.classList.remove("alignment-print-active");root.style.removeProperty("--alignment-x");root.style.removeProperty("--alignment-y");}};
-  const adjustChosenAlignment=()=>{if(!alignmentChoice)return;setAlignmentMode(alignmentChoice);setAlignmentChoice(null);setAlignmentOpen(true);};
-  const skipChosenAlignment=()=>{if(!alignmentChoice)return;const mode=alignmentChoice,offset=savedPrintOffset(bankInfo.passbookBank||"Active bank");setAlignmentChoice(null);if(mode==="system")void alignedPrint(offset,false,false);else{setDirectOffset(offset);setDirectTestOnly(false);setDirectPrinting(true);}};
+  const completedPr2=async()=>{
+    if(!customerRow){setError("The printer acknowledged printing, but this customer has no verified row number. Passbook status was NOT changed. Do not print again solely to update status.");return;}
+    try{
+      await request({action:"markPassbookPrinted",rowNumber:customerRow});
+      setCustomer(current=>current?{...current,passbookStatus:"Printed"}:current);
+    }catch(error){
+      setError("PR2 device acknowledged printing, but passbook status could not be saved. Do not print again just to update it. "+(error instanceof Error?error.message:""));
+    }
+  };
   return <section className="custom-bank-document" data-print-root="active" data-print-profile={formatType === "quickPassbook" ? "safe" : "exact"} style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
-    {directPrinting&&<Pr2PrinterDialog bankName={bankInfo.passbookBank||"Active bank"} sourceRoot=".custom-bank-document" offset={directOffset} testOnly={directTestOnly} onClose={()=>setDirectPrinting(false)} onComplete={()=>void markPrinted()} />}
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
     {clientSearch ? <form className="client-document-search" onSubmit={search}>
@@ -88,8 +122,12 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     {matches.map(match=><button type="button" key={match.rowNumber} disabled={busy} onClick={()=>void load(match.rowNumber)}>{match.name} · {match.accountNo} · {match.enrolId}</button>)}
     {customer && !unionAof && formatType === "accountOpening" && <label>Optional bank logo <input type="file" accept="image/png,image/jpeg" onChange={event=>{const file=event.target.files?.[0];if(!file||file.size>2*1024*1024)return;const reader=new FileReader();reader.onload=()=>setTemplateLogo(String(reader.result));reader.readAsDataURL(file);}} /></label>}
     {customer && formatType === "accountOpening" && <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:12}}>{(["dateOfBirth","religion","category"] as const).map(field=><label key={field}>{field === "dateOfBirth" ? "Date of Birth ✎" : field === "religion" ? "Religion ✎" : "Category ✎"}<input aria-label={`Edit ${field}`} type={field==="dateOfBirth"?"date":"text"} value={overrides[field]} onChange={event=>setOverrides(current=>({...current,[field]:event.target.value}))} /></label>)}<small>ये edits इस print preview के लिए हैं।</small></div>}
-    {unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} onPrint={formatType==="passbook"?openNormal:undefined} onDirectPrint={formatType==="passbook"?()=>void openDirect():undefined} />}
-    {alignmentOpen&&formatType==="passbook"&&<PrintAlignmentPreview bankName={bankInfo.passbookBank||"Active bank"} sourceSelector=".custom-bank-document .bank-format-print-document" printMode={alignmentMode} onClose={()=>setAlignmentOpen(false)} onPrint={alignedPrint} />}
-    {alignmentChoice&&formatType==="passbook"&&<PrintAlignmentChoice bankName={bankInfo.passbookBank||"Active bank"} mode={alignmentChoice} saved={savedPrintOffset(bankInfo.passbookBank||"Active bank")} onClose={()=>setAlignmentChoice(null)} onAdjust={adjustChosenAlignment} onSkip={skipChosenAlignment}/>}
+    {windowsLayoutEngineAvailable() && activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
+      key={`${bankInfo.passbookBank}:${activeLayout.id}:${customerRow??""}:${customer.enrolId??customer.accountNo??""}`}
+      template={activeLayout} bankName={bankInfo.passbookBank||""} customer={{...customer,...overrides}}
+      bankInfo={bankInfo as Record<string,unknown>}
+      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo||bankLogo}
+      onPr2Complete={()=>{void completedPr2();}} /></Suspense>
+    : unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
   </section>;
 }

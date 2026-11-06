@@ -15,6 +15,17 @@ self.addEventListener('fetch',event=>{
  if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
  if(event.request.mode==='navigate')event.respondWith(fetch(event.request).catch(()=>caches.match(${JSON.stringify(base+'index.html')})));
  else if(url.pathname.endsWith('/client-bridge/Code.gs'))event.respondWith(fetch(event.request));
+ // OCR model files contain no customer data. Cache only after the user requests
+ // OCR; never pre-cache large language models during login or installation.
+ else if(url.pathname.startsWith(${JSON.stringify(base+'ocr/')}))event.respondWith(
+   caches.open(CACHE).then(async cache=>{
+     const hit=await cache.match(event.request);
+     if(hit)return hit;
+     const response=await fetch(event.request);
+     if(response.ok)await cache.put(event.request,response.clone());
+     return response;
+   })
+ );
  else if(FILES.includes(url.pathname))event.respondWith(caches.match(url.pathname).then(hit=>hit||fetch(event.request)));
 });
 `);

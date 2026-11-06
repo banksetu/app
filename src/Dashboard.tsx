@@ -47,6 +47,8 @@ import type {
 
 import LicenseManagement from "./LicenseManagement";
 import type { ClientInquiryPrefill } from "./MasterClients";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
+const CustomizeLayoutStudio = lazy(() => import("./CustomizeLayoutStudio"));
 import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
@@ -119,6 +121,10 @@ const PASSBOOK_BANK_OPTIONS = [
   "Assam Gramin Bank",
 
   "Union Bank of India",
+
+  "Punjab National Bank",
+
+  "Central Bank of India",
 
   "State Bank of India (SBI)",
 
@@ -277,6 +283,8 @@ type PageName =
   | "settings"
   | "sync-backup"
   | "license-management"
+  | "customize-passbook"
+  | "customize-account-opening"
   | "support";
 
 function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, licenseWarning = "", licensePermission, demoExpired = false }: DashboardProps) {
@@ -287,6 +295,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
   const [licenseInquiryCount,setLicenseInquiryCount]=useState(0);
+  const canCustomizeLayout = windowsLayoutEngineAvailable() && !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
   useLayoutEffect(()=>{
@@ -303,8 +312,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
-  const [supportPopupOpen,setSupportPopupOpen]=useState(false);
-  useEffect(()=>{if(!supportPopupOpen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSupportPopupOpen(false);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[supportPopupOpen]);
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
@@ -319,6 +326,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [adminMenuOpen, setAdminMenuOpen] =
 
     useState(false);
+  const [customizeMenuOpen, setCustomizeMenuOpen] = useState(false);
   const adminTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [adminMenuPosition, setAdminMenuPosition] = useState({ top: 0, right: 0 });
   useEffect(() => {
@@ -420,7 +428,47 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const [bankLogo, setBankLogo] = useState("");
   const [bankInfo, setBankInfo] = useState<BankInfo>(emptyBankInfo);
+  const [bankExtraFields, setBankExtraFields] = useState<Record<string,string>>({});
+  const [bankExtraFieldsDraft, setBankExtraFieldsDraft] = useState<Record<string,string>>({});
+  const [newBankFieldLabel, setNewBankFieldLabel] = useState("");
   const [bankSettingsReady, setBankSettingsReady] = useState(false);
+  // Warm the EXISTING local customer workspace repository with tenant-owned
+  // generic layout slots after a verified login/bank selection. This is a
+  // lazy recovery call through the existing Worker, not another sync service.
+  // It never blocks login, customer data reads, or offline print flows.
+  useEffect(()=>{
+    if(!bankSettingsReady||licenseReadOnly||
+       !["client_admin","client_user"].includes(accountRole)||
+       !bankInfo.passbookBank.trim())return;
+    let active=true,running=false;
+    const hydrate=async()=>{
+      if(!active||running||!navigator.onLine)return;
+      running=true;
+      try{
+        const {synchronizeLocalLayoutSlots,publishLocalLayoutSlot}=await import("./layoutCloudRecovery");
+        const {readLocalLayouts}=await import("./layoutLocalStore");
+        for(const layoutMode of ["passbook","accountOpening"] as const){
+          if(!active)return;
+          await synchronizeLocalLayoutSlots(bankInfo.passbookBank,layoutMode);
+          if(accountRole==="client_admin"){
+            const pending=await readLocalLayouts(bankInfo.passbookBank,layoutMode);
+            for(const slot of pending.filter(entry=>entry.dirty&&!entry.incoming)){
+              if(!active)return;
+              try{await publishLocalLayoutSlot(bankInfo.passbookBank,layoutMode,slot.slotId);}
+              catch{/* Leave unreviewed/competing drafts safely pending offline. */}
+            }
+          }
+        }
+      }catch{
+        // Cloud unavailable: all previously cached layouts remain offline.
+        // The local repository is never cleared on network/auth errors.
+      }finally{running=false;}
+    };
+    void hydrate();
+    window.addEventListener("online",hydrate);
+    return()=>{active=false;window.removeEventListener("online",hydrate);};
+  },[bankSettingsReady,bankInfo.passbookBank,accountRole,licenseReadOnly]);
+
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
   const [clientInquiryPrefill,setClientInquiryPrefill]=useState<ClientInquiryPrefill|null>(null);
@@ -460,6 +508,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       const saved = restoreWorkspaceBankSettings(cloudData);
       if (typeof cloudData.apiUrl === "string") setTenantApiUrl(cloudData.apiUrl);
       setBankInfo(saved.bankInfo); setBankLogo(saved.bankLogo);
+       const custom = cloudData.bankExtraFields && typeof cloudData.bankExtraFields === "object" && !Array.isArray(cloudData.bankExtraFields) ? cloudData.bankExtraFields as Record<string,unknown> : {};
+       setBankExtraFields(Object.fromEntries(Object.entries(custom).filter(([key,value])=>/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) && typeof value==="string").map(([key,value])=>[key,String(value)])));
       setBankSettingsReady(true); setBankSettingsError("");
       // This is only a workspace-scoped cache. It never overrides Firebase.
       try {
@@ -487,6 +537,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     if (!canManageBankSettings || !bankSettingsReady || !navigator.onLine) return;
 
     setBankInfoDraft({ ...bankInfo });
+    setBankExtraFieldsDraft({ ...bankExtraFields });
+    setNewBankFieldLabel("");
 
     setBankInfoEditOpen(true);
 
@@ -555,9 +607,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     try {
 
-      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned });
+      await callBankSetuWorker("/save-workspace-bank-settings", { bankInfo:cleaned, bankExtraFields:bankExtraFieldsDraft });
 
       setBankInfo(cleaned);
+       setBankExtraFields({...bankExtraFieldsDraft});
 
       try { localStorage.setItem(tenantStorageKey("bankSetuBankInfo"), JSON.stringify(cleaned)); } catch { /* Firebase save already succeeded. */ }
 
@@ -859,7 +912,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
     }
-    setSupportPopupOpen(false);
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -1011,8 +1063,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       </aside>
 
-      <FloatingSupportButton unread={supportUnread} open={() => {if(canOpenLicensePage("support",licenseReadOnly,demoExpired))setSupportPopupOpen(true);else openPage("support");}} />
-      {supportPopupOpen && typeof document !== "undefined" && createPortal(<div className="banksetu-support-popup-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSupportPopupOpen(false);}}><div className="banksetu-support-popup" role="dialog" aria-modal="true" aria-label="Bank Setu Support"><div className="banksetu-support-popup-header"><div><strong>Bank Setu Support</strong><small>Private chat, announcements and help</small></div><button type="button" aria-label="Close support" onClick={()=>setSupportPopupOpen(false)}>✕</button></div><div className="banksetu-support-popup-body"><SupportCenter accountRole={accountRole}/></div></div></div>,document.body)}
+      <FloatingSupportButton unread={supportUnread} open={() => openPage("support")} />
 
       {/* MAIN AREA */}
 
@@ -1379,6 +1430,15 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                   </button>
                 )}
 
+                {canCustomizeLayout && <>
+                  <button type="button" style={{...styles.adminMenuItem,display:"flex",alignItems:"center",justifyContent:"space-between"}} aria-expanded={customizeMenuOpen} aria-controls="banksetu-customize-layout-submenu" onClick={() => setCustomizeMenuOpen(open => !open)}>
+                    <span>✏️ Customize Layout</span><span aria-hidden="true">{customizeMenuOpen ? "▴" : "▾"}</span>
+                  </button>
+                  {customizeMenuOpen && <div id="banksetu-customize-layout-submenu" role="group" aria-label="Customize Layout" style={{margin:"0 3px 8px 10px",paddingLeft:7,borderLeft:"2px solid #2c7778"}}>
+                    <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-passbook"); }}>Customize Passbook</button>
+                    <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-account-opening"); }}>Customize Account Opening Form</button>
+                  </div>}
+                </>}
                 {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button
                   type="button"
                   className="admin-license-menu-item"
@@ -1419,6 +1479,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
             </div>
             <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} onCreateClient={inquiry=>{setClientInquiryPrefill(inquiry);setClientCreateOpen(true);}} />
           </>}
+          {!windowsLayoutEngineAvailable() && (activePage === "customize-passbook" || activePage === "customize-account-opening") &&
+            <section role="status" className="layout-windows-only">
+              <h2>Customize Layout is available in BANK SETU Windows EXE</h2>
+              <p>This advanced PDF-to-passbook editor and its custom print engine are disabled on Android and web. Your existing customers, normal bank passbook printing and account-opening options are unchanged.</p>
+              <button type="button" onClick={()=>openPage("dashboard")}>Return to Dashboard</button>
+            </section>}
+          {canCustomizeLayout && bankSettingsReady && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} bankValues={{...bankInfo,...bankExtraFields}} accountRole={accountRole} /></Suspense>}
           {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
@@ -1460,12 +1527,12 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           {bankSettingsReady && activePage === "passbook" && !licenseReadOnly && (
 
-            <SelectedBankDocument formatType="passbook" bankInfo={bankInfo} bankLogo={bankLogo} onOpenBankInformation={canManageBankSettings?openBankInfoEditor:undefined} />
+            <SelectedBankDocument formatType="passbook" bankInfo={{...bankInfo,...bankExtraFields}} bankLogo={bankLogo} onOpenBankInformation={canManageBankSettings?openBankInfoEditor:undefined} />
 
           )}
 
           {bankSettingsReady && activePage === "quick-passbook" && !licenseReadOnly && (
-            <SelectedBankDocument formatType="quickPassbook" bankInfo={bankInfo} bankLogo={bankLogo} />
+            <SelectedBankDocument formatType="quickPassbook" bankInfo={{...bankInfo,...bankExtraFields}} bankLogo={bankLogo} />
           )}
 
           {bankSettingsReady && activePage === "bank-formats" && !licenseReadOnly && accountRole === "client_admin" && (
@@ -1473,7 +1540,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           )}
 
           {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
-          {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={bankInfo} bankLogo={bankLogo} />}
+          {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={{...bankInfo,...bankExtraFields}} bankLogo={bankLogo} />}
 
           {activePage === "reports" && !licenseReadOnly && (
 
@@ -1775,7 +1842,24 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             </div>
 
-            <div style={styles.bankInfoModalActions}>
+            <div style={{display:"grid",gap:9,padding:12,border:"1px solid var(--app-dark-border, #64748b)",borderRadius:10,marginTop:12}}>
+                <strong>Custom Bank Information Fields</strong>
+                <p style={{fontSize:12,margin:0}}>Add optional bank-specific data such as GSTIN, Telephone or Branch Manager. Customer records are not modified.</p>
+                {Object.entries(bankExtraFieldsDraft).map(([key,value])=><label key={key} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{minWidth:110,fontSize:12}}>{key}</span>
+                  <input aria-label={key+" value"} value={value} maxLength={180} onChange={event=>setBankExtraFieldsDraft(current=>({...current,[key]:event.target.value}))} style={{...styles.bankInfoInput,flex:"1 1 130px"}}/>
+                  <button type="button" aria-label={"Remove "+key} onClick={()=>setBankExtraFieldsDraft(current=>Object.fromEntries(Object.entries(current).filter(([name])=>name!==key)))}>Remove</button>
+                </label>)}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <input aria-label="New Bank Information field name" placeholder="New field e.g. GSTIN" value={newBankFieldLabel} maxLength={40} onChange={event=>setNewBankFieldLabel(event.target.value)} style={{...styles.bankInfoInput,flex:"1 1 180px"}}/>
+                  <button type="button" onClick={()=>{
+                    const key=newBankFieldLabel.trim().replace(/[^a-zA-Z0-9_]+/g,"_").replace(/^_+|_+$/g,"");
+                    if(!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || Object.keys(bankExtraFieldsDraft).length>=32 || key in bankInfoDraft || key in bankExtraFieldsDraft){showMessage("Choose a unique name starting with a letter (maximum 32 fields).");return;}
+                    setBankExtraFieldsDraft(current=>({...current,[key]:""}));setNewBankFieldLabel("");
+                  }}>＋ Add Field</button>
+                </div>
+              </div>
+             <div style={styles.bankInfoModalActions}>
 
               <button
 

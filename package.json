@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/prepare-client-assets.mjs && tsc -b && vite build && node scripts/generate-sw.mjs",
+    "build": "node scripts/prepare-client-assets.mjs && tsc -b && vite build && node scripts/prepare-offline-ocr.mjs dist && node scripts/generate-sw.mjs",
     "build:portfolio": "node portfolio/validate.mjs && vite build --config portfolio/vite.config.ts && node portfolio/copy-public.mjs",
     "test:portfolio": "node --test scripts/portfolio.test.mjs",
     "check:schema": "node scripts/check-sheet-schema.mjs",
@@ -20,11 +20,11 @@
     "test:local": "node --test scripts/dashboard-analytics.test.mjs scripts/local-first.test.mjs scripts/offline-backup.test.mjs scripts/license-receipt.test.mjs scripts/license-access.test.mjs scripts/license-ui.test.mjs scripts/license-management.test.mjs scripts/client-setup.test.mjs scripts/pdf-selection.test.mjs scripts/customer-pdf.test.mjs scripts/recovery.test.mjs desktop/store.test.cjs desktop/license-guard.test.cjs desktop/app-menu.test.cjs desktop/trusted-clock.test.cjs desktop/testUpdater.test.cjs scripts/bank-pdf.test.mjs desktop/print-preview.test.cjs desktop/share-preview.test.cjs desktop/background-notifications.test.cjs desktop/support-links.test.cjs scripts/union-passbook.test.mjs scripts/pnb-passbook.test.mjs scripts/central-bank-passbook.test.mjs scripts/passbook-info-layout.test.mjs desktop/app-protocol.test.cjs scripts/auth-navigation.test.mjs scripts/system-notifications.test.mjs scripts/afsm.test.mjs scripts/afsm-local.test.mjs scripts/afsm-authority.test.mjs scripts/photo-index.test.mjs scripts/support-deletes.test.mjs scripts/security-hardening.test.mjs scripts/startup-performance.test.mjs",
     "test:bridge": "node --test scripts/bridge.test.mjs",
     "predev": "node scripts/prepare-dev.mjs && node scripts/prepare-client-assets.mjs",
-    "android:sync": "npm run build && cap sync android",
+    "android:sync": "node scripts/build-android-client.mjs",
     "android:open": "cap open android",
     "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
     "test:updates": "node --test scripts/update-notice.test.mjs scripts/release-notes.test.mjs scripts/verify-backend-release-gate.test.mjs desktop/testUpdater.test.cjs scripts/enforce-client-licenses.test.mjs",
-    "build:web": "node scripts/prepare-client-assets.mjs && tsc -b && vite build --base=/app/ --outDir=web-app-dist && node scripts/generate-sw.mjs web-app-dist /app/",
+    "build:web": "node scripts/prepare-client-assets.mjs && tsc -b && vite build --mode web --base=/app/ --outDir=web-app-dist && node scripts/prepare-offline-ocr.mjs web-app-dist && node scripts/generate-sw.mjs web-app-dist /app/",
     "build:hosting": "npm run build:portfolio && npm run build:web && node scripts/assemble-hosting-app.mjs",
     "test:afsm": "node --test scripts/afsm.test.mjs scripts/afsm-local.test.mjs scripts/afsm-authority.test.mjs",
     "test:pr2": "node --test desktop/pr2.test.cjs"
@@ -36,13 +36,16 @@
     "@capacitor/filesystem": "8.1.4",
     "@capacitor/share": "8.0.3",
     "dompurify": "3.4.17",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/hin": "1.0.0",
     "electron-updater": "^6.8.9",
     "firebase": "^12.19.0",
     "html2canvas": "^1.4.1",
     "jspdf": "4.2.1",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
