@@ -424,3 +424,11 @@ html[data-appearance="dark"] .layout-studio .ls-canvas-wrap {
 @media (prefers-reduced-motion:reduce) {
  .ls-guided .ls-paper,.ls-easy-steps button {transition:none!important}
 }
+
+
+.ls-easy-paper {display:grid;grid-template-columns:repeat(4,minmax(135px,1fr));gap:10px;margin:12px 0}
+.ls-easy-paper label {display:grid;gap:5px;font-weight:650;color:var(--ls-text)}
+.ls-easy-paper input,.ls-easy-paper select {width:100%;min-height:38px}
+.ls-easy-warning {display:block;margin:5px 0 12px;color:var(--ls-muted)}
+@media(max-width:850px){.ls-easy-paper{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:460px){.ls-easy-paper{grid-template-columns:1fr}}
