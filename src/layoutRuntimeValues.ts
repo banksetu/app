@@ -3,7 +3,7 @@ import {typographyIsValid} from "./layoutTypography.ts";
 import { layoutCustomerValue } from "./layoutCustomerValue.ts";
 export type LayoutDynamicElement = {
  id:string;kind:string;origin:string;label:string;fieldKey:string;value?:string;defaultValue?:string;
- x:number;y:number;width:number;height:number;z:number;page?:number;rotation:number;size:number;font:string;align:"left"|"center"|"right";
+ x:number;y:number;width:number;height:number;z:number;page?:number;rotation:number;size:number;font:string;align:"left"|"center"|"right" | "justify";
  bold:boolean;italic:boolean;underline:boolean;color:string;background:string;borderColor:string;borderWidth:number;letterSpacing:number;lineHeight?:number;locked?:boolean;groupId?:string;fontCompression?:number;opacity:number;
  quick:boolean;dotMatrix:boolean;preprinted:boolean;
 };

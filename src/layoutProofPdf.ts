@@ -13,7 +13,7 @@ type ProofPart = {
   defaultValue: string;
   x: number; y: number; width: number; height: number; z: number; rotation: number;
   font: string; size: number; bold: boolean; italic: boolean; underline: boolean;
-  align: "left" | "center" | "right"; color: string; background: string;
+  align: "left" | "center" | "right" | "justify"; color: string; background: string;
   borderColor: string; borderWidth: number; letterSpacing: number; fontCompression?:number;lineHeight?:number; opacity: number;
   quick: boolean; dotMatrix: boolean; preprinted: boolean;
 };
