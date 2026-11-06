@@ -114,7 +114,7 @@ function draftKey(mode: Mode, bankName: string) {
   return "bankSetuLayoutDraft:v1:" + tenantId + ":" + uid + ":" + mode + ":" + bankName;
 }
 
-type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string;
+type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; version?:number;
   requestedOutput?:"quick"|"dotmatrix";requestedSlot?:number;autoActivateOnApproval?:boolean; widthMm:number; heightMm:number; foldMm:number; printStartMm:number;pageSetup?:PageSetup; elements:LayoutPart[]; updatedAt?:string };
 type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[];previewOnly?:boolean};
 type StudioCoreProps=StudioProps & {setup:LayoutSetup;onBackToSetup:()=>void};
@@ -1674,8 +1674,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <p>Existing templates for {bankName || "the selected bank"} can be previewed and copied without recreating the layout. No other tenant's customer records are shared.</p>
         {catalog.length===0 ? <p>No verified shared template is available for this bank. Upload your own passbook PDF or design manually.</p> :
           <div className="ls-catalog-list">{catalog.filter(item=>item.mode===mode).map(item=><div key={item.id} className="ls-catalog-card">
-            <span>{item.bankName} · {item.requestedOutput==="dotmatrix"?"Passbook Print (PR2)":item.mode==="accountOpening"?"Account Opening":"Quick Passbook"}</span>
-            <small>Master Approved · {item.widthMm} × {item.heightMm} mm · {item.elements.length} elements · {item.updatedAt?"Updated "+new Date(item.updatedAt).toLocaleDateString():"Catalog version"} · Generic source</small>
+            <div className="ls-catalog-card-thumbnail" role="img" aria-label="Generic approved passbook thumbnail, no customer data">
+              {item.elements.slice(0,14).map(part=><span key={part.id} style={{left:(part.x/item.widthMm*100)+"%",top:(part.y/item.heightMm*100)+"%",width:Math.max(2,part.width/item.widthMm*100)+"%"}}>
+                {part.origin==="customer"?"••••":part.origin==="bank"?"[Bank]":part.kind==="text"||part.kind==="field"?part.label.slice(0,20):part.kind==="photo"?"▣":part.kind==="line"?"━":"▢"}
+              </span>)}
+            </div>
+            <span>{item.bankName} · Layout {item.requestedSlot??1} · {item.requestedOutput==="dotmatrix"?"Passbook Print (PR2)":item.mode==="accountOpening"?"Account Opening":"Quick Passbook"}</span>
+            <small>Master Approved · v{item.version??1} · {item.widthMm} × {item.heightMm} mm · {item.elements.length} elements · {item.updatedAt?"Updated "+new Date(item.updatedAt).toLocaleDateString():"Approved"} · Source: generic bank catalog</small>
             <button type="button" onClick={()=>setCatalogChoice(item)}>Preview</button>
           </div>)}</div>}
         {catalogChoice && <div className="ls-catalog-preview">
