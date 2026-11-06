@@ -1679,7 +1679,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
         <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
-      </div>}}
+      </div>}
 
       {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
       <strong>Format:</strong>
