@@ -185,6 +185,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const mapStartRef=useRef<{x:number;y:number}|null>(null);
   const [mapPendingRect,setMapPendingRect]=useState<{x:number;y:number;width:number;height:number}|null>(null);
   const editsRef=useRef(0);
+  const lastCloudAutosaveRef=useRef(0);
   const [autosaveStatus,setAutosaveStatus]=useState("Draft autosave is enabled after editing.");
   const [previewOpen,setPreviewOpen]=useState(false);
   const [previewCustomers,setPreviewCustomers]=useState<Array<{key:string;display:string;data:Record<string,unknown>}>>([]);
@@ -331,6 +332,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setNotice("Submission blocked: workspace identity changed. Reopen this tenant's editor.");return;
     }
     if (!canSubmit || busy || !bankName.trim()) return;
+    if(!Object.keys(bankValues).length){setNotice("Configure this bank in Bank Information before submitting a Master Admin template.");return;}
     if(scanFrame && scanSuggestion){
       setNotice("Review and apply or explicitly skip the source PDF crop before submitting. An A4 scanner sheet is not a physical passbook.");
       return;
@@ -548,7 +550,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           localRevisionRef.current=slot.localRevision;
           if(editsRef.current===editNumber)setDirty(false);
           setAutosaveStatus("Draft saved locally · "+new Date().toLocaleTimeString());
-          if(canSubmit&&navigator.onLine&&!draft.elements.some(p=>p.needsReview)&&draft.sourceArtworkStatus!=="needsReview"){
+          if(canSubmit&&navigator.onLine&&Object.keys(bankValues).length>0&&
+              Date.now()-lastCloudAutosaveRef.current>=30000&&
+              !draft.elements.some(p=>p.needsReview)&&draft.sourceArtworkStatus!=="needsReview"){
+            lastCloudAutosaveRef.current=Date.now();
             try{await publishLocalLayoutSlot(bankName,mode,"layout-1");
               setAutosaveStatus("Local draft and private cloud recovery synced");
             }catch{setAutosaveStatus("Saved offline · cloud sync pending");}
@@ -595,6 +600,25 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 500);
     setNotice("Template JSON exported. Draft only; not a verified print format.");
+  };
+  const restoreDraftBackup=async(event:ChangeEvent<HTMLInputElement>)=>{
+    const file=event.target.files?.[0];event.target.value="";
+    if(!file)return;
+    if(file.size>750*1024||!file.name.toLowerCase().endsWith(".json")){
+      setNotice("Choose an editable BANK SETU layout JSON backup smaller than 750 KB.");return;
+    }
+    try{
+      const parsed:unknown=JSON.parse(await file.text());
+      if(!validDraft(parsed,mode,bankName))throw Error("Wrong bank, document type or invalid layout backup.");
+      if(!await confirmAction("Restore this same-bank layout backup? Current unsaved edits will be replaced; no approved template is changed."))return;
+      const restored=structuredClone(parsed as Draft);
+      modify(()=>restored);
+      setTemporaryValues({});setPreviewOpen(false);setPreviewCustomers([]);setPreviewCustomerKey("");
+      setReferencePages([]);setReferenceVisible(false);setScanSuggestion(null);setScanFrame(null);
+      setGraphicWarnings([]);setSelectedId(null);setWordSelectedIds([]);
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice("Verified same-bank editable layout restored. Review the paper dimensions, then save this draft.");
+    }catch(error){setNotice("Layout backup rejected: "+(error instanceof Error?error.message:"Unreadable layout file"));}
   };
   const calibrationPdf=async()=>{
     try{
@@ -1214,7 +1238,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button></div>
       <details className="ls-header-extra">
         <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
-        <div className="ls-header-extra-actions"><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
+        <div className="ls-header-extra-actions">
+          <label className="ls-file-action">Restore Layout Backup (JSON)<input type="file" accept=".json,application/json"
+            onChange={event=>{void restoreDraftBackup(event);}}/></label>
+          <button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}</div>
       </details>
     </div>
