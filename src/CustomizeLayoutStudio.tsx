@@ -1602,8 +1602,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
-        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>edit({label:selected.label.toLocaleUpperCase()})}>UPPERCASE</button>
-        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>edit({label:selected.label.toLocaleLowerCase()})}>lowercase</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>{if(!selected)return;edit({label:selected.label.toLocaleUpperCase()});}}>UPPERCASE</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>{if(!selected)return;edit({label:selected.label.toLocaleLowerCase()});}}>lowercase</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{
           if(!selected)return;
           const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
@@ -1695,7 +1695,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>setPageSetupOpen(true)}>▱ Size</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({rotation:(selected.rotation+90)%360})}>Rotate 90°</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(!selected)return;edit({rotation:(selected.rotation+90)%360});}}>Rotate 90°</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1)}>Bring Forward</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1)}>Send Backward</button>
         <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
