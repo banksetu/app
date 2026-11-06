@@ -117,6 +117,7 @@ export function extractWordParagraphs(xml:string):WordImport{
   if(/<w:(?:vMerge|gridSpan)(?:\s|\/?>)/.test(xml))
     warnings.push("Merged Word table cells need manual alignment review.");
   const tables=[...xml.matchAll(/<w:tbl(?:\s[^>]*)?>[\s\S]*?<\/w:tbl>/g)];
+  if(/<w:tbl(?:\s|\/?>)/.test(xml)&&!tables.length)warnings.push("Malformed Word tables need manual reconstruction.");
   const records:Array<{position:number;part:WordParagraph}>=[];
   for(const match of xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)){
     if(tables.some(t=>match.index>=t.index&&match.index<t.index+t[0].length))continue;
