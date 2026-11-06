@@ -23,7 +23,7 @@ import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
 import PassbookPageSetup from "./PassbookPageSetup";
-import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,type PageSetup} from "./layoutPageSetup";
+import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,type PageSetup} from "./layoutPageSetup.ts";
 import {importWordDocx} from "./layoutWordDocumentImport";
 import {importLegacyWordDoc} from "./layoutLegacyWordImport";
 import {customerRepository} from "./core/customerRepository";
