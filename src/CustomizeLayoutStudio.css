@@ -451,3 +451,12 @@ html[data-appearance="dark"] .ls-start-wizard,.banksetu-app-shell[data-appearanc
 .ls-slot-strip select{min-width:105px}
 .ls-slot-strip small{max-width:700px;color:var(--ls-muted);line-height:1.5}
 @media(max-width:650px){.ls-slot-strip label{width:100%;justify-content:space-between}.ls-slot-strip select{max-width:60%}}
+
+
+.ls-word-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-top:11px;border-bottom:1px solid var(--ls-border);padding-bottom:4px}
+.ls-word-tabs button{min-height:36px;border:1px solid transparent!important;border-radius:8px 8px 0 0!important;background:transparent!important;font-weight:750}
+.ls-word-tabs button[aria-pressed="true"]{color:var(--ls-accent)!important;border-bottom:3px solid var(--ls-accent)!important;background:var(--ls-soft)!important}
+.ls-word-tab-content{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-top:12px;padding:11px;background:var(--ls-bg);border-radius:10px}
+.ls-word-tab-content label{display:flex;align-items:center;gap:5px}
+.ls-word-tab-content button{min-height:36px}
+@media(max-width:600px){.ls-word-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.ls-word-tab-content{align-items:flex-start}}
