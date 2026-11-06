@@ -6,7 +6,19 @@ import vm from 'node:vm';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import {renderToStaticMarkup} from 'react-dom/server';
-const source=ts.transpileModule(fs.readFileSync('src/Dashboard.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const dashboardSource=fs.readFileSync('src/Dashboard.tsx','utf8');
+const hookPosition=name=>{
+  const offset=dashboardSource.indexOf('const ['+name);
+  assert(offset>0,'Dashboard hook is present: '+name);
+  // Count all generic and non-generic hooks. Nested types such as
+  // useState<Record<string,string>> make regexes that expect one '>' incorrect.
+  const componentStart=dashboardSource.indexOf('function Dashboard(');
+  assert(componentStart>=0&&componentStart<offset);
+  return (dashboardSource.slice(componentStart,offset).match(/\buseState\s*(?=[(<])/g)||[]).length+1;
+};
+const activePageHook=hookPosition('activePage');
+const bankSettingsReadyHook=hookPosition('bankSettingsReady');
+const source=ts.transpileModule(dashboardSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const noticeSource=ts.transpileModule(fs.readFileSync('src/LicenseNotice.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 function render(page,blocked){
  const storage={getItem:()=>null,setItem(){},removeItem(){}};
@@ -14,13 +26,14 @@ function render(page,blocked){
  const exports={};
  const component=name=>props=>React.createElement('div',{'data-component':name},name==='LicenseNotice'?props.permission.state:undefined);
  const require=path=>{
-  if(path==='react')return {...React,lazy:loader=>{const name=String(loader).match(/require\(["']\.\/(.+?)["']\)/)?.[1]||'DeferredPage';return component(name);},useState:value=>{index++;return React.useState(index===4?page:index===25?true:value);}};
+  if(path==='react')return {...React,lazy:loader=>{const name=String(loader).match(/require\(["']\.\/(.+?)["']\)/)?.[1]||'DeferredPage';return component(name);},useState:value=>{index++;return React.useState(index===activePageHook?page:index===bankSettingsReadyHook?true:value);}};
   if(path==='react/jsx-runtime')return jsx;
   if(path==='react-dom')return {createPortal:()=>null};
   if(path==='./core/useSyncStatus')return {useSyncStatus:()=>({records:1,pending:1,online:true})};
   if(path==='./SupportCenter')return {__esModule:true,default:component('SupportCenter'),useSupportUnread:()=>0};
   if(path==='./core/licensePolicy')return {canOpenLicensePage:(name,readOnly)=>!readOnly||['dashboard','customers','all-customer-data','settings','sync-backup','license-management','support'].includes(name)};
   if(path==='./core/localData')return {localModeEnabled:()=>false};
+  if(path==='./platform/layoutEngineGate')return {windowsLayoutEngineAvailable:()=>false};
   if(path==='./core/appearance')return {storedAppearance:()=> 'light',appearanceStorageKey:()=> 'test'};
   if(path.endsWith('.png'))return {__esModule:true,default:'logo.png'};
   if(path==='./tenantApi')return {tenantStorageKey:key=>key,getTenantApiUrl:()=>''};

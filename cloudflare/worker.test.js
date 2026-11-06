@@ -62,7 +62,7 @@ test("rejects an unconfigured website origin", async () => {
 });
 
 test("requires Firebase sign-in before account and tenant setup actions", async () => {
-  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/push-register", "/push-unregister", "/push-sync-event"]) {
+  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/push-register", "/push-unregister", "/push-sync-event"]) {
     const response = await worker.fetch(new Request(`https://worker.example${path}`, {
       method: "POST",
       headers: { origin: "https://banksetu-app.web.app", "content-type": "application/json" },
@@ -157,6 +157,18 @@ test("bank settings patches preserve unrelated Drive and template configuration"
   assert.throws(()=>validateWorkspaceBankPatch({bankInfo:{...bankInfo,gstin:"short"}}),/GSTIN/);
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"https://untrusted.example/logo"}));
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,"+"A".repeat(150000)}));
+});
+
+test("custom Bank Information fields reject unexpected or excessive data", () => {
+  const good=validateWorkspaceBankPatch({bankExtraFields:{GSTIN:"22AAAAA0000A1Z5",branchManager:"A. Manager"}});
+  assert.equal(good.bankExtraFields.GSTIN,"22AAAAA0000A1Z5");
+  assert.equal(good.bankExtraFields.branchManager,"A. Manager");
+  assert(!("bankInfo" in good));
+  for(const bad of [
+    {"a.b":"x"}, JSON.parse('{"__proto__":"x"}'), {"0value":"x"},
+    {GSTIN:12}, {GSTIN:"x".repeat(181)},
+    Object.fromEntries(Array.from({length:33},(_,i)=>["field"+i,"x"])),
+  ]) assert.throws(()=>validateWorkspaceBankPatch({bankExtraFields:bad}));
 });
 
 test("Option B validates exact Google resource hosts and verified resource ownership", async () => {
