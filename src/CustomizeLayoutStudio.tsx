@@ -3,6 +3,7 @@ import { callBankSetuWorker } from "./workerApi";
 import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
+import {codespacesLayoutPreviewAvailable,previewLayoutKey} from "./platform/layoutCodespacesPreview";
 import "./CustomizeLayoutStudio.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
@@ -114,10 +115,10 @@ function draftKey(mode: Mode, bankName: string) {
 
 type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string;
   requestedOutput?:"quick"|"dotmatrix";requestedSlot?:number;autoActivateOnApproval?:boolean; widthMm:number; heightMm:number; foldMm:number; printStartMm:number;pageSetup?:PageSetup; elements:LayoutPart[]; updatedAt?:string };
-type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[]};
+type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[];previewOnly?:boolean};
 type StudioCoreProps=StudioProps & {setup:LayoutSetup;onBackToSetup:()=>void};
-function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup,onBackToSetup }: StudioCoreProps) {
-  const storageKey = draftKey(mode, bankName);
+function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup,onBackToSetup,previewOnly=false }: StudioCoreProps) {
+  const storageKey = previewOnly?previewLayoutKey(mode,bankName,"layout-"+(setup.output==="dotmatrix"?4:1)):draftKey(mode, bankName);
   const [scopeEpoch,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
     try { const saved = JSON.parse(storageKey ? localStorage.getItem(storageKey) || "null" : "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
@@ -249,13 +250,26 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setSelectedId(next.includes(part.id)?part.id:(next[next.length-1]??null));
     }else{setWordSelectedIds(members);setSelectedId(part.id);}
   };
-  const canReview = accountRole === "master_owner" || accountRole === "admin";
-  const canSubmit = accountRole === "client_admin";
+  const canReview = !previewOnly && (accountRole === "master_owner" || accountRole === "admin");
+  const canSubmit = !previewOnly && accountRole === "client_admin";
   const ordered = useMemo(() => [...draft.elements.filter(part => (part.page||1)===selectedPage)].sort((a, b) => a.z - b.z), [draft.elements,selectedPage]);
 
   useEffect(()=>{
     let active=true;
     const runVersion=workspaceVersionRef.current;
+    if(previewOnly){
+      if(setup.method==="continue"){
+        try{
+          const raw=localStorage.getItem(previewLayoutKey(mode,bankName,layoutSlotId));
+          const restored:unknown=raw?JSON.parse(raw):null;
+          if(validDraft(restored,mode,bankName)){
+            setDraft(restored as Draft);
+            setNotice("Codespaces browser demo draft restored. No customer repository or cloud was accessed.");
+          }
+        }catch{setNotice("Demo draft could not be restored; import a JSON backup.");}
+      }
+      return ()=>{active=false;};
+    }
     // Existing authenticated Repository is shared by Web/Android IndexedDB
     // and Windows SQLite. Cloud only reconciles missing/changed generic drafts.
     void (async()=>{
@@ -320,9 +334,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       }
     })();
     return()=>{active=false;};
-  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method,layoutSlotId,canSubmit,bankValues]);
+  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method,layoutSlotId,canSubmit,bankValues,previewOnly]);
 
   const refreshCatalog = useCallback(async (review = false) => {
+    if(previewOnly)return;
     if (!bankName.trim() && !review) return;
     const runVersion=workspaceVersionRef.current;
     setCatalogBusy(true);
@@ -334,16 +349,16 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } catch (error) {
       if(runVersion===workspaceVersionRef.current)setNotice("Shared layout list unavailable: "+(error instanceof Error?error.message:"Connection required")+". Local editing remains available.");
     } finally { if(runVersion===workspaceVersionRef.current)setCatalogBusy(false); }
-  },[bankName,mode,scopeEpoch]);
+  },[bankName,mode,scopeEpoch,previewOnly]);
   useEffect(()=>{void refreshCatalog();},[refreshCatalog]);
   const refreshSelection = useCallback(async()=>{
-    if(!canSubmit || !bankName.trim())return;
+    if(previewOnly || !canSubmit || !bankName.trim())return;
     const runVersion=workspaceVersionRef.current;
     try{
       const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode,output:mode==="accountOpening"?"quick":setup.output,slot:mode==="accountOpening"?1:selectedLayoutSlot});
       if(runVersion===workspaceVersionRef.current)setLayoutSelection(state);
     } catch {if(runVersion===workspaceVersionRef.current)setLayoutSelection(null);}
-  },[canSubmit,bankName,mode,scopeEpoch,setup.output,selectedLayoutSlot]);
+  },[canSubmit,bankName,mode,scopeEpoch,setup.output,selectedLayoutSlot,previewOnly]);
   useEffect(()=>{void refreshSelection();},[refreshSelection]);
   const selectApprovedTemplate = async(action:"activate"|"rollback"|"disable",templateId?:string)=>{
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
@@ -433,6 +448,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   }, []);
   const previewCustomer=previewOpen?previewCustomers.find(item=>item.key===previewCustomerKey)?.data:undefined;
   const loadPreviewCustomers=async()=>{
+    if(previewOnly){
+      const sample={name:"Demo Customer",accountNo:"0123456789",customerId:"DEMO-CIF-001",
+        fatherName:"Demo Parent",address:"Example Street, Assam",mobile:"0000000000",
+        nominee:"Example Nominee",accountType:"Saving",ifsc:"DEMO0000000",pinCode:"000000"};
+      setPreviewCustomers([{key:"codespaces-synthetic",display:"DEMO ONLY · Customer 0123456789",data:sample}]);
+      setPreviewCustomerKey("codespaces-synthetic");setPreviewOpen(true);
+      setNotice("Synthetic demonstration data only. No real customer records were loaded.");
+      return;
+    }
     if(!bankValues||!Object.keys(bankValues).length){
       setNotice("This bank is not the selected tenant bank. Configure it under Bank Information before previewing real customer data.");return;
     }
@@ -651,6 +675,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setDirty(true);
   };
   const restorePrivateCloudDraft=async()=>{
+    if(previewOnly){setNotice("Cloud recovery is disabled in Codespaces demo.");return;}
     if(dirty||busy||savingLayout){setNotice("Save local unsaved edits before choosing the online draft.");return;}
     if(!canSubmit||!Object.keys(bankValues).length){
       setNotice("Use a configured Client Admin bank workspace to restore cloud drafts.");return;
@@ -674,6 +699,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     finally{setSavingLayout(false);}
   };
   const save = async ():Promise<boolean> => {
+    if(previewOnly){
+      try{
+        if(!validDraft(draft,mode,bankName))throw Error("Draft validation failed.");
+        const json=JSON.stringify(draft);
+        if(json.length>250000)throw Error("Draft too large for browser demo.");
+        localStorage.setItem(previewLayoutKey(mode,bankName,layoutSlotId),json);
+        setDirty(false);setAutosaveStatus("Demo draft saved in this Codespaces browser.");
+        setNotice("Saved locally in browser only. Firebase/Master Admin were not contacted.");
+        return true;
+      }catch(error){setNotice("Demo save failed: "+(error instanceof Error?error.message:"Storage unavailable"));return false;}
+    }
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
       setNotice("Layout NOT saved: workspace changed; reopen the verified bank and tenant.");return false;
     }
@@ -710,6 +746,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   // Never publish unreviewed OCR/Word content or actual customer preview values to cloud.
   useEffect(()=>{
     if(!dirty||busy||savingLayout||!storageKey)return;
+    if(previewOnly){
+      const timer=window.setTimeout(()=>{
+        try{
+          if(!validDraft(draft,mode,bankName))throw Error("Invalid geometry");
+          const json=JSON.stringify(draft);if(json.length>250000)throw Error("Demo draft too large.");
+          localStorage.setItem(previewLayoutKey(mode,bankName,layoutSlotId),json);
+          setAutosaveStatus("Codespaces demo autosaved · "+new Date().toLocaleTimeString());
+        }catch(error){setAutosaveStatus("Demo autosave unavailable: "+(error instanceof Error?error.message:"Storage error"));}
+      },1500);
+      return()=>window.clearTimeout(timer);
+    }
     const editNumber=editsRef.current;
     const timer=window.setTimeout(()=>{
       if(editorScopeRef.current!==storageKey||!editingRef.current)return;
@@ -735,8 +782,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       })();
     },4000);
     return()=>window.clearTimeout(timer);
-  },[draft,dirty,busy,savingLayout,storageKey,bankName,mode,canSubmit,layoutSlotId,bankValues]);
+  },[draft,dirty,busy,savingLayout,storageKey,bankName,mode,canSubmit,layoutSlotId,bankValues,previewOnly]);
   const syncNow = async () => {
+    if(previewOnly){setNotice("Cloud sync is disabled in Codespaces synthetic demo.");return;}
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
       setNotice("Cloud sync blocked: the active tenant changed.");return;
     }
@@ -765,6 +813,21 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   };
   const changeDraftSlot=async(next:number)=>{
     if(next===selectedLayoutSlot||busy||savingLayout)return;
+    if(previewOnly){
+      try{
+        if(dirty)throw Error("Save your demo draft before switching slots.");
+        const slotId="layout-"+(next+(setup.output==="dotmatrix"?3:0));
+        const raw=localStorage.getItem(previewLayoutKey(mode,bankName,slotId));
+        const nextDraft:unknown=raw?JSON.parse(raw):null;
+        if(nextDraft&&!validDraft(nextDraft,mode,bankName))throw Error("Saved demo draft has invalid geometry.");
+        setSelectedLayoutSlot(next);
+        setDraft(nextDraft as Draft||startBlankLayout(initialDraft(mode,bankName)));
+        setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);setPreviewOpen(false);
+        setDirty(false);setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+        setNotice("Codespaces isolated slot "+next+" opened; production layouts unchanged.");
+      }catch(error){setNotice("Demo slot unavailable: "+(error instanceof Error?error.message:"Storage unavailable"));}
+      return;
+    }
     if(dirty){setNotice("Save or export your current changes before switching to another layout slot.");return;}
     try{
       const slotId="layout-"+(next+(setup.output==="dotmatrix"?3:0));
