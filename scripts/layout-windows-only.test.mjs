@@ -60,7 +60,7 @@ test("Windows studio contains guided Design and Approval spaces while preserving
    assert.ok(studio.includes(label),label);
  }
  assert.match(studio,/workspaceView==="design"/);
- assert.match(studio,/workspaceView==="library"/);
+ assert.match(studio,/setWorkspaceView\("library"\)/);
  assert.match(css,/\.ls-view-design > \.ls-catalog-panel \{display:none\}/);
  assert.match(css,/\.ls-view-library > \.ls-workspace/);
  assert.match(css,/prefers-reduced-motion:reduce/);
