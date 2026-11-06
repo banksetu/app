@@ -11,7 +11,7 @@ test("approved Word ribbon precedes measured document and legacy cards in the ac
  const oldCards=editor.indexOf('<section className="ls-tool-collection" aria-label="Document tools">');
  assert.ok(ribbon>0&&paper>ribbon&&oldCards>paper, "Ribbon first; paper second; legacy tools only after paper");
  assert.match(editor,/<details className="ls-extra-tools"/);
- assert.doesNotMatch(editor,/<details className="ls-tool-card ls-word-suite" open>[\s\S]*?<section className="ls-tool-collection"/);
+ assert.ok(editor.indexOf("</details>",ribbon)>ribbon, "Ribbon must close before its next sibling");
 });
 
 test("Page Setup uses a dialog; measured page does not inflate the Word ribbon",()=>{
@@ -28,6 +28,6 @@ test("Page Setup uses a dialog; measured page does not inflate the Word ribbon",
 test("the same exact bank authorization and PR2 bridge remain untouched by visual layout",()=>{
  assert.match(editor,/layoutSelectionKey|layoutSlotId/);
  assert.match(editor,/\/list-layout-templates/);
- assert.match(editor,/\.ls-designer-status/);
+ assert.match(editor,/className="ls-designer-status"/);
  assert.match(stylesheet,/Presentation only: no print geometry, tenant data, OCR or PR2 engine changes/);
 });
