@@ -45,3 +45,10 @@ Existing PR2 custom rendering still intentionally rejects unembedded non-ASCII t
 - Existing advanced editor, PDF calibration, label-splitting, OCR review, graphics, precision tools, multi-page controls, catalog and Master approval remain available under **Advanced tools**. Easy mode is UI-only and cannot activate/print without original approvals and safeguards.
 - Added readable numbered step cards, contextual explanations, action emphasis, BANK SETU theme variables, responsive widths and reduced-motion CSS. No new images, fonts, heavy animation, sync/print engines or production backend changes.
 - Source-level regression checks cover the three-stage UI, Windows-only runtime gating and approval flow. Automated build and real client testing are still required. This is not verified as professionally usable on every Windows display until human QA.
+
+## November 6 — modular card-based workspace (Draft PR #98)
+- Reorganized document creation into separate **Start & Import**, **Text & Customer Data**, **Graphics & Shapes**, **MS Word-style Tools**, and **Page & Preview** cards. Kept all existing button handlers and feature-gated data/print operations; this is a presentation reorganization, not an engine rewrite.
+- Common actions (**New Blank Layout**, **Run Layout Audit**, **Save Draft**, **Sync/Recover**) now remain near the top. Secondary options (Undo/Redo, temporary clear, JSON/PDF export, calibration ruler and PR2 raster diagnostics) live under **More tools & exports**.
+- The **MS Word-style Tools** disclosure groups supported font styling, paragraphs, letter spacing/compression, Find & Replace, alignment, distribution, equal sizing, group/ungroup and lock controls in one dedicated area. This does not imply full Microsoft Word interoperability or newly implemented DOCX/table features.
+- Optional Graphics card is collapsed by default; existing Windows-only availability, backend Master review, print protections, measured geometry and approval requirements remain unchanged.
+- Dedicated source-level regression test added; visual human QA and all CI jobs still must be checked before release. No production deployment.
