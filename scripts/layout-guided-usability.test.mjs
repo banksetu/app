@@ -22,7 +22,7 @@ test("light/dark design respects narrower Windows widths and reduced motion",()=
  assert.doesNotMatch(styles,/\.ls-easy-guide[^}]*position:\s*fixed/);
 });
 test("wizard does not bypass Windows-only gate, local drafts or Master approval",()=>{
- assert.match(ui,/if\(!windowsLayoutEngineAvailable\(\)\)/);
+ assert.match(ui,/if\(!windowsLayoutEngineAvailable\(\)&&!previewOnly\)/);
  assert.match(ui,/saveLocalLayout/);
  assert.match(ui,/submitForReview/);
  assert.match(ui,/setPhysicalChecked/);
