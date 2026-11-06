@@ -128,6 +128,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
   const [easyMode,setEasyMode]=useState(true);
+  const [wordTab,setWordTab]=useState<"home"|"insert"|"layout"|"design"|"review"|"view">("home");
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
@@ -1461,7 +1462,43 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     <details className="ls-tool-card ls-word-suite">
       <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
       <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
-      {selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
+      <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
+        {(["home","insert","layout","design","review","view"] as const).map(tab=>
+          <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
+            {tab[0].toUpperCase()+tab.slice(1)}
+          </button>)}
+      </nav>
+      {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects">
+        <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
+        <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
+        <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
+        <button type="button" onClick={()=>append("photo","static","Photo Box")}>Photo Box</button>
+        <button type="button" onClick={()=>append("rectangle","static","Rectangle")}>Rectangle</button>
+        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Circle</button>
+        <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
+      </div>}
+      {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls">
+        <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
+          {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
+        </select></label>
+        <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label>
+        <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> Grid</label>
+        <label>Print preview <select value={preview} onChange={e=>setPreview(e.target.value as "quick"|"dotmatrix")}>
+          <option value="quick">Quick Passbook</option><option value="dotmatrix">PR2 Text-Only</option>
+        </select></label>
+      </div>}
+      {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors">
+        {selected?<><label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
+          <label>Border color <input type="color" value={selected.borderColor} onChange={e=>edit({borderColor:e.target.value})}/></label>
+          <button type="button" onClick={copySelectedStyle}>Copy style</button>
+          <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste style</button></>:<span>Select an object to change its colors and style.</span>}
+      </div>}
+      {wordTab==="layout"&&<div className="ls-word-tab-content" role="group" aria-label="Physical document layout">
+        <span>Paper: {draft.widthMm} × {draft.heightMm} mm · Fold: {draft.foldMm} mm · Print start: {draft.printStartMm} mm</span>
+        <span>Use Page & Preview to edit real physical measurements.</span>
+      </div>}
+
+      {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
       <strong>Format:</strong>
       <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
       <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
@@ -1491,7 +1528,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </select></label>
       <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
     </div>}
-    <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
+    {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
       <strong>Find / Replace static text</strong>
       <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
       <label>Replace with <input type="text" maxLength={500} value={replaceWord} onChange={e=>setReplaceWord(e.target.value)} placeholder="New label text"/></label>
@@ -1508,8 +1545,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           setNotice(result.changed+" static label occurrence(s) replaced. Recheck physical layout before approval.");
         }catch(error){setNotice(error instanceof Error?error.message:"Cannot replace text.");}
       }}>Replace all</button>
-    </div>
-    {selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
+    </div>}
+    {wordTab==="layout" && selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
       <strong>Align selected ({selectedWordParts.length})</strong>
       <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
       <div className="ls-word-buttons">
