@@ -12,6 +12,9 @@ on:
       - scripts/check-layout-target-bundle.mjs
       - src/CustomizeLayoutStudio.tsx
       - src/CustomizeLayoutStudio.css
+      - src/layoutWordGeometry.ts
+      - src/layoutTypography.ts
+      - scripts/layout-word-geometry.test.mjs
       - src/layoutScanGeometry.ts
       - src/layoutPerspectiveGeometry.ts
       - src/layoutImportReview.ts

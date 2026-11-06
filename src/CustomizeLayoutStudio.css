@@ -344,3 +344,30 @@ html[data-appearance="dark"] .layout-studio .ls-canvas-wrap {
   .layout-studio button,.layout-studio input,.layout-studio select,
   .layout-studio textarea{transition:none!important}
 }
+
+
+/* Precision Word-style tools: one physical geometry model, no separate engine. */
+.layout-studio .ls-word-precision{
+ display:grid;gap:10px;padding:14px 16px;margin:0 0 12px;
+ background:var(--ls-surface);border:1px solid var(--ls-border);border-radius:14px;
+ box-shadow:var(--ls-shadow);color:var(--ls-text);
+}
+.ls-word-precision strong{font-weight:800;font-size:13px}
+.ls-word-hint{font-size:11px;color:var(--ls-muted)}
+.ls-word-buttons,.ls-word-gaps{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.layout-studio .ls-word-precision button{
+ border:1px solid var(--ls-border);border-radius:8px;min-height:34px;padding:6px 10px;
+ background:var(--ls-surface);color:var(--ls-text);font-size:11px;font-weight:650;
+}
+.layout-studio .ls-word-precision button:hover:not(:disabled){border-color:var(--ls-accent);background:var(--ls-soft)}
+.layout-studio .ls-word-precision button:disabled{opacity:.48;cursor:not-allowed}
+.ls-word-gaps{padding-top:10px;border-top:1px solid var(--ls-border)}
+.ls-word-gaps label{display:flex;align-items:center;gap:7px;color:var(--ls-text);font-size:11px}
+.layout-studio .ls-word-gaps input[type="number"]{width:78px}
+.ls-view-library > .ls-word-precision{display:none}
+.layout-studio .ls-object.ls-locked{outline:1px dashed rgba(80,98,119,.4);cursor:not-allowed}
+.layout-studio .ls-object.selected{outline-color:var(--ls-accent)}
+@media(max-width:780px){
+ .layout-studio .ls-word-precision{padding:11px}
+ .layout-studio .ls-word-precision button{flex:1 1 130px}
+}

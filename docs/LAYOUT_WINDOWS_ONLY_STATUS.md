@@ -40,3 +40,6 @@ A **draft unsigned Windows installer may be built and downloaded today for manua
 ## Target-specific packaging optimization
 
 The Android `npm run android:sync` builds with `BANKSETU_BUILD_TARGET=android` and then calls Capacitor sync. The web `npm run build:web` selects Vite mode `web`. Both use Vite aliases that replace the heavy `CustomizeLayoutStudio` and `WorkspaceTemplateDocument` lazy imports with the inert `src/platform/layoutUnavailable.tsx`. Windows `npm run build`/`npm run desktop:pack:unsigned` retain the complete editor. GitHub CI checks emitted JS/CSS for native-editor inclusion/exclusion before accepting draft packaging. This does not remove normal Android bank document support or alter offline sync/customer data.
+
+## Word-style precision additions (November 6, 2026)
+Draft PR #98 includes multi-object geometry, alignment, equal gap and dimensions, grouping and locking, editable paragraph line spacing, and Justify. New controls are client-side only and remain behind the native Windows gate. See [Word features status](./LAYOUT_WORD_FEATURES_STATUS.md) for what is *not* complete.
