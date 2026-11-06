@@ -36,7 +36,7 @@ test("Actual editor preview denies cloud operations, customers, approval and nat
  assert.match(ui,/const canSubmit = !previewOnly/);
  assert.match(ui,/const canReview = !previewOnly/);
  for(const name of ["if(previewOnly){","previewLayoutKey","localStorage.setItem",
-   "setPreviewCustomers","Codespaces demo","Sync\/Recover Layouts"])
+   "setPreviewCustomers","Codespaces demo","Sync / Recover Layouts"])
   assert.ok(ui.includes(name),name);
  assert.match(lab,/previewOnly bankName=/);
  assert.match(lab,/accountRole="client_user"/);
