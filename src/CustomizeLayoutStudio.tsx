@@ -22,6 +22,9 @@ import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
 import {importWordDocx} from "./layoutWordDocumentImport";
+import {customerRepository} from "./core/customerRepository";
+import {currentLayoutScope} from "./layoutLocalStore";
+import {layoutCustomerValue} from "./layoutCustomerValue";
 
 type Mode = "passbook" | "accountOpening";
 type Kind = "text" | "field" | "rectangle" | "line" | "photo" | "image" | "ellipse";
@@ -69,6 +72,7 @@ type LayoutPart = {
 type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
 const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, fontCompression:100, lineHeight:1.18,locked:false,opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
+const customerFieldKeys = ["name","customerName","accountNo","accountNumber","customerId","dateOfBirth","fatherName","address","addressLine1","addressLine2","addressLine3","mobile","aadhaar","pan","nominee","accountOpeningDate","accountType","mode","operatingMode","pinCode","postOffice","ifsc","status","gender","religion","category","branchName"];
 const fonts = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana", "Tahoma", "Noto Sans", "Noto Serif"];
 const randomId = () => "part-" + Math.random().toString(36).slice(2, 11);
 
@@ -180,6 +184,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [mappingSource,setMappingSource]=useState<"customer"|"bank"|null>(null);
   const mapStartRef=useRef<{x:number;y:number}|null>(null);
   const editsRef=useRef(0);
+  const [autosaveStatus,setAutosaveStatus]=useState("Draft autosave is enabled after editing.");
+  const [previewOpen,setPreviewOpen]=useState(false);
+  const [previewCustomers,setPreviewCustomers]=useState<Array<{key:string;display:string;data:Record<string,unknown>}>>([]);
+  const [previewCustomerKey,setPreviewCustomerKey]=useState("");
   const localRevisionRef=useRef(0);
   const editingRef=useRef(false);
   const editorScopeRef=useRef(storageKey);
@@ -363,6 +371,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     finally {setCatalogBusy(false);}
   };
   const modify = useCallback((apply: (current: Draft) => Draft) => {
+    editsRef.current+=1;
     setDraft(current => {
       const next = apply(current);
       if (next === current) return current;
@@ -372,6 +381,25 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     });
     setDirty(true);
   }, []);
+  const previewCustomer=previewOpen?previewCustomers.find(item=>item.key===previewCustomerKey)?.data:undefined;
+  const loadPreviewCustomers=async()=>{
+    if(!bankValues||!Object.keys(bankValues).length){
+      setNotice("This bank is not the selected tenant bank. Configure it under Bank Information before previewing real customer data.");return;
+    }
+    try{
+      const {scope}=currentLayoutScope();
+      const saved=await customerRepository.read(scope);
+      const customers=saved.records.filter(item=>!item.deleted).slice(0,100).map(item=>{
+        const name=typeof item.customer.name==="string"?item.customer.name:"Customer";
+        const account=String(item.customer.accountNo||"");
+        return {key:item.key,display:name.slice(0,70)+(account?" · ****"+account.slice(-4):""),data:item.customer};
+      });
+      setPreviewCustomers(customers);
+      setPreviewCustomerKey(customers[0]?.key||"");
+      setPreviewOpen(true);
+      setNotice(customers.length+" local customers available for read-only preview. This data never enters the saved template or shared catalog.");
+    }catch(error){setNotice("Customer preview unavailable: "+(error instanceof Error?error.message:"No verified local customer repository"));}
+  };
   const edit = (change: Partial<LayoutPart>) => {
     if (!selectedId||selected?.locked===true) return;
     modify(current => ({ ...current, elements: current.elements.map(part => part.id === selectedId ? { ...part, ...change } : part) }));
@@ -505,6 +533,31 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing drafts were retained.");
     }finally{setSavingLayout(false);}
   };
+  // Debounced, tenant-scoped autosave through the EXISTING local repository and Worker.
+  // Never publish unreviewed OCR/Word content or actual customer preview values to cloud.
+  useEffect(()=>{
+    if(!dirty||busy||savingLayout||!storageKey)return;
+    const editNumber=editsRef.current;
+    const timer=window.setTimeout(()=>{
+      if(editorScopeRef.current!==storageKey||!editingRef.current)return;
+      setSavingLayout(true);
+      void (async()=>{
+        try{
+          const slot=await saveLocalLayout(bankName,mode,"layout-1",draft,localRevisionRef.current);
+          localRevisionRef.current=slot.localRevision;
+          if(editsRef.current===editNumber)setDirty(false);
+          setAutosaveStatus("Draft saved locally · "+new Date().toLocaleTimeString());
+          if(canSubmit&&navigator.onLine&&!draft.elements.some(p=>p.needsReview)&&draft.sourceArtworkStatus!=="needsReview"){
+            try{await publishLocalLayoutSlot(bankName,mode,"layout-1");
+              setAutosaveStatus("Local draft and private cloud recovery synced");
+            }catch{setAutosaveStatus("Saved offline · cloud sync pending");}
+          }else{setAutosaveStatus("Saved offline · cloud review/sync pending");}
+        }catch(error){setAutosaveStatus("Autosave pending: "+(error instanceof Error?error.message:"Database unavailable"));}
+        finally{setSavingLayout(false);}
+      })();
+    },4000);
+    return()=>window.clearTimeout(timer);
+  },[draft,dirty,busy,savingLayout,storageKey,bankName,mode,canSubmit]);
   const syncNow = async () => {
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
       setNotice("Cloud sync blocked: the active tenant changed.");return;
@@ -562,6 +615,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       const blob = await exportLayoutProofPdf({ ...draft, elements: draft.elements.map(part => {
         if (temporaryValues[part.id] !== undefined) return {...part, value:temporaryValues[part.id]};
         if (part.origin === "bank" && typeof bankValues[part.fieldKey] === "string") return {...part,value:bankValues[part.fieldKey]};
+        if (previewCustomer && part.origin==="customer") return {...part,value:layoutCustomerValue(previewCustomer,part.fieldKey)};
         return part;
       }) }, preview);
       const url = URL.createObjectURL(blob);
@@ -1106,7 +1160,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (part.kind === "rectangle" || part.kind === "line" || part.kind === "ellipse") return "";
     if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
     return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix"
-      ? (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
+      ? (part.origin === "customer" && previewCustomer?layoutCustomerValue(previewCustomer,part.fieldKey):"") ||
+        (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
   };
   const displayPart=(part:LayoutPart)=>{
     if(part.kind!=="text"&&part.kind!=="field")return partText(part);
@@ -1221,6 +1276,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div>
       </>}
     </section>}
+    <div className="ls-preview-strip" role="group" aria-label="Read-only customer preview and draft status">
+      <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>👁 {previewOpen?"Hide Customer Preview":"Preview with Customer Data"}</button>
+      {previewOpen&&<label>Customer <select value={previewCustomerKey} onChange={e=>setPreviewCustomerKey(e.target.value)}>
+        {previewCustomers.map(item=><option key={item.key} value={item.key}>{item.display}</option>)}
+      </select></label>}
+      <small role="status">{autosaveStatus}</small>
+    </div>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
     {(graphicWarnings.length>0||draft.sourceArtworkStatus==="needsReview") && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
       <strong>Source PDF artwork requires review — {graphicWarnings.length} warning(s)</strong>
@@ -1652,7 +1714,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
                 (origin==="customer"||origin==="bank"||origin==="dotmatrix"?true:selected.dotMatrix)});
             setLabelChecked(false);
           }}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
-          {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
+          {field("Mapped field key", selected.origin==="customer"?
+            <select value={selected.fieldKey} onChange={event=>edit({fieldKey:event.target.value})}>
+              {!customerFieldKeys.includes(selected.fieldKey)&&<option value={selected.fieldKey}>{selected.fieldKey||"Choose customer field"}</option>}
+              {customerFieldKeys.map(key=><option value={key} key={key}>{key}</option>)}
+            </select>:
+            <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. branchName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
           <datalist id="ls-bank-fields">{Object.keys(bankValues).sort().map(key=><option key={key} value={key}/>)}</datalist>
           {field("Default / Preview value", <input value={selected.defaultValue} onChange={event => edit({ defaultValue: event.target.value })} placeholder="Optional default" />)}
           {field("Manual field value", <input value={selected.value} onChange={event => edit({ value: event.target.value })} placeholder="Optional static override" />)}
