@@ -6,7 +6,7 @@
 export const FONT_COMPRESSION_MIN=50;
 export const FONT_COMPRESSION_MAX=100;
 export const TRACKING_MM_PER_CSS_PX=25.4/96;
-export type LayoutTypography={letterSpacing?:number;fontCompression?:number};
+export type LayoutTypography={letterSpacing?:number;fontCompression?:number;lineHeight?:number};
 export function typographyCompression(value?:number):number{
   return typeof value==="number"&&Number.isFinite(value)&&
     value>=FONT_COMPRESSION_MIN&&value<=FONT_COMPRESSION_MAX?value/100:1;
@@ -17,7 +17,10 @@ export function typographyIsValid(value:LayoutTypography):boolean{
     value.fontCompression>=FONT_COMPRESSION_MIN&&value.fontCompression<=FONT_COMPRESSION_MAX))&&
     (value.letterSpacing===undefined||(
       typeof value.letterSpacing==="number"&&Number.isFinite(value.letterSpacing)&&
-      value.letterSpacing>=-5&&value.letterSpacing<=30));
+      value.letterSpacing>=-5&&value.letterSpacing<=30))&&
+    (value.lineHeight===undefined||(
+      typeof value.lineHeight==="number"&&Number.isFinite(value.lineHeight)&&
+      value.lineHeight>=.8&&value.lineHeight<=3));
 }
 export function trackingMm(value:LayoutTypography):number{
   return (value.letterSpacing??0)*TRACKING_MM_PER_CSS_PX;
@@ -35,5 +38,5 @@ export function compressedTextStyle(value:LayoutTypography,zoom=1):{
   return {display:"block",width:(100/scale)+"%",minHeight:"100%",
     transform:"scaleX("+scale+")",transformOrigin:"left top",
     letterSpacing:((value.letterSpacing??0)*zoom)+"px",
-    whiteSpace:"pre-wrap",overflowWrap:"anywhere",lineHeight:1.18};
+    whiteSpace:"pre-wrap",overflowWrap:"anywhere",lineHeight:value.lineHeight??1.18};
 }

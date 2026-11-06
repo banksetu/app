@@ -4,7 +4,7 @@ import { layoutCustomerValue } from "./layoutCustomerValue.ts";
 export type LayoutDynamicElement = {
  id:string;kind:string;origin:string;label:string;fieldKey:string;value?:string;defaultValue?:string;
  x:number;y:number;width:number;height:number;z:number;page?:number;rotation:number;size:number;font:string;align:"left"|"center"|"right";
- bold:boolean;italic:boolean;underline:boolean;color:string;background:string;borderColor:string;borderWidth:number;letterSpacing:number;opacity:number;
+ bold:boolean;italic:boolean;underline:boolean;color:string;background:string;borderColor:string;borderWidth:number;letterSpacing:number;lineHeight?:number;locked?:boolean;groupId?:string;fontCompression?:number;opacity:number;
  quick:boolean;dotMatrix:boolean;preprinted:boolean;
 };
 export type ApprovedLayout = {
@@ -85,7 +85,9 @@ export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"
        typeof item.id!=="string"||!/^[\w-]{1,80}$/.test(item.id)||ids.has(item.id)||
        typeof item.label!=="string"||item.label.length>500||
        typeof item.fieldKey!=="string"||item.fieldKey.length>80||
-       !["left","center","right"].includes(item.align)||
+       !["left","center","right","justify"].includes(item.align)||
+       (item.locked!==undefined&&typeof item.locked!=="boolean")||
+       (item.groupId!==undefined&&item.groupId!==""&&!/^group-[a-z0-9-]{1,64}$/i.test(item.groupId))||
        ![item.x,item.y,item.width,item.height,item.z,item.rotation,item.size,item.opacity].every(Number.isFinite)||
        item.x<0||item.y<0||item.width<=0||item.height<=0||
        item.x+item.width>template.widthMm+.25||item.y+item.height>template.heightMm+.25||

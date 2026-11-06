@@ -20,7 +20,7 @@ function frame(part:LayoutDynamicElement):CSSProperties {
     borderWidth:["rectangle","ellipse","photo"].includes(part.kind)?Math.max(.1,part.borderWidth)+"px":0,
     borderStyle:"solid",borderRadius:part.kind==="ellipse"?"50%":undefined,
     opacity:part.opacity,transform:"rotate("+part.rotation+"deg)",
-    textAlign:part.align,whiteSpace:"pre-wrap",overflow:"hidden",overflowWrap:"anywhere",lineHeight:1.18,
+    textAlign:part.align,whiteSpace:"pre-wrap",overflow:"hidden",overflowWrap:"anywhere",lineHeight:part.lineHeight??1.18,
     zIndex:part.z+1000,
   };
 }

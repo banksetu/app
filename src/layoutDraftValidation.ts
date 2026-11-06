@@ -25,6 +25,9 @@ export function validatePersistedLayoutDraft(value:unknown,mode:string,bankName:
     if(p.page!==undefined&&(!Number.isSafeInteger(p.page)||Number(p.page)<1||Number(p.page)>count))return false;
     if(p.rotation!==undefined&&(typeof p.rotation!=="number"||!Number.isFinite(p.rotation)))return false;
     if(p.fontCompression!==undefined&&(typeof p.fontCompression!=="number"||!Number.isFinite(p.fontCompression)||p.fontCompression<50||p.fontCompression>100))return false;
+    if(p.lineHeight!==undefined&&(typeof p.lineHeight!=="number"||!Number.isFinite(p.lineHeight)||p.lineHeight<.8||p.lineHeight>3))return false;
+    if(p.locked!==undefined&&typeof p.locked!=="boolean")return false;
+    if(p.groupId!==undefined&&p.groupId!==""&&(typeof p.groupId!=="string"||!/^group-[a-z0-9-]{1,64}$/i.test(p.groupId)))return false;
     if(p.letterSpacing!==undefined&&(typeof p.letterSpacing!=="number"||!Number.isFinite(p.letterSpacing)||p.letterSpacing< -5||p.letterSpacing>30))return false;
   }
   return true;

@@ -5,7 +5,7 @@
  */
 const kinds = new Set(["text", "field", "rectangle", "line", "photo", "ellipse", "image"]);
 const origins = new Set(["static", "customer", "bank", "preprinted", "dotmatrix"]);
-const aligns = new Set(["left", "center", "right"]);
+const aligns = new Set(["left", "center", "right", "justify"]);
 const pdfFormats = new Set(["passbook", "accountOpening"]);
 const clean = (value, max) => String(value || "").trim().slice(0, max);
 const finite = (value, lower, upper) => typeof value === "number" && Number.isFinite(value) && value >= lower && value <= upper;
@@ -53,6 +53,9 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
         !finite(item.z, -1000, 1000) || !finite(item.rotation, -360, 360) ||
         !finite(item.size, 4, 120) || !finite(item.letterSpacing, -5, 30) ||
         !(item.fontCompression===undefined||finite(item.fontCompression,50,100)) ||
+        !(item.lineHeight===undefined||finite(item.lineHeight,.8,3)) ||
+        !(item.locked===undefined||typeof item.locked==="boolean") ||
+        !(item.groupId===undefined||item.groupId===""||typeof item.groupId==="string"&&/^group-[a-z0-9-]{1,64}$/i.test(item.groupId)) ||
         !finite(item.opacity, 0, 1) || !finite(item.borderWidth, 0, 10) ||
         !aligns.has(item.align))
       throw Error("Invalid layout element " + (index + 1) + ".");
@@ -87,6 +90,8 @@ export function sanitizeLayoutTemplate(raw, selectedBank) {
       x:item.x, y:item.y, width:item.width, height:item.height, z:item.z,
       rotation:item.rotation, size:item.size, align:item.align, letterSpacing:item.letterSpacing,
       fontCompression:item.fontCompression===undefined?100:item.fontCompression,
+      lineHeight:item.lineHeight===undefined?1.18:item.lineHeight,
+      locked:item.locked===true,groupId:item.groupId||"",
       opacity:item.opacity, borderWidth:item.borderWidth,
       bold:item.bold===true, italic:item.italic===true, underline:item.underline===true,
       font:/^[a-zA-Z ,'-]{1,60}$/.test(item.font) ? item.font : "Arial",

@@ -6,7 +6,7 @@ import {isLayoutLayerPrintable,type LayoutOutputLayer,type LayoutOutputMode} fro
  */
 export type PreflightPart=LayoutOutputLayer&{
   id:string;label:string;fieldKey:string;page?:number;
-  x:number;y:number;width:number;height:number;size:number;letterSpacing?:number;fontCompression?:number;
+  x:number;y:number;width:number;height:number;size:number;letterSpacing?:number;fontCompression?:number;lineHeight?:number;
 };
 export type PreflightReport={errors:string[];warnings:string[]};
 export function preflightLayoutOutput(
@@ -48,7 +48,7 @@ export function preflightLayoutOutput(
     const estimatedLines=text.split(/\r?\n/).reduce((count,line)=>{
       return count+Math.max(1,Math.ceil(Array.from(line).length/estimatedChars));
     },0);
-    const room=Math.max(1,Math.floor(part.height/(fontMm*1.18)));
+    const room=Math.max(1,Math.floor(part.height/(fontMm*(part.lineHeight??1.18))));
     if(estimatedLines>room)errors.push("Text may be clipped on the physical passbook: "+name+
       " ("+estimatedLines+" estimated lines, "+room+" lines of space).");
     else if(estimatedLines===room)warnings.push("Tight text fit; inspect real print: "+name);

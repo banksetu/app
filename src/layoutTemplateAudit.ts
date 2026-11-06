@@ -7,7 +7,7 @@ type AuditPart={
   id:string;kind:string;origin:string;fieldKey:string;label:string;imageData?:string;
   page?:number;x:number;y:number;width:number;height:number;
   dotMatrix:boolean;preprinted:boolean;quick:boolean;needsReview?:boolean;
-  letterSpacing?:number;fontCompression?:number;
+  letterSpacing?:number;fontCompression?:number;lineHeight?:number;locked?:boolean;groupId?:string;
 };
 type AuditDraft={
   mode:string;bankName:string;widthMm:number;heightMm:number;
@@ -34,6 +34,8 @@ export function auditPassbookTemplate(draft:AuditDraft):AuditItem[]{
     if(item.needsReview===true)error("Unreadable scan/OCR line needs manual correction and review.",item.id);
     if(item.fontCompression!==undefined&&(!Number.isFinite(item.fontCompression)||item.fontCompression<50||item.fontCompression>100))error("Font compression must be between 50% and 100%.",item.id);
     if(item.letterSpacing!==undefined&&(!Number.isFinite(item.letterSpacing)||item.letterSpacing< -5||item.letterSpacing>30))error("Invalid letter spacing in saved layout.",item.id);
+    if(item.lineHeight!==undefined&&(!Number.isFinite(item.lineHeight)||item.lineHeight<.8||item.lineHeight>3))error("Line spacing must be between 0.8 and 3.",item.id);
+    if(item.groupId!==undefined&&item.groupId!==""&&!/^group-[a-z0-9-]{1,64}$/i.test(item.groupId))error("Invalid grouped object reference.",item.id);
     if(ids.has(item.id))error("Duplicate element ID detected.",item.id);
     ids.add(item.id);
     if(![item.x,item.y,item.width,item.height].every(Number.isFinite)||item.width<=0||item.height<=0)error("Invalid element coordinates.",item.id);
