@@ -970,24 +970,28 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } finally { setBusy(false); }
   };
 
-  const down = (event: ReactPointerEvent<HTMLDivElement>, part: LayoutPart) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setSelectedId(part.id);
-    undoRef.current = [...undoRef.current.slice(-39), draft];
-    redoRef.current = [];
-    dragRef.current = { id: part.id, pageX: event.clientX, pageY: event.clientY, x: part.x, y: part.y };
+  const down=(event:ReactPointerEvent<HTMLDivElement>,part:LayoutPart)=>{
+    if(event.button!==0)return;
+    event.preventDefault();event.stopPropagation();
+    if(event.ctrlKey||event.metaKey||event.shiftKey){selectWordObject(part,true);return;}
+    const ids=liveWordIds.length>1&&liveWordIds.includes(part.id)?liveWordIds:wordGroupIds(draft.elements,part);
+    setWordSelectedIds(ids);setSelectedId(part.id);
+    const members=draft.elements.filter(p=>ids.includes(p.id)&&(p.page??1)===selectedPage);
+    if(members.some(p=>p.locked===true))return;
+    undoRef.current=[...undoRef.current.slice(-39),draft];redoRef.current=[];
+    dragRef.current={id:part.id,pageX:event.clientX,pageY:event.clientY,
+      members:members.map(({id,x,y,width,height})=>({id,x,y,width,height}))};
     event.currentTarget.setPointerCapture(event.pointerId);
   };
-  const beginResize = (event:ReactPointerEvent<HTMLDivElement>,part:LayoutPart) => {
+  const beginResize=(event:ReactPointerEvent<HTMLDivElement>,part:LayoutPart)=>{
     event.preventDefault();event.stopPropagation();
+    if(part.locked)return;
     dragRef.current=null;
     undoRef.current=[...undoRef.current.slice(-39),draft];redoRef.current=[];
     resizeRef.current={id:part.id,pageX:event.clientX,pageY:event.clientY,width:part.width,height:part.height};
     event.currentTarget.setPointerCapture(event.pointerId);
   };
-  const dragging = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const dragging=(event:ReactPointerEvent<HTMLDivElement>)=>{
     if(resizeRef.current){
       const resizing=resizeRef.current;
       const dx=(event.clientX-resizing.pageX)/(PX_PER_MM*zoom);
@@ -997,16 +1001,24 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         height:round(within(snapGrid?Math.round((resizing.height+dy)/5)*5:resizing.height+dy,1,Math.max(1,current.heightMm-part.y)))
       })}));setDirty(true);return;
     }
-    if (!dragRef.current) return;
-    const drag = dragRef.current;
-    const dx = (event.clientX - drag.pageX) / (PX_PER_MM * zoom);
-    const dy = (event.clientY - drag.pageY) / (PX_PER_MM * zoom);
-    setDraft(current => ({ ...current, elements: current.elements.map(part => part.id === drag.id ? {
-      ...part, x: round(within(snapGrid?Math.round((drag.x+dx)/5)*5:drag.x + dx, 0, Math.max(0,current.widthMm-part.width))), y: round(within(snapGrid?Math.round((drag.y+dy)/5)*5:drag.y + dy, 0, Math.max(0,current.heightMm-part.height)))
-    } : part) }));
-    setDirty(true);
+    const drag=dragRef.current;if(!drag)return;
+    const mx=(event.clientX-drag.pageX)/(PX_PER_MM*zoom);
+    const my=(event.clientY-drag.pageY)/(PX_PER_MM*zoom);
+    const anchor=drag.members.find(p=>p.id===drag.id)??drag.members[0];
+    const snapX=snapGrid?Math.round((anchor.x+mx)/5)*5-anchor.x:mx;
+    const snapY=snapGrid?Math.round((anchor.y+my)/5)*5-anchor.y:my;
+    const dx=within(snapX,Math.max(...drag.members.map(p=>-p.x)),
+      Math.min(...drag.members.map(p=>draft.widthMm-p.x-p.width)));
+    const dy=within(snapY,Math.max(...drag.members.map(p=>-p.y)),
+      Math.min(...drag.members.map(p=>draft.heightMm-p.y-p.height)));
+    const originals=new Map(drag.members.map(p=>[p.id,p]));
+    setDraft(current=>({...current,elements:current.elements.map(p=>{
+      const original=originals.get(p.id);
+      return original?{...p,x:round(original.x+dx),y:round(original.y+dy)}:p;
+    })}));setDirty(true);
   };
-  const dragEnd = () => { dragRef.current = null;resizeRef.current=null; };
+  const dragEnd=()=>{dragRef.current=null;resizeRef.current=null;};
+
   const toStyle = (part: LayoutPart): React.CSSProperties => ({
     position: "absolute", left: part.x * PX_PER_MM * zoom, top: part.y * PX_PER_MM * zoom,
     width: part.width * PX_PER_MM * zoom, height: part.height * PX_PER_MM * zoom,
@@ -1333,7 +1345,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     <div className="ls-workspace">
       <aside className="ls-panel ls-layers">
         <button type="button" className="ls-panel-title" onClick={() => setShowLayers(!showLayers)} aria-expanded={showLayers}>Layers ({draft.elements.length}) {showLayers ? "▾" : "▸"}</button>
-        {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={() => setSelectedId(part.id)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
+        {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={event=>selectWordObject(part,event.ctrlKey||event.metaKey||event.shiftKey)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
       </aside>
       <div className="ls-canvas-wrap">
         <div className="ls-paper-stage" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
@@ -1347,17 +1359,29 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div>}
         <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Select an element then use arrow keys for fine adjustment." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
           backgroundImage:showGrid?"linear-gradient(to right,#b4d7e444 1px,transparent 1px),linear-gradient(to bottom,#b4d7e444 1px,transparent 1px)":undefined,
-          backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event => {
-          if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){
-            event.preventDefault();if(event.shiftKey)redo();else undo();return;
+          backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event=>{
+          const cmd=event.ctrlKey||event.metaKey,lower=event.key.toLowerCase();
+          if(cmd&&lower==="z"){event.preventDefault();if(event.shiftKey)redo();else undo();return;}
+          if(cmd&&lower==="y"){event.preventDefault();redo();return;}
+          if(cmd&&lower==="a"){
+            event.preventDefault();
+            const ids=draft.elements.filter(p=>(p.page??1)===selectedPage&&isLayoutLayerPrintable(p,preview,bankName)).map(p=>p.id);
+            setWordSelectedIds(ids);setSelectedId(ids[0]??null);return;
           }
-          if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="y"){
-            event.preventDefault();redo();return;
+          if(cmd&&lower==="g"){event.preventDefault();if(event.shiftKey)ungroupWordSelection();else groupWordSelection();return;}
+          if(event.key==="Escape"){setWordSelectedIds([]);setSelectedId(null);return;}
+          if(event.key==="Delete"||event.key==="Backspace"){
+            if(liveWordIds.length){event.preventDefault();deleteWordSelection();}return;
           }
-          if (!selected || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+          if(!selected||!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(event.key))return;
           event.preventDefault();
-          const step = event.shiftKey ? 1 : .1;
-          edit({ x: round(within(selected.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0), 0, Math.max(0,draft.widthMm-selected.width))), y: round(within(selected.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0), 0, Math.max(0,draft.heightMm-selected.height))) });
+          const step=event.shiftKey?1:.1;
+          const dx=event.key==="ArrowLeft"?-step:event.key==="ArrowRight"?step:0;
+          const dy=event.key==="ArrowUp"?-step:event.key==="ArrowDown"?step:0;
+          try{
+            const next=wordNudge(draft.elements,liveWordIds,{widthMm:draft.widthMm,heightMm:draft.heightMm},dx,dy);
+            modify(current=>({...current,elements:next}));setPhysicalChecked(false);setHardwareChecked(false);
+          }catch(error){setNotice(error instanceof Error?error.message:"Cannot move selection.");}
         }}>
           {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
           {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
@@ -1366,15 +1390,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             const visible = isLayoutLayerPrintable(part,preview,bankName);
             if (!visible) return null;
             return <div key={part.id} onPointerDown={event => down(event, part)}
-              className={"ls-object " + (selectedId === part.id ? "selected " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
+              className={"ls-object " + (liveWordIds.includes(part.id) ? "selected " : "") + (part.locked ? "ls-locked " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
               style={toStyle(part)} title={part.label + " · " + part.origin}>
               {part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : displayPart(part)}
-              {selectedId===part.id && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
+              {selectedId===part.id && !part.locked && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
             </div>;
           })}
         </div>
         </div>
-        <p className="ls-canvas-note">Drag objects to position · Arrow keys: 0.1 mm · Shift+Arrow: 1 mm · Fold markers are guides only</p>
+        <p className="ls-canvas-note">Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
       </div>
       <aside className="ls-panel ls-properties">
         <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
