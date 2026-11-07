@@ -1,5 +1,5 @@
 import {useState,type CSSProperties} from "react";
-import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type FoldAxis,type MeasuredPage,type PageSetup} from "./layoutPageSetup.ts";
+import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type MeasuredPage,type PageSetup} from "./layoutPageSetup.ts";
 type Unit="mm"|"cm"|"in";
 type Props={
   page:MeasuredPage;unit:Unit;onUnit:(unit:Unit)=>void;
@@ -65,17 +65,30 @@ export default function PassbookPageSetup({
             {mmNumber("Full open width",page.widthMm,v=>onMeasurement("widthMm",v),50,500)}
             {mmNumber("Full open height",page.heightMm,v=>onMeasurement("heightMm",v),50,500)}
           </div>
+          <div className="ls-fold-direction-chooser" role="group" aria-label="Fold direction">
+            <strong>Book Fold Direction — किताब कैसे मुड़ेगी?</strong>
+            <div className="ls-fold-direction-options">
+              {([
+                ["horizontal","Horizontal Fold","Top + Bottom halves"],
+                ["vertical","Vertical Fold","Left + Right halves"],
+                ["none","No Fold","Flat page / A4"]
+              ] as const).map(([value,title,subtitle])=>
+                <button key={value} type="button" className="ls-fold-direction-choice"
+                  aria-pressed={axis===value}
+                  title={"Choose "+title+". Existing text positions remain unchanged."}
+                  onClick={()=>onPageSetup({...cfg,foldAxis:value})}>
+                  <span className={"ls-fold-direction-icon ls-fold-direction-icon-"+value} aria-hidden="true">
+                    <span className="ls-fold-direction-line"/>
+                  </span>
+                  <span className="ls-fold-direction-label"><strong>{title}</strong><small>{subtitle}</small></span>
+                </button>)}
+            </div>
+            <small>Fold direction is separate from Portrait / Landscape. The blue size values are for the FULL OPEN book.</small>
+          </div>
         </div>
         <div className="ls-page-settings-group">
-          <strong>2. Fold / Book Spine</strong>
-          <label>Fold direction
-            <select aria-label="Fold direction" value={axis}
-              onChange={e=>onPageSetup({...cfg,foldAxis:e.target.value as FoldAxis})}>
-              <option value="horizontal">Horizontal — top and lower halves</option>
-              <option value="vertical">Vertical — left and right halves</option>
-              <option value="none">No fold — flat document</option>
-            </select>
-          </label>
+          <strong>2. Fold Line Position</strong>
+          <small>Fold line moves along the <strong>{axis==="horizontal"?"height (from top)":axis==="vertical"?"width (from left)":"flat page"}</strong>. Change fold direction above next to Book Size.</small>
           {axis!=="none"&&<>
             {mmNumber(axis==="horizontal"?"Fold from top":"Fold from left",page.foldMm,
               v=>onMeasurement("foldMm",v),0,foldMax)}
@@ -103,7 +116,7 @@ export default function PassbookPageSetup({
       </div>
       <div className="ls-page-fold-visual">
         <strong>Live Passbook Size Guide</strong>
-        <p>Open size: {page.widthMm} mm × {page.heightMm} mm ·
+        <p>Full open size: {page.widthMm} mm × {page.heightMm} mm ·
           {axis==="none"?" Flat":axis==="horizontal"?" Top + Bottom":" Left + Right"}</p>
         <div className="ls-page-view-toggle" role="group" aria-label="Open or folded passbook view">
           <button type="button" aria-pressed={!showFolded} onClick={()=>setFoldedView(false)}>Open Book</button>
@@ -134,7 +147,7 @@ export default function PassbookPageSetup({
           <span>Data offset after fold: {measure.printStartFromFoldMm.toFixed(1)} mm</span>
           <span>Usable region: {measure.contentWidthMm.toFixed(1)} × {measure.contentHeightMm.toFixed(1)} mm</span>
         </div>
-        {axis==="vertical"&&<p role="note">Vertical book fold is a visible geometry guide. Verify PR2 placement and X/Y calibration for this physical bank before printing.</p>}
+        {axis!=="none"&&<p role="note">The orange dotted line is the chosen {axis==="horizontal"?"horizontal (top-to-bottom)":"vertical (left-to-right)"} fold. The green line marks data start. Changing fold direction does not move saved text; verify the fold and PR2 X/Y coordinates on real paper before printing.</p>}
       </div>
     </div>
   </section>;
