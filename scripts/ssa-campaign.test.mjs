@@ -1,14 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { copyFileSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import vm from "node:vm";
 
 // Exercise ONLY the isolated SSA additions, with a fake tenant spreadsheet.
 // Tests must never access production Google Sheets, Drive or Firebase.
-const source=readFileSync(new URL("../apps-script/Code.gs",import.meta.url),"utf8");
+const sourceUrl=new URL("../apps-script/Code.gs",import.meta.url);
+const publicUrl=new URL("../public/client-bridge/Code.gs",import.meta.url);
+const source=readFileSync(sourceUrl,"utf8");
 test("Settings and first-time setup distribute the complete SSA bridge source",()=>{
-  const publicSource=readFileSync(new URL("../public/client-bridge/Code.gs",import.meta.url),"utf8");
+  copyFileSync(sourceUrl,publicUrl); // same source-of-truth operation as prepare-client-assets.mjs
+  const publicSource=readFileSync(publicUrl,"utf8");
   const digest=value=>createHash("sha256").update(value).digest("hex");
   assert.equal(digest(publicSource),digest(source));
   assert.match(source,/BANKSETU_BRIDGE_SOURCE_VERSION = "ssa-v1-20261107"/);
