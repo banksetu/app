@@ -17,6 +17,20 @@ BANK SETU provides its **own editor**, styled with familiar ribbon tabs. No Micr
 - Bank/customer mapped placeholders, Quick/PR2 preview, per-bank measured page size and fold.
 - Local backup and recovery, draft isolation, review/approval safeguards.
 
+## November 7 functional ribbon expansion — implemented in Draft PR only
+
+- Home: in-editor Copy/Cut/Paste/Delete, undo/redo, Copy/Paste Format, lists, clear formatting, uppercase/lowercase/title/sentence-case and duplicate. Keyboard Ctrl+C/X/V operates only when the measured paper has focus; when direct text editing, native text input behavior remains.
+- Insert: custom 1–8 by 1–8 editable basic table grid, header, footer and static page-number labels, images, shapes, bank/customer field boxes, special characters.
+- Design: Quick-only page fill (Cream/Blue/Green/Gray), Quick-only watermark and border, heading/subheading/normal/caption object styles, selected-object color/border editing.
+- Layout: rotate, layer forward/back/front/rear, group/ungroup, center on paper and measured Page Setup modal.
+- Mailings: bank name, branch phone/address, MICR, GSTIN, customer CIF, nominee and account-opening-date placeholder insertion (fields only; never actual customer values in a shared template).
+- View: select page objects, original overlay, grid/snap/guides, ruler and zoom.
+- Double-click an **unlocked static text box on the white paper** to edit it in place, with basic browser spellcheck, Escape to cancel, Ctrl+Enter or blur to commit; changes use the same undoable draft model.
+- Home/Insert buttons now visually grouped with labeled Word-style command families.
+- Pure function tests cover text-case transforms, dynamic preview sanitization, physical page bounds and clipboard limits.
+
+**Important:** The existing object editor does not yet support full Microsoft Word text runs, exact DOCX import-export roundtrips, tracked changes, charts/SmartArt, bibliographic documents or macro execution. These are **not implemented** and do not appear as fake controls.
+
 ## Not claimed or bundled
 Native Microsoft Word, complete Office ribbon parity, macros/VBA, Microsoft SmartArt, proprietary font assets, native DOCX roundtrip, Word Track Changes, Office email merge and Office cloud features. Familiar generic editing commands may be implemented independently without Microsoft software; do not advertise them until functional and tested.
 
