@@ -54,7 +54,7 @@ test("normal approved bank printing, Android customer flows and existing PR2 bri
 test("Windows studio contains guided Design and Approval spaces while preserving physical paper and editing",()=>{
  const studio=file("src/CustomizeLayoutStudio.tsx");
  const css=file("src/CustomizeLayoutStudio.css");
- for(const label of ["Layout Designer","Shared Bank Layouts","मास्टर स्वीकृति","Windows EXE",
+ for(const label of ["Layout Designer","Shared Bank Layouts","Template Approvals","Windows EXE",
      "New Blank Layout (Word-style)","Export Physical Calibration Ruler",
      "Save Draft","Run Layout Audit","ls-workflow-nav"]){
    assert.ok(studio.includes(label),label);

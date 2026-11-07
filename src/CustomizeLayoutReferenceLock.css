@@ -566,3 +566,32 @@ html[data-appearance="dark"] .ls-start-wizard,
     max-height:60vh;grid-template-columns:repeat(2,minmax(0,1fr))
   }
 }
+
+
+/* Word-first UX refinement: preserve document geometry and print coordinates. */
+@media(min-width:811px) {
+  .layout-studio {grid-template-columns:148px minmax(0,1fr)}
+  .layout-studio .ls-workflow-nav button {padding:9px 7px;gap:5px}
+  .layout-studio .ls-workflow-nav strong {font-size:10px;line-height:1.3}
+  .layout-studio .ls-workflow-nav small {display:none}
+  .layout-studio .ls-sidebar-brand {padding:8px 7px 12px}
+  .layout-studio .ls-sidebar-brand strong {font-size:12px}
+  .layout-studio .ls-sidebar-brand small {font-size:9px}
+  .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(190px,220px)}
+  .layout-studio .ls-canvas-wrap {min-height:570px;padding:20px 10px}
+}
+.layout-studio .ls-word-suite .ls-word-tab-content {border:0;border-top:1px solid #dbe4ef;box-shadow:none;border-radius:0;background:#fff;padding:7px 8px;gap:4px}
+.layout-studio .ls-word-command-family {border:0!important;box-shadow:none!important;border-radius:0!important;background:transparent!important;padding:3px 7px!important}
+.layout-studio .ls-word-command-items {gap:3px}
+.layout-studio .ls-word-command-items button {border:1px solid transparent!important;background:transparent!important;box-shadow:none!important;border-radius:3px!important}
+.layout-studio .ls-word-command-items button:hover {background:#eaf2fc!important;border-color:#c7d8ed!important}
+.layout-studio .ls-word-tabs button {font-size:11px;font-weight:600}
+.layout-studio .ls-notice {background:transparent;border:0;box-shadow:none;border-radius:0;padding:4px 12px;margin:0;color:var(--ls-muted)}
+.layout-studio .ls-designer-status .ls-zoom-controls {display:inline-flex;align-items:center;gap:6px}
+.layout-studio .ls-designer-status .ls-zoom-controls input[type="range"] {width:110px;accent-color:#1264b7}
+.layout-studio .ls-designer-status .ls-zoom-controls button {min-width:28px}
+.layout-studio .ls-page-metric input[type="number"] {user-select:text;touch-action:manipulation}
+@media(max-width:1120px) and (min-width:811px) {
+  .layout-studio {grid-template-columns:132px minmax(0,1fr)}
+  .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) 190px}
+}

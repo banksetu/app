@@ -1,0 +1,93 @@
+.ssa-campaign{--ssa-navy:#11264f;--ssa-blue:#078efa;--ssa-line:#d9e5f6;background:#f6f8fd;color:var(--ssa-navy);padding:14px 15px 24px;border-radius:17px;min-width:0;font-family:Inter,Arial,sans-serif}
+.ssa-campaign *{box-sizing:border-box}
+.ssa-campaign button,.ssa-campaign input,.ssa-campaign select{font:inherit}
+.ssa-campaign button{cursor:pointer}
+.ssa-campaign button:disabled{opacity:.5;cursor:not-allowed}
+.ssa-banner{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 17px;border-radius:16px;background:linear-gradient(100deg,#1265fc 0%,#4359ec 53%,#08b6d1 100%);color:white;margin-bottom:13px}
+.ssa-banner h1{margin:0;display:flex;align-items:center;gap:11px;font-size:22px;font-weight:800;color:#fff}
+.ssa-banner h1 span{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#078cfb;font-size:32px}
+.ssa-banner-controls{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.ssa-banner-controls select,.ssa-banner-controls label{border:1px solid #d4e5ff;min-height:39px;border-radius:9px;background:#fff;color:#152d54;padding:7px 10px;font-size:12px;font-weight:650}
+.ssa-banner-controls label{display:flex;align-items:center;gap:6px}
+.ssa-banner-controls input[type=date]{background:transparent;border:0;color:#122750;font-size:12px;max-width:130px}
+.ssa-banner-controls>button{border:0;border-radius:9px;background:#0699d9;color:#fff;font-size:25px;line-height:1;width:39px;height:39px}
+.ssa-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:14px}
+.ssa-kpi{min-width:0;min-height:100px;border-radius:16px;border:1px solid;display:flex;align-items:center;gap:16px;padding:18px 20px;box-shadow:0 4px 14px #1a43700c}
+.ssa-kpi>span{flex:0 0 62px;height:62px;display:grid;place-items:center;background:#ffffffc9;border-radius:50%;font-size:31px;font-weight:900}
+.ssa-kpi div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ssa-kpi b{font-size:15px;font-weight:800;white-space:nowrap}
+.ssa-kpi strong{font-size:35px;line-height:1.08}
+.ssa-kpi.blue{background:linear-gradient(140deg,#e4f4ff,#caeafb);border-color:#69baff}
+.ssa-kpi.green{background:linear-gradient(140deg,#e9fff0,#c9f5d8);border-color:#7edda0;color:#076a32}
+.ssa-kpi.orange{background:linear-gradient(140deg,#fff7ed,#ffdecd);border-color:#ffd19a;color:#94530d}
+.ssa-kpi.purple{background:linear-gradient(140deg,#f8f0ff,#e9d7ff);border-color:#d1a7ff;color:#563f96}
+.ssa-main{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(235px,.9fr);gap:14px;margin-bottom:10px}
+.ssa-panel{min-width:0;border:1px solid var(--ssa-line);background:#fff;border-radius:17px;padding:15px;box-shadow:0 4px 14px #172c5f12}
+.ssa-panel h2{margin:0 0 13px;font-size:18px;font-weight:800;color:#152b62;background:#f4f7fd;border-radius:10px;padding:9px 11px}
+.ssa-search{display:flex;gap:10px;margin:0 0 12px}
+.ssa-search input{min-width:0;flex:1;border:1px solid #b8cbea;border-radius:10px;padding:11px 14px;font-size:13px;color:#182c51}
+.ssa-search button,.ssa-save-buttons .ssa-save,.ssa-save-buttons .ssa-update{border:0;border-radius:10px;background:linear-gradient(110deg,#0585fa,#1572ec);color:#fff;font-weight:750;padding:10px 17px;white-space:nowrap;box-shadow:0 4px 12px #0689fa21}
+.ssa-customer{display:flex;align-items:center;gap:14px;background:linear-gradient(100deg,#e7f8ff,#e9fff0);padding:13px;border-radius:13px;margin-bottom:13px;min-height:75px;flex-wrap:wrap}
+.ssa-customer-icon{display:grid;place-items:center;background:#c1e7ff;color:#0285d9;font-size:28px;border-radius:50%;width:46px;height:46px}
+.ssa-customer>div{display:grid;gap:5px;flex:1;min-width:150px}
+.ssa-customer small{font-size:12px;font-weight:650}
+.ssa-customer b{font-size:15px;color:#0e2854;overflow-wrap:anywhere}
+.ssa-entry-meta{display:flex;align-items:center;gap:15px;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.ssa-entry-meta label{display:flex;gap:8px;align-items:center;font-size:12px;font-weight:750}
+.ssa-entry-meta input{border:1px solid #ccdaf0;border-radius:8px;color:#13325e;padding:8px;font-size:12px}
+.ssa-entry-meta span{font-size:12px;color:#597093}
+.ssa-schemes{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:13px}
+.ssa-schemes label{display:flex;align-items:center;gap:9px;padding:9px 17px;background:#f1f4f9;border:1px solid #e0e8f2;border-radius:12px;font-size:13px;font-weight:750;cursor:pointer}
+.ssa-schemes label.checked{background:#ddf4ff;border-color:#78b9fc}
+.ssa-schemes input{width:19px;height:19px;accent-color:#0488f9}
+.ssa-save-buttons{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ssa-save-buttons .ssa-save{background:linear-gradient(110deg,#06b75f,#029856)}
+.ssa-save-buttons .ssa-update{background:linear-gradient(110deg,#1384fa,#3661ea)}
+.ssa-save-buttons>button:last-child{border:1px solid #c4d3e9;border-radius:9px;background:#fff;color:#37527a;padding:10px 12px}
+.ssa-help{display:block;margin-top:11px;color:#6a7992;font-size:11px;line-height:1.5}
+.ssa-matches{border:1px solid #bcd5f6;border-radius:10px;max-height:175px;overflow:auto;margin-bottom:11px;background:#fff}
+.ssa-matches button{display:flex;width:100%;border:0;border-bottom:1px solid #e2eaf5;background:#fff;padding:10px 13px;text-align:left;gap:8px;justify-content:space-between;color:#153766}
+.ssa-matches button:hover{background:#edf7ff}
+.ssa-matches small{font-size:11px;color:#506789}
+.ssa-report-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.ssa-report-buttons button{display:flex;min-width:0;align-items:center;justify-content:center;flex-direction:column;gap:11px;border:1px solid;border-radius:15px;min-height:97px;padding:13px 5px;font-size:12px;font-weight:800;box-shadow:0 4px 11px #12345710}
+.ssa-report-buttons button span{display:grid;place-items:center;width:40px;height:40px;background:#ffffffdc;border-radius:50%;font-size:26px}
+.ssa-report-buttons .pdf{background:#fff0f1;border-color:#ffc8cc;color:#ea3f56}
+.ssa-report-buttons .excel{background:#e5faef;border-color:#a6e7bf;color:#0d9a50}
+.ssa-report-buttons .print{background:#e5f5ff;border-color:#9fcff9;color:#1684e8}
+.ssa-report-buttons .share{background:#f5edff;border-color:#d9baf5;color:#9c58d8}
+.ssa-alert{margin:7px 2px 12px;color:#587095;font-size:12px;line-height:1.5}
+.ssa-alert.error{color:#b42334;font-weight:700}
+.ssa-entries>header{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:11px}
+.ssa-entries>header h2{margin:0;background:none;padding:5px 0;margin-right:auto}
+.ssa-chips{display:flex;flex-wrap:wrap;gap:4px;background:#f3f6fd;padding:4px;border-radius:11px}
+.ssa-chips button{border:0;border-radius:9px;color:#243b68;background:transparent;padding:9px 12px;font-size:12px;font-weight:750;white-space:nowrap}
+.ssa-chips button.active{color:#fff;background:#078bff}
+.ssa-entries>header>input{border:1px solid #b4ccec;border-radius:10px;padding:10px 12px;max-width:180px;font-size:12px;color:#1b3860}
+.ssa-table-wrap{overflow:auto;border:1px solid #cfdaec;border-radius:12px}
+.ssa-entries table,.ssa-print-report table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}
+.ssa-entries th{color:#fff;background:#1a315d;padding:12px 10px;text-align:left}
+.ssa-entries td{padding:11px 10px;border-bottom:1px solid #e4eaf3;color:#1b315b}
+.ssa-entries tbody tr:nth-child(even){background:#f4f7fc}
+.ssa-check{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#11b431;color:white;font-weight:800}
+.ssa-edit-btn{background:#e1f2ff;border:0;border-radius:8px;color:#0672da;padding:7px 11px;font-size:11px;font-weight:750}
+.ssa-pending{color:#a76b00!important;font-weight:700}
+.ssa-conflict{color:#b32631!important;font-weight:700}
+.ssa-synced{color:#177f4e!important;font-weight:700}
+.ssa-empty{text-align:center!important;color:#677994!important;padding:25px!important}
+.ssa-entries footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 5px 2px;font-size:12px;color:#496081}
+.ssa-entries footer>div{display:flex;align-items:center;gap:10px}
+.ssa-entries footer button{border:1px solid #dae4f1;background:#f5f7fc;border-radius:8px;padding:5px 11px;color:#1d3c69;font-size:18px}
+.ssa-print-report{display:none}
+@media(max-width:1380px){.ssa-kpi{padding:14px;gap:10px}.ssa-kpi>span{flex-basis:48px;height:48px;font-size:24px}.ssa-kpi strong{font-size:29px}.ssa-main{grid-template-columns:minmax(0,1.6fr) minmax(230px,.78fr)}}
+@media(max-width:1050px){.ssa-banner{align-items:flex-start;flex-direction:column}.ssa-main{grid-template-columns:minmax(0,1fr)}.ssa-report-buttons{grid-template-columns:repeat(4,minmax(0,1fr))}.ssa-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:690px){.ssa-campaign{padding:9px}.ssa-banner h1{font-size:19px}.ssa-banner-controls{width:100%}.ssa-banner-controls label{flex:1}.ssa-banner-controls input{max-width:110px}.ssa-kpis{gap:7px}.ssa-kpi{min-height:75px;padding:9px}.ssa-kpi b{font-size:11px}.ssa-kpi strong{font-size:25px}.ssa-kpi>span{flex-basis:33px;height:33px;font-size:19px}.ssa-panel{padding:10px}.ssa-search{gap:6px}.ssa-search button{padding:9px}.ssa-customer{gap:8px}.ssa-customer>div{min-width:120px}.ssa-report-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}.ssa-entries footer{flex-direction:column;align-items:flex-start}}
+@media print{
+  body.ssa-campaign-printing *{visibility:hidden!important}
+  body.ssa-campaign-printing .ssa-print-report,body.ssa-campaign-printing .ssa-print-report *{visibility:visible!important}
+  body.ssa-campaign-printing .ssa-print-report{display:block!important;position:absolute;top:0;left:0;right:0;padding:12mm;background:white!important;color:#000!important;z-index:999999}
+  body.ssa-campaign-printing .ssa-print-report h2{font-size:18px}
+  body.ssa-campaign-printing .ssa-print-report th,body.ssa-campaign-printing .ssa-print-report td{padding:6px 8px;border:1px solid #999;text-align:left}
+  body.ssa-campaign-printing .ssa-print-report table{white-space:normal;font-size:10px}
+  @page{size:A4 landscape;margin:10mm}
+}
