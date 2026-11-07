@@ -164,6 +164,8 @@ type EditableFieldProps = {
 
   selectOptions?: string[];
 
+  ariaLabel?: string;
+
 };
 
 
@@ -177,6 +179,8 @@ function EditableField({
   placeholder = "Click Edit",
 
   selectOptions,
+
+  ariaLabel,
 
 }: EditableFieldProps) {
 
@@ -222,6 +226,8 @@ function EditableField({
 
               value={draft}
 
+              aria-label={ariaLabel}
+
               onChange={(e) => setDraft(e.target.value)}
 
               onBlur={saveEdit}
@@ -232,7 +238,7 @@ function EditableField({
 
                 <option key={item} value={item}>
 
-                  {item}
+                  {item || "— Select —"}
 
                 </option>
 
@@ -286,7 +292,7 @@ function EditableField({
 
             onClick={startEdit}
 
-            aria-label="Edit field"
+            aria-label={ariaLabel ? `Edit ${ariaLabel}` : "Edit field"}
 
             title="Edit"
 
@@ -316,6 +322,8 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
   const [customer, setCustomer] = useState<Customer | null>(null);
 
   const [dob, setDob] = useState("");
+
+  const [maritalStatus, setMaritalStatus] = useState("");
 
   const [religion, setReligion] = useState("MINORITY COM - MUSLIMS");
 
@@ -448,6 +456,8 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
       setCustomer(loaded);
       setDob("");
+
+      setMaritalStatus("");
       setReligion("MINORITY COM - MUSLIMS");
       setNomineeRelationship("");
       setMessage("Account Opening Form generated successfully.");
@@ -482,6 +492,8 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
       setCustomer(loaded);
       setDob("");
+
+      setMaritalStatus("");
       setReligion("MINORITY COM - MUSLIMS");
       setNomineeRelationship("");
       setCustomerMatches([]);
@@ -1159,13 +1171,20 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
           color: #111;
 
+          color-scheme: light;
+
           font: 10pt Arial, sans-serif;
 
           outline: none;
 
         }
 
-
+        /* Keep the existing editable controls legible in both app themes. */
+        .aof-module .paper .edit-box input:focus-visible,
+        .aof-module .paper .edit-box select:focus-visible {
+          outline: 2px solid #5b3fe5;
+          outline-offset: 1px;
+        }
 
         .nomination-table {
 
@@ -2115,7 +2134,13 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
 
                   <span>Marital Status</span>
 
-                  <span>UNMARRIED</span>
+                  <EditableField
+                    value={maritalStatus}
+                    onChange={setMaritalStatus}
+                    ariaLabel="Marital Status"
+                    placeholder="Click Edit"
+                    selectOptions={["", "MARRIED", "UNMARRIED"]}
+                  />
 
 
 
@@ -2557,6 +2582,8 @@ export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin B
                 setQuery("");
 
                 setDob("");
+
+                setMaritalStatus("");
 
                 setReligion("MINORITY COM - MUSLIMS");
 
