@@ -97,12 +97,22 @@ jobs:
             console.log('AUDIT ONLY: nothing deleted.');
           } else {
             let deletedRuns=0,deletedCaches=0;
-            for(const run of remove) {
-              await api('/actions/runs/'+run.id,'DELETE');
-              deletedRuns++;
-              if(deletedRuns%25===0) console.log('Deleted historical runs: '+deletedRuns+'/'+remove.length);
-              await pause(450);
+            // Three requests may overlap, but starts are globally spaced by 500 ms.
+            // This stays below 120 writes/minute and avoids spending a runner-hour
+            // serially waiting on GitHub. Each run deletion is independently atomic.
+            let cursor=0,nextStart=Date.now();
+            async function worker() {
+              while(cursor<remove.length) {
+                const run=remove[cursor++];
+                const scheduled=Math.max(Date.now(),nextStart);
+                nextStart=scheduled+500;
+                await pause(Math.max(0,scheduled-Date.now()));
+                await api('/actions/runs/'+run.id,'DELETE');
+                deletedRuns++;
+                if(deletedRuns%25===0) console.log('Deleted historical runs: '+deletedRuns+'/'+remove.length);
+              }
             }
+            await Promise.all(Array.from({length:3},()=>worker()));
             for(const cache of caches) {
               await api('/actions/caches/'+cache.id,'DELETE');
               deletedCaches++;
