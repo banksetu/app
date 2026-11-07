@@ -1935,7 +1935,7 @@ async function handleMasterOperation(request, env, actor, route) {
     const templates=all.slice(0,pageSize).map(item=>({
       id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,
       version:Number(item.version)||1,widthMm:item.widthMm,heightMm:item.heightMm,
-      foldMm:item.foldMm,printStartMm:item.printStartMm,elements:item.elements,
+      foldMm:item.foldMm,printStartMm:item.printStartMm,pageCount:item.pageCount||1,elements:item.elements,
       pageSetup:item.pageSetup,updatedAt:item.updatedAt||item.createdAt||"",
       requestedOutput:item.requestedOutput||"quick",requestedSlot:item.requestedSlot||1,
       autoActivateOnApproval:item.autoActivateOnApproval===true,
