@@ -566,3 +566,55 @@ html[data-appearance="dark"] .ls-start-wizard,
     max-height:60vh;grid-template-columns:repeat(2,minmax(0,1fr))
   }
 }
+
+
+/* 2026-11-07: compact, Word-like editing workspace (presentation-only).
+   One canonical Page Setup in Layout; no duplicate panels or print changes. */
+@media (min-width: 1051px) {
+  .layout-studio {grid-template-columns:148px minmax(0,1fr)}
+  .layout-studio .ls-workflow-nav button {min-height:35px;padding:6px 7px;gap:5px}
+  .layout-studio .ls-workflow-nav strong {font-size:10px;line-height:1.25;font-weight:600}
+  .layout-studio .ls-workflow-nav small {font-size:8px;line-height:1.15}
+  .layout-studio .ls-workflow-number {width:18px;flex-basis:18px;font-size:13px}
+  .layout-studio .ls-sidebar-brand {padding:8px 8px 10px}
+  .layout-studio .ls-sidebar-brand strong {font-size:13px}
+  .layout-studio .ls-sidebar-brand small {font-size:9px}
+  .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(185px,215px)}
+  .layout-studio .ls-properties {min-width:0}
+  .layout-studio .ls-canvas-wrap {min-height:610px;max-height:calc(100vh - 180px);padding:14px 10px 24px}
+}
+.layout-studio .ls-word-suite {background:#f8faff}
+.layout-studio .ls-word-suite .ls-word-tabs {background:#eef3fa}
+.layout-studio .ls-word-tabs button {font-size:10.5px;padding:5px 9px;min-height:29px!important}
+.layout-studio .ls-word-suite .ls-word-tab-content {border:0;border-top:1px solid #dbe5ef;background:#fff;min-height:52px;padding:6px 8px;gap:3px}
+.layout-studio .ls-word-command-family {border:0!important;border-right:1px solid #dbe4ef!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;margin:0!important;padding:2px 7px!important}
+.layout-studio .ls-word-command-family .ls-word-command-items {gap:2px}
+.layout-studio .ls-word-command-family button,.layout-studio .ls-word-tab-content button,.layout-studio .ls-word-tab-content .ls-file-action {
+  border:1px solid transparent!important;border-radius:3px!important;background:transparent!important;
+  box-shadow:none!important;min-height:28px;font-size:10.5px;padding:4px 6px
+}
+.layout-studio .ls-word-tab-content button:hover,.layout-studio .ls-word-tab-content .ls-file-action:hover {
+  background:#e8f2fe!important;border-color:#bbd7f1!important
+}
+.layout-studio .ls-word-tab-content button[aria-pressed="true"] {background:#dceeff!important;border-color:#aacde9!important}
+.layout-studio .ls-word-tab-content button.ls-primary {background:#1265bd!important;color:white!important}
+.layout-studio .ls-word-tab-content button.ls-primary:hover {background:#09529b!important}
+.layout-studio .ls-word-suite .ls-format-ribbon {box-shadow:none!important;border:0!important}
+.layout-studio .ls-workflow-context,.layout-studio .ls-preview-strip,.layout-studio .ls-slot-strip,
+.layout-studio .ls-notice,.layout-studio .ls-map-alert {
+  border:0!important;box-shadow:none!important;background:transparent!important;
+  border-radius:0!important;padding:5px 12px!important;margin:2px 0!important
+}
+.layout-studio .ls-notice {font-size:11px;line-height:1.4}
+.layout-studio .ls-catalog-panel {box-shadow:none;border-radius:0}
+.layout-studio .ls-canvas-wrap {background:#e8edf5;background-image:none}
+.layout-studio .ls-designer-status {position:sticky;bottom:0;z-index:12;background:#f5f8fc;border-top:1px solid #c9d9e8}
+.layout-studio .ls-zoom-controls input[type=range] {width:115px;accent-color:#1265bd}
+.layout-studio .ls-zoom-controls button {min-width:26px;min-height:26px}
+.layout-studio .ls-simple-bottom-save {box-shadow:none;border-top:1px solid #dce4ee}
+.layout-studio .ls-page-metric input[type=text] {user-select:text;cursor:text;min-width:74px}
+.layout-studio .ls-page-metric input[type=text]:focus {outline:2px solid #1265bd;outline-offset:1px}
+@media (max-width:1050px) {
+  .layout-studio .ls-word-tabs button {padding:5px 7px}
+  .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr)}
+}
