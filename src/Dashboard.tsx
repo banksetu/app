@@ -11,6 +11,9 @@ import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabl
 import { customerAnalytics } from "./core/dashboardAnalytics";
 import { currentMonthOpeningCount } from "./core/accountOpeningReport";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
+import { DEFAULT_GLASS_SETTINGS, glassDarkSurface, glassScope, glassStorageKey, glassVariables, saveGlassSettings, storedGlassSettings, type GlassSettings } from "./core/glassAppearance";
+import { readGlassWallpaper, saveGlassWallpaper } from "./core/glassBackgroundStore";
+import "./GlassTheme.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -64,6 +67,7 @@ const Customers = lazy(() => import("./Customers"));
 const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
 const AllCustomerData = lazy(() => import("./AllCustomerData"));
 const DashboardAccountOpeningReport = lazy(() => import("./DashboardAccountOpeningReport"));
+const GlassAppearancePanel = lazy(() => import("./GlassAppearancePanel"));
 const Reports = lazy(() => import("./Reports"));
 
 
@@ -302,17 +306,67 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const canCustomizeLayout = windowsLayoutEngineAvailable() && !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
+  const [glassSettings,setGlassSettings]=useState<GlassSettings>(()=>{const {uid,tenantId}=appearanceIdentity();return storedGlassSettings(localStorage,uid,tenantId);});
+  const [glassDialogOpen,setGlassDialogOpen]=useState(false);
+  const [glassWallpaperUrl,setGlassWallpaperUrl]=useState("");
+  const [glassScopeRevision,setGlassScopeRevision]=useState(0);
   useLayoutEffect(()=>{
-    document.documentElement.dataset.appearance=appearance;
+    const root=document.documentElement;
+    root.dataset.appearance=appearance;
+    const variableNames=Object.keys(glassVariables(DEFAULT_GLASS_SETTINGS));
+    if(appearance==="glass"){
+      const variables=glassVariables(glassSettings,glassWallpaperUrl);
+      for(const [key,value] of Object.entries(variables))root.style.setProperty(key,value);
+      root.dataset.glassDark=String(glassDarkSurface(glassSettings));
+      root.dataset.glassDesign=glassSettings.design;
+    }else{
+      for(const key of variableNames)root.style.removeProperty(key);
+      delete root.dataset.glassDark;
+      delete root.dataset.glassDesign;
+    }
     void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
-    return()=>{delete document.documentElement.dataset.appearance;};
-  },[appearance]);
+    return()=>{for(const key of variableNames)root.style.removeProperty(key);delete root.dataset.appearance;delete root.dataset.glassDark;delete root.dataset.glassDesign;};
+  },[appearance,glassSettings,glassWallpaperUrl]);
   useEffect(() => {
-    const restore = () => {const {uid,tenantId}=appearanceIdentity();setAppearance(storedAppearance(localStorage,uid,tenantId));};
+    const restore = () => {
+      const {uid,tenantId}=appearanceIdentity();
+      setAppearance(storedAppearance(localStorage,uid,tenantId));
+      setGlassSettings(storedGlassSettings(localStorage,uid,tenantId));
+      setGlassDialogOpen(false);
+      setGlassScopeRevision(value=>value+1);
+    };
     window.addEventListener('banksetu-workspace-change', restore);
     return () => window.removeEventListener('banksetu-workspace-change', restore);
   }, []);
-  const changeAppearance = (mode: Appearance) => { const {uid,tenantId}=appearanceIdentity();if(!uid)return;localStorage.setItem(appearanceStorageKey(uid,tenantId), mode);setAppearance(mode); };
+  useEffect(()=>{
+    if(appearance!=="glass")return;
+    const {uid,tenantId}=appearanceIdentity();
+    const key=glassScope(uid,tenantId);
+    if(!key){setGlassWallpaperUrl("");return;}
+    let active=true;
+    void readGlassWallpaper(key).then(blob=>{
+      if(active&&blob)setGlassWallpaperUrl(URL.createObjectURL(blob));
+      else if(active)setGlassWallpaperUrl("");
+    }).catch(()=>{if(active)setGlassWallpaperUrl("");});
+    return()=>{active=false;};
+  },[appearance,glassScopeRevision]);
+  useEffect(()=>()=>{if(glassWallpaperUrl.startsWith("blob:"))URL.revokeObjectURL(glassWallpaperUrl);},[glassWallpaperUrl]);
+  const changeAppearance = (mode: Appearance) => {
+    const {uid,tenantId}=appearanceIdentity();
+    if(!uid)return;
+    try{localStorage.setItem(appearanceStorageKey(uid,tenantId),mode);}catch{ /* Switching remains available if local storage is full. */ }
+    setAppearance(mode);
+    if(mode!=="glass")setGlassDialogOpen(false);
+  };
+  const saveGlassPreferences=async(settings:GlassSettings,wallpaper?:Blob,remember=true)=>{
+    const {uid,tenantId}=appearanceIdentity(),key=glassScope(uid,tenantId);
+    if(!key)throw new Error("Sign in to your workspace before saving appearance.");
+    if(wallpaper&&remember)await saveGlassWallpaper(key,wallpaper);
+    if(remember)saveGlassSettings(localStorage,uid,tenantId,settings);
+    else try{localStorage.removeItem(glassStorageKey(uid,tenantId));}catch{ /* Temporary changes still apply. */ }
+    if(wallpaper)setGlassWallpaperUrl(URL.createObjectURL(wallpaper));
+    setGlassSettings(settings);
+  };
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
@@ -958,7 +1012,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   return (
 
-    <main className="banksetu-app-shell" data-appearance={appearance} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
+    <main className="banksetu-app-shell" data-appearance={appearance} data-glass-design={appearance==="glass"?glassSettings.design:undefined} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
       <SlideNotifications />
       <LicenseInquiryAlert enabled={canControlGlobalDashboard} onCount={setLicenseInquiryCount} openLicense={()=>openPage("license-management")}/>
 
