@@ -3,7 +3,7 @@ import {join} from "node:path";
 
 const fixture = String.raw`import React, {useState} from "react";
 import {createRoot} from "react-dom/client";
-import DashboardAccountOpeningReport from "./DashboardAccountOpeningReport";
+import DashboardAccountOpeningReport from "./dashboard-proof-report";
 import "./App.css";
 const params=new URLSearchParams(window.location.search);
 const theme=params.get("theme")==="dark"?"dark":"light";
@@ -38,6 +38,16 @@ const html='<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta na
 if(process.argv.includes("--prepare")){
  await writeFile("dashboard-opening-proof.html",html);
  await writeFile("src/dashboard-opening-proof-entry.tsx",fixture);
+ // These are byte-for-byte the production components apart from the one
+ // customer-list import, replaced only in this disposable CI working tree.
+ // The original tracked production modules remain untouched.
+ const reportSource=await readFile("src/DashboardAccountOpeningReport.tsx","utf8");
+ const previewSource=await readFile("src/AllCustomerData.tsx","utf8");
+ await writeFile("src/dashboard-proof-report.tsx",reportSource
+   .replace('"./customerListCache"','"./dashboard-proof-customer-list"')
+   .replace('"./AllCustomerData"','"./dashboard-proof-customer-preview"'));
+ await writeFile("src/dashboard-proof-customer-preview.tsx",previewSource
+   .replace('"./customerListCache"','"./dashboard-proof-customer-list"'));
  // Screenshot-only build alias: never access real Firebase sessions, Google
  // Sheets, cached customer records, or a tenant-scoped production database.
  await writeFile("src/dashboard-proof-customer-list.ts",
