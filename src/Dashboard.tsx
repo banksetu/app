@@ -1044,11 +1044,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <nav style={styles.nav}>
           <NavButton icon="dashboard" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
-          <NavButton icon="users-data" label="All Customers" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-          {!licenseReadOnly && <NavButton icon="user-plus" label="New Customer" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
+          <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
+          {!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
           {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
           {!licenseReadOnly && <NavButton icon="chart" label="SSA Campaign" active={activePage === "ssa-campaign"} onClick={() => openPage("ssa-campaign")} />}
-          {!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
           {!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
           {!licenseReadOnly && <NavButton icon="printer" label="Passbook Print (PR2)" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
           {!licenseReadOnly && canCustomizeLayout && <NavButton icon="file-search" label="Auto Passbook Generator" active={activePage === "customize-passbook"} onClick={() => openPage("customize-passbook")} />}
