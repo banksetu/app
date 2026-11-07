@@ -1824,7 +1824,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
         <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
-        <button type="button" onClick={()=>setZoom(.8)}>Page Fit 80%</button>
+        <button type="button" onClick={()=>setZoom(.8)}>Zoom 80%</button>
         <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
         <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
         <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
