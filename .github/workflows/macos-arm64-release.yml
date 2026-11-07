@@ -1,5 +1,19 @@
 name: Build unsigned macOS ARM64 release
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/macos-arm64-release.yml
+      - .github/workflows/publish-app-release.yml
+      - electron-builder.mac.json
+      - package.json
+      - desktop/main.cjs
+      - desktop/testUpdater.cjs
+      - desktop/testUpdater.test.cjs
+      - scripts/macos-release.test.mjs
+      - scripts/prepare-macos-icon.sh
+      - scripts/release.mjs
+      - scripts/verify-public-release.mjs
   workflow_call:
     inputs:
       release_ref:

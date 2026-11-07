@@ -28,6 +28,7 @@ test('One Click waits for and verifies the macOS DMG before publishing',()=>{
   assert.match(oneClick,/BankSetu-' \+ process\.env\.VERSION \+ '-arm64\.dmg'/);
   assert.match(oneClick,/SHA256SUMS-macOS\.txt/);
   assert.match(mac,/runs-on: macos-14/);
+  assert.match(mac,/pull_request:[\s\S]*branches: \[main\]/);
   assert.match(mac,/CSC_IDENTITY_AUTO_DISCOVERY: 'false'/);
   assert.match(mac,/bash scripts\/prepare-macos-icon\.sh/);
   assert.match(mac,/file .*MacOS\/Bank Setu.*grep -q 'arm64'/s);
