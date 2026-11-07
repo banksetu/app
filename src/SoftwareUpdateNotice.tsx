@@ -6,6 +6,7 @@ import type { ReleaseChangelog } from "./platform/releaseNotes";
 import type { UpdateManifest } from "./platform/updateManifest";
 import { notifySystem } from "./platform/systemNotifications";
 import "./SoftwareUpdateNotice.css";
+import ModalPortal from "./ModalPortal";
 
 declare const __APP_VERSION__: string;
 
@@ -177,12 +178,12 @@ export default function SoftwareUpdateNotice() {
   };
 
   const formatBytes=(value:number)=>value>=1024*1024?`${(value/1024/1024).toFixed(1)} MB`:`${Math.round(value/1024)} KB`;
-  return <div className="update-backdrop" role="presentation"><aside className="update-dialog" role="dialog" aria-modal="true" aria-label="Bank Setu update available">
+  return <ModalPortal><div className="update-backdrop" role="presentation"><aside className="update-dialog" role="dialog" aria-modal="true" aria-label="Bank Setu update available">
     <button type="button" className="update-close" aria-label="Close update popup" onClick={dismiss}>×</button>
     <header className="update-header"><img src="/banksetu-icon.png" alt="Bank Setu"/><div><h2>Bank Setu Update Available</h2><p>A new version is ready with improvements and new features.</p></div></header>
     <div className="update-versions"><div><small>Current version</small><strong>v{notice.currentVersion||'Unknown'}</strong></div><span aria-hidden="true">→</span><div><small>Latest version</small><strong>v{notice.latestVersion}</strong></div></div>
     {(installing||progress!==null||stage==='error')&&<div className="update-progress"><div className="update-progress-heading"><strong>{stage==='error'?'Download failed':stage==='install-ready'?'Ready to install':stage==='installing'?'Opening installer…':'Downloading update…'}</strong>{progress!==null&&<strong>{Math.round(progress)}%</strong>}</div>{progress!==null&&<div role="progressbar" aria-label="Update download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} className="update-track"><div style={{width:`${progress}%`}}/></div>}{bytes&&<div className="update-transfer"><span>{formatBytes(bytes.downloaded)}{bytes.total>0?` / ${formatBytes(bytes.total)}`:''}</span>{bytes.speed>0&&<span>{formatBytes(bytes.speed)}/s</span>}</div>}{message&&<p role={stage==='error'?'alert':'status'}>{message}</p>}</div>}
     <section className="update-notes"><h3>▤ What&apos;s New in v{notice.latestVersion}</h3>{groups.length?groups.map(([heading,items])=><div key={heading}><strong>{heading}</strong><ul>{items.map((item,index)=><li key={`${heading}-${index}`}>{item}</li>)}</ul></div>):<p>{notice.notes||'See release details for this version.'}</p>}{notice.releaseDate&&<small>Released {notice.releaseDate}</small>}</section>
     <footer className="update-actions"><button type="button" className="update-later" onClick={dismiss}>Install Later</button><button type="button" className="update-install" disabled={installing} onClick={()=>void install()}>{installing?'Downloading…':stage==='error'?'Retry Download':notice.platform==='web'?'Open Download':'Download & Install'}</button></footer>
-  </aside></div>;
+  </aside></div></ModalPortal>;
 }

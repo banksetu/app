@@ -9,7 +9,7 @@ const ORIGIN='banksetu://app';
 protocol.registerSchemesAsPrivileged([{scheme:'banksetu',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true}}]);
 const primaryInstance=app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
-let window,store,background,tray,openMain,quitting=false,downloaded=false;
+let window,store,background,tray,openMain,appMenu,quitting=false,downloaded=false;
 const directoryOptions = () => ({
   userData:app.getPath('userData'),platform:process.platform,executable:process.execPath,env:process.env
 });
@@ -21,6 +21,7 @@ const trusted = event => {
 const scopeCheck = scope => {if (typeof scope !== 'string' || !/^[A-Za-z0-9_:-]{10,250}$/.test(scope)) throw new Error('Invalid workspace scope.');};
 if(primaryInstance)app.whenReady().then(async()=>{
   ipcMain.handle('appearance:set',(event,mode)=>{trusted(event);if(!['light','dark'].includes(mode))throw Error('Invalid appearance.');nativeTheme.themeSource=mode;window.setBackgroundColor(mode==='dark'?'#0b1220':'#f5f7ff');});
+  require('./support-links.cjs').installSupportLinks({ipcMain,trusted,shell});
   if(process.platform==='win32')app.setAppUserModelId('in.banksetu.desktop');
   let dataDirectory;
   const options=directoryOptions();
@@ -50,10 +51,12 @@ if(primaryInstance)app.whenReady().then(async()=>{
   if(!store)store=createStore(dataDirectory,{decrypt:value=>safeStorage.decryptString(value),...(process.platform==='win32'?{profilePath:path.join(app.getPath('userData'),'Local State')}:{})});
   pinFirstInstall(options,dataDirectory);
   const publicKey=require('../src/generated/licensePublicKey.json');
-  const licenseAuthority=createLicenseAuthority(publicKey,store);
-  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);if(background?.status().uid&&background.status().uid!==uid)background.clear();});
-  ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);});
-  ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);});
+  const trustedClock=require('./trusted-clock.cjs').createTrustedClock(path.join(app.getPath('userData'),'license-clock.enc'),safeStorage);
+  const licenseAuthority=createLicenseAuthority(publicKey,store,trustedClock);
+  appMenu=require('./app-menu.cjs').installAppMenu({app,Menu,dialog,getWindow:()=>window,authorize:()=>licenseAuthority.protectedAction(),userData:app.getPath('userData')});
+  ipcMain.handle('license:session',(event,uid)=>{trusted(event);if(typeof uid!=='string'||uid.length>128)throw Error('Invalid session.');licenseAuthority.session(uid);appMenu.refreshState();if(background?.status().uid&&background.status().uid!==uid)background.clear();});
+  ipcMain.handle('license:status',(event,signed)=>{trusted(event);licenseAuthority.status(signed);appMenu.refreshState();});
+  ipcMain.handle('license:receipt',(event,signed)=>{trusted(event);licenseAuthority.acceptReceipt(signed);appMenu.refreshState();});
   const validPdf = encoded => {
     if(typeof encoded!=='string'||encoded.length>40_000_000||!/^[A-Za-z0-9+/=]+$/.test(encoded))throw Error('Invalid PDF data.');
     const bytes=Buffer.from(encoded,'base64');
@@ -85,7 +88,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     notice.show();return true;
   });
   require('./pr2-ipc.cjs').installPr2({app,ipcMain,BrowserWindow,trusted,authorize:scope=>licenseAuthority.protectedScope(scope),getWindow:()=>window});
-  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction()});
+  const printPreview=require('./print-preview.cjs').installPrintPreview({app,BrowserWindow,ipcMain,dialog:require('electron').dialog,getParentWindow:()=>window,authorize:()=>licenseAuthority.protectedAction(),getDefaultPrinter:()=>appMenu.getDefaultPrinter()});
   const directoryBytes = directory => {
     let total = 0;
     try {
@@ -202,6 +205,9 @@ if(primaryInstance)app.whenReady().then(async()=>{
     cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
     window.on('closed',()=>{window=null;});
     await window.loadURL(ORIGIN+'/index.html');
+    // Offline network printers can make enumeration take seconds. The list is
+    // not needed to display the dashboard, so refresh it after first paint.
+    setImmediate(()=>void appMenu.refreshPrinters());
     if(page)window.webContents.send('system-notification:open',page);
   };
   const notificationFile=path.join(app.getPath('userData'),'background-notifications.enc');

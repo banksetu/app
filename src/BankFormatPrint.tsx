@@ -13,8 +13,8 @@ type FormatType = "passbook" | "quickPassbook" | "accountOpening";
 type FormatSettings = { bankLogo?:string; bankKey?: string; fileId?: string; fieldMap?: BankFieldPlacement[]; extractionMap?: BankFieldPlacement[]; pageWidthMm?: number; pageHeightMm?: number };
 
 export default function BankFormatPrint({
-  formatType, customer, onConfigured, onPrint, bankName, allowPrint = true,
-}: { bankName?: string; allowPrint?: boolean; formatType: FormatType; customer: object; onConfigured: (active: boolean) => void; onPrint?: () => void }) {
+  formatType, customer, onConfigured, onPrint, onDirectPrint, bankName, allowPrint = true,
+}: { bankName?: string; allowPrint?: boolean; formatType: FormatType; customer: object; onConfigured: (active: boolean) => void; onPrint?: () => void; onDirectPrint?:()=>void }) {
   const [textPages, setTextPages] = useState<TextTemplatePage[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [settings, setSettings] = useState<FormatSettings | null>(null);
@@ -84,11 +84,15 @@ export default function BankFormatPrint({
   const values = customer as Record<string, unknown>;
   const pageWidthMm = settings.pageWidthMm || (formatType === "accountOpening" ? 210 : 205);
   const pageHeightMm = settings.pageHeightMm || (formatType === "accountOpening" ? 297 : 175);
+  const accountOpening = formatType === "accountOpening";
 
   return <section className="bank-format-print-wrap">
 
     <div className="bank-format-print-document" aria-label="Mapped bank document preview">
-      {sources.map((source, pageIndex) => <section key={pageIndex} className="bank-format-print" style={{ width: `${pageWidthMm}mm`, height: `${textPages[pageIndex] ? pageWidthMm*textPages[pageIndex].height/textPages[pageIndex].width : pageHeightMm}mm`, backgroundImage: `url(${source})` }}>
+      {sources.map((source, pageIndex) => {
+        const sourceHeightMm=textPages[pageIndex] ? pageWidthMm*textPages[pageIndex].height/textPages[pageIndex].width : pageHeightMm;
+        const fit=accountOpening?Math.min(210/pageWidthMm,297/sourceHeightMm):1;
+        const page=<section key={pageIndex} className="bank-format-print" style={{ width: `${pageWidthMm}mm`, height: `${sourceHeightMm}mm`, backgroundImage: `url(${source})` }}>
         {textPages.length && pageIndex===0 && (values.templateLogo || settings.bankLogo) ? <img alt="Bank logo" src={String(values.templateLogo || settings.bankLogo)} style={{position:"absolute",left:"30%",top:"1%",width:"40%",height:"8%",objectFit:"contain"}} /> : null}
         {textPages[pageIndex] && <svg aria-label="Fixed PDF labels" viewBox={`0 0 ${textPages[pageIndex].width} ${textPages[pageIndex].height}`} preserveAspectRatio="none" style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}}>{textPages[pageIndex].runs.map((run,index)=><text key={index} x={run.x} y={run.y+run.height} fontSize={run.height} textLength={run.width} lengthAdjust="spacingAndGlyphs" fill="#111" xmlSpace="preserve">{run.text}</text>)}</svg>}
         {settings.fieldMap!.filter((placement) => (placement.page || 1) === pageIndex + 1).map((placement) => {
@@ -101,18 +105,24 @@ export default function BankFormatPrint({
           }
           return <span key={`${placement.field}-${placement.x}-${placement.y}`} style={placementStyle}>{value}</span>;
         })}
-      </section>)}
+      </section>;
+        return accountOpening
+          ? <section key={pageIndex} className="bank-format-a4-page"><div className="bank-format-a4-stage" style={{left:`${(210-pageWidthMm*fit)/2}mm`,top:`${(297-sourceHeightMm*fit)/2}mm`,transform:`scale(${fit})`}}>{page}</div></section>
+          : page;
+      })}
     </div>
-    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => void requireLicensedWrite().then(()=>onPrint ? onPrint() : window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>Print bank format</button></div>
+    <div className="bank-format-print-actions"><span>Bank sample layout ready · {settings.fieldMap.length} mapped fields</span><button type="button" disabled={!allowPrint} onClick={() => void requireLicensedWrite().then(()=>onPrint ? onPrint() : window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>{formatType==="passbook"?"Print Passbook":"Print bank format"}</button>{formatType==="passbook"&&onDirectPrint&&<button type="button" disabled={!allowPrint} onClick={onDirectPrint}>Olivetti Mode Print</button>}</div>
     {error&&<p role="alert" className="bank-format-print-error">{error}</p>}
     <style>{`
       .bank-format-print-wrap { margin: 22px auto; max-width: 100%; overflow-x: auto; }
       .bank-format-print-actions { display:flex; justify-content:center; align-items:center; gap:14px; margin:0 auto 12px; color:#d9eaf1; font-size:13px; }
       .bank-format-print-actions button { padding:10px 15px; border:0; border-radius:8px; background:#ffd166; color:#342300; font-weight:800; cursor:pointer; }
+      .bank-format-a4-page { position:relative; width:210mm; height:297mm; margin:0 auto 16px; overflow:hidden; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,.24); }
+      .bank-format-a4-stage { position:absolute; transform-origin:top left; }
       .bank-format-print { position:relative; margin:0 auto; background-size:100% 100%; background-repeat:no-repeat; background-color:white; overflow:hidden; color:#111; box-shadow:0 8px 24px rgba(0,0,0,.24); }
-      .bank-format-print:not(:last-child) { break-after:page; }
+      .bank-format-a4-page:not(:last-child), .bank-format-print:not(:last-child) { break-after:page; }
       .bank-format-print > span { position:absolute; display:block; white-space:pre-wrap; line-height:1.1; overflow:hidden; }
-      @page { size:${pageWidthMm}mm ${pageHeightMm}mm; margin:0; }
+      @page { size:${accountOpening?"A4 portrait":`${pageWidthMm}mm ${pageHeightMm}mm`}; margin:0; }
       @media print {
         html, body { margin:0!important; padding:0!important; background:white!important; }
         body * { visibility:hidden!important; }
@@ -121,7 +131,10 @@ export default function BankFormatPrint({
         .bank-format-print-actions { display:none!important; }
         .bank-format-print-wrap { margin:0!important; overflow:visible!important; }
         .bank-format-print-document { margin:0!important; }
-        .bank-format-print, .bank-format-print * { visibility:visible!important; }
+        .custom-bank-document.alignment-print-active .bank-format-print-document { transform:translate(var(--alignment-x,0mm),var(--alignment-y,0mm))!important; transform-origin:top left!important; }
+        .bank-format-a4-page, .bank-format-a4-page *, .bank-format-print, .bank-format-print * { visibility:visible!important; }
+        .bank-format-a4-page { margin:0!important; box-shadow:none!important; break-after:page!important; page-break-after:always!important; }
+        .bank-format-a4-page:last-child { break-after:auto!important; page-break-after:auto!important; }
         .bank-format-print { position:relative!important; left:auto!important; top:auto!important; margin:0!important; box-shadow:none!important; }
         .bank-format-print:not(:last-child) { break-after:page!important; }
       }

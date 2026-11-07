@@ -1,6 +1,6 @@
 import {lazy,Suspense,useEffect,useRef,useState} from "react";
 import {windowsPr2} from "./platform/pr2";
-const Pr2PrinterDialog=lazy(()=>import("./Pr2PrinterDialog"));
+const CustomPr2PrinterDialog=lazy(()=>import("./CustomPr2PrinterDialog"));
 import type {CSSProperties} from "react";
 import {requireLicensedWrite} from "./core/licenseAccess";
 import {printCurrentDocument} from "./platform/print";
@@ -119,7 +119,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
       .workspace-template-document .workspace-template-page:last-child {page-break-after:auto;break-after:auto}
       .workspace-template-document .workspace-template-controls {display:none!important}
     }`}</style>
-    {directPrinting&&<Suspense fallback={<p>Connecting existing PR2 Bridge…</p>}><Pr2PrinterDialog
+    {directPrinting&&<Suspense fallback={<p>Connecting existing PR2 Bridge…</p>}><CustomPr2PrinterDialog
       bankName={bankName} customPdfBase64={directPdfBase64} requirePhysicalConfirmation
       onClose={()=>{setDirectPrinting(false);setDirectPdfBase64("");}}
       onComplete={(result)=>{if(result.completed){setDirectPrinting(false);setDirectPdfBase64("");onPr2Complete?.();}}} /></Suspense>}

@@ -23,6 +23,7 @@ test('licensed offline grant can last five days but never beyond its signed expi
  const signed=await createOfflineSession(JSON.stringify({private_key:privateKey.export({type:'pkcs8',format:'pem'})}),claims);
  assert.equal((await offline.verifyOfflineSession(signed,'u1',now+4*86400000)).tenantId,'tenant');
  await assert.rejects(offline.verifyOfflineSession(signed,'u1',claims.expiresAt),/expired/);
+ assert.equal((await offline.verifyOfflineSession(signed,'u1',claims.expiresAt+86400000,true)).tenantId,'tenant','an expired signed client identity may reopen retained records read-only');
  const excessive=await createOfflineSession(JSON.stringify({private_key:privateKey.export({type:'pkcs8',format:'pem'})}),{...claims,expiresAt:now+6*86400000});
  await assert.rejects(offline.verifyOfflineSession(excessive,'u1'),/expired/);
 });

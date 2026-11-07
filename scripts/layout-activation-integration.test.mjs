@@ -21,7 +21,7 @@ test("Customer document loads activated layout only for the currently selected b
   assert.match(custom,/onPr2Complete/);
 });
 test("Existing verified PR2 bridge is reused, not copied, and completion controls status",()=>{
-  assert.match(preview,/\.\/Pr2PrinterDialog/);
+  assert.match(preview,/\.\/CustomPr2PrinterDialog/);
   assert.match(preview,/windowsPr2\(\)/);
   assert.match(preview,/className="passbook-page workspace-bridge-page"/);
   assert.match(preview,/className="passbook-shell workspace-bridge-shell"/);
@@ -31,7 +31,7 @@ test("Existing verified PR2 bridge is reused, not copied, and completion control
 });
 
 test("step 5: custom PR2 uses its own approved values PDF and requires physical receipt",()=>{
- const dialog=file("src/Pr2PrinterDialog.tsx");
+ const dialog=file("src/CustomPr2PrinterDialog.tsx");
  const print=file("src/WorkspaceTemplateDocument.tsx");
  assert.match(dialog,/customPdfBase64\?\?prepared\.pdf/);
  assert.match(dialog,/requirePhysicalConfirmation/);

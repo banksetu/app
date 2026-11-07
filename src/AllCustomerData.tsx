@@ -1,7 +1,9 @@
 import { afsmDisplay } from "./core/afsmPolicy";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { getAuth } from "firebase/auth";
 import { localDataFetch, getDataIdToken, getLocalSnapshot, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
+import { customerListScope, readCustomerListCache, writeCustomerListCache, type CachedCustomer } from "./customerListCache";
 import { requireLicensedWrite } from "./core/licenseAccess";
 import { getTenantApiUrl } from "./tenantApi";
 import { isAndroid } from "./platform/android/runtime";
@@ -11,7 +13,8 @@ import html2canvas from "html2canvas";
 const nativeShare = registerPlugin<{shareImage(options:{base64:string}):Promise<void>}>("BankSetuShare");
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {copyText?: (text:string)=>Promise<void>;shareImage?: (image:string)=>Promise<{saved:boolean;canceled?:boolean}>}}).bankSetuDesktop;
-type Customer = Record<string, unknown> & { rowNumber?: number; recordId?: string };
+type Customer = CachedCustomer;
+const LOCAL_PAGE_SIZE = 200;
 const value = (item: unknown) => String(item ?? "").trim();
 const title = (key: string) => key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
 const identity = (customer: Customer) => value(customer.recordId || customer.rowNumber || customer.accountNo);
@@ -32,6 +35,31 @@ async function request(body: Record<string, unknown>) {
   return response.json();
 }
 
+function applyShareCaptureTheme(card: HTMLElement, dark: boolean) {
+  const important = (element: Element | null, styles: Record<string,string>) => {
+    if (!(element instanceof HTMLElement)) return;
+    Object.entries(styles).forEach(([property,item]) => element.style.setProperty(property,item,"important"));
+  };
+  const palette = dark ? {
+    card:"#0b1424",content:"#101d31",section:"#16243a",heading:"#223550",
+    text:"#f8fafc",muted:"#d9e3f0",border:"#344761",line:"#2d3e57",
+  } : {
+    card:"#fff2f5",content:"#fff9fb",section:"#ffffff",heading:"#fff0f4",
+    text:"#17233b",muted:"#33435d",border:"#efcbd6",line:"#f3dfe5",
+  };
+  card.dataset.shareTheme = dark ? "dark" : "light";
+  important(card,{background:palette.card,color:palette.text});
+  important(card.querySelector(".customer-preview-content"),{background:palette.content,color:palette.text,"border-color":palette.border});
+  important(card.querySelector(".customer-preview-heading"),{color:"#ffffff"});
+  important(card.querySelector(".customer-preview-heading h2"),{color:"#ffffff"});
+  important(card.querySelector(".customer-preview-heading p"),{color:"#ffffff",opacity:"1"});
+  card.querySelectorAll(".customer-preview-section").forEach(section=>important(section,{background:palette.section,color:palette.text,"border-color":palette.border}));
+  card.querySelectorAll(".customer-preview-section h3").forEach(heading=>important(heading,{background:palette.heading,color:palette.text}));
+  card.querySelectorAll(".customer-preview-section dl>div").forEach(row=>important(row,{"border-color":palette.line,color:palette.text}));
+  card.querySelectorAll(".customer-preview-section dt").forEach(label=>important(label,{color:palette.muted}));
+  card.querySelectorAll(".customer-preview-section dd,.customer-preview-address").forEach(item=>important(item,{color:palette.text}));
+}
+
 async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   const width = Math.ceil(card.getBoundingClientRect().width);
   if (!width) throw new Error("Customer preview is not visible. Open it again and retry.");
@@ -40,9 +68,14 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   const copy = card.cloneNode(true) as HTMLElement;
   copy.querySelector(".customer-preview-close")?.remove();
   copy.querySelector(".customer-preview-actions")?.remove();
+  if(!forPdf){
+    copy.querySelectorAll(".customer-preview-share-exclude").forEach(node=>node.remove());
+    if (copy.classList.contains("customer-preview-card"))
+      applyShareCaptureTheme(copy,document.documentElement.dataset.appearance === "dark");
+  }
   copy.style.cssText += `;width:${width}px!important;max-height:none!important;overflow:visible!important`;
   host.appendChild(copy);
-  document.body.appendChild(host);
+  (card.closest(".banksetu-app-shell") || document.body).appendChild(host);
   try {
     await Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,1500))]);
     for (const img of copy.querySelectorAll<HTMLImageElement>("img")) {
@@ -63,10 +96,10 @@ async function previewImage(card: HTMLElement, forPdf=false): Promise<Blob> {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function snapshot(customer: Customer, card?: HTMLElement | null, forPdf=false): Promise<Blob> {
   if (card) return previewImage(card,forPdf);
-  return new Promise(async (resolve, reject) => {
-    try {
+  return (async () => {
       const fields = visibleFields(customer);
       const width = 920, rowHeight = 34;
       const canvas = document.createElement("canvas");
@@ -98,15 +131,17 @@ export function snapshot(customer: Customer, card?: HTMLElement | null, forPdf=f
           ctx.drawImage(image, width - 155, 15, 95, 95);
         } catch { /* Keep available customer details when remote photo cannot be read. */ }
       }
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not create preview image.")), "image/png");
-    } catch (error) { reject(error); }
-  });
+      return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not create preview image.")), "image/png"));
+  })();
 }
 
 export default function AllCustomerData() {
+  const [scope] = useState(()=>customerListScope());
+  const [cached] = useState(()=>readCustomerListCache(scope));
   const [query, setQuery] = useState("");
   const previewCard = useRef<HTMLDivElement>(null);
-  const [rows, setRows] = useState<Customer[]>([]);
+  const previewOverlay = useRef<HTMLDivElement>(null);
+  const [rows, setRows] = useState<Customer[]>(()=>cached.slice(0,LOCAL_PAGE_SIZE));
   const [selected, setSelected] = useState<Customer | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -116,15 +151,28 @@ export default function AllCustomerData() {
   const page = useRef(0);
   const total = useRef(0);
   const generation = useRef(0);
+  const localMatches = useRef<Customer[]>(cached);
+  const localVisible = useRef(LOCAL_PAGE_SIZE);
 
-  const loadPage = async (replace = false) => {
+  const showLocal = useCallback((customers:Customer[],search=query) => {
+    writeCustomerListCache(scope,customers);
+    const needle=search.trim().toLowerCase();
+    const filtered=needle?customers.filter(customer=>[customer.enrolId,customer.accountNo,customer.name,customer.uidaiNo,customer.aadhaarNo,customer.aadharNo,customer.contact,customer.mobile].some(item=>value(item).toLowerCase().includes(needle))):customers;
+    localMatches.current=filtered;localVisible.current=LOCAL_PAGE_SIZE;
+    setRows(filtered.slice(0,localVisible.current));setMore(filtered.length>localVisible.current);
+  },[query,scope]);
+
+  const loadPage = async (replace = false, quiet = false) => {
+    if(!replace && localVisible.current<localMatches.current.length){
+      localVisible.current+=LOCAL_PAGE_SIZE;setRows(localMatches.current.slice(0,localVisible.current));setMore(localVisible.current<localMatches.current.length);return;
+    }
     if ((loading && !replace) || (!navigator.onLine && !localModeEnabled())) return;
-    setLoading(true);
+    if(!quiet)setLoading(true);
     const id = generation.current;
     try {
       if (localModeEnabled()) {
         const customers = await getActiveLocalCustomers();
-        if (id === generation.current) {setRows(customers);setMore(false);}
+        if (id === generation.current) showLocal(customers);
         return;
       }
       if (replace) {
@@ -149,20 +197,21 @@ export default function AllCustomerData() {
       });
       page.current = current - 1; setMore(page.current > 0);
     } catch (cause) { if (id === generation.current) setError(cause instanceof Error ? cause.message : "Customer list unavailable."); }
-    finally { if (id === generation.current) setLoading(false); }
+    finally { if (id === generation.current&&!quiet) setLoading(false); }
   };
 
   useEffect(() => {
-    let active = true;
-    // The current verified user's local scope supplies an immediate local-first list.
-    if (localModeEnabled()) void getActiveLocalCustomers().then(customers => {
-      if (!active) return;
-      setRows(customers);
-    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });
-    return () => { active = false; generation.current += 1; };
-    // The workspace remounts this page on navigation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { generation.current += 1; };
   }, []);
+
+  useEffect(() => {
+    if (!selected) return;
+    const frame = requestAnimationFrame(() => {
+      previewOverlay.current?.scrollTo({top:0,left:0});
+      previewCard.current?.scrollTo({top:0,left:0});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selected]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -171,7 +220,8 @@ export default function AllCustomerData() {
       timer = setTimeout(() => {
         if (!localModeEnabled()) return;
         void getActiveLocalCustomers().then(customers => {
-          if (!query.trim()) setRows(customers);
+          writeCustomerListCache(scope,customers);
+          if (!query.trim()) showLocal(customers,"");
           else {const visible=new Set(customers.map(customer=>value(customer.recordId)));setRows(previous=>previous.filter(row=>visible.has(value(row.recordId))));}
           setSelected(previous => previous && !customers.some(customer=>identity(customer)===identity(previous)) ? null : previous);
         }).catch(() => undefined);
@@ -179,21 +229,25 @@ export default function AllCustomerData() {
     };
     window.addEventListener("banksetu-sync-change", reconcile);
     return () => {clearTimeout(timer);window.removeEventListener("banksetu-sync-change", reconcile);};
-  }, [query]);
+  }, [query,scope,showLocal]);
 
   useEffect(() => {
     const id = ++generation.current;
-    setLoading(false);
     if (!query.trim()) {
-      setError("");
-      if (navigator.onLine || localModeEnabled()) void loadPage(true);
-      else void getLocalSnapshot().then(snapshot => {
-        if (id === generation.current) setRows(snapshot.records.filter(record => !record.deleted).sort((a,b) => b.rowNumber - a.rowNumber).map(record => ({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})));
-      }).catch(cause => { if (id === generation.current) setError(cause instanceof Error ? cause.message : "Local records unavailable."); });
+      void getActiveLocalCustomers().then(customers=>{
+        if(id!==generation.current)return;
+        showLocal(customers,"");setLoading(false);
+        if(!localModeEnabled()&&navigator.onLine)void loadPage(true,customers.length>0);
+      }).catch(()=>getLocalSnapshot().then(snapshot=>{
+        if(id!==generation.current)return;
+        showLocal(snapshot.records.filter(record=>!record.deleted).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({...record.customer,rowNumber:record.rowNumber,recordId:record.recordId})),"");
+      })).catch(cause=>{if(id===generation.current)setError(cause instanceof Error?cause.message:"Local records unavailable.");});
       return;
     }
+    void getActiveLocalCustomers().then(customers=>{if(id===generation.current){showLocal(customers,query);setLoading(false);}}).catch(()=>undefined);
+    if(localModeEnabled()||!navigator.onLine)return;
     const timer = setTimeout(async () => {
-      setLoading(true); setError("");
+      if(!localMatches.current.length)setLoading(true);setError("");
       try {
         const result = await request({action:"searchCustomer",query:query.trim()});
         if (id !== generation.current) return;
@@ -269,9 +323,9 @@ export default function AllCustomerData() {
       <table style={{borderCollapse:"collapse",width:"100%",minWidth:680,textAlign:"left"}}>
         <thead><tr>{["Customer ID","Name","Account Number","Mobile Number","Aadhaar Number","Account Opening Date"].map(label =>
           <th key={label} style={{position:"sticky",top:0,background:"var(--app-dark-surface, #f9e8ee)",padding:10}}>{label}</th>)}</tr></thead>
-        <tbody>{rows.map((customer,index) => <tr key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
+        <tbody>{rows.map((customer,index) => <tr className={index<25?"all-customer-row-enter":undefined} key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
           onKeyDown={event => { if (event.key === "Enter") void open(customer); }}
-          style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee"}}>
+          style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee",...(index<25?{"--customer-row-index":index}:{})} as CSSProperties}>
           <td style={{padding:9}}>{value(customer.enrolId)}</td><td style={{padding:9}}>{value(customer.name)}</td>
           <td style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
             onClick={async event => {event.stopPropagation();try{if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(String(customer.accountNo ?? "")); else await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
@@ -283,7 +337,7 @@ export default function AllCustomerData() {
       {loading && <p role="status">Loading customers…</p>}
       {!query.trim() && more && <button type="button" disabled={loading} onClick={() => void loadPage()}>Load more customers</button>}
     </div>
-    {selected && <div className="customer-preview-overlay" role="presentation" onClick={() => setSelected(null)}>
+    {selected && createPortal(<div ref={previewOverlay} className="customer-preview-overlay" data-print-root="active" data-print-profile="safe" role="presentation" onClick={() => setSelected(null)}>
       <div ref={previewCard} className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
         <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
         <div className="customer-preview-content">
@@ -313,11 +367,11 @@ export default function AllCustomerData() {
               {(value(selected.branch || selected.branchName || selected.ifsc || selected.ifscCode)) && <section className="customer-preview-section"><h3>▤ &nbsp;Branch Details</h3><dl>
                 {([["Branch",selected.branch || selected.branchName],["IFSC",selected.ifsc || selected.ifscCode]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
               </dl></section>}
-              <section className="customer-preview-section"><h3>▦ &nbsp;Account Details</h3><dl><div><dt>Form Send to Branch</dt><dd>{afsmDisplay(selected)}</dd></div>
+              <section className="customer-preview-section customer-preview-share-exclude"><h3>▦ &nbsp;Account Details</h3><dl><div><dt>Form Send to Branch</dt><dd>{afsmDisplay(selected)}</dd></div>
                 {([["A/C Type",selected.accountType || selected.acType || selected.accountCategory],["Open Date",selected.accountOpeningDate],["AOF No.",selected.aofNo]] as [string,unknown][]).filter(([,item]) => value(item)).map(([label,item]) => <div key={label}><dt>{label}</dt><dd>{value(item)}</dd></div>)}
               </dl></section>
             </div>
-            {visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).length > 0 && <section className="customer-preview-section"><h3>▤ &nbsp;Additional Details</h3><dl>{visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).map(([key,item]) => <div key={key}><dt>{title(key)}</dt><dd>{value(item)}</dd></div>)}</dl></section>}
+            {visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).length > 0 && <section className="customer-preview-section customer-preview-share-exclude"><h3>▤ &nbsp;Additional Details</h3><dl>{visibleFields(selected).filter(([key]) => !["name","fatherName","coName","dateOfBirth","dob","gender","enrolId","contact","mobile","email","fullAddress","address","postOffice","pinCode","branch","branchName","ifsc","ifscCode","accountType","acType","accountCategory","accountOpeningDate","aofNo","status","accountNo","afsmStatus","afsmSentAt","afsmOperationId","afsmUpdatedAt"].includes(key)).map(([key,item]) => <div key={key}><dt>{title(key)}</dt><dd>{value(item)}</dd></div>)}</dl></section>}
           </div>
           <div className="customer-preview-actions">
             <button type="button" disabled={sharing} onClick={() => void share()}>{sharing ? "Preparing / sharing…" : "Share"}</button>
@@ -326,17 +380,19 @@ export default function AllCustomerData() {
           </div>
         </div>
       </div>
-    </div>}
+    </div>,document.body)}
     <style>{`
       .all-customer-data tbody tr:hover,.all-customer-data tbody tr:focus {background:#fbd9e3!important;outline:2px solid #d17a9c}
-      .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:grid;place-items:center;padding:14px;overflow:auto}
-      .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:94dvh;overflow:auto}
-      .customer-preview-heading {background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px}
+      .all-customer-row-enter {animation:banksetu-customer-row-in .52s cubic-bezier(.16,.82,.24,1) both;animation-delay:calc(var(--customer-row-index,0) * 55ms);will-change:transform,opacity}
+      @keyframes banksetu-customer-row-in {0%{opacity:0;transform:translate3d(0,24px,0) scale(.985)}68%{opacity:1;transform:translate3d(0,-2px,0) scale(1.002)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+      .customer-preview-overlay {position:fixed;inset:0;z-index:3000;background:#2d1830a8;display:flex;align-items:flex-start;justify-content:center;padding:max(14px,env(safe-area-inset-top,0px)) 14px max(14px,env(safe-area-inset-bottom,0px));overflow:auto;overscroll-behavior:contain}
+      .customer-preview-card {background:#fff2f5;color:#12254d;border-radius:20px;box-shadow:0 22px 65px #3813226b;width:min(760px,100%);max-height:none;overflow:visible;text-align:left;flex:none}
+      .customer-preview-heading {position:sticky;top:0;z-index:2;background:linear-gradient(110deg,#ff3268,#c9064d);color:white;padding:19px 24px;display:flex;align-items:center;gap:18px;text-align:left;border-radius:20px 20px 0 0}
       .customer-preview-heading h2 {color:white;margin:0;font-size:clamp(21px,3.5vw,30px)}.customer-preview-heading p{margin:3px 0 0;font-size:15px}
       .customer-preview-avatar {width:52px;height:52px;flex:none;border-radius:50%;background:white;color:#ee2160;display:grid;place-items:center;font-size:34px}
       .customer-preview-close {margin-left:auto;background:transparent;border:0;color:white;font-size:30px;cursor:pointer}
       .customer-preview-content {margin:16px 20px 20px;padding:20px;border:1px solid #ffd5df;border-radius:14px;background:#fff9fb}
-      .customer-preview-identity {display:flex;gap:24px;align-items:flex-start;position:relative;margin-bottom:20px}
+      .customer-preview-identity {display:grid;grid-template-columns:132px minmax(0,1fr) auto;gap:24px;align-items:start;position:relative;margin-bottom:20px;text-align:left}
       .customer-preview-identity>img,.customer-preview-photo-placeholder {width:132px;height:146px;object-fit:cover;border-radius:10px;flex:none;background:#dfe5ec}
       .customer-preview-photo-placeholder {display:grid;place-items:center;color:#8090a0;font-size:60px}
       .customer-preview-account {min-width:0;flex:1}.customer-preview-name {font-weight:800;font-size:clamp(24px,4vw,32px);line-height:1.1;overflow-wrap:anywhere}
@@ -345,16 +401,22 @@ export default function AllCustomerData() {
       .customer-preview-account-value {display:block;min-width:0;overflow-wrap:anywhere}
       .customer-preview-account-number button {background:#fff0f5;color:#d31352;border:1px solid #ffbad0;border-radius:10px;padding:8px 12px;cursor:pointer;font-size:23px;flex:none}
       .customer-preview-status {background:#d9f8e8;border:1px solid #8ce7b7;color:#078350;border-radius:13px;padding:7px 14px;font-weight:700;white-space:nowrap}
-      .customer-preview-sections {display:grid;gap:14px}.customer-preview-section {border:1px solid #f8d4df;border-radius:12px;background:white;overflow:hidden;box-shadow:0 2px 8px #e483a21a}
-      .customer-preview-section h3 {color:#12254d;background:#fff0f4;margin:0;padding:10px 17px;font-size:18px}
-      .customer-preview-section dl {margin:0;padding:11px 18px}.customer-preview-section dl>div {display:grid;grid-template-columns:minmax(130px,34%) 1fr;gap:8px;line-height:1.55;overflow-wrap:anywhere}
-      .customer-preview-section dt::after {content:":";float:right;padding-right:5px}.customer-preview-section dd {margin:0}.customer-preview-address {margin:0;padding:12px 18px;white-space:pre-wrap;overflow-wrap:anywhere}
+      .customer-preview-sections {display:grid;gap:14px;text-align:left}.customer-preview-section {border:1px solid #f8d4df;border-radius:12px;background:white;overflow:hidden;box-shadow:0 2px 8px #e483a21a;text-align:left}
+      .customer-preview-section h3 {color:#12254d;background:#fff0f4;margin:0;padding:11px 17px;font-size:18px;text-align:left}
+      .customer-preview-section dl {margin:0;padding:10px 18px}.customer-preview-section dl>div {display:grid;grid-template-columns:minmax(145px,36%) minmax(0,1fr);gap:12px;align-items:start;min-height:30px;padding:5px 0;line-height:1.4;overflow-wrap:anywhere;border-bottom:1px solid #f6e8ed;text-align:left}
+      .customer-preview-section dl>div:last-child {border-bottom:0}.customer-preview-section dt {font-weight:700;text-align:left}.customer-preview-section dt::after {content:":";float:right;padding-right:5px}.customer-preview-section dd {margin:0;text-align:left;min-width:0;overflow-wrap:anywhere}.customer-preview-address {margin:0;padding:14px 18px;line-height:1.55;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}
       .customer-preview-bottom {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.customer-preview-bottom>.customer-preview-section:only-child{grid-column:1/-1}
       .customer-preview-actions {display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
       .customer-preview-actions button {padding:10px 18px;border-radius:9px;border:1px solid #d57c99;background:#fff;cursor:pointer}
       .customer-preview-actions button:first-child {background:#d51c57;color:white}
-      @media(max-width:650px){.customer-preview-overlay{padding:0}.customer-preview-card{width:100%;max-height:100dvh;border-radius:0}.customer-preview-heading{padding:14px;gap:10px}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{gap:12px;flex-wrap:wrap}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:calc(100% - 112px)}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{order:3}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl>div{grid-template-columns:minmax(115px,43%) 1fr}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
-      @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-content,
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section,
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-bottom {background:#172338!important;color:#f8fafc!important;border-color:#29374d!important}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section h3 {background:#233249!important;color:#f8fafc!important}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay :is(.customer-preview-name,.customer-preview-account-label,.customer-preview-account-value,.customer-preview-section dt,.customer-preview-section dd,.customer-preview-address) {color:#f8fafc!important}
+      body:has(.banksetu-app-shell[data-appearance="dark"]) .customer-preview-overlay .customer-preview-section dl>div {border-color:#2d3e57!important}
+      @media(max-width:650px){.customer-preview-overlay{padding:max(2px,env(safe-area-inset-top,0px)) 2px max(2px,env(safe-area-inset-bottom,0px))}.customer-preview-card{width:100%;border-radius:12px}.customer-preview-heading{padding:14px;gap:10px;border-radius:12px 12px 0 0}.customer-preview-avatar{width:40px;height:40px;font-size:25px}.customer-preview-content{margin:9px;padding:12px}.customer-preview-identity{grid-template-columns:100px minmax(0,1fr);gap:12px}.customer-preview-identity>img,.customer-preview-photo-placeholder{width:100px;height:112px}.customer-preview-account{min-width:0;max-width:none}.customer-preview-account-number{font-size:16px;gap:6px;align-items:flex-start}.customer-preview-account-value{overflow-wrap:anywhere;word-break:break-all;line-height:1.3}.customer-preview-account-number button{padding:5px 7px;font-size:18px}.customer-preview-status{grid-column:1/-1;justify-self:start}.customer-preview-bottom{grid-template-columns:1fr}.customer-preview-section dl{padding:9px 12px}.customer-preview-section dl>div{grid-template-columns:minmax(112px,40%) minmax(0,1fr);gap:9px}.customer-preview-actions{flex-wrap:wrap}.customer-preview-actions button{flex:1}}
+      @media print {body * {visibility:hidden!important}.customer-preview-overlay,.customer-preview-overlay * {visibility:visible!important}.customer-preview-overlay {position:absolute;inset:0;background:white;padding:0}.customer-preview-card {box-shadow:none;max-height:none;width:auto;border:0}.customer-preview-actions {display:none!important}.all-customer-row-enter{animation:none!important}}
     `}</style>
   </section>;
 }

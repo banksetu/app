@@ -4,11 +4,13 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle state) {
         BankSetuNotificationsPlugin.createChannels(this);
+        BankSetuPushRegistration.schedule(this);
         registerPlugin(BankSetuPrintPlugin.class);
         registerPlugin(BankSetuUpdatePlugin.class);
         registerPlugin(BankSetuSharePlugin.class);
         registerPlugin(BankSetuNotificationsPlugin.class);
         registerPlugin(BankSetuStoragePlugin.class);
+        registerPlugin(BankSetuLicenseClockPlugin.class);
         super.onCreate(state);
     }
 }

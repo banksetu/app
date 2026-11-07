@@ -101,7 +101,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
       setError("PR2 device acknowledged printing, but passbook status could not be saved. Do not print again just to update it. "+(error instanceof Error?error.message:""));
     }
   };
-  return <section className="custom-bank-document" style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
+  return <section className="custom-bank-document" data-print-root="active" data-print-profile={formatType === "quickPassbook" ? "safe" : "exact"} style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
     {windowsLayoutEngineAvailable()&&layoutMode==="passbook"&&<label style={{display:"inline-flex",alignItems:"center",gap:9,marginBottom:12}}>

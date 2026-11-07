@@ -12,12 +12,22 @@ function validate(state) {
 function createStore(directory, legacyCipher = {}) {
   fs.mkdirSync(directory, {recursive:true});
   const file=path.join(directory,'customers.sqlite');
+  const openMarker=path.join(directory,'.banksetu-database-open');
+  const integrityMarker=path.join(directory,'.banksetu-integrity-check');
+  const uncleanShutdown=fs.existsSync(openMarker);
   const db=new DatabaseSync(file);
   db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=3000; CREATE TABLE IF NOT EXISTS workspaces (scope TEXT PRIMARY KEY, payload BLOB NOT NULL); CREATE TABLE IF NOT EXISTS licensed_workspaces (scope TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS license_authorizations (identity TEXT PRIMARY KEY, payload TEXT NOT NULL);');
   const version=db.prepare('PRAGMA user_version').get().user_version;
   if(version>FORMAT){db.close();throw Error('This database uses a newer storage format. Update Bank Setu; no data was changed.');}
-  const integrity=db.prepare('PRAGMA quick_check').get();
-  if(Object.values(integrity)[0]!=='ok'){db.close();throw Error('Local SQLite integrity check failed. Original database and pending work were retained.');}
+  let lastIntegrityCheck=0;
+  try{lastIntegrityCheck=Number(fs.readFileSync(integrityMarker,'utf8'))||0;}catch{}
+  const integrityDue=uncleanShutdown||!lastIntegrityCheck||Date.now()-lastIntegrityCheck>24*60*60*1000;
+  if(integrityDue){
+    const integrity=db.prepare('PRAGMA quick_check').get();
+    if(Object.values(integrity)[0]!=='ok'){db.close();throw Error('Local SQLite integrity check failed. Original database and pending work were retained.');}
+    try{fs.writeFileSync(integrityMarker,String(Date.now()),{mode:0o600});}catch{}
+  }
+  try{fs.writeFileSync(openMarker,String(process.pid),{mode:0o600});}catch{}
 
   function snapshot(prefix, includeProfile=false) {
     const target=path.join(directory,`${prefix}-${randomUUID()}.sqlite`);
@@ -42,11 +52,13 @@ function createStore(directory, legacyCipher = {}) {
     return validate(JSON.parse(legacyCipher.decrypt(Buffer.from(value))));
   }
   try {
-    const rows=db.prepare('SELECT payload FROM workspaces').all();
-    // Validate every scope before touching any legacy row. A wrong DPAPI key
-    // cannot turn one scope into an empty workspace for another tenant.
-    for(const row of rows)decode(row.payload);
-    if(rows.some(row=>typeof row.payload!=='string')){
+    const legacyRows=db.prepare("SELECT scope,payload FROM workspaces WHERE typeof(payload) != 'text'").all();
+    // A full cross-workspace validation is needed only before legacy encrypted
+    // rows are migrated. Current JSON remains validated whenever a scope is read,
+    // without parsing every customer workspace during every normal startup.
+    if(legacyRows.length){
+      const rows=db.prepare('SELECT scope,payload FROM workspaces').all();
+      for(const row of rows)decode(row.payload);
       snapshot('customers-before-plaintext-migration',true);
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -88,6 +100,6 @@ function createStore(directory, legacyCipher = {}) {
       .map(name=>({name,mtime:fs.statSync(path.join(directory,name)).mtimeMs})).sort((a,b)=>b.mtime-a.mtime);
     for(const old of copies.slice(5))fs.unlinkSync(path.join(directory,old.name));
     return target;
-  },close(){db.close();}};
+  },close(){db.close();try{fs.unlinkSync(openMarker);}catch{}}};
 }
 module.exports={createStore};

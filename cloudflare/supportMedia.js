@@ -52,6 +52,20 @@ export function createSupportMediaService({request,decode,encode,name,isMaster})
   return {value:{messageId,kind:value.attachment.kind},verify:{verify:target.name,currentDocument:{updateTime:target.updateTime}}};
  };
  return {
+  async text(env,actor,body,now=Date.now()){
+   const clientUid=String(body.clientUid||actor.uid),text=typeof body.text==='string'?body.text.trim():'';
+   if(!text||text.length>2000||!/^[a-f0-9-]{36}$/i.test(body.operationId||''))fail('Enter a message of up to 2000 characters with a valid send identity.');
+   const {owner,tenant,profile}=await peer(env,actor,clientUid),id=`${actor.uid}_${body.operationId}`,conversationPath=`/supportConversations/${clientUid}`,path=`${conversationPath}/messages/${id}`;
+   const old=await get(env,path);
+   if(old){const value=decode(old.fields);if(value.senderUid!==actor.uid||value.tenantId!==profile.tenantId||value.text!==text)fail('Send identity belongs to another message.',409);return {success:true,messageId:id,clientUid,tenantId:profile.tenantId,replayed:true};}
+   const conversation=await get(env,conversationPath);
+   if(conversation&&decode(conversation.fields).tenantId!==profile.tenantId)fail('Support conversation workspace mismatch.',403);
+   const createdAt=new Date(now);
+   await commit(env,[{verify:owner.name,currentDocument:{updateTime:owner.updateTime}},{verify:tenant.name,currentDocument:{updateTime:tenant.updateTime}},
+    update(env,path,{text,senderUid:actor.uid,senderRole:actor.profile.role,clientUid,tenantId:profile.tenantId,createdAt},{exists:false}),
+    update(env,conversationPath,{clientUid,tenantId:profile.tenantId,clientName:String(profile.name||profile.email||'Client'),clientEmail:String(profile.email||''),lastMessage:text,updatedAt:createdAt,unreadForMaster:!isMaster(actor),unreadForClient:isMaster(actor)},conversation?{updateTime:conversation.updateTime}:{exists:false})]);
+   return {success:true,messageId:id,clientUid,tenantId:profile.tenantId};
+  },
   async send(env,actor,body,now=Date.now()){
    const file=validateSupportMedia(body),clientUid=String(body.clientUid||actor.uid);
    const {owner,tenant,profile}=await peer(env,actor,clientUid);
@@ -77,7 +91,7 @@ export function createSupportMediaService({request,decode,encode,name,isMaster})
     update(env,`${conversationPath}/messages/${id}`,{text:file.text,senderUid:actor.uid,senderRole:actor.profile.role,clientUid,tenantId:profile.tenantId,createdAt,attachment:{id,kind:file.kind,expiresAt},...(referenced?{replyTo:referenced.value}:{})}, {exists:false}),
     update(env,conversationPath,{clientUid,tenantId:profile.tenantId,clientName:String(profile.name||profile.email||'Client'),clientEmail:String(profile.email||''),lastMessage:file.text||`[${file.kind==='photo'?'Photo':'Audio'}]`,updatedAt:createdAt,unreadForMaster:!isMaster(actor),unreadForClient:isMaster(actor)},conversation?{updateTime:conversation.updateTime}:{exists:false})];
    await commit(env,writes);
-   return {success:true,messageId:id,expiresAt:expiresAt.toISOString()};
+   return {success:true,messageId:id,clientUid,tenantId:profile.tenantId,expiresAt:expiresAt.toISOString()};
   },
   async reply(env,actor,body,now=Date.now()){
    const clientUid=String(body.clientUid||actor.uid),text=typeof body.text==='string'?body.text.trim():'';
@@ -93,7 +107,7 @@ export function createSupportMediaService({request,decode,encode,name,isMaster})
    await commit(env,[{verify:owner.name,currentDocument:{updateTime:owner.updateTime}},{verify:tenant.name,currentDocument:{updateTime:tenant.updateTime}},referenced.verify,
     update(env,path,{text,senderUid:actor.uid,senderRole:actor.profile.role,clientUid,tenantId:profile.tenantId,createdAt,replyTo:referenced.value},{exists:false}),
     update(env,conversationPath,{...decode(conversation.fields),lastMessage:text,updatedAt:createdAt,unreadForMaster:!isMaster(actor),unreadForClient:isMaster(actor)},{updateTime:conversation.updateTime})]);
-   return {success:true,messageId:id};
+   return {success:true,messageId:id,clientUid,tenantId:profile.tenantId};
   },
   async remove(env,actor,body,now=Date.now()){
    const clientUid=String(body.clientUid||actor.uid),id=body.messageId;
@@ -135,6 +149,15 @@ export function createSupportMediaService({request,decode,encode,name,isMaster})
     for(const document of documents){if(decode(document.fields).tenantId!==tenantId)fail('Support media workspace mismatch.',500);await purgeFile(env,document);}
    }
    fail('Support media cleanup is incomplete; the workspace stays blocked for retry.',503);
+  },
+  async purgeConversation(env,clientUid){
+   if(!uid(clientUid))fail('Invalid support conversation owner.');
+   for(let batch=0;batch<10;batch++){
+    const documents=await query(env,'supportMedia','clientUid',clientUid,20);
+    if(!documents.length)return;
+    for(const document of documents){if(decode(document.fields).clientUid!==clientUid)fail('Support media conversation mismatch.',500);await purgeFile(env,document);}
+   }
+   fail('Support media cleanup is incomplete; retry the conversation deletion.',503);
   },
   async conversations(env,tenantId){return query(env,'supportConversations','tenantId',tenantId,100);},
  };

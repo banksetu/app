@@ -62,7 +62,7 @@ import pdfWorker from
 
 import { auth, db } from "./firebase";
 import { doc, getDocFromServer } from "firebase/firestore";
-import { isAssamBank, templateMatchesBank } from "./bankDocumentPolicy";
+import { isCentralBank, templateMatchesBank, usesAssamAccountOpeningLayout } from "./bankDocumentPolicy";
 import { extractBankCustomer } from "./bankPdf";
 
 
@@ -1171,21 +1171,23 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
       let extractionMap: import("./bankFormatUtils").BankFieldPlacement[] = [];
-      if (!isAssamBank(bankName)) {
+      const usesAssamLayout = usesAssamAccountOpeningLayout(bankName);
+      if (!usesAssamLayout) {
         const tenantId = sessionStorage.getItem("bankSetuTenantId");
         if (tenantId) {
           const settings = await getDocFromServer(doc(db, "tenantSettings", tenantId));
           const sample = settings.data()?.bankFormats?.accountOpening;
           if (templateMatchesBank(sample, bankName)) extractionMap = sample?.extractionMap || [];
-        }
+          else if (isCentralBank(bankName)) throw new Error("Please upload your Account Opening PDF sample before using Central Bank customer autofill.");
+        } else if (isCentralBank(bankName)) throw new Error("Please upload your Account Opening PDF sample before using Central Bank customer autofill.");
       }
-      const bankSpecific = isAssamBank(bankName)
+      const bankSpecific = usesAssamLayout
         ? Object.fromEntries(Object.entries(parseCustomerPdf(text)).filter(([, value]) => String(value || "").trim()))
         : {};
       // AOF footers contain generic Name/Address labels. Never let those
       // overwrite the Assam bank parser's customer identity/address.
       const extracted: Partial<CustomerForm> = {
-        ...await extractBankCustomer(pdf, extractionMap, !isAssamBank(bankName)),
+        ...await extractBankCustomer(pdf, extractionMap, !usesAssamLayout),
         ...bankSpecific,
       };
       if (extracted.gender) extracted.gender = normalizeGender(extracted.gender);
@@ -1635,7 +1637,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
       let region = PDF_PHOTO_REGION;
       let photoPage = 1;
-      if (!isAssamBank(bankName)) {
+      if (!usesAssamAccountOpeningLayout(bankName)) {
         const tenantId = sessionStorage.getItem("bankSetuTenantId") || "";
         if (!tenantId) return "";
         const settings = (await getDocFromServer(doc(db, "tenantSettings", tenantId))).data();

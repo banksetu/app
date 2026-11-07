@@ -1,68 +1,54 @@
-import { useEffect, useState } from "react";
-import { auth } from "./firebase";
+import { useMemo, useState } from "react";
 import type { PrintOutcome } from "./platform/print";
+import ModalPortal from "./ModalPortal";
+import { printAlignmentStorageKey, savedPrintOffset, type PrintOffset } from "./printAlignmentStorage";
 
-export type PrintOffset = { x: number; y: number };
+export type { PrintOffset } from "./printAlignmentStorage";
 const ZERO: PrintOffset = { x: 0, y: 0 };
 const bounded = (number: number) => Number.isFinite(number) ? Math.max(-30, Math.min(30, Math.round(number * 2) / 2)) : 0;
 const clean = (offset: PrintOffset): PrintOffset => ({ x: bounded(offset.x), y: bounded(offset.y) });
 const mm = (number: number) => `${number > 0 ? "+" : ""}${number} mm`;
-const bankId = (name: string) => /union bank/i.test(name) ? "union-bank" :
-  /assam gramin|^agvb$|^agb$/i.test(name) ? "assam-gramin-bank" :
-  name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
-
-function storageKey(bank: string) {
-  const tenant = sessionStorage.getItem("bankSetuTenantId");
-  const role = sessionStorage.getItem("bankSetuAccountRole");
-  const scope = tenant || (["master_owner", "admin"].includes(role || "") && auth.currentUser?.uid ? `master:${auth.currentUser.uid}` : "");
-  if (!scope) throw new Error("A verified workspace is required to save bank alignment.");
-  return `banksetu:print-alignment:v1:${scope}:${bankId(bank)}`;
-}
-
-function savedOffset(bank: string): PrintOffset {
-  try {
-    const raw = localStorage.getItem(storageKey(bank));
-    if (!raw) return ZERO;
-    const parsed = JSON.parse(raw) as PrintOffset;
-    return clean({ x: Number(parsed.x), y: Number(parsed.y) });
-  } catch { return ZERO; }
-}
-
-function sourceDocument(selector: string): string {
+function sourceDocument(selector: string, widthMm=210, heightMm=170, a4=false): string {
   const source = document.querySelector<HTMLElement>(selector);
   if (!source) return "";
   const base = document.baseURI.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   const styles = Array.from(document.querySelectorAll("style, link[rel='stylesheet']"))
     .map(node => node.outerHTML).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><base href="${base}">${styles}<style>
-    html,body{margin:0!important;padding:0!important;width:210mm!important;height:170mm!important;background:transparent!important;overflow:visible!important}
-    .union-document,.assam-quick-document,.passbook-shell{margin:0!important;box-shadow:none!important;border-radius:0!important}
+    html,body{margin:0!important;padding:0!important;width:${a4?210:widthMm}mm!important;height:${a4?297:heightMm}mm!important;background:white!important;overflow:visible!important}
+    .alignment-a4-sheet{position:relative;width:210mm;height:297mm;background:white;overflow:visible}
+    .alignment-a4-sheet>.passbook-page{position:absolute;left:0;top:0;transform:scale(${a4&&widthMm>210?210/widthMm:1});transform-origin:top left}
+    .union-document,.assam-quick-document,.passbook-shell,.pnb-document{margin:0!important;box-shadow:none!important;border-radius:0!important}
     .union-document{width:210mm!important;height:170mm!important;overflow:visible!important}
     .union-lower,.union-fold{top:85mm!important}.union-lower{height:85mm!important}
     .assam-quick-document{width:210mm!important;height:170mm!important}
     .passbook-shell{width:206mm!important;height:175mm!important;overflow:visible!important}
+    .pnb-document{width:213mm!important;height:190mm!important;overflow:visible!important}
     .passbook-cover-space{height:85mm!important}.passbook-print-area{top:85mm!important;height:85mm!important}
-    .passbook-page{padding:0!important;margin:0!important;min-height:0!important}.preview-edit-button,.assam-quick-edit,.union-edit,.cover-note{display:none!important}
-  </style></head><body><div class="passbook-page">${source.outerHTML}</div></body></html>`;
+    .passbook-page{padding:0!important;margin:0!important;min-height:0!important}.preview-edit-button,.assam-quick-edit,.union-edit,.pnb-edit,.cover-note{display:none!important}
+  </style></head><body>${a4?'<div class="alignment-a4-sheet">':''}<div class="passbook-page">${source.outerHTML}</div>${a4?'</div>':''}</body></html>`;
 }
 
-export default function PrintAlignmentPreview({ bankName, sourceSelector, onClose, onPrint }: {
+export default function PrintAlignmentPreview({ bankName, sourceSelector, printMode="system", onClose, onPrint }: {
   bankName: string;
   sourceSelector: string;
+  printMode?: "system" | "pr2";
   onClose: () => void;
   onPrint: (offset: PrintOffset, test: boolean, duplex: boolean) => void | PrintOutcome | Promise<void | PrintOutcome>;
 }) {
-  const [offset, setOffset] = useState<PrintOffset>(() => savedOffset(bankName));
-  const [saved, setSaved] = useState<PrintOffset>(() => savedOffset(bankName));
+  const [offset, setOffset] = useState<PrintOffset>(() => savedPrintOffset(bankName));
+  const [saved, setSaved] = useState<PrintOffset>(() => savedPrintOffset(bankName));
   const [step, setStep] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [duplex, setDuplex] = useState(false);
+  const pnb=/^(punjab national bank|punjab bank of india|punjab bank|pnb)$/i.test(bankName.trim());
+  const paperWidth=pnb?213:210, paperHeight=pnb?190:170;
 
-  useEffect(() => { setPreview(sourceDocument(sourceSelector)); }, [sourceSelector]);
-  useEffect(() => { const previous=document.body.style.overflow; document.body.style.overflow="hidden"; return () => {document.body.style.overflow=previous;}; }, []);
+  const pnbA4NormalPrint=pnb&&printMode==="system";
+  const canvasWidth=pnbA4NormalPrint?210:paperWidth, canvasHeight=pnbA4NormalPrint?297:paperHeight;
+  const preview=useMemo(()=>sourceDocument(sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint),[sourceSelector,paperWidth,paperHeight,pnbA4NormalPrint]);
   const move = (dx: number, dy: number) => setOffset(current => clean({x:current.x+dx*step,y:current.y+dy*step}));
   const print = async (test: boolean) => {
     if (busy) return;
@@ -71,19 +57,19 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
     catch (cause) { setError(cause instanceof Error ? cause.message : "Print could not be started."); }
     finally { setBusy(false); }
   };
-  return <div className="print-alignment-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+  return <ModalPortal><div className="print-alignment-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="print-alignment-window" role="dialog" aria-modal="true" aria-label={`Print Alignment Preview for ${bankName}`}>
-      <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName})</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
+      <header><strong>▣ &nbsp;Bank Setu – Print Alignment Preview ({bankName}) · {printMode==="pr2"?"Olivetti / PR2":"Normal Print"}</strong><button type="button" aria-label="Close alignment preview" onClick={onClose}>×</button></header>
       <div className="print-alignment-columns">
         <div className="print-alignment-left">
-          <div className="print-alignment-width">A4 Width (21 cm)</div>
+          <div className="print-alignment-width">{pnbA4NormalPrint?"A4 Normal Print Preview (21 × 29.7 cm)":`Passbook Width (${pnb?"21.3":"21"} cm)`}</div>
           <div className="print-alignment-measured">
             <div className="print-alignment-measures">
-              <span>Passbook<br/>Height<br/>(17 cm)</span><span>Printable<br/>Data Area<br/>(8.5 cm)</span>
+              <span>{pnbA4NormalPrint?<>A4<br/>Height<br/>(29.7 cm)</>:<>Passbook<br/>Height<br/>({pnb?"19":"17"} cm)</>}</span><span>{pnbA4NormalPrint?<>Passbook<br/>on A4<br/>(21.3 × 19 cm)</>:<>Printable<br/>Data Area<br/>({pnb?"15.3":"8.5"} cm)</>}</span>
             </div>
             <div className="print-alignment-paper">
-              <div className="print-alignment-frame" style={{transform:`scale(${zoom})`}}>
-                {preview ? <iframe title={`${bankName} actual passbook preview`} srcDoc={preview} sandbox="" style={{width:"210mm",height:"170mm",border:0,background:"transparent",transform:`translate(${offset.x}mm,${offset.y}mm)`,transformOrigin:"top left",pointerEvents:"none"}} /> :
+              <div className="print-alignment-frame" style={{width:`${canvasWidth}mm`,height:`${canvasHeight}mm`,transform:`scale(${zoom})`}}>
+                {preview ? <iframe title={`${bankName} actual passbook preview`} srcDoc={preview} sandbox="" style={{width:`${canvasWidth}mm`,height:`${canvasHeight}mm`,border:0,background:"white",transform:`translate(${offset.x}mm,${offset.y}mm)`,transformOrigin:"top left",pointerEvents:"none"}} /> :
                   <p role="alert">Passbook preview is unavailable.</p>}
               </div>
             </div>
@@ -112,20 +98,20 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
             </div>
             <div className="print-alignment-actions">
               <button type="button" className="reset" onClick={() => setOffset(ZERO)}>↶ &nbsp;Reset<br/><small>(to default)</small></button>
-              <button type="button" className="save" onClick={() => {try {localStorage.setItem(storageKey(bankName),JSON.stringify(offset));setSaved(offset);setError("");} catch (cause) {setError(cause instanceof Error?cause.message:"Could not save alignment.");}}}>▣ &nbsp;Save for this Bank<br/><small>({bankName})</small></button>
+              <button type="button" className="save" onClick={() => {try {localStorage.setItem(printAlignmentStorageKey(bankName),JSON.stringify(offset));setSaved(offset);setError("");} catch (cause) {setError(cause instanceof Error?cause.message:"Could not save alignment.");}}}>▣ &nbsp;Save for this Bank<br/><small>({bankName})</small></button>
             </div>
             <div className="print-alignment-saved"><strong>Current Saved Setting ({bankName})</strong><div><span>Left / Right: &nbsp; <b>{mm(saved.x)}</b><br/>Up / Down: &nbsp; <b>{mm(saved.y)}</b></span><button type="button" onClick={() => setOffset(saved)}>Use Saved</button></div></div>
             <p className="print-alignment-tip">ⓘ &nbsp;This adjustment moves the entire passbook layout. It does not change text, mapping or data. It only shifts the print position.</p>
             {error && <p role="alert" className="print-alignment-error">{error}</p>}
-            <label className="print-alignment-duplex"><input type="checkbox" checked={duplex} onChange={event=>setDuplex(event.target.checked)} /> Duplex printing {duplex?"ON":"OFF"}<small>Unsupported printers use the system print-dialog setting.</small></label>
+            {printMode==="system"&&<label className="print-alignment-duplex"><input type="checkbox" checked={duplex} onChange={event=>setDuplex(event.target.checked)} /> Duplex printing {duplex?"ON":"OFF"}<small>Unsupported printers use the system print-dialog setting.</small></label>}
             <div className="print-alignment-final"><button type="button" disabled={busy} onClick={() => void print(true)}>🖨 &nbsp;Test Print<br/><small>(Optional)</small></button><button type="button" disabled={busy} onClick={() => void print(false)}>🖨 &nbsp;Final Print<br/><small>(Use this layout)</small></button></div>
           </div>
         </div>
       </div>
     </section>
     <style>{`
-      .print-alignment-overlay{position:fixed;inset:0;z-index:5000;background:#2229;display:grid;place-items:center;padding:12px;overflow-y:auto;overscroll-behavior:contain;color:#272b32;font-family:Arial,sans-serif}
-      .print-alignment-window{width:min(1536px,98vw);max-height:96dvh;background:#f6f5f5;border-radius:13px;box-shadow:0 24px 70px #0007;overflow:auto}
+      .print-alignment-overlay{position:fixed;inset:0;z-index:2147482000;background:#2229;display:flex;align-items:flex-start;justify-content:center;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain;color:#272b32;font-family:Arial,sans-serif;box-sizing:border-box}
+      .print-alignment-window{width:min(1536px,98vw);max-height:calc(100dvh - 24px);background:#f6f5f5;border-radius:13px;box-shadow:0 24px 70px #0007;overflow:auto;flex:none}
       .print-alignment-window>header{background:linear-gradient(105deg,#c50f43,#df204a);color:white;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:clamp(18px,2vw,29px)}
       .print-alignment-window>header button{border:0;background:none;color:white;font-size:36px;line-height:1;cursor:pointer}
       .print-alignment-columns{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(360px,1fr);gap:16px;padding:14px}
@@ -165,5 +151,5 @@ export default function PrintAlignmentPreview({ bankName, sourceSelector, onClos
       @media(max-width:540px){.print-alignment-overlay{padding:0}.print-alignment-window{width:100%;max-height:100dvh;border-radius:0}.print-alignment-window>header{padding:12px;font-size:18px}.print-alignment-columns{padding:8px;gap:8px}.print-alignment-paper{max-height:48dvh}.print-alignment-control-row{flex-wrap:wrap}.print-alignment-measures{width:65px;font-size:12px}.print-alignment-panel{padding:10px}.print-alignment-arrows output{min-width:95px}.print-alignment-arrows button{width:45px;height:45px}.print-alignment-inputs{grid-template-columns:1fr}.print-alignment-actions button,.print-alignment-final button{font-size:14px}.print-alignment-measured{width:100%}}
       @media print{.print-alignment-overlay{display:none!important}}
     `}</style>
-  </div>;
+  </div></ModalPortal>;
 }

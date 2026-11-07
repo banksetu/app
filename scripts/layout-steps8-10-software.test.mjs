@@ -124,7 +124,7 @@ test("Step 9: custom engine stays opt-in; approved Assam/Union flows are not rep
  const selected=file("src/SelectedBankDocument.tsx");
  const direct=file("src/WorkspaceTemplateDocument.tsx");
  const dashboard=file("src/Dashboard.tsx");
- assert.match(policy,/if \(isAssamBank\(key\) \|\| isUnionBank\(key\)\) return "builtin"/);
+ assert.match(policy,/if \(isAssamBank\(key\) \|\| isUnionBank\(key\) \|\| isPnbBank\(key\) \|\| isCentralBank\(key\)\) return "builtin"/);
  assert.match(selected,/mode === "custom"/);
  assert.match(selected,/AccountOpeningPDF/);
  assert.match(selected,/UnionBank/);
@@ -158,19 +158,19 @@ test("Step 10: incomplete physical approval still blocks release after a success
  assert.equal(layoutReleaseReady(original),false);
 });
 
-test("Step 9: PNB and Central Bank are independently selectable custom formats without changing old banks",()=>{
+test("Step 9: PNB and Central Bank keep their verified built-in formats while other banks remain selectable",()=>{
  const dashboard=file("src/Dashboard.tsx");
  const start=dashboard.indexOf("const PASSBOOK_BANK_OPTIONS = ["),end=dashboard.indexOf("] as const;",start);
  assert.ok(start>=0&&end>start);
  const selection=dashboard.slice(start,end);
  for(const name of ["Assam Gramin Bank","Union Bank of India","Punjab National Bank",
-   "Central Bank of India","State Bank of India (SBI)","Punjab Bank of India"]){
+   "Central Bank of India","State Bank of India (SBI)"]){
   assert.ok(selection.includes('"'+name+'"'),"Bank selection missing: "+name);
  }
  assert.equal(bankDocumentMode("Assam Gramin Bank"),"builtin");
  assert.equal(bankDocumentMode("Union Bank of India"),"builtin");
- assert.equal(bankDocumentMode("Punjab National Bank"),"custom");
- assert.equal(bankDocumentMode("Central Bank of India"),"custom");
+ assert.equal(bankDocumentMode("Punjab National Bank"),"builtin");
+ assert.equal(bankDocumentMode("Central Bank of India"),"builtin");
 });
 
 test("Step 9: missing bank account-opening PDF must say upload, never inherit Assam Gramin/other bank",()=>{

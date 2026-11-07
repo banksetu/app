@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react";
 
 import { getAuth } from "firebase/auth";
 import { getTenantApiUrl } from "./tenantApi";
+import ModalPortal from "./ModalPortal";
+import { isPnbBank } from "./bankDocumentPolicy";
 
 
 
@@ -306,7 +308,7 @@ function EditableField({
 
 
 
-export default function AccountOpeningPDF() {
+export default function AccountOpeningPDF({bankLogo="", bankName="Assam Gramin Bank"}:{bankLogo?:string;bankName?:string}={}) {
 
 
   const [query, setQuery] = useState("");
@@ -316,6 +318,8 @@ export default function AccountOpeningPDF() {
   const [dob, setDob] = useState("");
 
   const [religion, setReligion] = useState("MINORITY COM - MUSLIMS");
+
+  const [nomineeRelationship, setNomineeRelationship] = useState("");
 
   const [loading, setLoading] = useState(false);
 
@@ -445,6 +449,7 @@ export default function AccountOpeningPDF() {
       setCustomer(loaded);
       setDob("");
       setReligion("MINORITY COM - MUSLIMS");
+      setNomineeRelationship("");
       setMessage("Account Opening Form generated successfully.");
     } catch (err) {
       setCustomer(null);
@@ -478,6 +483,7 @@ export default function AccountOpeningPDF() {
       setCustomer(loaded);
       setDob("");
       setReligion("MINORITY COM - MUSLIMS");
+      setNomineeRelationship("");
       setCustomerMatches([]);
       setShowMatchModal(false);
       setMessage("Selected customer loaded successfully. Account Opening Form is ready.");
@@ -511,12 +517,16 @@ export default function AccountOpeningPDF() {
   const address = makeAddress(c);
 
   const maskedAadhaar = maskAadhaar(c.uidaiNo);
+  const selectedBankLogo = safe(bankLogo) || (/assam gramin/i.test(bankName) ? "/assam-gramin-bank-logo.jpg" : "");
+  const authorizedOfficialBankName = isPnbBank(bankName)
+    ? "Punjab National Bank"
+    : "Assam Gramin Vikas Bank";
 
 
 
   return (
 
-    <div className="aof-module">
+    <div className="aof-module" data-print-root="active" data-print-profile="exact">
 
       <style>{`
 
@@ -890,6 +900,8 @@ export default function AccountOpeningPDF() {
           margin: 0 auto 1mm;
 
         }
+
+        .bank-logo-placeholder { height: 23mm; }
 
 
 
@@ -1673,7 +1685,39 @@ export default function AccountOpeningPDF() {
         }
 
         @media print {
-          .paper { text-align: left !important; }
+          /* One physical A4 box owns every page. Safety space belongs inside
+             the document, so Chromium/Android cannot apply a second shrink. */
+          @page { size: A4 portrait; margin: 0 !important; }
+          html, body { width: 210mm !important; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          body * { visibility: hidden !important; }
+          .aof-module {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            width: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            background: #fff !important;
+          }
+          .aof-module > :not(.preview-wrap) { display: none !important; }
+          .preview-wrap { width: 210mm !important; max-width: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+          .print-area, .print-area * { visibility: visible !important; }
+          .print-area { position: static !important; width: 210mm !important; margin: 0 !important; }
+          .paper {
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            margin: 0 !important;
+            padding: 14mm 12mm 10mm !important;
+            overflow: hidden !important;
+            text-align: left !important;
+            break-after: page !important;
+            page-break-after: always !important;
+            box-shadow: none !important;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+          .paper:last-child { break-after: auto !important; page-break-after: auto !important; }
           .paper .edit-pencil { display: none !important; }
         }
 
@@ -1721,7 +1765,7 @@ export default function AccountOpeningPDF() {
 
       </form>
 
-      {showMatchModal && customerMatches.length > 1 && (
+      {showMatchModal && customerMatches.length > 1 && <ModalPortal>
         <div
           className="match-modal-backdrop"
           role="dialog"
@@ -1784,7 +1828,7 @@ export default function AccountOpeningPDF() {
             </div>
           </div>
         </div>
-      )}
+      </ModalPortal>}
 
 
       {error ? <div className="notice error">{error}</div> : null}
@@ -1805,15 +1849,15 @@ export default function AccountOpeningPDF() {
 
               <section className="paper">
 
-                <img
+                {selectedBankLogo ? <img
 
                   className="bank-logo"
 
-                  src="/assam-gramin-bank-logo.jpg"
+                  src={selectedBankLogo}
 
-                  alt="Assam Gramin Bank"
+                  alt={`${safe(bankName) || "Bank"} logo`}
 
-                />
+                /> : <div className="bank-logo bank-logo-placeholder" aria-hidden="true" />}
 
 
 
@@ -2210,7 +2254,13 @@ export default function AccountOpeningPDF() {
 
                       <td className="bold caps nominee-name-cell">{c.nominee || "—"}</td>
 
-                      <td className="bold">MOTHER</td>
+                      <td className="bold nominee-relationship-cell">
+                        <EditableField
+                          value={nomineeRelationship}
+                          onChange={setNomineeRelationship}
+                          placeholder="Click Edit"
+                        />
+                      </td>
 
                       <td></td>
 
@@ -2452,7 +2502,7 @@ export default function AccountOpeningPDF() {
 
                 <div className="bold" style={{ marginTop: "2mm" }}>
 
-                  Assam Gramin Vikas Bank
+                  {authorizedOfficialBankName}
 
                 </div>
 
@@ -2509,6 +2559,8 @@ export default function AccountOpeningPDF() {
                 setDob("");
 
                 setReligion("MINORITY COM - MUSLIMS");
+
+                setNomineeRelationship("");
 
                 setMessage("");
 

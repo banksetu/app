@@ -10,7 +10,7 @@ test("Admin menu contains Customize Layout above License Management and Logout",
   const marker = dashboard.indexOf('✏️ Customize Layout');
   const passbook = dashboard.indexOf('Customize Passbook</button>', marker);
   const account = dashboard.indexOf('Customize Account Opening Form</button>', marker);
-  const license = dashboard.indexOf('🪪 License Management</button>', marker);
+  const license = dashboard.indexOf('className="admin-license-menu-item"', marker);
   const logout = dashboard.indexOf('↪ Logout', marker);
   assert.ok(marker > 0 && passbook > marker && account > passbook && license > account && logout > license);
 });

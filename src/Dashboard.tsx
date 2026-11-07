@@ -4,6 +4,7 @@ import { useSyncStatus } from "./core/useSyncStatus";
 import {startPresence} from "./core/presence";
 import LocalSyncStatus from "./LocalSyncStatus";
 import SlideNotifications from "./SlideNotifications";
+import LicenseInquiryAlert from "./LicenseInquiryAlert";
 import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
@@ -44,27 +45,23 @@ import type {
 
 } from "react";
 
-import CustomerEntry from "./CustomerEntry";
-
-import Settings from "./Settings";
-import AdvancedAdmin from "./AdvancedAdmin";
-import MasterClients from "./MasterClients";
 import LicenseManagement from "./LicenseManagement";
+import type { ClientInquiryPrefill } from "./MasterClients";
 import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 const CustomizeLayoutStudio = lazy(() => import("./CustomizeLayoutStudio"));
 import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
-import BankFormats from "./BankFormats";
-
-
-import SelectedBankDocument from "./SelectedBankDocument";
-
-import Customers from "./Customers";
-import FormsSendToBranch from "./FormsSendToBranch";
-import AllCustomerData from "./AllCustomerData";
-
-import Reports from "./Reports";
+const CustomerEntry = lazy(() => import("./CustomerEntry"));
+const Settings = lazy(() => import("./Settings"));
+const AdvancedAdmin = lazy(() => import("./AdvancedAdmin"));
+const MasterClients = lazy(() => import("./MasterClients"));
+const BankFormats = lazy(() => import("./BankFormats"));
+const SelectedBankDocument = lazy(() => import("./SelectedBankDocument"));
+const Customers = lazy(() => import("./Customers"));
+const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
+const AllCustomerData = lazy(() => import("./AllCustomerData"));
+const Reports = lazy(() => import("./Reports"));
 
 
 
@@ -95,8 +92,9 @@ type BankInfo = {
   operatorName: string;
 
   address: string;
-  branchAddress: string; branchPostOffice: string; branchDistrict: string; branchPinCode: string;
-  branchEmail: string; ifsc: string; micr: string; branchCode: string;
+  branchAddress: string; branchPostOffice: string; branchDistrict: string; branchState: string; branchPinCode: string;
+  branchEmail: string; branchPhone: string; ifsc: string; micr: string; branchCode: string;
+  gstin: string; ckyc: string;
 
 };
 
@@ -113,8 +111,8 @@ const emptyBankInfo: BankInfo = {
   operatorName: "",
 
   address: "",
-  branchAddress:"", branchPostOffice:"", branchDistrict:"", branchPinCode:"",
-  branchEmail:"", ifsc:"", micr:"", branchCode:"",
+  branchAddress:"", branchPostOffice:"", branchDistrict:"", branchState:"", branchPinCode:"",
+  branchEmail:"", branchPhone:"", ifsc:"", micr:"", branchCode:"", gstin:"", ckyc:"",
 
 };
 
@@ -130,7 +128,9 @@ const PASSBOOK_BANK_OPTIONS = [
 
   "State Bank of India (SBI)",
 
-  "Punjab Bank of India",
+  "Punjab National Bank",
+
+  "Central Bank of India",
 
   "Canara Bank of India",
 
@@ -294,6 +294,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // compatibility. It has the same global appearance permissions as the
   // newer `master_owner` role; client roles remain excluded.
   const canControlGlobalDashboard = accountRole === "master_owner" || accountRole === "admin";
+  const [licenseInquiryCount,setLicenseInquiryCount]=useState(0);
   const canCustomizeLayout = windowsLayoutEngineAvailable() && !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
@@ -311,8 +312,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
-  const [supportPopupOpen,setSupportPopupOpen]=useState(false);
-  useEffect(()=>{if(!supportPopupOpen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setSupportPopupOpen(false);};window.addEventListener("keydown",close);return()=>window.removeEventListener("keydown",close);},[supportPopupOpen]);
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
   const [activePage, setActivePage] =
 
@@ -472,6 +471,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   const [bankSettingsError, setBankSettingsError] = useState("");
   const [bankSettingsRetry, setBankSettingsRetry] = useState(0);
+  const [clientInquiryPrefill,setClientInquiryPrefill]=useState<ClientInquiryPrefill|null>(null);
   const canManageBankSettings = (!licenseReadOnly || accountRole === "client_admin" && licensePermission.state === "pending") && (accountRole === "client_admin" || accountRole === "master_owner" || accountRole === "admin");
 
   const [bankInfoDraft, setBankInfoDraft] =
@@ -578,9 +578,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       address: bankInfoDraft.address.trim(),
       branchAddress:bankInfoDraft.branchAddress.trim(), branchPostOffice:bankInfoDraft.branchPostOffice.trim(),
-      branchDistrict:bankInfoDraft.branchDistrict.trim(), branchPinCode:bankInfoDraft.branchPinCode.trim(),
-      branchEmail:bankInfoDraft.branchEmail.trim(), ifsc:bankInfoDraft.ifsc.trim(),
-      micr:bankInfoDraft.micr.trim(), branchCode:bankInfoDraft.branchCode.trim(),
+      branchDistrict:bankInfoDraft.branchDistrict.trim(), branchState:bankInfoDraft.branchState.trim(), branchPinCode:bankInfoDraft.branchPinCode.trim(),
+      branchEmail:bankInfoDraft.branchEmail.trim(), branchPhone:bankInfoDraft.branchPhone.trim(), ifsc:bankInfoDraft.ifsc.trim(),
+      micr:bankInfoDraft.micr.trim(), branchCode:bankInfoDraft.branchCode.trim(), gstin:bankInfoDraft.gstin.trim().toUpperCase(), ckyc:bankInfoDraft.ckyc.trim(),
 
     };
 
@@ -602,6 +602,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     if (cleaned.branchPinCode && !/^\d{6}$/.test(cleaned.branchPinCode)) { showMessage("Enter a six-digit Branch PIN Code."); return; }
     if (cleaned.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(cleaned.ifsc)) { showMessage("Enter a valid 11-character IFSC Code."); return; }
     if (cleaned.micr && !/^\d{9}$/.test(cleaned.micr)) { showMessage("Enter a nine-digit MICR Code."); return; }
+    if (cleaned.gstin && !/^[A-Z0-9]{15}$/.test(cleaned.gstin)) { showMessage("Enter a valid 15-character GSTIN."); return; }
     if (cleaned.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned.branchEmail)) { showMessage("Enter a valid Branch Email."); return; }
 
     try {
@@ -911,7 +912,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
     }
-    setSupportPopupOpen(false);
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -919,7 +919,14 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     setAdminMenuOpen(false);
 
   };
-  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(page);}};window.addEventListener('banksetu-open-page',open);const timer=window.setTimeout(()=>{const pending=sessionStorage.getItem('bankSetuPendingNotificationPage');if(['dashboard','sync-backup','license-management'].includes(pending||'')){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(pending as PageName);}},0);return()=>{window.clearTimeout(timer);window.removeEventListener('banksetu-open-page',open);};});
+  useEffect(()=>{const open=(event:Event)=>{const page=(event as CustomEvent<{page:PageName}>).detail?.page;if(page){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(page);}};window.addEventListener('banksetu-open-page',open);const timer=window.setTimeout(()=>{const pending=sessionStorage.getItem('bankSetuPendingNotificationPage');if(['dashboard','sync-backup','license-management','support'].includes(pending||'')){sessionStorage.removeItem('bankSetuPendingNotificationPage');openPage(pending as PageName);}},0);return()=>{window.clearTimeout(timer);window.removeEventListener('banksetu-open-page',open);};});
+  useEffect(()=>{
+    // Warm the most data-heavy list after the dashboard is interactive. This
+    // keeps first paint fast while making the first All Customer Data click local-only.
+    const timer=window.setTimeout(()=>void import("./customerListCache").then(module=>module.preloadAllCustomerData()).catch(()=>undefined),700);
+    return()=>window.clearTimeout(timer);
+  },[]);
+  useEffect(()=>window.bankSetuDesktop?.onAppMenuNavigate?.(page=>openPage(page as PageName)),[licenseReadOnly,demoExpired]);
 
   const handleLogoUpload = async (event:ChangeEvent<HTMLInputElement>) => {
     const file=event.target.files?.[0]; event.target.value="";
@@ -949,6 +956,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     <main className="banksetu-app-shell" data-appearance={appearance} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
       <SlideNotifications />
+      <LicenseInquiryAlert enabled={canControlGlobalDashboard} onCount={setLicenseInquiryCount} openLicense={()=>openPage("license-management")}/>
 
       {mobileMenuOpen && (
 
@@ -1033,28 +1041,29 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
         </div>
 
         <nav style={styles.nav}>
-          <NavButton icon="🏠" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
-{!licenseReadOnly && <NavButton icon="👤" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
-{!licenseReadOnly && <NavButton icon="⚡" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
-{!licenseReadOnly && <NavButton icon="🖨" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
-          <NavButton icon="📚" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-          <NavButton icon="📋" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
-{!licenseReadOnly && <NavButton icon="🔎" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
-          {!licenseReadOnly && <NavButton icon="📤" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
-          {(licenseReadOnly || userRole === "admin") && <NavButton icon="⚙️" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
-{!licenseReadOnly && <NavButton icon="📊" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
-          {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="🔄" label="Sync & Backup" active={activePage === "sync-backup"} onClick={() => openPage("sync-backup")} />}
-          {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <NavButton icon="🪪" label="License Management" active={activePage === "license-management"} onClick={() => openPage("license-management")} />}
+          <NavButton icon="dashboard" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
+{!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
+{!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
+{!licenseReadOnly && <NavButton icon="printer" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
+          <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
+          <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+{!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
+          {(licenseReadOnly || userRole === "admin") && <NavButton icon="settings" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
+{!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
+          {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="cloud-sync" label="Sync & Backup" active={activePage === "sync-backup"} spinning={syncStatus.syncing} onClick={() => openPage("sync-backup")} />}
         </nav>
         <div className="banksetu-appearance" role="group" aria-label="Appearance">
-          <button type="button" aria-pressed={appearance === 'light'} className={appearance === 'light' ? 'selected' : ''} onClick={() => changeAppearance('light')}><span aria-hidden="true">☀</span> Light</button>
-          <button type="button" aria-pressed={appearance === 'dark'} className={appearance === 'dark' ? 'selected' : ''} onClick={() => changeAppearance('dark')}><span aria-hidden="true">☾</span> Dark</button>
+          <button type="button" className="banksetu-appearance-toggle" data-mode={appearance} aria-label={`Switch to ${appearance === 'dark' ? 'light' : 'dark'} appearance`} aria-pressed={appearance === 'dark'} onClick={() => changeAppearance(appearance === 'dark' ? 'light' : 'dark')}>
+            <span className="banksetu-appearance-sun" aria-hidden="true">☀</span>
+            <span className="banksetu-appearance-moon" aria-hidden="true">☾</span>
+            <span className="banksetu-appearance-thumb" aria-hidden="true" />
+          </button>
         </div>
 
       </aside>
 
-      <FloatingSupportButton unread={supportUnread} open={() => {if(canOpenLicensePage("support",licenseReadOnly,demoExpired))setSupportPopupOpen(true);else openPage("support");}} />
-      {supportPopupOpen && typeof document !== "undefined" && createPortal(<div className="banksetu-support-popup-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSupportPopupOpen(false);}}><div className="banksetu-support-popup" role="dialog" aria-modal="true" aria-label="Bank Setu Support"><div className="banksetu-support-popup-header"><div><strong>Bank Setu Support</strong><small>Private chat, announcements and help</small></div><button type="button" aria-label="Close support" onClick={()=>setSupportPopupOpen(false)}>✕</button></div><div className="banksetu-support-popup-body"><SupportCenter accountRole={accountRole}/></div></div></div>,document.body)}
+      <FloatingSupportButton unread={supportUnread} open={() => openPage("support")} />
 
       {/* MAIN AREA */}
 
@@ -1280,6 +1289,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             <button
               type="button"
+              className="dashboard-sync-button"
               style={{ ...styles.dashboardSyncButton, opacity: syncStatus.syncing ? 0.65 : 1 }}
               onClick={syncDashboard}
               disabled={syncStatus.syncing}
@@ -1402,7 +1412,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
 
                 {userRole === "admin" && accountRole !== "client_admin" && (
-                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientCreateOpen(true); }}>
+                  <button type="button" style={styles.adminMenuItem} onClick={() => { setAdminMenuOpen(false); setClientInquiryPrefill(null); setClientCreateOpen(true); }}>
                     ＋ Create Client Admin
                   </button>
                 )}
@@ -1429,24 +1439,17 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                     <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-account-opening"); }}>Customize Account Opening Form</button>
                   </div>}
                 </>}
-                {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button type="button" style={styles.adminMenuItem} onClick={() => openPage("license-management")}>🪪 License Management</button>}
-                <button
-
+                {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button
                   type="button"
-
-                  style={
-
-                    styles.adminMenuItemDanger
-
-                  }
-
-                  onClick={onLogout}
-
+                  className="admin-license-menu-item"
+                  style={styles.adminLicenseMenuItem}
+                  onClick={() => { setAdminMenuOpen(false); openPage("license-management"); }}
                 >
+                  <span style={styles.adminLicenseMenuIcon} aria-hidden="true">🪪</span>
+                  <span><strong style={styles.adminLicenseMenuTitle}>License Management{licenseInquiryCount>0?` (${licenseInquiryCount})`:''}</strong><small style={styles.adminLicenseMenuSubtitle}>{licenseInquiryCount>0?`${licenseInquiryCount} inquiry request(s) waiting`:'Plan, status and renewal'}</small></span>
+                </button>}
 
-                  ↪ Logout
-
-                </button>
+                <button type="button" style={styles.adminMenuItemDanger} onClick={onLogout}>↪ Logout</button>
 
               </div>
 
@@ -1464,12 +1467,18 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         {/* PAGE CONTENT */}
 
+        <Suspense fallback={<div role="status" style={{...styles.pageContent,minHeight:180,display:"grid",placeItems:"center",fontWeight:800}}>Opening page…</div>}>
         <div style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
           {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
           {activePage === "support" && <SupportCenter accountRole={accountRole} />}
-          {activePage === "license-management" && <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} />}
+          {activePage === "license-management" && <>
+            <div style={styles.licensePageNavigation}>
+              <button type="button" style={styles.licenseBackButton} onClick={() => openPage("dashboard")}>← Back to Dashboard</button>
+            </div>
+            <LicenseManagement master={canControlGlobalDashboard} canRequest={accountRole === "client_admin"} onCreateClient={inquiry=>{setClientInquiryPrefill(inquiry);setClientCreateOpen(true);}} />
+          </>}
           {!windowsLayoutEngineAvailable() && (activePage === "customize-passbook" || activePage === "customize-account-opening") &&
             <section role="status" className="layout-windows-only">
               <h2>Customize Layout is available in BANK SETU Windows EXE</h2>
@@ -1540,6 +1549,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           )}
 
         </div>
+        </Suspense>
 
       </section>
 
@@ -1821,9 +1831,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
               </label>
 
-              {([['branchAddress','Branch Address'],['branchPostOffice','Branch Post Office'],['branchDistrict','Branch District'],['branchPinCode','Branch PIN Code'],['branchEmail','Branch Email'],['ifsc','IFSC Code'],['micr','MICR Code'],['branchCode','Branch Code']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
+              {([['branchAddress','Branch Address'],['branchPostOffice','Branch Post Office'],['branchDistrict','Branch District'],['branchState','Branch State'],['branchPinCode','Branch PIN Code'],['branchEmail','Branch Email'],['branchPhone','Branch Telephone Number'],['ifsc','IFSC Code'],['micr','MICR Code'],['branchCode','Branch Code']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
                 <span style={styles.bankInfoFieldLabel}>{label}</span>
-                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='branchPinCode'||field==='micr'?'numeric':'text'} maxLength={field==='branchPinCode'?6:field==='micr'?9:field==='ifsc'?11:field==='branchEmail'?254:field==='branchCode'?20:120}/>
+                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='branchPinCode'||field==='micr'||field==='branchPhone'?'numeric':'text'} maxLength={field==='branchPinCode'?6:field==='micr'?9:field==='ifsc'?11:field==='branchEmail'?254:field==='branchCode'?20:field==='branchPhone'?30:120}/>
+              </label>)}
+              {/^(central bank of india|central bank|cbi)$/i.test(bankInfoDraft.passbookBank.trim()) && ([['gstin','GSTIN'],['ckyc','CKYC Number']] as const).map(([field,label])=><label key={field} style={styles.bankInfoField}>
+                <span style={styles.bankInfoFieldLabel}>{label}</span>
+                <input value={bankInfoDraft[field]} onChange={event=>updateBankInfoDraft(field,event.target.value)} style={styles.bankInfoInput} placeholder={`Enter ${label}`} inputMode={field==='ckyc'?'numeric':'text'} maxLength={field==='gstin'?15:30}/>
               </label>)}
 
             </div>
@@ -2072,13 +2086,13 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setClientCreateOpen(false); }}>
+        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) {setClientCreateOpen(false);setClientInquiryPrefill(null);} }}>
           <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>Create Client Admin</h2>
-              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => setClientCreateOpen(false)}>×</button>
+              <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => {setClientCreateOpen(false);setClientInquiryPrefill(null);}}>×</button>
             </div>
-            <MasterClients enabled />
+            <MasterClients enabled initial={clientInquiryPrefill} onCreated={client=>{setClientCreateOpen(false);setClientInquiryPrefill(null);openPage("license-management");window.dispatchEvent(new CustomEvent("banksetu-inquiry-client-created",{detail:client}));}} />
           </div>
         </div>
       )}
@@ -2564,7 +2578,6 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           .dashboard-count-transition { display:inline-block; animation:banksetu-count-enter .2s ease-out; }
           @keyframes banksetu-count-enter { from { opacity:.5; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
-          @media (prefers-reduced-motion:reduce) { .dashboard-count-transition { animation:none; } }
 
           @media (max-width: 620px) {
 
@@ -2739,6 +2752,22 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
               padding-left: 0 !important;
 
               border-left: none !important;
+
+              flex-direction: column-reverse !important;
+
+              align-items: center !important;
+
+              gap: 6px !important;
+
+            }
+
+            .dashboard-sync-button {
+
+              width: 42px !important;
+
+              height: 42px !important;
+
+              flex: 0 0 42px !important;
 
             }
 
@@ -3754,15 +3783,19 @@ function NavButton({
 
   active,
 
+  spinning = false,
+
   onClick,
 
 }: {
 
-  icon: string;
+  icon: MenuIconName;
 
   label: string;
 
   active: boolean;
+
+  spinning?: boolean;
 
   onClick: () => void;
 
@@ -3790,7 +3823,7 @@ function NavButton({
 
     >
 
-      <span>{icon}</span>
+      <span className={`banksetu-nav-icon${spinning ? " is-spinning" : ""}`}><MenuIcon name={icon} /></span>
 
       <span>{label}</span>
 
@@ -3798,6 +3831,25 @@ function NavButton({
 
   );
 
+}
+
+type MenuIconName = "dashboard" | "user-plus" | "book-check" | "printer" | "users-data" | "contact" | "file-search" | "send" | "chart" | "cloud-sync" | "settings";
+
+function MenuIcon({name}:{name:MenuIconName}) {
+  const common={fill:"none",stroke:"currentColor",strokeWidth:1.8,strokeLinecap:"round" as const,strokeLinejoin:"round" as const};
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" {...common}>
+    {name==="dashboard"&&<><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/></>}
+    {name==="user-plus"&&<><circle cx="9" cy="8" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M18 8v6M15 11h6"/></>}
+    {name==="book-check"&&<><path d="M3 5.5A3.5 3.5 0 0 1 6.5 2H11v18H6.5A3.5 3.5 0 0 0 3 23zM21 5.5A3.5 3.5 0 0 0 17.5 2H13v18h4.5a3.5 3.5 0 0 1 3.5 3z"/><path d="m15.5 10 1.5 1.5 3-3"/></>}
+    {name==="printer"&&<><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/><path d="M18 12h.01"/></>}
+    {name==="users-data"&&<><circle cx="8" cy="8" r="3"/><path d="M2.5 17a5.5 5.5 0 0 1 11 0M14 6.5c3.8 0 7 1 7 2.2s-3.2 2.2-7 2.2M21 8.7v6.6c0 1.2-3.2 2.2-7 2.2M21 12c0 1.2-3.2 2.2-7 2.2"/></>}
+    {name==="contact"&&<><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2.5"/><path d="M5.5 17a3.5 3.5 0 0 1 7 0M15 9h3M15 13h3"/></>}
+    {name==="file-search"&&<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7M14 2v6h6"/><circle cx="17" cy="16" r="3.5"/><path d="m19.5 18.5 2.5 2.5"/></>}
+    {name==="send"&&<><path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/></>}
+    {name==="chart"&&<><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 16v-3M12 16V8M17 16v-6"/></>}
+    {name==="cloud-sync"&&<><path d="M17.5 19H7a5 5 0 1 1 1.1-9.9A6 6 0 0 1 19.6 11 4 4 0 0 1 17.5 19Z"/><path d="m9 14-2 2 2 2M7 16h5M15 12l2-2-2-2M17 10h-5"/></>}
+    {name==="settings"&&<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1V21h-4v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.1 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4H2.4v-4h.09A1.7 1.7 0 0 0 4.1 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.5 4.1a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1V2.4h4v.09A1.7 1.7 0 0 0 15 4.1a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8.5a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1 .4h.09v4H21a1.7 1.7 0 0 0-1.6 1.1Z"/></>}
+  </svg>;
 }
 
 /* =========================
@@ -4337,6 +4389,61 @@ const styles: Record<
 
     cursor: "pointer",
 
+  },
+
+  adminLicenseMenuItem: {
+    width: "100%",
+    padding: "11px 12px",
+    border: "1px solid rgba(62,224,197,0.18)",
+    borderRadius: "10px",
+    background: "linear-gradient(135deg,rgba(57,224,197,0.12),rgba(40,169,232,0.08))",
+    color: "#eaf7fa",
+    textAlign: "left",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "11px",
+    margin: "3px 0",
+  },
+
+  adminLicenseMenuIcon: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "9px",
+    display: "grid",
+    placeItems: "center",
+    flex: "none",
+    background: "rgba(57,224,197,0.13)",
+  },
+
+  adminLicenseMenuTitle: {
+    display: "block",
+    fontSize: "13px",
+    lineHeight: 1.25,
+  },
+
+  adminLicenseMenuSubtitle: {
+    display: "block",
+    marginTop: "2px",
+    color: "#91aab5",
+    fontSize: "10px",
+    lineHeight: 1.25,
+  },
+
+  licensePageNavigation: {
+    display: "flex",
+    justifyContent: "flex-start",
+    marginBottom: "12px",
+  },
+
+  licenseBackButton: {
+    border: "1px solid rgba(53,203,191,0.42)",
+    borderRadius: "10px",
+    padding: "9px 14px",
+    background: "var(--app-dark-surface, #ffffff)",
+    color: "var(--app-dark-text, #123047)",
+    fontWeight: 750,
+    cursor: "pointer",
   },
 
   advancedAdminItem: {

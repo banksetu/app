@@ -1,7 +1,7 @@
 import { enrollOfflineSession, resumeOfflineSession, clearOfflineSession } from "./core/offlineSession";
 
 import { startLocalSync, configureConnectionRecovery, resetSyncSession } from "./core/localData";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -13,19 +13,26 @@ import { doc, onSnapshot, type Unsubscribe } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 import { callBankSetuWorker } from "./workerApi";
-import Dashboard from "./Dashboard";
-import LicenseOnboarding from "./LicenseOnboarding";
 import { getPublicLicenseSettings } from "./publicLicenseSettings";
 import { bindLicenseAccount, resetLicensePermission, refreshLicensePermission, denyLicense, getLicensePermission, subscribeLicensePermission } from "./core/licenseAccess";
 import { requiresTenantLicense } from "./core/licensePolicy";
-import PublicPages from "./PublicPages";
-import SoftwareUpdateNotice from "./SoftwareUpdateNotice";
 import { notifySystem, startNotificationNavigation } from "./platform/systemNotifications";
 import { clearBackgroundNotifications } from "./platform/backgroundNotifications";
 import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPush";
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
+import LoginExperience from "./LoginExperience";
+import LoginTransition from "./LoginTransition";
 
 import "./App.css";
+
+const Dashboard = lazy(() => import("./Dashboard"));
+const LicenseOnboarding = lazy(() => import("./LicenseOnboarding"));
+const PublicPages = lazy(() => import("./PublicPages"));
+const SoftwareUpdateNotice = lazy(() => import("./SoftwareUpdateNotice"));
+
+function AppLoading() {
+  return <main className="app-loader"><div className="loader-logo"><img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/></div><p>Loading Bank Setu...</p></main>;
+}
 
 type BankSetuRole = "admin" | "user";
 type UserProfile = {
@@ -39,6 +46,10 @@ type UserProfile = {
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const MASTER_OWNER_EMAIL = "banksetu2026@gmail.com";
+// A false Android WebView online signal must still leave enough time for the
+// signed local session to open within the promised 2–3 second startup window.
+const OFFLINE_STARTUP_FALLBACK_MS = 1200;
+const OFFLINE_SESSION_READ_TIMEOUT_MS = 1400;
 
 function getAccessError(profile: UserProfile, authEmail = "", emailVerified = false): string {
   const status = normalize(profile.status);
@@ -189,7 +200,6 @@ function App() {
     const master=["master_owner","admin"].includes(role);
     const ready=master?setup.masterLocalReady&&setup.masterConnectionId&&setup.apiUrl:setup.workspaceStatus==="active"&&setup.dataApiReady&&setup.apiUrl&&setup.spreadsheetId&&setup.photoFolderId;
     if(!ready){
-      // A bridge outage must not disconnect an already verified local workspace.
       if((!master&&setup.workspaceStatus!=="active")||(setup.apiUrl&&setup.apiUrl!==sessionStorage.getItem("bankSetuBridgeUrl")))setTenantWorkspaceReady(false);
       throw new Error("Google connection unavailable; local data retained and reconnect will retry.");
     }
@@ -198,8 +208,7 @@ function App() {
     sessionStorage.setItem("bankSetuConnectionId",String(master?setup.masterConnectionId:setup.connectionId||setup.spreadsheetId));
     sessionStorage.setItem("bankSetuBridgeUrl",setup.apiUrl!);setTenantApiUrl(setup.apiUrl!);
     setTenantWorkspaceReady(true);
-    // Offline grant renewal is independent of online workspace readiness.
-    if(master||setup.connectionMode==="option-b")await enrollOfflineSession().catch(()=>undefined);
+    if(master||setup.connectionMode==="option-b")await enrollOfflineSession();
   }, []);
 
   const rejectSession = useCallback(async (message: string) => {
@@ -231,6 +240,23 @@ function App() {
     await refreshLicensePermission(online);
     if(auth.currentUser?.uid!==user.uid)return;
   }, []);
+
+  const resumeVerifiedOfflineSession = useCallback(async (user: User) => {
+    let timeout:ReturnType<typeof setTimeout>|undefined;
+    const claims=await Promise.race([
+      resumeOfflineSession(user.uid),
+      new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error("Saved offline session could not be opened. Please connect your internet to verify the license.")),OFFLINE_SESSION_READ_TIMEOUT_MS);}),
+    ]).finally(()=>clearTimeout(timeout));
+    if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+    applyProfile(claims);
+    await checkLicense(user, claims, false);
+    if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+    verifiedNavigation.current=true;
+    clearTimeout(recoveryTimer.current);
+    setKnownAccount(true);
+    try { localStorage.setItem("bankSetuKnownAccount", "true"); } catch { /* Startup remains available without this hint. */ }
+    setIsLoggedIn(true);setLoginSuccess(false);setLoading(false);setError("");setCheckingSession(false);
+  }, [applyProfile, checkLicense]);
 
   const watchUserProfile = useCallback((user: User) => {
     clearProfileListener();
@@ -323,35 +349,39 @@ function App() {
         setIsLoggedIn(false);
         setUserRole("user");
         setAccountRole("user");
+        setLoginSuccess(false);
         setCheckingSession(false);
         return;
       }
 
       setCheckingSession(true);
-      // Stop the previous account's sync lifecycle before validating a switched user.
       setIsLoggedIn(false);
       if(!navigator.onLine){
-        void resumeOfflineSession(user.uid).then(async claims=>{
-          if(auth.currentUser?.uid!==user.uid)return;
-          applyProfile(claims);await checkLicense(user, claims, false);setIsLoggedIn(true);setError("");setCheckingSession(false);
-        }).catch(reason=>{setError(reason instanceof Error?reason.message:"Connect to verify your account.");setCheckingSession(false);});
+        void resumeVerifiedOfflineSession(user).catch(reason=>{
+          if(auth.currentUser?.uid!==user.uid||verifiedNavigation.current)return;
+          setLoginSuccess(false);
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
+          setCheckingSession(false);
+        });
         return;
       }
       watchUserProfile(user);
       recoveryTimer.current=setTimeout(()=>{
         if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
-        void resumeOfflineSession(user.uid).then(async claims=>{
+        void resumeVerifiedOfflineSession(user).catch(reason=>{
           if(verifiedNavigation.current||auth.currentUser?.uid!==user.uid)return;
-          applyProfile(claims);await checkLicense(user, claims, false);verifiedNavigation.current=true;setIsLoggedIn(true);setCheckingSession(false);setError("");
-        }).catch(()=>{/* Never bypass verification for a first login or expired grant. */});
-      },4000);
+          setLoginSuccess(false);
+          setError(reason instanceof Error?reason.message:"Please connect your internet to verify the license.");
+          setCheckingSession(false);
+        });
+      },OFFLINE_STARTUP_FALLBACK_MS);
     });
 
     return () => {
       clearTimeout(recoveryTimer.current);unsubscribe();
       clearProfileListener();
     };
-  }, [applyProfile, checkLicense, clearProfileListener, watchUserProfile]);
+  }, [clearProfileListener, resumeVerifiedOfflineSession, watchUserProfile]);
 
   useEffect(()=>{
     const reconnect=()=>{if(auth.currentUser)watchUserProfile(auth.currentUser);};
@@ -371,12 +401,12 @@ function App() {
 
   useEffect(() => {
     const refresh=()=>{const user=auth.currentUser,profile=activeProfile.current;if(user&&profile)void checkLicense(user,profile,navigator.onLine);};
+    const refreshIfDue=()=>{const current=getLicensePermission();if(!current.canWrite||current.validUntil<=Date.now())refresh();};
     window.addEventListener("banksetu-license-updated",refresh);
     window.addEventListener("online",refresh);
-    const focus=()=>{if(document.visibilityState==="visible")refresh();};
+    const focus=()=>{if(document.visibilityState==="visible")refreshIfDue();};
     document.addEventListener("visibilitychange",focus);
-    const timer=setInterval(refresh,60_000);
-    return()=>{clearInterval(timer);window.removeEventListener("online",refresh);window.removeEventListener("banksetu-license-updated",refresh);document.removeEventListener("visibilitychange",focus);};
+    return()=>{window.removeEventListener("online",refresh);window.removeEventListener("banksetu-license-updated",refresh);document.removeEventListener("visibilitychange",focus);};
   },[checkLicense]);
 
   const handleForgotPassword = async () => {
@@ -421,18 +451,19 @@ function App() {
 
     if (!email.trim() || !password.trim()) {
       setError("Please enter your email and password.");
+      setLoginSuccess(false);
       loginAttemptRef.current = false;
       return;
     }
 
     try {
       setLoading(true);
-
+      setLoginSuccess(true);
       await signInWithEmailAndPassword(auth,email.trim(),password);
-      // The single profile listener authorizes navigation; no Google work here.
     } catch (error: unknown) {
       const err = error as { code?: string };
       console.error("Login error:", err);
+      setLoginSuccess(false);
 
       if (err.code === "auth/user-disabled") {
         setError("Your Bank Setu account has been blocked by the administrator.");
@@ -479,171 +510,48 @@ function App() {
 
   const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
   if (publicPath === "about" || publicPath === "privacy-policy" || publicPath === "terms") {
-    return <PublicPages />;
+    return <Suspense fallback={<AppLoading/>}><PublicPages /></Suspense>;
   }
 
   if (checkingSession) {
-    return (
-      <main className="app-loader">
-        <div className="loader-logo">
-          <img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/>
-        </div>
-        <p>Loading Bank Setu...</p>
-      </main>
-    );
+    return <AppLoading/>;
   }
 
   if (!isLoggedIn && showLicenseWelcome && licenseWelcome && (pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey))) {
-    return <LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} />;
+    return <Suspense fallback={<AppLoading/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
   }
 
   if (loginSuccess) {
-    return (
-      <main className="login-success-page">
-        <div className="login-success-card">
-          <div className="login-success-check">✓</div>
-          <h2>Login Successful</h2>
-          <p>Opening your Bank Setu dashboard...</p>
-        </div>
-      </main>
-    );
+    return <LoginTransition/>;
   }
 
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
-        <SoftwareUpdateNotice />
+        <Suspense fallback={<AppLoading/>}>
+          <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
+          <SoftwareUpdateNotice />
+        </Suspense>
       </div>
     );
   }
 
-  return (
-    <main className="login-page">
-      <div className="ambient ambient-one"></div>
-      <div className="ambient ambient-two"></div>
-
-      <section className="login-shell">
-        <div className="login-card">
-          <div className="banksetu-logo" aria-label="Bank Setu">
-            <div className="logo-ring">
-              <div className="logo-bridge">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
-
-          <div className="brand">
-            <h1>
-              BANK <span>SETU</span>
-            </h1>
-          </div>
-
-          <div className="welcome">
-            <h2>Welcome back</h2>
-          </div>
-          {licenseWelcome && <button type="button" className="login-pricing-link" onClick={()=>{setPricingRequested(true);setShowLicenseWelcome(true);}}>View Pricing Plans</button>}
-
-          <form onSubmit={handleLogin}>
-            <div className="field">
-              <label>Email address</label>
-              <div className="input-box">
-                <div className="field-icon">✉</div>
-                <input
-                  type="email"
-                  placeholder="name@example.com"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <div className="field-label-row">
-                <label>Password</label>
-                <button
-                  type="button"
-                  className="forgot-link"
-                  onClick={handleForgotPassword}
-                  disabled={resetLoading}
-                >
-                  {resetLoading ? "Sending..." : "Forgot password?"}
-                </button>
-              </div>
-
-              <div className="input-box">
-                <div className="field-icon">●</div>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="form-message error-message">
-                <span>!</span>
-                {error}
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="form-message success-message">
-                <span>✓</span>
-                {successMessage}
-              </div>
-            )}
-
-            <div className="login-options">
-              <label className="remember">
-                <input type="checkbox" />
-                <span>Keep me signed in</span>
-              </label>
-              <span className="encrypted">● Secure</span>
-            </div>
-
-            <div className="auth-action-row">
-              <button className="sign-in" type="submit" disabled={loading}>
-                <span>{loading ? "Signing in..." : "Sign In"}</span>
-                {!loading && <span className="arrow">→</span>}
-              </button>
-
-            </div>
-          </form>
-
-          <p className="approval-note compact-approval-note">
-            New accounts are created by the Bank Setu administrator.
-          </p>
-
-          <div className="login-footer">
-            <span className="status-dot"></span>
-            Bank Setu Secure Access
-            <span className="footer-separator">•</span>
-            v1.0
-            <span className="footer-separator">•</span>
-            <a href="/about" style={{ color: "inherit", textDecoration: "underline" }}>About</a>
-            <span className="footer-separator">•</span>
-            <a href="/privacy-policy" style={{ color: "inherit", textDecoration: "underline" }}>Privacy Policy</a>
-            <span className="footer-separator">•</span>
-            <a href="/terms" style={{ color: "inherit", textDecoration: "underline" }}>Terms</a>
-          </div>
-        </div>
-      </section>
-    </main>
-  );
+  return <LoginExperience
+    email={email}
+    password={password}
+    showPassword={showPassword}
+    loading={loading}
+    resetLoading={resetLoading}
+    error={error}
+    successMessage={successMessage}
+    pricingAvailable={Boolean(licenseWelcome)}
+    onEmailChange={setEmail}
+    onPasswordChange={setPassword}
+    onTogglePassword={() => setShowPassword(!showPassword)}
+    onForgotPassword={handleForgotPassword}
+    onSubmit={handleLogin}
+    onPricing={() => {setPricingRequested(true);setShowLicenseWelcome(true);}}
+  />;
 }
 
 export default App;

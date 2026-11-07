@@ -16,10 +16,12 @@ contextBridge.exposeInMainWorld('bankSetuDesktop', {
   commit: (scope,before,after,receipt) => ipcRenderer.invoke('local:commit',scope,before,after,receipt),
   copyText: text => ipcRenderer.invoke('clipboard:write-text',text),
   shareImage: image => ipcRenderer.invoke('clipboard:share-image',image),
+  openWhatsAppSupport: () => ipcRenderer.invoke('support:whatsapp'),
   version: () => ipcRenderer.invoke('update:version'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   notify: value => ipcRenderer.invoke('system-notification:show',value),
+  onAppMenuNavigate: callback => {const listener=(_event,page)=>callback(page);ipcRenderer.on('app-menu:navigate',listener);return ()=>ipcRenderer.removeListener('app-menu:navigate',listener);},
   onNotificationOpen: callback => {const listener=(_event,page)=>callback(page);ipcRenderer.on('system-notification:open',listener);return ()=>ipcRenderer.removeListener('system-notification:open',listener);},
   onUpdateProgress: callback => {
     const listener = (_event, payload) => callback(payload);

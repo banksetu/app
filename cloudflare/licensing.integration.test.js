@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync} from 'node:crypto';
 import worker from './worker.js';
+import {setupPushFixture} from './push-fixture.js';
 const project='synthetic-banksetu';
 const base=`projects/${project}/databases/(default)/documents`;
 const wrap=(value)=>typeof value==='string'?{stringValue:value}:typeof value==='boolean'?{booleanValue:value}:typeof value==='number'?{integerValue:String(value)}:value===null?{nullValue:null}:{mapValue:{fields:Object.fromEntries(Object.entries(value).map(([k,v])=>[k,wrap(v)]))}};
@@ -59,6 +60,15 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     assert.equal((await call('client','/presence-heartbeat',{})).status,403,'pending clients remain blocked from operations');
     assert.equal((await call('master','/create-client',{})).status,400);
     assert.equal((await call('master','/license-save-settings',{pricing:settings})).status,200);
+    const inquiryId='11234567-89ab-4cde-8fab-0123456789ab';
+    store.set('tenants/inquiry-tenant',doc('tenants/inquiry-tenant',{tenantId:'inquiry-tenant',status:'active',ownerUid:'inquiry-client'}));
+    store.set('users/inquiry-client',doc('users/inquiry-client',{role:'client_admin',tenantId:'inquiry-tenant',email:'inquiry@example.test',status:'approved',subscriptionStatus:'active'}));
+    store.set(`licenseRequests/${inquiryId}`,doc(`licenseRequests/${inquiryId}`,{id:inquiryId,kind:'inquiry',requestedPlan:'demo',tenantId:'inquiry-tenant',clientUid:'inquiry-client',email:'inquiry@example.test',onboardingStage:'client_created',status:'pending',paymentStatus:'not_paid'}));
+    const inquiryApproval=await call('master','/license-admin-decision',{requestId:inquiryId,action:'approve',plan:'demo'});
+    assert.equal(inquiryApproval.status,200,JSON.stringify(inquiryApproval.body));
+    assert.equal(inquiryApproval.body.license.plan,'demo');
+    assert.equal(Date.parse(inquiryApproval.body.license.expiresAt)-Date.parse(inquiryApproval.body.license.activatedAt),5*86400000,'inquiry Demo remains exactly five days');
+    assert.equal((await call('master','/license-admin-decision',{requestId:inquiryId,action:'approve',plan:'demo'})).body.repeated,true);
     const id='01234567-89ab-4cde-8fab-0123456789ab';
     const deniedAssignment=await call('client','/license-admin-assign',{tenantId:'tenant-a',plan:'annual',requestId:id,paymentConfirmed:true});
     assert.equal(deniedAssignment.status,403,JSON.stringify(deniedAssignment.body));
@@ -83,7 +93,7 @@ test('server-only annual activation, renewal and duplicate approval are atomic a
     const key=await crypto.subtle.importKey('jwk',publicKey,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
     const signature=Uint8Array.from(atob(receipt.signature.replace(/-/g,'+').replace(/_/g,'/')),char=>char.charCodeAt(0));
     assert(await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,signature,new TextEncoder().encode(receipt.payload)));
-    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=5*86400000);assert(claims.validUntil<=Date.parse(first.expiresAt));
+    const claims=JSON.parse(receipt.payload);assert.equal(claims.tenantId,'tenant-a');assert.equal(claims.uid,'client');assert(claims.validUntil-claims.issuedAt<=24*60*60*1000);assert(claims.validUntil<=Date.parse(first.expiresAt));
     store.set('tenantSettings/tenant-a',doc('tenantSettings/tenant-a',{spreadsheetId:'existing-sheet',photoFolderId:'existing-folder',bridgeUrl:'existing-bridge'}));
     const registration={bankName:'Synthetic CSP',passbookBank:'Test Bank',branchName:'Test Branch',operatorName:'Synthetic Operator',mobile:'0123456789',address:'Test Address'};
     assert.equal((await call('master','/save-client-registration',registration)).status,403);
@@ -188,4 +198,24 @@ test('authoritative license listing excludes fully offboarded and orphaned tenan
     store.set('tenants/demo',doc('tenants/demo',{tenantId:'demo',status:'offboarded'}));result=await list();assert.equal(result.summary.total,2);assert.equal(result.summary.demo,0);assert.equal(result.summary.expired,0);
     store.delete('tenants/paid');result=await list();assert.equal(result.summary.total,1);assert.equal(result.summary.suspended,0);
   }finally{globalThis.fetch=originalFetch;}
+});
+
+test('Master rejects before permanently deleting only the inquiry records',async()=>{
+  const fixture=setupPushFixture();
+  fixture.env.ALLOWED_ORIGINS='https://banksetu-app.web.app';fixture.env.FIREBASE_WEB_API_KEY='synthetic-key';
+  const id='91234567-89ab-4cde-8fab-0123456789ab';
+  fixture.put('users/master',{role:'master_owner',status:'approved',subscriptionStatus:'active'});
+  fixture.put(`licenseRequests/${id}`,{id,kind:'inquiry',name:'Synthetic Applicant',status:'pending',paymentStatus:'not_paid',notificationStatus:'pending'});
+  fixture.put(`licenseNotificationOutbox/${id}`,{kind:'license_inquiry',requestId:id,status:'pending',active:true});
+  fixture.put('tenants/keep-tenant',{tenantId:'keep-tenant',status:'active'});
+  const call=async(path)=>{const response=await worker.fetch(new Request(`https://worker.example${path}`,{method:'POST',headers:{origin:'https://banksetu-app.web.app',authorization:'Bearer master','content-type':'application/json'},body:JSON.stringify({requestId:id,action:'reject'})}),fixture.env,{waitUntil(){}});return {status:response.status,body:await response.json()};};
+  try{
+    assert.equal((await call('/license-admin-delete-request')).status,409,'pending inquiry cannot be deleted');
+    assert.equal((await call('/license-admin-decision')).status,200);
+    assert.equal(fixture.values(fixture.store.get(`licenseNotificationOutbox/${id}`)).status,'cancelled');
+    const deleted=await call('/license-admin-delete-request');assert.equal(deleted.status,200,JSON.stringify(deleted.body));
+    assert.equal(fixture.store.has(`licenseRequests/${id}`),false);assert.equal(fixture.store.has(`licenseNotificationOutbox/${id}`),false);
+    assert.equal([...fixture.store.values()].some(document=>fixture.values(document).requestId===id),false);
+    assert.equal(fixture.store.has('tenants/keep-tenant'),true,'tenant and customer workspaces are never part of inquiry cleanup');
+  }finally{fixture.restore();}
 });
