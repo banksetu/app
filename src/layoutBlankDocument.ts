@@ -10,8 +10,9 @@ export function startBlankLayout<T extends BlankLayout<unknown>>(previous:T):T{
   const widthMm=previous.widthMm,heightMm=previous.heightMm;
   if(![widthMm,heightMm].every(n=>Number.isFinite(n)&&n>=50&&n<=500))
     throw Error("Select a valid physical passbook size before creating a blank canvas.");
-  return {...previous,pageCount:1,elements:[],sourceArtworkStatus:"clean",
-    foldMm:0,printStartMm:0} as T;
+  // Blank means no objects; it must NOT discard the user's measured book,
+  // midpoint crease or printer-start calibration.
+  return {...previous,pageCount:1,elements:[],sourceArtworkStatus:"clean"} as T;
 }
 /** Paper alignment only moves an element within the existing measured page. */
 export function alignElementToPage<T extends {x:number;y:number;width:number;height:number}>(

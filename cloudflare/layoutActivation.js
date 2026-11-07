@@ -2,10 +2,16 @@
  * passbook engines. Version numbers/historical refs are never inferred from
  * other tenant's settings. */
 export const MODE_KEYS=Object.freeze(["passbook","accountOpening"]);
-export function layoutSelectionKey(tenantId, mode){
+export function layoutSelectionKey(tenantId, mode, output="quick", slot=1){
   if(!/^[a-zA-Z0-9_-]{1,128}$/.test(String(tenantId||""))||!MODE_KEYS.includes(mode))
     throw Error("Invalid workspace or layout mode.");
-  return tenantId+"-"+mode;
+  if(!Number.isSafeInteger(slot)||slot<1||slot>3||!["quick","dotmatrix"].includes(output))
+    throw Error("Choose Quick or PR2 layout slot 1, 2 or 3.");
+  if(mode==="accountOpening"&&(output!=="quick"||slot!==1))
+    throw Error("Account Opening has its own single approved layout.");
+  // Existing single selection remains the default Quick slot 1 for backward compatibility.
+  if(mode==="accountOpening"||(output==="quick"&&slot===1))return tenantId+"-"+mode;
+  return tenantId+"-"+mode+"-"+output+"-"+slot;
 }
 export function normalizedActivationRecord(previous, next, reviewerUid, at){
   const old=previous&&typeof previous==="object"?previous:{};

@@ -5,9 +5,11 @@ on:
       release_ref:
         required: false
         type: string
+      staged_release:
+        description: Draft GitHub release for signed build assets
+        required: false
+        type: string
   workflow_dispatch:
-permissions:
-  contents: read
 jobs:
   signed-installer:
     runs-on: windows-latest
@@ -41,7 +43,20 @@ jobs:
           if ($installers.Count -ne 1) { throw 'Expected exactly one installer.' }
           if (!(Test-Path desktop-release/latest.yml)) { throw 'Missing Windows update manifest.' }
           if (!(Get-ChildItem desktop-release/*.blockmap)) { throw 'Missing Windows update blockmap.' }
+      - name: Stage Windows installer and update feed on the draft GitHub release
+        if: inputs.staged_release != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGED_RELEASE: ${{ inputs.staged_release }}
+        run: |
+          $draft = gh release view $env:STAGED_RELEASE --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
+          if ($LASTEXITCODE -ne 0 -or $draft -ne 'true') { throw 'Expected a draft release.' }
+          $assets = @(Get-ChildItem desktop-release/*.exe, desktop-release/*.blockmap, desktop-release/latest.yml | ForEach-Object FullName)
+          gh release upload $env:STAGED_RELEASE @assets --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release asset upload failed.' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: inputs.staged_release == ''
         with:
           name: BankSetu-Windows-SIGNED
           path: |

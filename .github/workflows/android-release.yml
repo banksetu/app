@@ -11,6 +11,10 @@ on:
       release_ref:
         required: false
         type: string
+      staged_release:
+        description: Draft GitHub release for signed build assets
+        required: false
+        type: string
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: true
@@ -32,8 +36,6 @@ on:
         description: Release version, for example 1.0.6
         required: true
         type: string
-permissions:
-  contents: read
 jobs:
   signed-apk:
     runs-on: ubuntu-latest
@@ -93,7 +95,16 @@ jobs:
           mkdir -p android-release
           cp android/app/build/outputs/apk/release/app-release.apk "android-release/BankSetu-Android-${ANDROID_VERSION_CODE}.apk"
           cd android-release && sha256sum *.apk > SHA256SUMS.txt
+      - name: Stage signed APK on the draft GitHub release
+        if: inputs.staged_release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGED_RELEASE: ${{ inputs.staged_release }}
+        run: |
+          test "$(gh release view "$STAGED_RELEASE" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          gh release upload "$STAGED_RELEASE" android-release/* --repo "$GITHUB_REPOSITORY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: inputs.staged_release == ''
         with:
           name: BankSetu-Android-SIGNED
           path: android-release/*

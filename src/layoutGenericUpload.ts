@@ -31,5 +31,5 @@ export function makeGenericLayoutUpload(draft:Record<string,unknown>):Record<str
   });
   return {version:1,bankName,mode,pageCount:draft.pageCount||1,
     widthMm:draft.widthMm,heightMm:draft.heightMm,foldMm:draft.foldMm,
-    printStartMm:draft.printStartMm,elements};
+    printStartMm:draft.printStartMm,...(draft.pageSetup?{pageSetup:draft.pageSetup}:{}),elements};
 }

@@ -1,0 +1,9 @@
+.codespaces-lab{min-height:100vh;background:#edf3f7;padding:14px;color:#1c3442;font-family:system-ui,"Segoe UI",sans-serif}
+.codespaces-lab-banner{background:#102d41;color:#f0fbff;padding:16px 20px;border-radius:13px;margin:0 auto 15px;max-width:1540px;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+.codespaces-lab-banner strong{font-size:17px}.codespaces-lab-banner p{max-width:750px;margin:6px 0 0;font-size:13px;color:#cae3ef}
+.codespaces-lab-banner nav{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.codespaces-lab-banner button,.codespaces-lab-banner a{padding:8px 12px;border:1px solid #7397aa;color:white;background:#21465e;border-radius:8px;font-size:13px;cursor:pointer;text-decoration:none}
+.codespaces-lab-banner button[aria-pressed=true]{background:#047d82;border-color:#53d6c5}
+.codespaces-lab-footer{text-align:center;color:#526c78;font-size:12px;margin:16px auto;max-width:1500px}
+.codespaces-lab .layout-studio{margin:0 auto;max-width:1600px}
+@media(max-width:720px){.codespaces-lab-banner{padding:13px;gap:12px}.codespaces-lab-banner nav{width:100%}}

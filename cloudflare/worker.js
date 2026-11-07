@@ -5,7 +5,8 @@ import { parseGoogleResource, validateResourceOwnership } from "./googleConnecti
 import { createSupportMediaService } from "./supportMedia.js";
 import { normalizedBankKey, sanitizeLayoutTemplate } from "./layoutTemplates.js";
 import { layoutSelectionKey, normalizedActivationRecord, previousApprovedVersion } from "./layoutActivation.js";
-import {layoutCloudPaths,safeCloudManifest,changedLayoutSlots,nextCloudManifest,compactLayoutTemplate,validCloudSlot} from "./layoutCloudSync.js";
+import {layoutCloudPaths,safeCloudManifest,changedLayoutSlots,nextCloudManifest,compactLayoutTemplate,inflateLayoutTemplate,validCloudSlot} from "./layoutCloudSync.js";
+import {privateLayoutDraftPath,privateDraftRevision,validatePrivateLayoutDraft} from "./layoutPrivateDraft.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -1545,6 +1546,64 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({ success: true, tenantId });
   }
 
+  // PRIVATE unfinished design recovery: same authenticated Worker, separate
+  // tenant-only document. Never publish it to the Master-approved public catalog.
+  if(["/layout-private-read","/layout-private-save"].includes(route)){
+    if(!["client_admin","client_user"].includes(role)||!actor.profile.tenantId)
+      return json({error:"A verified client workspace is required."},403);
+    if(route==="/layout-private-save"&&role!=="client_admin")
+      return json({error:"Only the Client Admin can update private layout drafts."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(actor.profile.tenantId);
+    const mode=String(body.mode||"");
+    const slotId=String(body.slotId||"");
+    let path;
+    try{path=privateLayoutDraftPath(tenantId,normalizedBankKey(String(body.bankName||"")),mode,slotId);}
+    catch(error){return json({error:error.message},400);}
+    const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const currentBank=String(settings.passbookBank||settings.bankInfo?.passbookBank||"").trim();
+    if(!currentBank||normalizedBankKey(currentBank)!==normalizedBankKey(String(body.bankName||"")))
+      return json({error:"Private layout belongs to another or unconfigured bank."},403);
+    const bankKey=normalizedBankKey(currentBank);
+    const found=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+    const row=decodeFields(found?.fields||{});
+    let revision=0;
+    try{revision=privateDraftRevision(found?row:null,tenantId,bankKey,mode,slotId);}
+    catch(error){return json({error:error.message},409);}
+    if(route==="/layout-private-read"){
+      if(!found)return json({success:true,revision:0,bankName:currentBank,mode,slotId,draft:null});
+      let draft;
+      try{draft=validatePrivateLayoutDraft(await inflateLayoutTemplate(row),currentBank,mode);}
+      catch(error){return json({error:"Private draft integrity check failed: "+error.message},409);}
+      return json({success:true,revision,bankName:currentBank,mode,slotId,draft});
+    }
+    if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision!==revision)
+      return json({error:"Private draft changed on another device. Download and review before overwriting."},409);
+    let template,compressed;
+    try{
+      template=validatePrivateLayoutDraft(body.draft,currentBank,mode);
+      compressed=await compactLayoutTemplate(template);
+    }catch(error){return json({error:error.message},400);}
+    const next={
+      tenantId,bankKey,bankName:currentBank,mode,slotId,
+      revision:revision+1,hash:compressed.hash,size:compressed.size,
+      encoding:compressed.encoding,payload:compressed.payload,
+      updatedBy:actor.uid,updatedAt:new Date().toISOString()
+    };
+    try{
+      await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[{
+        update:{name:firestoreDocumentName(env,path),fields:encodeFields(next)},
+        currentDocument:found?{updateTime:found.updateTime}:{exists:false}
+      }]})});
+    }catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Private draft changed while saving. Local draft is safe; review cloud copy."},409);
+      throw error;
+    }
+    return json({success:true,revision:next.revision,hash:compressed.hash});
+  }
   // Private compact layout recovery is an extension of the EXISTING
   // authenticated Worker / Firestore tenant service, NOT a second sync engine.
   // No scanned PDF, full customer value, credential, AI model or image is uploaded.
@@ -1656,9 +1715,19 @@ async function handleMasterOperation(request, env, actor, route) {
     let template;
     try { template=sanitizeLayoutTemplate(body.template,bankName); }
     catch(error){return json({error:error.message},400);}
+    const requestedOutput=String(body.output||"quick");
+    const requestedSlot=body.slot===undefined?1:Number(body.slot);
+    try{layoutSelectionKey(tenantId,template.mode,requestedOutput,requestedSlot);}
+    catch(error){return json({error:error.message},400);}
+    // Do not auto-apply unless the submitting Client Admin has explicitly
+    // certified the physical sample, printed labels and printer calibration.
+    const autoActivateOnApproval=body.autoActivateOnApproval===true &&
+      body.confirmedPhysicalSample===true&&body.confirmedPrintedLabels===true&&
+      body.confirmedPrinterCalibration===true;
     const id=crypto.randomUUID();
     await putDocument(env,"/layoutTemplateCatalog/"+id,{
       ...template,id,status:"pending",originTenantId:tenantId,
+      requestedOutput,requestedSlot,autoActivateOnApproval,
       submittedBy:actor.uid,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
     });
     return json({success:true,id,status:"pending"});
@@ -1688,13 +1757,41 @@ async function handleMasterOperation(request, env, actor, route) {
       updateMask:{fieldPaths:Object.keys(reviewed)},
       currentDocument:{updateTime:found.updateTime}
     };
-    try{await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
+    const writes=[write];
+    let activatedSlot=null;
+    if(status==="approved"&&template.autoActivateOnApproval===true){
+      const tenantId=String(template.originTenantId||"");
+      let selectionId;
+      try{selectionId=layoutSelectionKey(tenantId,template.mode,template.requestedOutput,template.requestedSlot);}
+      catch(error){return json({error:"Auto-activation target is invalid: "+error.message},409);}
+      const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const settings=decodeFields(settingsDoc?.fields||{});
+      if(normalizedBankKey(settings.passbookBank||settings.bankInfo?.passbookBank||"")!==template.bankKey)
+        return json({error:"The submitting workspace changed bank. Master approval cannot auto-activate a different bank."},409);
+      const selectionPath="/tenantLayoutSelections/"+selectionId;
+      const oldSelectionDoc=await firestoreRequest(env,selectionPath)
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const oldSelection=decodeFields(oldSelectionDoc?.fields||{});
+      if(oldSelection.templateId&&oldSelection.bankKey!==template.bankKey)
+        return json({error:"A different bank owns the requested slot. Disable it before approval."},409);
+      let nextSelection;
+      try{nextSelection=normalizedActivationRecord(oldSelection,id,actor.uid,now);}
+      catch(error){return json({error:"Cannot auto-apply template: "+error.message},409);}
+      const saved={...nextSelection,tenantId,mode:template.mode,bankKey:template.bankKey,
+        output:template.requestedOutput,slot:template.requestedSlot,
+        updatedBy:actor.uid,updatedAt:now};
+      writes.push({update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
+        currentDocument:oldSelectionDoc?{updateTime:oldSelectionDoc.updateTime}:{exists:false}});
+      activatedSlot={output:template.requestedOutput,slot:template.requestedSlot,revision:nextSelection.revision};
+    }
+    try{await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes})});}
     catch(error){
       if(error.status===409||error.status===400)
         return json({error:"Layout review changed in another session. Refresh before making a new decision."},409);
       throw error;
     }
-    return json({success:true,id,status});
+    return json({success:true,id,status,activatedSlot});
   }
   if (route === "/get-workspace-layout-selection" || route === "/set-workspace-layout-selection") {
     if (!["client_admin","client_user"].includes(role) || !actor.profile.tenantId)
@@ -1703,8 +1800,10 @@ async function handleMasterOperation(request, env, actor, route) {
       return json({error:"Only the Client Admin can select or roll back a verified template."},403);
     const body=await request.json().catch(()=>({}));
     const mode=String(body.mode||"");
+    const output=body.output===undefined?"quick":String(body.output);
+    const slot=body.slot===undefined?1:Number(body.slot);
     let id;
-    try { id=layoutSelectionKey(actor.profile.tenantId,mode); }
+    try { id=layoutSelectionKey(actor.profile.tenantId,mode,output,slot); }
     catch(error){return json({error:error.message},400);}
     const tenantId=String(actor.profile.tenantId),settingsPath="/tenantSettings/"+encodeURIComponent(tenantId);
     const settingsDoc=await firestoreRequest(env,settingsPath).catch(error=>error.status===404?null:Promise.reject(error));
@@ -1715,15 +1814,25 @@ async function handleMasterOperation(request, env, actor, route) {
     const oldDoc=await firestoreRequest(env,selectionPath).catch(error=>error.status===404?null:Promise.reject(error));
     const old=decodeFields(oldDoc?.fields||{});
     if (route === "/get-workspace-layout-selection") {
-      if(!old.templateId || old.bankKey!==bankKey) return json({active:false,bankKey,mode,revision:old.revision||0,template:null});
-      const templateDoc=await firestoreRequest(env,"/layoutTemplateCatalog/"+old.templateId).catch(error=>error.status===404?null:Promise.reject(error));
+      // Legacy versions stored one approved passbook selection shared by both
+      // outputs. Keep its verified PR2 visibility until a distinct PR2 slot-1
+      // is activated; never write to or overwrite the legacy record here.
+      let effective=old;
+      if(mode==="passbook"&&output==="dotmatrix"&&slot===1&&!oldDoc){
+        const legacyPath="/tenantLayoutSelections/"+layoutSelectionKey(tenantId,mode);
+        const legacyDoc=await firestoreRequest(env,legacyPath).catch(error=>error.status===404?null:Promise.reject(error));
+        const legacy=decodeFields(legacyDoc?.fields||{});
+        if(legacy.templateId&&legacy.bankKey===bankKey)effective=legacy;
+      }
+      if(!effective.templateId || effective.bankKey!==bankKey) return json({active:false,bankKey,mode,output,slot,revision:effective.revision||0,template:null});
+      const templateDoc=await firestoreRequest(env,"/layoutTemplateCatalog/"+effective.templateId).catch(error=>error.status===404?null:Promise.reject(error));
       const template=decodeFields(templateDoc?.fields||{});
       if(template.status!=="approved" || template.mode!==mode || template.bankKey!==bankKey)
-        return json({active:false,bankKey,mode,revision:old.revision||0,template:null});
-      return json({active:true,bankKey,mode,revision:old.revision,activatedAt:old.activatedAt,template:{
+        return json({active:false,bankKey,mode,output,slot,revision:effective.revision||0,template:null});
+      return json({active:true,bankKey,mode,output,slot,revision:effective.revision,activatedAt:effective.activatedAt,template:{
         id:template.id,bankName:template.bankName,mode:template.mode,
         widthMm:template.widthMm,heightMm:template.heightMm,foldMm:template.foldMm,
-        printStartMm:template.printStartMm,pageCount:template.pageCount||1,elements:template.elements
+        printStartMm:template.printStartMm,pageSetup:template.pageSetup,pageCount:template.pageCount||1,elements:template.elements
       }});
     }
     const action=String(body.action||"");
@@ -1747,12 +1856,12 @@ async function handleMasterOperation(request, env, actor, route) {
     let next;
     try { next=normalizedActivationRecord(old,templateId||null,actor.uid,new Date().toISOString()); }
     catch(error){return json({error:error.message},409);}
-    const saved={...next,tenantId,mode,bankKey,updatedBy:actor.uid,updatedAt:new Date().toISOString()};
+    const saved={...next,tenantId,mode,output,slot,bankKey,updatedBy:actor.uid,updatedAt:new Date().toISOString()};
     const write={update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
       currentDocument:oldDoc?{updateTime:oldDoc.updateTime}:{exists:false}};
     try {await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
     catch(error){if(error.status===409 || error.status===400)return json({error:"Template version changed. Refresh before retrying."},409);throw error;}
-    return json({success:true,active:Boolean(templateId),mode,revision:next.revision,templateId:templateId||null});
+    return json({success:true,active:Boolean(templateId),mode,output,slot,revision:next.revision,templateId:templateId||null});
   }
   if (route === "/list-layout-templates") {
     if (!["master_owner","admin","client_admin","client_user"].includes(role))
@@ -1777,9 +1886,11 @@ async function handleMasterOperation(request, env, actor, route) {
     const templates=(Array.isArray(rows)?rows:[]).filter(row=>row.document).map(row=>decodeFields(row.document.fields||{}))
       .filter(item=>pending?item.status==="pending":item.status==="approved")
       .slice(0,25).map(item=>({
-        id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,
+        id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,version:Number(item.version)||1,
         widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,printStartMm:item.printStartMm,
-        elements:item.elements,updatedAt:item.updatedAt||item.createdAt||""
+        elements:item.elements,pageSetup:item.pageSetup,updatedAt:item.updatedAt||item.createdAt||"",
+        requestedOutput:item.requestedOutput||"quick",requestedSlot:item.requestedSlot||1,
+        autoActivateOnApproval:item.autoActivateOnApproval===true
       }));
     return json({success:true,templates});
   }
@@ -2269,7 +2380,7 @@ export default {
         "/account-action", "/delete-user", "/create-client-user", "/create-client", "/create-client-invite",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
-        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
+        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-private-read", "/layout-private-save", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
         "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-inquiry-status", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-email-retry", "/license-admin-delete-request", "/license-admin-state",
         "/push-register", "/push-unregister", "/push-sync-event", "/push-test", "/afsm-confirmation", "/support-message-send", "/support-media-send", "/support-media-read", "/support-media-reply", "/support-conversation-delete",
       ];
@@ -2292,7 +2403,7 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
+      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-private-read", "/layout-private-save", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
         : route === '/support-conversation-delete'

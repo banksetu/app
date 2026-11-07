@@ -13,8 +13,8 @@ test("step 7: new Word-style blank canvas retains any-bank paper size but not cu
  assert.equal(blank.elements.length,0);
  assert.equal(blank.pageCount,1);
  assert.equal(blank.sourceArtworkStatus,"clean");
- assert.equal(blank.foldMm,0);
- assert.equal(blank.printStartMm,0);
+ assert.equal(blank.foldMm,90,"A blank page must retain the real physical fold.");
+ assert.equal(blank.printStartMm,104,"A blank page must retain the approved print-start guide.");
  assert.equal(old.elements.length,1,"Undo's original snapshot must not mutate");
 });
 test("step 7: page alignment works in physical mm with arbitrary tall and wide formats",()=>{

@@ -30,6 +30,7 @@ export default defineConfig(({mode})=>{
   },
 
   define: {
+    __BANKSETU_CODESPACES_LAYOUT_PREVIEW__: JSON.stringify(mode==="development" && Boolean(codespaceName)),
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },
 

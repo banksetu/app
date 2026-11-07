@@ -1,3 +1,4 @@
+import {geometryErrors,type PageSetup} from "./layoutPageSetup.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
 import {typographyIsValid} from "./layoutTypography.ts";
 import { layoutCustomerValue } from "./layoutCustomerValue.ts";
@@ -9,7 +10,7 @@ export type LayoutDynamicElement = {
 };
 export type ApprovedLayout = {
  id:string;bankName:string;mode:"passbook"|"accountOpening";
- widthMm:number;heightMm:number;foldMm:number;printStartMm:number;pageCount?:number;elements:LayoutDynamicElement[];
+ widthMm:number;heightMm:number;foldMm:number;printStartMm:number;pageSetup?:PageSetup;pageCount?:number;elements:LayoutDynamicElement[];
 };
 const aliases:Record<string,string>={
   customerName:"name",customerId:"customerId",cifId:"customerId",cif:"customerId",
@@ -71,8 +72,7 @@ export function templateCanRender(template:ApprovedLayout,bankName:string,mode:"
   if(!template||template.mode!==mode||typeof template.bankName!=="string"||
      template.bankName.trim().toLowerCase()!==bankName.trim().toLowerCase())return false;
   if(![template.widthMm,template.heightMm].every(v=>Number.isFinite(v)&&v>=50&&v<=500))return false;
-  if(![template.foldMm,template.printStartMm].every(v=>
-    Number.isFinite(v)&&v>=0&&v<=template.heightMm))return false;
+  if(geometryErrors(template).length)return false;
   const pages=template.pageCount??1;
   if(!Number.isSafeInteger(pages)||pages<1||pages>10)return false;
   if(mode==="passbook"&&pages!==1)return false;

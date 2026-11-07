@@ -83,7 +83,7 @@ jobs:
       - run: node scripts/check-layout-target-bundle.mjs web web-app-dist
 
   windows-installer-smoke:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 98
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 100
     name: Windows unsigned installer smoke (draft only)
     needs: layout-studio
     runs-on: windows-latest
@@ -117,7 +117,7 @@ jobs:
           retention-days: 7
           compression-level: 0
   android-debug-smoke:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 98
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 100
     name: Android debug build smoke (draft only)
     needs: layout-studio
     runs-on: ubuntu-latest

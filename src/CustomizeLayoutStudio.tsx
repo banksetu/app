@@ -3,7 +3,9 @@ import { callBankSetuWorker } from "./workerApi";
 import { confirmAction } from "./uiDialogs";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
 import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
+import {codespacesLayoutPreviewAvailable,previewLayoutKey} from "./platform/layoutCodespacesPreview";
 import "./CustomizeLayoutStudio.css";
+import "./CustomizeLayoutReferenceLock.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";
@@ -11,15 +13,27 @@ import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
 import {wordTransform,wordNudge,wordGroup,wordGroupIds,type WordAction} from "./layoutWordGeometry.ts";
+import {findRibbonCommands,type SupportedRibbonAction} from "./layoutRibbonCommandSearch.ts";
+import {changeStaticTextCase,copyRibbonObjects,pasteRibbonObjects,type RibbonCase} from "./layoutRibbonEditing.ts";
 import {smartSnap,type SnapGuide} from "./layoutSmartGuides.ts";
 import {findEditableLabels,replaceEditableLabels} from "./layoutWordFindReplace.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
+import {reviewPassbookLegibility,type LegibilityFinding} from "./layoutRibbonLegibility.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
+import {readPrivateLayoutDraft,savePrivateLayoutDraft} from "./layoutPrivateDraftRecovery";
 import { createPerspectiveMap, rectifyPerspectivePixels, type PerspectiveQuad } from "./layoutPerspectiveGeometry";
 import { auditPassbookTemplate, type AuditItem } from "./layoutTemplateAudit";
 import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
+import PassbookPageSetup from "./PassbookPageSetup";
+import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,withFoldDirection,type PageSetup,type FoldAxis} from "./layoutPageSetup.ts";
+import {importWordDocx} from "./layoutWordDocumentImport";
+import {importLegacyWordDoc} from "./layoutLegacyWordImport";
+import {customerRepository} from "./core/customerRepository";
+import {currentLayoutScope} from "./layoutLocalStore";
+import {layoutCustomerValue} from "./layoutCustomerValue";
 
 type Mode = "passbook" | "accountOpening";
 type Kind = "text" | "field" | "rectangle" | "line" | "photo" | "image" | "ellipse";
@@ -64,9 +78,10 @@ type LayoutPart = {
   preprinted: boolean;
   needsReview?: boolean;
 };
-type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
+type Draft = { version: 1; mode: Mode; bankName: string; pageCount?:number; widthMm: number; heightMm: number; foldMm: number; printStartMm: number; pageSetup?:PageSetup; sourceArtworkStatus?:"clean"|"needsReview"|"reviewed"; elements: LayoutPart[] };
 const PX_PER_MM = 3.2;
 const defaults = { font: "Arial", size: 11, bold: false, italic: false, underline: false, align: "left" as Align, color: "#132a40", background: "transparent", borderColor: "#74869a", borderWidth: 1, letterSpacing: 0, fontCompression:100, lineHeight:1.18,locked:false,opacity: 1, rotation: 0, quick: true, dotMatrix: false, preprinted: false };
+const customerFieldKeys = ["name","customerName","accountNo","accountNumber","customerId","dateOfBirth","fatherName","address","addressLine1","addressLine2","addressLine3","mobile","aadhaar","pan","nominee","accountOpeningDate","accountType","mode","operatingMode","pinCode","postOffice","ifsc","status","gender","religion","category","branchName"];
 const fonts = ["Arial", "Georgia", "Times New Roman", "Courier New", "Verdana", "Tahoma", "Noto Sans", "Noto Serif"];
 const randomId = () => "part-" + Math.random().toString(36).slice(2, 11);
 
@@ -87,7 +102,8 @@ function initialDraft(mode: Mode, bankName: string): Draft {
   const account = addPart("field", "customer", "Account Number", "accountNumber", 16, 124);
   account.defaultValue = "Account Number"; account.width = 110;
   const fold = mode === "passbook" ? 88 : 0;
-  return { version: 1, mode, bankName, pageCount:1, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0, elements: [heading, name, account] };
+  return { version: 1, mode, bankName, pageCount:1, widthMm: mode === "passbook" ? 190 : 210, heightMm: mode === "passbook" ? 175 : 297, foldMm: fold, printStartMm: mode === "passbook" ? 100 : 0,
+    pageSetup:{...defaultPageSetup(),foldAxis:mode==="passbook"?"horizontal":"none"}, elements: [heading, name, account] };
 }
 function validDraft(draft: unknown, mode: Mode, bankName: string): draft is Draft {
   return validatePersistedLayoutDraft(draft, mode, bankName);
@@ -101,10 +117,12 @@ function draftKey(mode: Mode, bankName: string) {
   return "bankSetuLayoutDraft:v1:" + tenantId + ":" + uid + ":" + mode + ":" + bankName;
 }
 
-type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; widthMm:number; heightMm:number; foldMm:number; printStartMm:number; elements:LayoutPart[]; updatedAt?:string };
-type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string};
-function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user" }: StudioProps) {
-  const storageKey = draftKey(mode, bankName);
+type CatalogEntry = { id:string; bankName:string; mode:Mode; status:string; version?:number;
+  requestedOutput?:"quick"|"dotmatrix";requestedSlot?:number;autoActivateOnApproval?:boolean; widthMm:number; heightMm:number; foldMm:number; printStartMm:number;pageSetup?:PageSetup; elements:LayoutPart[]; updatedAt?:string };
+type StudioProps={mode:Mode;bankName:string;bankValues?:Record<string,string>;accountRole?:string;bankOptions?:readonly string[];previewOnly?:boolean};
+type StudioCoreProps=StudioProps & {setup:LayoutSetup;onBackToSetup:()=>void};
+function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRole = "client_user",setup,onBackToSetup,previewOnly=false }: StudioCoreProps) {
+  const storageKey = previewOnly?previewLayoutKey(mode,bankName,"layout-"+(setup.output==="dotmatrix"?4:1)):draftKey(mode, bankName);
   const [scopeEpoch,refreshWorkspaceScope]=useState(0);
   const [draft, setDraft] = useState<Draft>(() => {
     try { const saved = JSON.parse(storageKey ? localStorage.getItem(storageKey) || "null" : "null") as unknown; if (validDraft(saved, mode, bankName)) return saved; } catch { /* Invalid local draft stays unused. */ }
@@ -120,15 +138,25 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
-  const [easyMode,setEasyMode]=useState(true);
-  const [guidedStep,setGuidedStep]=useState<"start"|"edit"|"check">("start");
+  const [easyMode,setEasyMode]=useState(false);
+  const [simplePaperOpen,setSimplePaperOpen]=useState(false);
+  const [pageSetupOpen,setPageSetupOpen]=useState(false);
+  const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help"|"format">("home");
+  const [ribbonSearch,setRibbonSearch]=useState("");
+  const [ribbonSearchOpen,setRibbonSearchOpen]=useState(false);
+  const ribbonSearchRef=useRef<HTMLInputElement|null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
+  const [objectClipboard,setObjectClipboard]=useState<LayoutPart[]>([]);
+  const [tableRows,setTableRows]=useState(2);
+  const [tableColumns,setTableColumns]=useState(3);
+  const [inlineTextEdit,setInlineTextEdit]=useState<{id:string;text:string}|null>(null);
+  const inlineTextCancelRef=useRef(false);
   const [snapGrid, setSnapGrid] = useState(false);
   const [smartGuidesEnabled,setSmartGuidesEnabled]=useState(false);
   const [activeGuides,setActiveGuides]=useState<SnapGuide[]>([]);
-  const [preview, setPreview] = useState<"quick" | "dotmatrix">("quick");
+  const [preview, setPreview] = useState<"quick" | "dotmatrix">(setup.output);
   const [notice, setNotice] = useState("Local draft only. Nothing here changes approved passbooks or PR2 printing.");
   const [busy, setBusy] = useState(false);
   const [scanSuggestion, setScanSuggestion] = useState<ScanBounds | null>(null);
@@ -146,6 +174,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [diffBusy, setDiffBusy] = useState(false);
   const [pr2Proof, setPr2Proof] = useState("");
   const [audit, setAudit] = useState<AuditItem[] | null>(null);
+  const [legibilityFindings,setLegibilityFindings]=useState<LegibilityFinding[]>([]);
   const [physicalChecked, setPhysicalChecked] = useState(false);
   const [labelChecked, setLabelChecked] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
@@ -167,12 +196,26 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [layoutSelection, setLayoutSelection] = useState<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}|null>(null);
   const [hardwareChecked, setHardwareChecked] = useState(false);
   const [showProps, setShowProps] = useState(true);
+  const [fieldPanelTab,setFieldPanelTab]=useState<"bank"|"customer">("bank");
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
   const dragRef = useRef<{id:string;pageX:number;pageY:number;members:Array<{id:string;x:number;y:number;width:number;height:number}>}|null>(null);
   const resizeRef = useRef<{id:string;pageX:number;pageY:number;width:number;height:number}|null>(null);
   const [dirty, setDirty] = useState(false);
   const [savingLayout,setSavingLayout]=useState(false);
+  const [selectedLayoutSlot,setSelectedLayoutSlot]=useState(1);
+  const layoutSlotId="layout-"+(selectedLayoutSlot+(setup.output==="dotmatrix"?3:0));
+  const initialImportRef=useRef(false);
+  const [mappingSource,setMappingSource]=useState<"customer"|"bank"|null>(null);
+  const mapStartRef=useRef<{x:number;y:number}|null>(null);
+  const [mapPendingRect,setMapPendingRect]=useState<{x:number;y:number;width:number;height:number}|null>(null);
+  const editsRef=useRef(0);
+  const lastCloudAutosaveRef=useRef(0);
+  const privateRevisionRef=useRef(0);
+  const [autosaveStatus,setAutosaveStatus]=useState("Draft autosave is enabled after editing.");
+  const [previewOpen,setPreviewOpen]=useState(false);
+  const [previewCustomers,setPreviewCustomers]=useState<Array<{key:string;display:string;data:Record<string,unknown>}>>([]);
+  const [previewCustomerKey,setPreviewCustomerKey]=useState("");
   const localRevisionRef=useRef(0);
   const editingRef=useRef(false);
   const editorScopeRef=useRef(storageKey);
@@ -190,6 +233,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
     setCatalog([]);setPendingReview([]);setLayoutSelection(null);
     undoRef.current=[];redoRef.current=[];localRevisionRef.current=0;
+    privateRevisionRef.current=0;lastCloudAutosaveRef.current=0;
     editingRef.current=false;setDirty(false);
     setNotice("Workspace or selected bank changed. Previous tenant's unsaved preview was cleared; open a saved revision from the verified current workspace.");
   },[mode,bankName]);
@@ -222,18 +266,31 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setSelectedId(next.includes(part.id)?part.id:(next[next.length-1]??null));
     }else{setWordSelectedIds(members);setSelectedId(part.id);}
   };
-  const canReview = accountRole === "master_owner" || accountRole === "admin";
-  const canSubmit = accountRole === "client_admin";
+  const canReview = !previewOnly && (accountRole === "master_owner" || accountRole === "admin");
+  const canSubmit = !previewOnly && accountRole === "client_admin";
   const ordered = useMemo(() => [...draft.elements.filter(part => (part.page||1)===selectedPage)].sort((a, b) => a.z - b.z), [draft.elements,selectedPage]);
 
   useEffect(()=>{
     let active=true;
     const runVersion=workspaceVersionRef.current;
+    if(previewOnly){
+      if(setup.method==="continue"){
+        try{
+          const raw=localStorage.getItem(previewLayoutKey(mode,bankName,layoutSlotId));
+          const restored:unknown=raw?JSON.parse(raw):null;
+          if(validDraft(restored,mode,bankName)){
+            setDraft(restored as Draft);
+            setNotice("Codespaces browser demo draft restored. No customer repository or cloud was accessed.");
+          }
+        }catch{setNotice("Demo draft could not be restored; import a JSON backup.");}
+      }
+      return ()=>{active=false;};
+    }
     // Existing authenticated Repository is shared by Web/Android IndexedDB
     // and Windows SQLite. Cloud only reconciles missing/changed generic drafts.
     void (async()=>{
       let info="";
-      if(navigator.onLine&&["client_admin","client_user"].includes(accountRole)){
+      if(setup.method==="continue"&&navigator.onLine&&["client_admin","client_user"].includes(accountRole)){
         try{
           const result=await synchronizeLocalLayoutSlots(bankName,mode);
           if(result.conflicts)info="Other device changed a layout; your local edits were preserved for review.";
@@ -243,10 +300,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       try{
         const local=await readLocalLayouts(bankName,mode);
         if(!active||runVersion!==workspaceVersionRef.current)return;
-        const slot=local.find(item=>item.slotId==="layout-1");
+        const slot=local.find(item=>item.slotId===layoutSlotId);
         if(slot && validDraft(slot.draft,mode,bankName)){
           localRevisionRef.current=slot.localRevision;
-          if(!editingRef.current){
+          if(!editingRef.current&&setup.method==="continue"){
             setDraft(slot.draft as unknown as Draft);
             if(info)setNotice(info);
           }
@@ -254,7 +311,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           // One-way, non-destructive migration of older verified legacy drafts.
           const raw=localStorage.getItem(storageKey);
           const prior=raw?JSON.parse(raw) as unknown:null;
-          if(validDraft(prior,mode,bankName)&&!editingRef.current){
+          if(validDraft(prior,mode,bankName)&&!editingRef.current&&setup.method==="continue"&&layoutSlotId==="layout-1"){
             const saved=await saveLocalLayout(bankName,mode,"layout-1",prior,0);
             if(active&&runVersion===workspaceVersionRef.current){
               localRevisionRef.current=saved.localRevision;
@@ -263,14 +320,40 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             }
           }
         }else if(info)setNotice(info);
+        // Continue Editing checks a private tenant draft without overwriting any
+        // different local revision. The user can resolve a conflict explicitly.
+        if(setup.method==="continue"&&canSubmit&&navigator.onLine&&
+           Object.keys(bankValues).length>0&&!editingRef.current){
+          try{
+            const cloud=await readPrivateLayoutDraft(bankName,mode,layoutSlotId);
+            if(!active||runVersion!==workspaceVersionRef.current||editingRef.current)return;
+            if(cloud.draft){
+              if(slot&&validDraft(slot.draft,mode,bankName)){
+                if(JSON.stringify(slot.draft)===JSON.stringify(cloud.draft)){
+                  privateRevisionRef.current=cloud.revision;
+                  setAutosaveStatus("Local and private cloud versions match.");
+                }else{
+                  setAutosaveStatus("Different private cloud draft exists; use Restore Private Cloud Draft to review.");
+                  setNotice("Your local draft and private cloud draft differ. Nothing was overwritten.");
+                }
+              }else{
+                privateRevisionRef.current=cloud.revision;
+                setDraft(cloud.draft as Draft);setDirty(true);editingRef.current=true;
+                setNotice("Continued editing private cloud draft revision "+cloud.revision+". Local save is pending.");
+              }
+            }else privateRevisionRef.current=0;
+          }catch(error){setAutosaveStatus("Offline draft available. Private cloud check: "+
+              (error instanceof Error?error.message:"Unavailable"));}
+        }
       }catch(error){
         if(active&&runVersion===workspaceVersionRef.current)setNotice("Existing local draft was retained. Offline layout recovery: "+(error instanceof Error?error.message:"Unavailable"));
       }
     })();
     return()=>{active=false;};
-  },[bankName,mode,accountRole,storageKey,scopeEpoch]);
+  },[bankName,mode,accountRole,storageKey,scopeEpoch,setup.method,layoutSlotId,canSubmit,bankValues,previewOnly]);
 
   const refreshCatalog = useCallback(async (review = false) => {
+    if(previewOnly)return;
     if (!bankName.trim() && !review) return;
     const runVersion=workspaceVersionRef.current;
     setCatalogBusy(true);
@@ -282,16 +365,16 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } catch (error) {
       if(runVersion===workspaceVersionRef.current)setNotice("Shared layout list unavailable: "+(error instanceof Error?error.message:"Connection required")+". Local editing remains available.");
     } finally { if(runVersion===workspaceVersionRef.current)setCatalogBusy(false); }
-  },[bankName,mode,scopeEpoch]);
+  },[bankName,mode,scopeEpoch,previewOnly]);
   useEffect(()=>{void refreshCatalog();},[refreshCatalog]);
   const refreshSelection = useCallback(async()=>{
-    if(!canSubmit || !bankName.trim())return;
+    if(previewOnly || !canSubmit || !bankName.trim())return;
     const runVersion=workspaceVersionRef.current;
     try{
-      const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode});
+      const state=await callBankSetuWorker<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}>("/get-workspace-layout-selection",{mode,output:mode==="accountOpening"?"quick":setup.output,slot:mode==="accountOpening"?1:selectedLayoutSlot});
       if(runVersion===workspaceVersionRef.current)setLayoutSelection(state);
     } catch {if(runVersion===workspaceVersionRef.current)setLayoutSelection(null);}
-  },[canSubmit,bankName,mode,scopeEpoch]);
+  },[canSubmit,bankName,mode,scopeEpoch,setup.output,selectedLayoutSlot,previewOnly]);
   useEffect(()=>{void refreshSelection();},[refreshSelection]);
   const selectApprovedTemplate = async(action:"activate"|"rollback"|"disable",templateId?:string)=>{
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
@@ -304,7 +387,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setBusy(true);
     try{
       const response=await callBankSetuWorker<{success:boolean;revision:number;active:boolean}>("/set-workspace-layout-selection",{
-        mode,action,templateId,confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,confirmedPrinterCalibration:hardwareChecked,
+        mode,output:mode==="accountOpening"?"quick":setup.output,slot:mode==="accountOpening"?1:selectedLayoutSlot,
+        action,templateId,confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,confirmedPrinterCalibration:hardwareChecked,
       });
       await refreshSelection();setNotice("Workspace layout selection updated to revision "+response.revision+". You can revert or disable it using the same controls.");
     }catch(error){setNotice("Template activation was blocked: "+(error instanceof Error?error.message:"Unknown error"));}
@@ -315,6 +399,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setNotice("Submission blocked: workspace identity changed. Reopen this tenant's editor.");return;
     }
     if (!canSubmit || busy || !bankName.trim()) return;
+    if(!Object.keys(bankValues).length){setNotice("Configure this bank in Bank Information before submitting a Master Admin template.");return;}
     if(scanFrame && scanSuggestion){
       setNotice("Review and apply or explicitly skip the source PDF crop before submitting. An A4 scanner sheet is not a physical passbook.");
       return;
@@ -329,7 +414,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
     setBusy(true);
     try {
-      const response=await callBankSetuWorker<{success:boolean;id:string}>("/submit-layout-template",{template:draft});
+      const response=await callBankSetuWorker<{success:boolean;id:string}>("/submit-layout-template",{
+        template:draft,output:mode==="accountOpening"?"quick":setup.output,
+        slot:mode==="accountOpening"?1:selectedLayoutSlot,autoActivateOnApproval:true,
+        confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,
+        confirmedPrinterCalibration:hardwareChecked
+      });
       setNotice("Generic layout submitted for Master Admin review: "+response.id+". Nothing was published or activated.");
     } catch(error) {
       setNotice("Submission failed: "+(error instanceof Error?error.message:"Review the template's coordinates and labels."));
@@ -337,7 +427,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   };
   const useCatalogTemplate = async (entry:CatalogEntry) => {
     if (!await confirmAction("Use this approved generic layout as a new local draft? Your current unsaved layout will be replaced. Customer data is never copied.")) return;
-    const restored:Draft={version:1,bankName,mode,pageCount:(entry as CatalogEntry & {pageCount?:number}).pageCount||1,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,elements:entry.elements.map(part=>({...part,id:randomId(),value:""}))};
+    const restored:Draft={version:1,bankName,mode,pageCount:(entry as CatalogEntry & {pageCount?:number}).pageCount||1,widthMm:entry.widthMm,heightMm:entry.heightMm,foldMm:entry.foldMm,printStartMm:entry.printStartMm,pageSetup:entry.pageSetup,elements:entry.elements.map(part=>({...part,id:randomId(),value:""}))};
     if (!validDraft(restored,mode,bankName)){setNotice("Catalog template is not compatible with this bank or editor version.");return;}
     setDraft(restored);setSelectedId(null);setCatalogChoice(null);setCatalogOpen(false);setDirty(true);setTemporaryValues({});undoRef.current=[];redoRef.current=[];
     setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
@@ -349,13 +439,20 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (!canReview || !await confirmAction(action === "approve" ? "Approve this generic layout for use by other tenants? Check that all text is generic and contains no private customer information." : "Reject this unapproved shared template?")) return;
     setCatalogBusy(true);
     try {
-      await callBankSetuWorker("/review-layout-template",{id:entry.id,action});
-      setNotice("Template review decision saved. "+(action==="approve"?"Approved layouts will be discoverable by bank.":"Submission rejected."));
+      const result=await callBankSetuWorker<{success:boolean;activatedSlot?:{output:string;slot:number;revision:number}|null}>(
+        "/review-layout-template",{id:entry.id,action});
+      setNotice(result.activatedSlot?
+        "Master approved and automatically applied "+result.activatedSlot.output+" Layout "+
+          result.activatedSlot.slot+" (revision "+result.activatedSlot.revision+") using existing print workflows.":
+        "Template review decision saved. "+(action==="approve"?
+          "Approved design is available. Live PR2 activation requires recorded physical calibration checks.":
+          "Submission rejected."));
       await refreshCatalog(true);
     } catch(error){setNotice("Review failed: "+(error instanceof Error?error.message:"Unknown error"));}
     finally {setCatalogBusy(false);}
   };
   const modify = useCallback((apply: (current: Draft) => Draft) => {
+    editsRef.current+=1;
     setDraft(current => {
       const next = apply(current);
       if (next === current) return current;
@@ -363,26 +460,179 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       redoRef.current = [];
       return next;
     });
-    setDirty(true);
+    setDirty(true);setLegibilityFindings([]);
   }, []);
+  const previewCustomer=previewOpen?previewCustomers.find(item=>item.key===previewCustomerKey)?.data:undefined;
+  const loadPreviewCustomers=async()=>{
+    if(previewOnly){
+      const sample={name:"Demo Customer",accountNo:"0123456789",customerId:"DEMO-CIF-001",
+        fatherName:"Demo Parent",address:"Example Street, Assam",mobile:"0000000000",
+        nominee:"Example Nominee",accountType:"Saving",ifsc:"DEMO0000000",pinCode:"000000"};
+      setPreviewCustomers([{key:"codespaces-synthetic",display:"DEMO ONLY · Customer 0123456789",data:sample}]);
+      setPreviewCustomerKey("codespaces-synthetic");setPreviewOpen(true);
+      setNotice("Synthetic demonstration data only. No real customer records were loaded.");
+      return;
+    }
+    if(!bankValues||!Object.keys(bankValues).length){
+      setNotice("This bank is not the selected tenant bank. Configure it under Bank Information before previewing real customer data.");return;
+    }
+    try{
+      const {scope}=currentLayoutScope();
+      const saved=await customerRepository.read(scope);
+      const customers=saved.records.filter(item=>!item.deleted).slice(0,100).map(item=>{
+        const name=typeof item.customer.name==="string"?item.customer.name:"Customer";
+        const account=String(item.customer.accountNo||"");
+        return {key:item.key,display:name.slice(0,70)+(account?" · ****"+account.slice(-4):""),data:item.customer};
+      });
+      setPreviewCustomers(customers);
+      setPreviewCustomerKey(customers[0]?.key||"");
+      setPreviewOpen(true);
+      setNotice(customers.length+" local customers available for read-only preview. This data never enters the saved template or shared catalog.");
+    }catch(error){setNotice("Customer preview unavailable: "+(error instanceof Error?error.message:"No verified local customer repository"));}
+  };
+  const finishInlineTextEdit=(cancel=false)=>{
+    if(cancel){
+      inlineTextCancelRef.current=true;
+      setInlineTextEdit(null);
+      return;
+    }
+    if(inlineTextCancelRef.current){
+      inlineTextCancelRef.current=false;
+      setInlineTextEdit(null);
+      return;
+    }
+    const pending=inlineTextEdit;
+    setInlineTextEdit(null);
+    if(!pending)return;
+    const original=draft.elements.find(p=>p.id===pending.id);
+    if(!original||original.kind!=="text"||original.origin!=="static"||original.locked)return;
+    if(pending.text===original.label)return;
+    if(pending.text.length>500){setNotice("Text is limited to 500 characters per layout box.");return;}
+    modify(current=>({...current,elements:current.elements.map(part=>
+      part.id===pending.id&&part.kind==="text"&&part.origin==="static"&&!part.locked?
+        {...part,label:pending.text}:part)}));
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setNotice("Text saved to editable draft. Use Undo to restore the previous wording.");
+  };
   const edit = (change: Partial<LayoutPart>) => {
     if (!selectedId||selected?.locked===true) return;
     modify(current => ({ ...current, elements: current.elements.map(part => part.id === selectedId ? { ...part, ...change } : part) }));
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
   };
-  const setMeasure = (key: "widthMm" | "heightMm" | "foldMm" | "printStartMm", value: string) => {
-    const mm = valueInMm(value, unit);
-    if (!Number.isFinite(mm)) return;
-    modify(current => ({ ...current, [key]: round(within(mm, key === "widthMm" || key === "heightMm" ? 50 : 0, 500)) }));
-    // Any physical-size, crease or start-position edit invalidates past approvals.
-    setPhysicalChecked(false);
-    setHardwareChecked(false);
+  // Page Setup always measures the OPEN book, not scanner A4 size.
+  const updatePageGeometry=(patch:Partial<Draft>,description:string)=>{
+    const candidate={...draft,...patch};
+    const errors=geometryErrors(candidate);
+    if(errors.length){setNotice("Page Setup: "+errors.join(" "));return;}
+    const outside=candidate.elements.find(part=>
+      part.x<0||part.y<0||part.x+part.width>candidate.widthMm+.25||
+      part.y+part.height>candidate.heightMm+.25);
+    if(outside){
+      setNotice("Page size blocked: '"+outside.label.slice(0,50)+
+        "' would fall outside the paper. Reposition that object first.");return;
+    }
+    modify(current=>({...current,...patch}));
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setPr2Proof("");
+    setNotice(description+" · Physical alignment and printer approval must be rechecked.");
+  };
+  const changePageMeasurement=(key:"widthMm"|"heightMm"|"foldMm"|"printStartMm",mm:number)=>{
+    if(!Number.isFinite(mm))return;
+    const value=Math.round(mm*1000)/1000;
+    if(key==="foldMm"&&value>draft.printStartMm&&
+       pageSetupFor(draft).foldAxis!=="none"){
+      const max=pageSetupFor(draft).foldAxis==="vertical"?draft.widthMm:draft.heightMm;
+      const previousGap=Math.max(0,draft.printStartMm-draft.foldMm);
+      updatePageGeometry({foldMm:value,printStartMm:Math.min(max,value+previousGap)},
+        "Moved fold and preserved the data-start offset");return;
+    }
+    updatePageGeometry({[key]:value},"Changed "+key);
+  };
+  const changePageSetup=(next:PageSetup)=>{
+    const previous=pageSetupFor(draft);
+    if(previous.foldAxis!==next.foldAxis){
+      const converted=withFoldDirection(draft,next.foldAxis);
+      updatePageGeometry({pageSetup:{...next,foldAxis:converted.pageSetup!.foldAxis},
+        foldMm:converted.foldMm,printStartMm:converted.printStartMm},
+        "Changed book fold direction to "+next.foldAxis);
+    }else updatePageGeometry({pageSetup:next},"Changed paper margins");
+  };
+  const chooseFoldDirection=(axis:FoldAxis)=>{
+    const cfg=pageSetupFor(draft);
+    if(cfg.foldAxis===axis)return;
+    changePageSetup({...cfg,foldAxis:axis});
+  };
+  const choosePaperPreset=(presetId:string)=>{
+    const preset=presetGeometry(presetId);if(!preset)return;
+    updatePageGeometry({...preset},"Selected measured sample preset");
+  };
+  const changePageOrientation=(orientation:"portrait"|"landscape")=>{
+    const isPortrait=draft.heightMm>=draft.widthMm;
+    if((orientation==="portrait")===isPortrait)return;
+    const setup=pageSetupFor(draft),w=draft.heightMm,h=draft.widthMm;
+    const limit=setup.foldAxis==="vertical"?w:h;
+    const fold=setup.foldAxis==="none"?0:limit/2;
+    updatePageGeometry({widthMm:w,heightMm:h,foldMm:fold,
+      printStartMm:setup.foldAxis==="none"?0:Math.min(limit,fold+12)},
+      "Changed orientation to "+orientation);
   };
   const append = (kind: Kind, origin: Origin, label: string, fieldKey = "") => {
-    const part = addPart(kind, origin, label, fieldKey, 14, draft.foldMm ? draft.foldMm + 12 : 25);
+    if(draft.elements.length>=300){setNotice("300-object safety limit reached. Delete unused boxes before inserting.");return;}
+    const axis=pageSetupFor(draft).foldAxis;
+    const x=axis==="vertical"&&draft.printStartMm>0?
+      Math.min(Math.max(5,draft.widthMm-85),draft.printStartMm+4):14;
+    const y=axis==="vertical"?Math.max(14,pageSetupFor(draft).marginTopMm+5):
+      Math.min(Math.max(15,draft.heightMm-16),draft.printStartMm>0?draft.printStartMm+3:
+        draft.foldMm>0?draft.foldMm+12:25);
+    const part = addPart(kind, origin, label, fieldKey, x, y);
     part.z = Math.max(0, ...draft.elements.map(p => p.z)) + 1;
     part.page = selectedPage;
     modify(current => ({ ...current, elements: [...current.elements, part] }));
     setSelectedId(part.id);setWordSelectedIds([part.id]);
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+  };
+  // Word-like insert commands use the existing editable object model.
+  const insertEditableTable=(rows:number,columns:number)=>{
+    const margin=pageSetupFor(draft);
+    const x=margin.foldAxis==="vertical"?
+      Math.max(margin.marginLeftMm+3,draft.printStartMm+3):margin.marginLeftMm+3;
+    const cellWidth=Math.min(35,(draft.widthMm-margin.marginRightMm-x)/columns);
+    const cellHeight=10;
+    const y=margin.foldAxis==="vertical"?Math.max(18,margin.marginTopMm+4):
+      Math.max(margin.marginTopMm+4,draft.printStartMm?draft.printStartMm+4:22);
+    if(rows<1||rows>8||columns<1||columns>8||cellWidth<5||
+       draft.elements.length+rows*columns*2>300||
+       x+columns*cellWidth>draft.widthMm-margin.marginRightMm||
+       y+rows*cellHeight>draft.heightMm-margin.marginBottomMm){
+      setNotice("The table cannot fit this measured passbook. Reduce rows/columns or change Page Setup.");return;
+    }
+    const parts:LayoutPart[]=[];const z=Math.max(0,...draft.elements.map(item=>item.z));
+    for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){
+      const left=x+col*cellWidth,top=y+row*cellHeight;
+      const border=addPart("rectangle","static","Table cell "+(row+1)+":"+(col+1),"",left,top);
+      border.width=cellWidth;border.height=cellHeight;border.borderWidth=.5;
+      border.quick=true;border.dotMatrix=false;border.z=z+parts.length+1;border.page=selectedPage;
+      parts.push(border);
+      const cell=addPart("text","static","Edit cell","",left+1,top+1);
+      cell.label="Cell "+(row+1)+":"+(col+1);cell.x=left+1;cell.y=top+1;
+      cell.width=Math.max(3,cellWidth-2);cell.height=cellHeight-2;cell.page=selectedPage;
+      cell.dotMatrix=setup.output==="dotmatrix";cell.z=z+parts.length+1;
+      parts.push(cell);
+    }
+    modify(current=>({...current,elements:[...current.elements,...parts]}));
+    setSelectedId(parts[1].id);setWordSelectedIds([parts[1].id]);
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice(rows+" × "+columns+" editable table grid inserted. PR2 output prints only the text, never the borders.");
+  };
+  const insertWordSymbol=(symbol:string)=>{
+    if(!symbol||symbol.length>12)return;
+    if(selected&&selected.kind==="text"&&selected.origin==="static"&&!selected.locked)
+      edit({label:selected.label+symbol});
+    else append("text","static",symbol);
+  };
+  const prefixSelectedText=(prefix:string)=>{
+    if(!selected||selected.kind!=="text"||selected.origin!=="static"||selected.locked)return;
+    edit({label:prefix+selected.label});
   };
   const startFromBlank=async()=>{
     if(busy)return;
@@ -438,6 +688,164 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     modify(current=>({...current,elements:current.elements.filter(p=>!keys.has(p.id))}));
     setSelectedId(null);setWordSelectedIds([]);
   };
+  /** This clipboard is private to the active draft editor, never the OS clipboard. */
+  const copyWordSelection=()=>{
+    if(!selectedWordParts.length)return;
+    setObjectClipboard(copyRibbonObjects(draft.elements,liveWordIds));
+    setNotice("Copied "+selectedWordParts.length+" layout object(s) in this editor. No real customer preview data was copied.");
+  };
+  const cutWordSelection=()=>{
+    if(!selectedWordParts.length||selectedWordParts.some(p=>p.locked)){
+      setNotice("Locked layout objects cannot be cut.");return;
+    }
+    setObjectClipboard(copyRibbonObjects(draft.elements,liveWordIds));
+    deleteWordSelection();
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setNotice("Cut "+selectedWordParts.length+" object(s) to the private in-editor clipboard. Undo restores them.");
+  };
+  const pasteWordSelection=()=>{
+    try{
+      const result=pasteRibbonObjects(draft.elements,objectClipboard,
+        {widthMm:draft.widthMm,heightMm:draft.heightMm,page:selectedPage},randomId);
+      modify(current=>({...current,elements:result.parts}));
+      const ids=result.inserted.map(p=>p.id);
+      setSelectedId(ids[0]||null);setWordSelectedIds(ids);
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice("Pasted "+ids.length+" editable object(s). Check their positions before printing.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Paste could not fit this passbook.");}
+  };
+  const changeTextCase=(style:RibbonCase)=>{
+    const result=changeStaticTextCase(draft.elements,liveWordIds,style);
+    if(!result.changed){setNotice("Select an unlocked static text label before changing letter case.");return;}
+    modify(current=>({...current,elements:result.parts}));
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice("Changed case of "+result.changed+" static text box(es). Dynamic customer fields were unchanged.");
+  };
+  const setQuickPageColor=(color:string)=>{
+    if(setup.output==="dotmatrix"){setNotice("Direct PR2 cannot include any page background graphic.");return;}
+    if(color!=="transparent"&&!/^#[0-9a-fA-F]{6}$/.test(color)){
+      setNotice("Invalid page color.");return;
+    }
+    const existing=draft.elements.find(p=>p.fieldKey==="pageBackground"&&
+      p.kind==="rectangle"&&(p.page??1)===selectedPage);
+    if(!existing&&color!=="transparent"&&draft.elements.length>=300){
+      setNotice("The layout has reached its 300-object limit.");return;
+    }
+    const background=addPart("rectangle","static","Quick Passbook background","pageBackground",0,0);
+    background.width=draft.widthMm;background.height=draft.heightMm;background.page=selectedPage;
+    background.background=color;background.color=color;background.borderWidth=0;
+    background.z=-999;background.dotMatrix=false;background.quick=true;background.locked=true;
+    modify(current=>({...current,elements:[
+      ...current.elements.filter(p=>!(p.fieldKey==="pageBackground"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)),
+      ...(color==="transparent"?[]:[background])
+    ]}));
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+    setNotice(color==="transparent"?"Removed Quick Passbook page fill.":"Applied Quick-only page fill. Direct PR2 remains text-only.");
+  };
+  const insertDocumentDecoration=(kind:"header"|"footer"|"watermark"|"border"|"pageNumber")=>{
+    if(draft.elements.length>=300){setNotice("The layout has reached its 300-object limit.");return;}
+    if((kind==="watermark"||kind==="border")&&setup.output==="dotmatrix"){
+      setNotice("Decorative backgrounds are Quick Passbook-only, never Direct PR2.");return;
+    }
+    const margin=pageSetupFor(draft);
+    const x=Math.max(2,margin.marginLeftMm+2);
+    const right=Math.max(2,margin.marginRightMm+2);
+    const availableWidth=Math.max(10,draft.widthMm-x-right);
+    const yTop=Math.max(2,margin.marginTopMm+2);
+    const yBottom=Math.max(2,draft.heightMm-margin.marginBottomMm-10);
+    const label=kind==="header"?"Editable page header":
+      kind==="footer"?"Editable page footer":
+      kind==="pageNumber"?"Page "+selectedPage:
+      kind==="watermark"?"DRAFT":"Page border";
+    const part=addPart(kind==="border"?"rectangle":"text","static",label,"",x,yTop);
+    part.page=selectedPage;part.z=Math.max(0,...draft.elements.map(p=>p.z))+1;
+    part.width=availableWidth;part.height=8;part.quick=true;
+    part.dotMatrix=setup.output==="dotmatrix";
+    if(kind==="footer"||kind==="pageNumber"){
+      part.y=yBottom;part.align=kind==="pageNumber"?"right":"center";
+    }
+    if(kind==="header"){part.align="center";part.bold=true;}
+    if(kind==="watermark"){
+      part.x=Math.max(x,Math.min(draft.widthMm-55,draft.widthMm/2-27));
+      part.y=Math.max(yTop,Math.min(draft.heightMm-16,draft.heightMm/2-8));
+      part.width=Math.min(75,draft.widthMm-part.x);
+      part.height=16;part.size=23;part.bold=true;part.color="#7d9ebc";
+      part.opacity=.25;part.rotation=-30;part.dotMatrix=false;
+    }
+    if(kind==="border"){
+      part.y=yTop;part.height=Math.max(10,draft.heightMm-yTop-margin.marginBottomMm-3);
+      part.background="transparent";part.borderColor="#3869a4";
+      part.borderWidth=.5;part.dotMatrix=false;
+    }
+    modify(current=>({...current,elements:[...current.elements,part]}));
+    setSelectedId(part.id);setWordSelectedIds([part.id]);
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setNotice("Inserted editable "+kind+" in draft. Check bank-specific preprinted paper and printer proof.");
+  };
+  const nudgeRibbonSelection=(dx:number,dy:number)=>{
+    if(!liveWordIds.length)return;
+    try{
+      const next=wordNudge(draft.elements,liveWordIds,{widthMm:draft.widthMm,heightMm:draft.heightMm},dx,dy);
+      modify(current=>({...current,elements:next}));
+      setPhysicalChecked(false);setHardwareChecked(false);
+      setNotice("Moved selected object(s) by measured millimetres. Review printer alignment.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Indent movement exceeded physical paper.");}
+  };
+  const addDraftPage=()=>{
+    const next=(draft.pageCount||1)+1;
+    if(next>10){setNotice("This layout supports up to 10 editable pages.");return;}
+    modify(current=>({...current,pageCount:next}));
+    setSelectedPage(next);setSelectedId(null);setWordSelectedIds([]);
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice("Created blank page "+next+". This is a measured passbook layout page, not automatic Word text reflow.");
+  };
+  const checkLegibility=()=>{
+    const findings=reviewPassbookLegibility(draft.elements,setup.output);
+    setLegibilityFindings(findings);
+    const errors=findings.filter(item=>item.severity==="error").length;
+    const warnings=findings.filter(item=>item.severity==="warning").length;
+    setNotice("Offline legibility check: "+errors+" error(s), "+warnings+
+      " warning(s). These are advisory only; confirm Epson print on physical passbook paper.");
+    if(findings.length){
+      const first=findings[0];setSelectedPage(first.page);
+      setSelectedId(first.id);setWordSelectedIds([first.id]);
+    }
+  };
+  const findNextUnreviewed=()=>{
+    const next=draft.elements.find(part=>part.needsReview);
+    if(!next){setNotice("No unreadable OCR lines are flagged in this draft.");return;}
+    setSelectedPage(next.page||1);setSelectedId(next.id);setWordSelectedIds([next.id]);
+    setNotice("Review the selected OCR line and mark its original-paper layer before approval.");
+  };
+  const changeObjectMeasure=(key:"x"|"y"|"width"|"height",next:number)=>{
+    if(!selected||selected.locked||!Number.isFinite(next))return;
+    const maximum=key==="x"?draft.widthMm-selected.width:
+      key==="y"?draft.heightMm-selected.height:
+      key==="width"?draft.widthMm-selected.x:draft.heightMm-selected.y;
+    const minimum=key==="width"||key==="height"?1:0;
+    if(maximum<minimum){setNotice("Object is outside this measured passbook page.");return;}
+    const value=round(within(next,minimum,maximum));
+    edit({[key]:value});
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+  };
+  const insertCaptionBelowSelection=()=>{
+    if(!selected){setNotice("Choose a picture, shape or field for its caption.");return;}
+    if(draft.elements.length>=300){setNotice("This layout is already at its 300-object limit.");return;}
+    const availableWidth=draft.widthMm-selected.x;
+    if(availableWidth<10){setNotice("Not enough room for a caption at the right edge. Move the object left.");return;}
+    const width=Math.max(10,Math.min(selected.width,availableWidth));
+    const y=selected.y+selected.height+1;
+    if(y+8>draft.heightMm){setNotice("Not enough room below the selected object. Move it upward.");return;}
+    const caption=addPart("text","static","Caption: "+selected.label.slice(0,75),"",selected.x,y);
+    caption.width=width;caption.height=8;caption.size=9;caption.italic=true;
+    caption.page=selectedPage;caption.quick=true;
+    caption.dotMatrix=setup.output==="dotmatrix";
+    caption.z=Math.max(0,...draft.elements.map(p=>p.z))+1;
+    modify(current=>({...current,elements:[...current.elements,caption]}));
+    setSelectedId(caption.id);setWordSelectedIds([caption.id]);
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice("Inserted editable caption box. For Direct PR2, verify this text is not preprinted.");
+  };
   const moveSelectedTo=(axis:"horizontal"|"vertical",side:"start"|"center"|"end")=>{
     if(!selected)return;
     try{
@@ -473,32 +881,117 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setDraft(next);
     setDirty(true);
   };
-  const save = async () => {
-    if(!storageKey||storageKey!==draftKey(mode,bankName)){
-      setNotice("Layout NOT saved: workspace changed; reload the verified bank and tenant first.");return;
+  const restorePrivateCloudDraft=async()=>{
+    if(previewOnly){setNotice("Cloud recovery is disabled in Codespaces demo.");return;}
+    if(dirty||busy||savingLayout){setNotice("Save local unsaved edits before choosing the online draft.");return;}
+    if(!canSubmit||!Object.keys(bankValues).length){
+      setNotice("Use a configured Client Admin bank workspace to restore cloud drafts.");return;
     }
-    if(savingLayout||busy)return;
     setSavingLayout(true);
     try{
-      const saved=await saveLocalLayout(bankName,mode,"layout-1",draft,
-        localRevisionRef.current);
+      const result=await readPrivateLayoutDraft(bankName,mode,layoutSlotId);
+      if(!result.draft){privateRevisionRef.current=0;setNotice("No private cloud draft exists for this slot.");return;}
+      if(!await confirmAction("Load the private cloud draft for this bank and slot? Your currently displayed draft will be replaced in the editor."))
+        return;
+      privateRevisionRef.current=result.revision;
+      setDraft(result.draft as Draft);
+      setDirty(true);editingRef.current=true;
+      setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);
+      setReferencePages([]);setReferenceVisible(false);setScanFrame(null);setScanSuggestion(null);
+      setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+      setPreviewOpen(false);setPreviewCustomers([]);
+      setNotice("Private cloud design recovered (revision "+result.revision+"). Check source artwork, mapping and physical print alignment.");
+    }catch(error){setNotice("Private cloud recovery was blocked; existing local design is safe: "+
+      (error instanceof Error?error.message:"Connection unavailable"));}
+    finally{setSavingLayout(false);}
+  };
+  const save = async ():Promise<boolean> => {
+    if(previewOnly){
+      try{
+        if(!validDraft(draft,mode,bankName))throw Error("Draft validation failed.");
+        const json=JSON.stringify(draft);
+        if(json.length>250000)throw Error("Draft too large for browser demo.");
+        localStorage.setItem(previewLayoutKey(mode,bankName,layoutSlotId),json);
+        setDirty(false);setAutosaveStatus("Demo draft saved in this Codespaces browser.");
+        setNotice("Saved locally in browser only. Firebase/Master Admin were not contacted.");
+        return true;
+      }catch(error){setNotice("Demo save failed: "+(error instanceof Error?error.message:"Storage unavailable"));return false;}
+    }
+    if(!storageKey||storageKey!==draftKey(mode,bankName)){
+      setNotice("Layout NOT saved: workspace changed; reopen the verified bank and tenant.");return false;
+    }
+    if(savingLayout||busy)return false;
+    const startingRevision=editsRef.current;
+    setSavingLayout(true);
+    try{
+      const saved=await saveLocalLayout(bankName,mode,layoutSlotId,draft,localRevisionRef.current);
       localRevisionRef.current=saved.localRevision;
-      setDirty(false);
-      setNotice("Editable Layout 1 saved in the existing BANK SETU offline workspace repository. Customer records and pending sync operations were not changed.");
-      if(canSubmit&&navigator.onLine){
+      if(editsRef.current===startingRevision)setDirty(false);
+      setAutosaveStatus("Layout "+selectedLayoutSlot+" saved in the verified local workspace repository.");
+      if(canSubmit&&Object.keys(bankValues).length>0&&navigator.onLine){
         try{
-          const synced=await publishLocalLayoutSlot(bankName,mode,"layout-1");
-          setNotice("Layout saved offline and a compact, customer-free recovery copy synced for this tenant (cloud revision "+synced.revision+"). Shared catalog publication still requires Master review.");
+          const result=await savePrivateLayoutDraft(bankName,mode,layoutSlotId,draft,privateRevisionRef.current);
+          privateRevisionRef.current=result.revision;
+          setNotice("Private tenant Firebase draft saved (revision "+result.revision+"). Master review remains separate.");
         }catch(error){
-          setNotice("Layout SAVED offline. Cloud recovery is pending: "+(error instanceof Error?error.message:"Unavailable")+". No customer/PDF data was uploaded.");
+          setNotice("Layout SAVED locally. Private cloud draft pending: "+
+            (error instanceof Error?error.message:"Unavailable")+
+            ". If another device edited this slot, use Restore Private Cloud Draft to review.");
         }
-      }
+      }else setNotice("Layout saved locally. Cloud save will resume when online in the configured Client Admin workspace.");
+      return true;
     }catch(error){
-      // Never mark success on quota/tenant/license/DB failures.
-      setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing drafts were retained.");
+      setNotice("Layout NOT saved: "+(error instanceof Error?error.message:"Local database unavailable")+". Existing data was retained.");
+      return false;
     }finally{setSavingLayout(false);}
   };
+  const saveAndSubmit=async()=>{
+    const saved=await save();
+    if(saved&&canSubmit)await submitForReview(); // Original Master approval audit remains mandatory.
+  };
+  // Debounced, tenant-scoped autosave through the EXISTING local repository and Worker.
+  // Never publish unreviewed OCR/Word content or actual customer preview values to cloud.
+  useEffect(()=>{
+    if(!dirty||busy||savingLayout||!storageKey)return;
+    if(previewOnly){
+      const timer=window.setTimeout(()=>{
+        try{
+          if(!validDraft(draft,mode,bankName))throw Error("Invalid geometry");
+          const json=JSON.stringify(draft);if(json.length>250000)throw Error("Demo draft too large.");
+          localStorage.setItem(previewLayoutKey(mode,bankName,layoutSlotId),json);
+          setAutosaveStatus("Codespaces demo autosaved · "+new Date().toLocaleTimeString());
+        }catch(error){setAutosaveStatus("Demo autosave unavailable: "+(error instanceof Error?error.message:"Storage error"));}
+      },1500);
+      return()=>window.clearTimeout(timer);
+    }
+    const editNumber=editsRef.current;
+    const timer=window.setTimeout(()=>{
+      if(editorScopeRef.current!==storageKey||!editingRef.current)return;
+      setSavingLayout(true);
+      void (async()=>{
+        try{
+          const slot=await saveLocalLayout(bankName,mode,layoutSlotId,draft,localRevisionRef.current);
+          localRevisionRef.current=slot.localRevision;
+          if(editsRef.current===editNumber)setDirty(false);
+          setAutosaveStatus("Draft saved locally · "+new Date().toLocaleTimeString());
+          if(canSubmit&&navigator.onLine&&Object.keys(bankValues).length>0&&
+              Date.now()-lastCloudAutosaveRef.current>=30000){
+            lastCloudAutosaveRef.current=Date.now();
+            try{
+              const saved=await savePrivateLayoutDraft(bankName,mode,layoutSlotId,draft,privateRevisionRef.current);
+              privateRevisionRef.current=saved.revision;
+              setAutosaveStatus("Private Firebase draft synced · revision "+saved.revision);
+            }catch(error){setAutosaveStatus("Saved offline · cloud recovery pending: "+
+                (error instanceof Error?error.message:"Unable to sync"));}
+          }else{setAutosaveStatus("Saved offline · cloud autosave on the next available interval");}
+        }catch(error){setAutosaveStatus("Autosave pending: "+(error instanceof Error?error.message:"Database unavailable"));}
+        finally{setSavingLayout(false);}
+      })();
+    },4000);
+    return()=>window.clearTimeout(timer);
+  },[draft,dirty,busy,savingLayout,storageKey,bankName,mode,canSubmit,layoutSlotId,bankValues,previewOnly]);
   const syncNow = async () => {
+    if(previewOnly){setNotice("Cloud sync is disabled in Codespaces synthetic demo.");return;}
     if(!storageKey||storageKey!==draftKey(mode,bankName)){
       setNotice("Cloud sync blocked: the active tenant changed.");return;
     }
@@ -514,7 +1007,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         }
       }
       const entries=await readLocalLayouts(bankName,mode);
-      const current=entries.find(item=>item.slotId==="layout-1");
+      const current=entries.find(item=>item.slotId===layoutSlotId);
       if(current&&!editingRef.current&&validDraft(current.draft,mode,bankName)){
         setDraft(current.draft as unknown as Draft);
         localRevisionRef.current=current.localRevision;
@@ -525,6 +1018,39 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setNotice("Existing offline templates kept. Cloud sync: "+(error instanceof Error?error.message:"Unavailable"));
     }finally{setSavingLayout(false);}
   };
+  const changeDraftSlot=async(next:number)=>{
+    if(next===selectedLayoutSlot||busy||savingLayout)return;
+    if(previewOnly){
+      try{
+        if(dirty)throw Error("Save your demo draft before switching slots.");
+        const slotId="layout-"+(next+(setup.output==="dotmatrix"?3:0));
+        const raw=localStorage.getItem(previewLayoutKey(mode,bankName,slotId));
+        const nextDraft:unknown=raw?JSON.parse(raw):null;
+        if(nextDraft&&!validDraft(nextDraft,mode,bankName))throw Error("Saved demo draft has invalid geometry.");
+        setSelectedLayoutSlot(next);
+        setDraft(nextDraft as Draft||startBlankLayout(initialDraft(mode,bankName)));
+        setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);setPreviewOpen(false);
+        setDirty(false);setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+        setNotice("Codespaces isolated slot "+next+" opened; production layouts unchanged.");
+      }catch(error){setNotice("Demo slot unavailable: "+(error instanceof Error?error.message:"Storage unavailable"));}
+      return;
+    }
+    if(dirty){setNotice("Save or export your current changes before switching to another layout slot.");return;}
+    try{
+      const slotId="layout-"+(next+(setup.output==="dotmatrix"?3:0));
+      const slots=await readLocalLayouts(bankName,mode);
+      const saved=slots.find(item=>item.slotId===slotId);
+      if(saved&&!validDraft(saved.draft,mode,bankName))throw Error("Saved layout requires review before opening.");
+      setSelectedLayoutSlot(next);
+      privateRevisionRef.current=0;lastCloudAutosaveRef.current=0;
+      localRevisionRef.current=saved?.localRevision||0;
+      setDraft(saved?(saved.draft as unknown as Draft):startBlankLayout(initialDraft(mode,bankName)));
+      setSelectedId(null);setWordSelectedIds([]);setSelectedPage(1);
+      setPreviewOpen(false);setPreviewCustomers([]);setTemporaryValues({});
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice(saved?"Opened existing layout draft slot "+next:"Empty layout slot "+next+" is ready for a new design.");
+    }catch(error){setNotice("Cannot change slot: "+(error instanceof Error?error.message:"Local database unavailable"));}
+  };
   const exportJson = () => {
     const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -534,6 +1060,25 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 500);
     setNotice("Template JSON exported. Draft only; not a verified print format.");
+  };
+  const restoreDraftBackup=async(event:ChangeEvent<HTMLInputElement>)=>{
+    const file=event.target.files?.[0];event.target.value="";
+    if(!file)return;
+    if(file.size>750*1024||!file.name.toLowerCase().endsWith(".json")){
+      setNotice("Choose an editable BANK SETU layout JSON backup smaller than 750 KB.");return;
+    }
+    try{
+      const parsed:unknown=JSON.parse(await file.text());
+      if(!validDraft(parsed,mode,bankName))throw Error("Wrong bank, document type or invalid layout backup.");
+      if(!await confirmAction("Restore this same-bank layout backup? Current unsaved edits will be replaced; no approved template is changed."))return;
+      const restored=structuredClone(parsed as Draft);
+      modify(()=>restored);
+      setTemporaryValues({});setPreviewOpen(false);setPreviewCustomers([]);setPreviewCustomerKey("");
+      setReferencePages([]);setReferenceVisible(false);setScanSuggestion(null);setScanFrame(null);
+      setGraphicWarnings([]);setSelectedId(null);setWordSelectedIds([]);
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice("Verified same-bank editable layout restored. Review the paper dimensions, then save this draft.");
+    }catch(error){setNotice("Layout backup rejected: "+(error instanceof Error?error.message:"Unreadable layout file"));}
   };
   const calibrationPdf=async()=>{
     try{
@@ -555,6 +1100,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       const blob = await exportLayoutProofPdf({ ...draft, elements: draft.elements.map(part => {
         if (temporaryValues[part.id] !== undefined) return {...part, value:temporaryValues[part.id]};
         if (part.origin === "bank" && typeof bankValues[part.fieldKey] === "string") return {...part,value:bankValues[part.fieldKey]};
+        if (previewCustomer && part.origin==="customer") return {...part,value:layoutCustomerValue(previewCustomer,part.fieldKey)};
         return part;
       }) }, preview);
       const url = URL.createObjectURL(blob);
@@ -765,10 +1311,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } catch(error) { setNotice("Graphic import failed: "+(error instanceof Error?error.message:"Unknown error")); }
     finally { URL.revokeObjectURL(objectUrl); }
   };
-  const importPdf = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
+  const importPdfFile = async (file:File) => {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) { setNotice("Please choose a PDF sample."); return; }
     if (file.size > 12 * 1024 * 1024) { setNotice("Please choose a PDF up to 12 MB."); return; }
     setBusy(true);
@@ -979,6 +1522,84 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     } finally { setBusy(false); }
   };
 
+  const importPdf=(event:ChangeEvent<HTMLInputElement>)=>{
+    const file=event.target.files?.[0];event.target.value="";
+    if(file)void importPdfFile(file);
+  };
+  const importWordFile=async(file:File)=>{
+    if(busy)return;
+    setBusy(true);
+    setNotice("Reading local Word document. The original file stays on this device.");
+    try{
+      const result=file.name.toLowerCase().endsWith(".doc")?await importLegacyWordDoc(file):await importWordDocx(file);
+      if(!result.paragraphs.length)throw Error("No editable text found. Check the document or create a new layout.");
+      const nextParts:LayoutPart[]=[];
+      let y=12,dropped=0,tableId=0,tableY=0,tableBottom=0;
+      const usableHeight=draft.heightMm-12;
+      for(const paragraph of result.paragraphs){
+        const table=paragraph.table;
+        if(table&&table.id!==tableId){
+          if(tableId)y=Math.max(y,tableBottom+4);
+          tableId=table.id;tableY=y;tableBottom=y;
+        }else if(!table&&tableId){
+          y=Math.max(y,tableBottom+4);tableId=0;
+        }
+        const cellWidth=table?(draft.widthMm-24)/table.columns:draft.widthMm-24;
+        const x=table?12+table.col*cellWidth:12;
+        const baseline=table?tableY+table.row*13:y;
+        const chunks=paragraph.text.match(/[\s\S]{1,500}/g)||[];
+        let segmentY=baseline;
+        for(const content of chunks){
+          const lines=content.split("\n").length+Math.max(0,Math.ceil(content.length/(table?25:54))-1);
+          const height=within(Math.max(9,lines*4.4),9,40);
+          if(segmentY+height>usableHeight||nextParts.length>=280){dropped++;continue;}
+          if(table&&nextParts.length<279){
+            const border=addPart("rectangle","static","Word table cell","",x,segmentY);
+            border.width=cellWidth;border.height=height+1;border.borderWidth=.5;
+            border.quick=true;border.dotMatrix=false;border.page=1;
+            border.z=nextParts.length+1;nextParts.push(border);
+          }
+          const part=addPart("text","static",content,"",table?x+1:x,table?segmentY+1:segmentY);
+          part.width=Math.max(5,table?cellWidth-2:cellWidth);
+          part.height=height;part.align=paragraph.align;part.page=1;
+          if(paragraph.font)part.font=paragraph.font.slice(0,100);
+          if(paragraph.size)part.size=paragraph.size;
+          part.bold=paragraph.bold??false;part.italic=paragraph.italic??false;
+          part.underline=paragraph.underline??false;if(paragraph.color)part.color=paragraph.color;
+          part.dotMatrix=setup.output==="dotmatrix";
+          part.needsReview=true; // Verify source before any Master publication.
+          part.z=nextParts.length+1;nextParts.push(part);
+          segmentY+=height+2;
+        }
+        if(table)tableBottom=Math.max(tableBottom,segmentY);
+        else y=Math.max(y,segmentY+3);
+      }
+      if(!nextParts.length)throw Error("Word text does not fit this paper. Correct the physical measurements first.");
+      modify(current=>({...startBlankLayout(current),elements:nextParts,
+        sourceArtworkStatus:result.warnings.length?"needsReview":"clean"}));
+      setSelectedId(nextParts[0].id);setWordSelectedIds([nextParts[0].id]);
+      setSelectedPage(1);setReferencePages([]);setGraphicWarnings(result.warnings);
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice(nextParts.length+" editable Word paragraph(s) imported. Every line needs review before Master approval. "+
+        (dropped?dropped+" paragraph(s) did not fit the measured page. ":"")+
+        result.warnings.join(" "));
+    }catch(error){setNotice("Word import could not be completed: "+(error instanceof Error?error.message:"Invalid file"));}
+    finally{setBusy(false);}
+  };
+  useEffect(()=>{
+    if(initialImportRef.current)return;
+    initialImportRef.current=true;
+    if(setup.method==="continue")return;
+    editingRef.current=true;
+    if(setup.method==="blank"){
+      modify(current=>startBlankLayout(current));
+      setNotice("New blank document created. Choose fields, design your page, then review it.");
+    }else if(setup.method==="pdf"&&setup.file){void importPdfFile(setup.file);}
+    else if(setup.method==="word"&&setup.file){void importWordFile(setup.file);}
+  // A wizard selection is immutable for the life of this keyed studio instance.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   const down=(event:ReactPointerEvent<HTMLDivElement>,part:LayoutPart)=>{
     if(event.button!==0)return;
     event.preventDefault();event.stopPropagation();
@@ -1048,16 +1669,87 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if (part.kind === "rectangle" || part.kind === "line" || part.kind === "ellipse") return "";
     if (temporaryValues[part.id] !== undefined && (part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix")) return temporaryValues[part.id];
     return part.origin === "customer" || part.origin === "bank" || part.origin === "dotmatrix"
-      ? (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
+      ? (part.origin === "customer" && previewCustomer?layoutCustomerValue(previewCustomer,part.fieldKey):"") ||
+        (part.origin === "bank" && bankValues[part.fieldKey]) || part.value || part.defaultValue || "[" + (part.fieldKey || part.label) + "]" : part.label;
   };
   const displayPart=(part:LayoutPart)=>{
     if(part.kind!=="text"&&part.kind!=="field")return partText(part);
     return <span style={compressedTextStyle(part,zoom)}>{partText(part)}</span>;
   };
+  const mapPointer=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    const bounds=event.currentTarget.getBoundingClientRect();
+    return {x:round(within((event.clientX-bounds.left)/(PX_PER_MM*zoom),0,draft.widthMm)),
+      y:round(within((event.clientY-bounds.top)/(PX_PER_MM*zoom),0,draft.heightMm))};
+  };
+  const finishMapping=(event:ReactPointerEvent<HTMLDivElement>)=>{
+    const start=mapStartRef.current;
+    if(!mappingSource||!start)return;
+    mapStartRef.current=null;
+    const end=mapPointer(event);
+    const x=within(Math.min(start.x,end.x),0,draft.widthMm-10);
+    const y=within(Math.min(start.y,end.y),0,draft.heightMm-8);
+    const width=round(within(Math.abs(end.x-start.x),10,draft.widthMm-x));
+    const height=round(within(Math.abs(end.y-start.y),8,draft.heightMm-y));
+    if(draft.elements.length>=300){setNotice("Maximum layout elements reached.");setMappingSource(null);setMapPendingRect(null);return;}
+    const key=mappingSource==="customer"?"name":(Object.keys(bankValues).sort()[0]||"branchName");
+    const part=addPart("field",mappingSource,mappingSource==="customer"?"Customer Data":"Bank Information",key,x,y);
+    part.width=width;part.height=height;part.page=selectedPage;part.z=Math.max(0,...draft.elements.map(item=>item.z))+1;
+    modify(current=>({...current,elements:[...current.elements,part]}));
+    setSelectedId(part.id);setWordSelectedIds([part.id]);setShowProps(true);
+    setMappingSource(null);setMapPendingRect(null);
+    setNotice("Field box created. Choose its exact field key in the Properties panel on the right.");
+  };
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
-  return <section data-step={guidedStep} className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
+  // Office/LibreOffice/Docs-inspired offline tool finder. Only actions
+  // explicitly wired below are advertised as commands.
+  const runRibbonCommand=(id:SupportedRibbonAction)=>{
+    setRibbonSearchOpen(false);setRibbonSearch("");
+    switch(id){
+      case "new":setWordTab("file");void startFromBlank();break;
+      case "save":setWordTab("file");void save();break;
+      case "backup":setWordTab("file");exportJson();break;
+      case "proof":setWordTab("file");void proofPdf();break;
+      case "undo":undo();break;
+      case "redo":redo();break;
+      case "copy":copyWordSelection();break;
+      case "paste":pasteWordSelection();break;
+      case "find":setWordTab("review");break;
+      case "text":setWordTab("insert");append("text","static","New text");break;
+      case "table":setWordTab("insert");insertEditableTable(tableRows,tableColumns);break;
+      case "customer":setWordTab("mailings");append("field","customer","Account holder","name");break;
+      case "account":setWordTab("mailings");append("field","customer","Account number","accountNo");break;
+      case "bank":setWordTab("mailings");append("field","bank","Bank Name","bankName");break;
+      case "header":setWordTab("insert");insertDocumentDecoration("header");break;
+      case "footer":setWordTab("insert");insertDocumentDecoration("footer");break;
+      case "page-number":setWordTab("insert");insertDocumentDecoration("pageNumber");break;
+      case "line":setWordTab("draw");append("line","static","Line");break;
+      case "rectangle":setWordTab("draw");append("rectangle","static","Box");break;
+      case "page-setup":setWordTab("layout");setPageSetupOpen(true);break;
+      case "group":setWordTab("layout");groupWordSelection();break;
+      case "lock":setWordTab("layout");lockWordSelection(true);break;
+      case "unlock":setWordTab("layout");lockWordSelection(false);break;
+      case "ruler":setWordTab("view");setShowRulers(v=>!v);break;
+      case "grid":setWordTab("view");setShowGrid(v=>!v);break;
+      case "zoom":setWordTab("view");setZoom(1);break;
+      case "audit":setWordTab("review");{
+        const result=auditPassbookTemplate(draft);setAudit(result);
+        setNotice("Draft audit: "+result.filter(item=>item.severity==="error").length+
+          " errors and "+result.filter(item=>item.severity==="warning").length+" warnings.");
+      }break;
+      case "ocr":setWordTab("review");findNextUnreviewed();break;
+      case "shared":setWorkspaceView("library");setCatalogOpen(true);break;
+    }
+  };
+  return <section className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")}
+    onKeyDown={event=>{
+      if(event.altKey&&event.key==="/"){
+        event.preventDefault();setRibbonSearchOpen(true);setWorkspaceView("design");
+        ribbonSearchRef.current?.focus();
+      }
+    }}
+    aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div className="ls-heading">
         <span className="ls-brand-mark" aria-hidden="true">BS</span>
@@ -1066,102 +1758,590 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <h2>{mode === "passbook" ? "Passbook Layout Studio" : "Account Opening Layout Studio"}</h2>
           <p>Design precise, editable layouts using real paper dimensions. <strong>{bankName || "Select a bank in Bank Information"}</strong></p>
           <div className="ls-status-tags" aria-label="Current editor configuration">
-            <span>Windows EXE</span><span>Local draft</span>
+            <span>{previewOnly?"CODESPACES UI DEMO":"Windows EXE"}</span><span>{previewOnly?"Synthetic browser-only draft":"Local draft"}</span>
             <span>{draft.widthMm} × {draft.heightMm} mm</span>
             <span>{draft.elements.length} elements</span>
           </div>
         </div>
       </div>
+      {previewOnly&&<p className="ls-codespaces-warning" role="status">
+        Codespaces UI demo · No login, real customers, Firebase saves, Master approvals or PR2 hardware operations.
+        PDF/Word conversion, page settings, editable objects and proof export use the real draft editor.
+      </p>}
       <div className="ls-header-utilities">
-      <div className="ls-header-main-actions"><button type="button" className="ls-primary" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>New Blank Layout (Word-style)</button><button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings. Hardware proof is still required.");}}>Run Layout Audit</button><button type="button" className="ls-primary" disabled={savingLayout} onClick={()=>{void save();}}>{savingLayout?"Saving/Syncing…":"Save Draft to Offline DB"}{dirty ? " *" : ""}</button><button type="button" disabled={savingLayout||busy} onClick={()=>{void syncNow();}}>Sync/Recover Layouts</button></div>
+      <div className="ls-header-main-actions"><button type="button" className="ls-primary" disabled={savingLayout||busy} onClick={()=>{void save();}} title="Save this draft">▣ Save Draft{dirty ? " *" : ""}</button><button type="button" onClick={()=>{setWorkspaceView("design");if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}} title="Preview customer values without saving them">◉ {previewOpen?"Hide Preview":"Preview"}</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}} title="Submit for Master review">✓ Send to Master</button>}</div>
       <details className="ls-header-extra">
         <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
-        <div className="ls-header-extra-actions"><button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
+        <div className="ls-header-extra-actions">
+          <button type="button" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button>
+          <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings.");}}>Run Layout Audit</button>
+          <button type="button" disabled={previewOnly||savingLayout||busy} onClick={()=>{void syncNow();}}>Sync / Recover Layouts</button>
+          <label className="ls-file-action">Restore Layout Backup (JSON)<input type="file" accept=".json,application/json"
+            onChange={event=>{void restoreDraftBackup(event);}}/></label>
+          <button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
         {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}</div>
       </details>
     </div>
     </header>
-    <nav className="ls-workflow-nav" aria-label="Layout Studio workspace">
+    <nav className="ls-workflow-nav" aria-label="Passbook Designer sidebar">
+      <div className="ls-sidebar-brand"><strong>◉ BANK SETU</strong><small>Passbook Layout Designer</small></div>
       <button type="button" aria-pressed={workspaceView==="design"} onClick={()=>setWorkspaceView("design")}>
-        <span className="ls-workflow-number">01</span><span><strong>Design workspace</strong><small>Paper setup, PDF import and visual editing</small></span>
+        <span className="ls-workflow-number">⌂</span><span><strong>Layout Designer</strong></span>
       </button>
-      <button type="button" aria-pressed={workspaceView==="library"} onClick={()=>setWorkspaceView("library")}>
-        <span className="ls-workflow-number">02</span><span><strong>Templates & approval</strong><small>Master review, activation and rollback</small></span>
+      <button type="button" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>
+        <span className="ls-workflow-number">＋</span><span><strong>नया डिजाइन बनाएँ</strong></span>
       </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
+        <span className="ls-workflow-number">▤</span><span><strong>ड्राफ्ट / मेरे डिजाइन</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);}}>
+        <span className="ls-workflow-number">◎</span><span><strong>Shared Bank Layouts</strong><small>Approved same-bank templates</small></span>
+      </button>
+      <button type="button" disabled={!canReview} title={canReview?"Review pending bank layouts":"Only Master Admin can approve shared layouts"} onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
+        <span className="ls-workflow-number">✓</span><span><strong>मास्टर स्वीकृति</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setShowLayers(v=>!v);}}>
+        <span className="ls-workflow-number">▦</span><span><strong>Layout मैनेज / Layers</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("layout");setPageSetupOpen(true);}}>
+        <span className="ls-workflow-number">▱</span><span><strong>Page Size / Margins</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
+        <span className="ls-workflow-number">⇩</span><span><strong>बैकअप / रिकवर</strong></span>
+      </button>
+      <button type="button" onClick={onBackToSetup}>
+        <span className="ls-workflow-number">⚙</span><span><strong>बैंक चयन / सेटिंग</strong></span>
+      </button>
+      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("help");}}>
+        <span className="ls-workflow-number">?</span><span><strong>सहायता</strong></span>
+      </button>
+      <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
     </nav>
+    <details className="ls-tool-card ls-word-suite" open>
+      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Free BANK SETU ribbon · Text, layout, shapes, fields and preview</small></span><span aria-hidden="true">⌄</span></summary>
+      <p className="ls-tool-note">Free built-in BANK SETU editing tools — no Microsoft account, Microsoft 365 subscription or Word installation required. Select a text object to format it; unsupported Office-only commands are not offered.</p>
+      <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
+        {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
+          <button key={tab} type="button" aria-pressed={wordTab===tab}
+            title={"Open "+tab+" ribbon tools"}
+            onClick={()=>setWordTab(tab)}>
+            <span className="ls-word-tab-icon" aria-hidden="true">{({
+              file:"▤",home:"⌂",insert:"⊞",draw:"✎",design:"◈",layout:"▱",
+              references:"§",mailings:"◇",review:"✓",view:"◉",help:"?"
+            } as const)[tab]}</span>{tab[0].toUpperCase()+tab.slice(1)}
+          </button>)}
+        {selected&&<button type="button" className="ls-contextual-tab" aria-pressed={wordTab==="format"}
+          onClick={()=>setWordTab("format")}>Object Format</button>}
+      </nav>
+      <div className="ls-ribbon-tool-finder">
+        <label htmlFor="ls-ribbon-command-search">⌕ Find a tool</label>
+        <input id="ls-ribbon-command-search" ref={ribbonSearchRef} type="search"
+          aria-label="Search available editing tools" autoComplete="off"
+          placeholder="Search commands (Alt+/)"
+          value={ribbonSearch}
+          onFocus={()=>setRibbonSearchOpen(true)}
+          onChange={event=>{setRibbonSearch(event.target.value);setRibbonSearchOpen(true);}}
+          onKeyDown={event=>{
+            if(event.key==="Escape"){event.preventDefault();setRibbonSearchOpen(false);ribbonSearchRef.current?.blur();}
+            if(event.key==="Enter"){
+              event.preventDefault();
+              const first=findRibbonCommands(ribbonSearch,8)[0];
+              if(first)runRibbonCommand(first.id);
+            }
+          }}/>
+        {ribbonSearchOpen&&<div className="ls-ribbon-tool-results" role="group" aria-label="Matching usable ribbon commands">
+          <div className="ls-ribbon-tool-results-head"><strong>Available tools</strong>
+            <button type="button" onClick={()=>setRibbonSearchOpen(false)}>Close</button>
+          </div>
+          {findRibbonCommands(ribbonSearch,8).map(cmd=><button type="button" key={cmd.id}
+            onClick={()=>runRibbonCommand(cmd.id)}
+            title={"Run "+cmd.label+" in "+cmd.tab+" tab"}>
+            <span>{cmd.label}</span><small>{cmd.tab}</small>
+          </button>)}
+          {findRibbonCommands(ribbonSearch,8).length===0&&<p>No working tool matches this search.</p>}
+        </div>}
+      </div>
+      <div className="ls-ribbon-quick-tools" role="toolbar" aria-label="Quick passbook design tools">
+        <strong className="ls-ribbon-quick-label">★ Easy Tools</strong>
+        <button type="button" title="Insert a text box. Double-click it on paper to write."
+          onClick={()=>{setWordTab("home");append("text","static","New text");}}><span aria-hidden="true">T</span> Text Box</button>
+        <button type="button" title="Insert an editable two-row, three-column table."
+          onClick={()=>{setWordTab("insert");insertEditableTable(2,3);}}><span aria-hidden="true">▦</span> Table</button>
+        <button type="button" title="Add a field that uses the current customer's name, never another client's data."
+          onClick={()=>{setWordTab("mailings");append("field","customer","Customer Name","customerName");}}><span aria-hidden="true">♙</span> Customer Name</button>
+        <button type="button" title="Add a field from the current bank configuration."
+          onClick={()=>{setWordTab("mailings");append("field","bank","Branch Name","branchName");}}><span aria-hidden="true">⌂</span> Bank Field</button>
+        <label className="ls-file-action" title="Import a logo or photo for Quick Passbook. Not allowed in Direct PR2.">
+          <span aria-hidden="true">▣</span> Picture
+          <input type="file" accept="image/png,image/jpeg,image/webp"
+            disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}}/>
+        </label>
+        <button type="button" title="Choose full-open book width, height, fold orientation and print start."
+          onClick={()=>{setWordTab("layout");setPageSetupOpen(true);}}><span aria-hidden="true">▱</span> Book Size & Fold</button>
+        <button type="button" title="Generate a draft proof PDF; never triggers direct PR2 printer."
+          disabled={busy} onClick={()=>{void proofPdf();}}><span aria-hidden="true">◉</span> Preview PDF</button>
+        <button type="button" title="Save this private editable draft, without activating live printing."
+          disabled={savingLayout||busy} onClick={()=>{void save();}}><span aria-hidden="true">▣</span> Save Draft</button>
+        <details className="ls-ribbon-more-tools">
+          <summary title="More real passbook design tools">＋ More Tools</summary>
+          <div className="ls-ribbon-more-content" role="group" aria-label="Additional easy passbook tools">
+            <button type="button" title="Add the current customer's account number placeholder"
+              onClick={()=>{setWordTab("mailings");append("field","customer","Account Number","accountNumber");}}>◇ Account Number</button>
+            <button type="button" title="Add IFSC from active Bank Information"
+              onClick={()=>{setWordTab("mailings");append("field","bank","IFSC","ifsc");}}>◇ IFSC</button>
+            <button type="button" title="Add customer's nominee field"
+              onClick={()=>{setWordTab("mailings");append("field","customer","Nominee","nominee");}}>◇ Nominee</button>
+            <button type="button" title="Add a rectangle shape"
+              onClick={()=>{setWordTab("draw");append("rectangle","static","Rectangle");}}>▢ Rectangle</button>
+            <button type="button" title="Add a line"
+              onClick={()=>{setWordTab("draw");append("line","static","Line");}}>─ Line</button>
+            <button type="button" title="Add a circle or oval shape"
+              onClick={()=>{setWordTab("draw");append("ellipse","static","Circle");}}>◯ Oval</button>
+            <button type="button" title="Add a customer photo placeholder for Quick Passbook only"
+              disabled={setup.output==="dotmatrix"}
+              onClick={()=>{setWordTab("insert");append("photo","static","Photo Box");}}>▣ Photo Box</button>
+            <button type="button" title="Select text or a shape and edit precise width/height/X/Y"
+              disabled={!selected} onClick={()=>setWordTab("format")}>▣ Object Format</button>
+            <button type="button" title="Show the ruler along the paper edges"
+              aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>▥ Ruler</button>
+            <button type="button" title="Show alignment grid on page"
+              aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>▦ Grid</button>
+          </div>
+        </details>
+        <span className="ls-ribbon-quick-help">Tip: choose a tool → click or drag on the page → edit on the right.</span>
+      </div>
+      {wordTab==="format"&&<div className="ls-word-tab-content ls-object-format-ribbon"
+        role="toolbar" aria-label="Format selected layout object">
+        {selected?<><div className="ls-word-command-family" role="group" aria-label="Position">
+          <strong>Position (mm)</strong><div className="ls-word-command-items">
+          {(["x","y"] as const).map(k=><label key={k}>{k.toUpperCase()} <input type="number"
+            min={0} max={k==="x"?draft.widthMm-selected.width:draft.heightMm-selected.height}
+            step={.1} value={selected[k]} disabled={selected.locked}
+            onChange={e=>changeObjectMeasure(k,Number(e.target.value))}/></label>)}
+          </div></div>
+          <div className="ls-word-command-family" role="group" aria-label="Size">
+          <strong>Size (mm)</strong><div className="ls-word-command-items">
+          {(["width","height"] as const).map(k=><label key={k}>{k==="width"?"W":"H"} <input type="number"
+            min={1} max={k==="width"?draft.widthMm-selected.x:draft.heightMm-selected.y}
+            step={.1} value={selected[k]} disabled={selected.locked}
+            onChange={e=>changeObjectMeasure(k,Number(e.target.value))}/></label>)}
+          </div></div>
+          <div className="ls-word-command-family" role="group" aria-label="Arrange">
+            <strong>Arrange</strong><div className="ls-word-command-items">
+            <button type="button" disabled={selected.locked} onClick={()=>moveZ(1000)}>Front</button>
+            <button type="button" disabled={selected.locked} onClick={()=>moveZ(-1000)}>Back</button>
+            <button type="button" disabled={selected.locked}
+              onClick={()=>edit({rotation:(selected.rotation+90)%360})}>Rotate 90°</button>
+            <button type="button" onClick={()=>lockWordSelection(!selected.locked)}>
+              {selected.locked?"Unlock":"Lock"}</button>
+            </div></div>
+          <div className="ls-word-command-family" role="group" aria-label="Appearance">
+            <strong>Appearance</strong><div className="ls-word-command-items">
+            <label>Color <input type="color" value={selected.color} disabled={selected.locked}
+              onChange={e=>edit({color:e.target.value})}/></label>
+            <label>Border <input type="color" value={selected.borderColor} disabled={selected.locked}
+              onChange={e=>edit({borderColor:e.target.value})}/></label>
+            <label>Opacity <input aria-label="Object opacity" type="range" min={0.1} max={1}
+              step={0.1} disabled={selected.locked} value={selected.opacity}
+              onChange={e=>edit({opacity:Number(e.target.value)})}/></label>
+            </div></div></>:<span>Select a document object to open its format tools.</span>}
+      </div>}
+      {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
+        <button type="button" disabled={busy} onClick={()=>{void startFromBlank();}}>▤ New Blank</button>
+        <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>▣ Save Draft</button>
+        <button type="button" disabled={busy} onClick={()=>{void proofPdf();}}>◉ Preview / Proof PDF</button>
+        <button type="button" onClick={exportJson}>Download Editable Backup</button>
+        <label className="ls-file-action">Restore Editable Backup
+          <input type="file" accept=".json,application/json" onChange={event=>{void restoreDraftBackup(event);}}/>
+        </label>
+        <button type="button" onClick={()=>{void calibrationPdf();}}>Export Calibration PDF</button>
+        <label className="ls-file-action">Open Word
+          <input type="file" accept=".doc,.docx,application/msword" onChange={event=>{
+            const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);
+          }}/>
+        </label>
+        <label className="ls-file-action">Open PDF Sample
+          <input type="file" accept=".pdf,application/pdf" onChange={event=>{void importPdf(event);}}/>
+        </label>
+      </div>}
+      {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools"><span className="ls-ribbon-group-label">Clipboard · Paragraph · Editing</span>
+        <div className="ls-word-command-family" role="group" aria-label="Clipboard"><strong>Clipboard</strong><div className="ls-word-command-items">
+        <button type="button" disabled={!selectedWordParts.length} onClick={copyWordSelection}>Copy</button>
+        <button type="button" disabled={!selectedWordParts.length||selectedWordParts.some(p=>p.locked)} onClick={cutWordSelection}>Cut</button>
+        <button type="button" disabled={!objectClipboard.length} onClick={pasteWordSelection}>Paste</button>
+        <button type="button" disabled={!selectedWordParts.length||selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="History & Format"><strong>History & Format</strong><div className="ls-word-command-items">
+        <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
+        <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
+        <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
+        <button type="button" disabled={!selected||!styleClipboard} onClick={pasteSelectedStyle}>Paste Format</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Lists"><strong>Lists</strong><div className="ls-word-command-items">
+        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
+        <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(2,0)}>Indent +2 mm</button>
+        <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(-2,0)}>Outdent −2 mm</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Change Case"><strong>Change Case</strong><div className="ls-word-command-items">
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("upper")}>UPPERCASE</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("lower")}>lowercase</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("title")}>Title Case</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("sentence")}>Sentence case</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Objects"><strong>Objects</strong><div className="ls-word-command-items">
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{
+          if(!selected)return;
+          const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
+            y:Math.min(draft.heightMm-selected.height,selected.y+3),z:selected.z+1,locked:false};
+          modify(current=>({...current,elements:[...current.elements,newPart]}));
+          setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
+        }}>Duplicate Object</button>
+        <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage&&isLayoutLayerPrintable(p,preview,bankName)).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select All</button>
+        <button type="button" onClick={()=>setWordTab("review")}>Find / Replace</button>
+        </div></div>
+      </div>}
+      {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes"><span className="ls-ribbon-group-label">Drawing · Field Boxes</span>
+        <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
+        <button type="button" onClick={()=>append("rectangle","static","Box")}>Draw Rectangle</button>
+        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Draw Ellipse</button>
+        <button type="button" onClick={()=>setMappingSource("bank")}>Draw Bank Field Box</button>
+        <button type="button" onClick={()=>setMappingSource("customer")}>Draw Customer Field Box</button>
+        <small>Drag the field box over the passbook, then choose its data mapping.</small>
+      </div>}
+      {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes"><span className="ls-ribbon-group-label">References · Notes</span>
+        <button type="button" onClick={()=>append("text","static","Reference / note:")}>Insert Editable Note</button>
+        <button type="button" onClick={()=>append("text","static","Terms and conditions")}>Insert Terms</button>
+        <button type="button" disabled={!selected} onClick={insertCaptionBelowSelection}>Insert Caption Box</button>
+        <button type="button" onClick={()=>append("field","bank","Bank IFSC","ifsc")}>Reference Bank IFSC</button>
+        <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Reference Customer CIF</button>
+        <small>Word bibliographies, citations and academic indexes are not part of a direct passbook print template.</small>
+      </div>}
+      {wordTab==="mailings"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Bank and customer merge fields"><span className="ls-ribbon-group-label">Bank / Customer Merge Fields</span>
+        <button type="button" onClick={()=>append("field","customer","Account holder","name")}>Customer Name</button>
+        <button type="button" onClick={()=>append("field","customer","Account number","accountNo")}>Account Number</button>
+        <button type="button" onClick={()=>append("field","customer","Address","address")}>Customer Address</button>
+        <button type="button" onClick={()=>append("field","bank","IFSC","ifsc")}>Bank IFSC</button>
+        <button type="button" onClick={()=>append("field","bank","Branch Address","branchAddress")}>Branch Address</button>
+        <button type="button" onClick={()=>append("field","bank","Bank Name","bankName")}>Bank Name</button>
+        <button type="button" onClick={()=>append("field","bank","Branch Phone","phone")}>Branch Phone</button>
+        <button type="button" onClick={()=>append("field","bank","MICR","micr")}>MICR</button>
+        <button type="button" onClick={()=>append("field","bank","GSTIN","gstin")}>GSTIN</button>
+        <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Customer CIF</button>
+        <button type="button" onClick={()=>append("field","customer","Nominee","nominee")}>Nominee</button>
+        <button type="button" onClick={()=>append("field","customer","Account Opening Date","accountOpeningDate")}>Opening Date</button>
+        <button type="button" onClick={()=>{void loadPreviewCustomers();}}>Preview Merge with Customer</button>
+        <small>Fields resolve only against the active tenant's customer and bank data.</small>
+      </div>}
+      {wordTab==="help"&&<div className="ls-word-tab-content" role="note" aria-label="Editing help and shortcuts">
+        <strong>Word-style Editing Shortcuts</strong>
+        <span>Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+A Select visible · Ctrl/Shift+Click multi-select ·
+        Ctrl+C/X/V Copy/Cut/Paste draft objects · Ctrl+G Group · Ctrl+Shift+G Ungroup · Arrow keys 0.1 mm · Shift+Arrows 1 mm</span>
+        <button type="button" onClick={()=>setWordTab("layout")}>Open Page Setup</button>
+        <button type="button" onClick={()=>setWordTab("mailings")}>Open Data Mapping</button>
+        <small>Specialized Office features such as macros, email merge, full bibliography
+        management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
+      </div>}
+      {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects"><span className="ls-ribbon-group-label">Text · Tables · Illustrations · Fields · Symbols</span>
+        <div className="ls-word-command-family" role="group" aria-label="Text"><strong>Text</strong><div className="ls-word-command-items">
+        <button type="button" onClick={()=>append("text","static","New text")}>+ Text Box</button>
+        <button type="button" onClick={()=>append("text","preprinted","Printed Label")}>+ Label</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Pictures"><strong>Pictures</strong><div className="ls-word-command-items">
+        <label className="ls-file-action">◩ Picture<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}} /></label>
+        <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>{const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);setWordSelectedIds([part.id]);}}>Bank Logo</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Dynamic Fields"><strong>Dynamic Fields</strong><div className="ls-word-command-items">
+        <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
+        <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Illustrations"><strong>Illustrations</strong><div className="ls-word-command-items">
+        <button type="button" onClick={()=>append("photo","static","Photo Box")}>Photo Box</button>
+        <button type="button" onClick={()=>append("rectangle","static","Rectangle")}>Rectangle</button>
+        <button type="button" onClick={()=>append("ellipse","static","Circle")}>Circle</button>
+        <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Tables"><strong>Tables</strong><div className="ls-word-command-items">
+        <button type="button" onClick={()=>insertEditableTable(2,3)}>Insert 2×3 Table</button>
+        <button type="button" onClick={()=>insertEditableTable(3,4)}>Insert 3×4 Table</button>
+        <label>Rows <input type="number" min={1} max={8} value={tableRows} onChange={e=>setTableRows(within(Number(e.target.value)||1,1,8))}/></label>
+        <label>Columns <input type="number" min={1} max={8} value={tableColumns} onChange={e=>setTableColumns(within(Number(e.target.value)||1,1,8))}/></label>
+        <button type="button" onClick={()=>insertEditableTable(tableRows,tableColumns)}>Insert Custom Table</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Page Elements"><strong>Page Elements</strong><div className="ls-word-command-items">
+        <button type="button" onClick={()=>insertDocumentDecoration("header")}>Header</button>
+        <button type="button" onClick={()=>insertDocumentDecoration("footer")}>Footer</button>
+        <button type="button" onClick={()=>insertDocumentDecoration("pageNumber")}>Page Number</button>
+        <button type="button" disabled={(draft.pageCount||1)>=10} onClick={addDraftPage}>New Page</button>
+        <button type="button" onClick={()=>append("text","static",new Date().toLocaleDateString("en-GB"))}>Date (static)</button>
+        <button type="button" onClick={()=>append("text","static",new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}))}>Time (static)</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Symbols"><strong>Symbols</strong><div className="ls-word-command-items">
+        <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
+          onChange={event=>insertWordSymbol(event.target.value)}>
+          <option value="">Insert symbol…</option>
+          {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
+            <option key={symbol+index} value={symbol}>{symbol}</option>)}
+        </select></label>
+        </div></div>
+      </div>}
+      {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
+        <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
+        <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
+        <button type="button" onClick={()=>setZoom(.8)}>Zoom 80%</button>
+        <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
+        <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
+        <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
+        <button type="button" disabled={!referencePages[selectedPage-1]} aria-pressed={referenceVisible} onClick={()=>setReferenceVisible(v=>!v)}>Original Overlay</button>
+        <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>Customer Preview</button>
+        <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
+          {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
+        </select></label>
+        <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label>
+        <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> Grid</label>
+        <label>Print preview <select value={preview} onChange={e=>setPreview(e.target.value as "quick"|"dotmatrix")}>
+          <option value="quick">Quick Passbook</option><option value="dotmatrix">PR2 Text-Only</option>
+        </select></label>
+      </div>}
+      {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors"><span className="ls-ribbon-group-label">Styles · Colors · Borders</span>
+        <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("watermark")}>Watermark (Quick)</button>
+        <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("border")}>Page Border (Quick)</button>
+        <label>Page Color (Quick) <select aria-label="Quick Passbook page color" disabled={setup.output==="dotmatrix"}
+          value={draft.elements.find(p=>p.fieldKey==="pageBackground"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)?.background||"transparent"}
+          onChange={e=>setQuickPageColor(e.target.value)}>
+          <option value="transparent">White / None</option>
+          <option value="#fff8e8">Cream</option>
+          <option value="#eaf3ff">Light Blue</option>
+          <option value="#f2faef">Light Green</option>
+          <option value="#f3f3f3">Light Gray</option>
+        </select></label>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:12,bold:true,color:"#284a71"})}>Subheading Style</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:9,bold:false,italic:true,color:"#526579"})}>Caption Style</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:14,bold:true,color:"#0b4c93"})}>Heading Style</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:11,bold:false,color:"#132a40"})}>Normal Style</button>
+        {selected?<><label>Background <input type="color" value={selected.background==="transparent"?"#ffffff":selected.background} onChange={e=>edit({background:e.target.value})}/></label>
+          <button type="button" disabled={selected.background==="transparent"} onClick={()=>edit({background:"transparent"})}>No Fill</button>
+          <label>Border width <input type="number" min={0} max={10} step={0.5} value={selected.borderWidth} onChange={e=>{const n=Number(e.target.value);if(Number.isFinite(n))edit({borderWidth:within(n,0,10)});}}/></label>
+          <label>Text color <input type="color" value={selected.color} onChange={e=>edit({color:e.target.value})}/></label>
+          <label>Border color <input type="color" value={selected.borderColor} onChange={e=>edit({borderColor:e.target.value})}/></label>
+          <button type="button" onClick={copySelectedStyle}>Copy style</button>
+          <button type="button" disabled={!styleClipboard} onClick={pasteSelectedStyle}>Paste style</button></>:<span>Select an object to change its colors and style.</span>}
+      </div>}
+      {wordTab==="layout"&&<div className="ls-word-tab-content ls-word-layout-commands" role="toolbar" aria-label="Page layout tools">
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>▤ Margins</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>▣ Orientation</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>▱ Size</button>
+        <label className="ls-layout-fold-shortcut">Book Fold
+          <select aria-label="Quick choose book fold direction" value={pageSetupFor(draft).foldAxis}
+            onChange={e=>chooseFoldDirection(e.target.value as FoldAxis)}>
+            <option value="horizontal">Horizontal Fold (Top / Bottom)</option>
+            <option value="vertical">Vertical Fold (Left / Right)</option>
+            <option value="none">No Fold (Flat)</option>
+          </select>
+        </label>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(!selected)return;edit({rotation:(selected.rotation+90)%360});}}>Rotate 90°</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1)}>Bring Forward</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1)}>Send Backward</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1000)}>Bring to Front</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1000)}>Send to Back</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({rotation:(selected.rotation+270)%360});}}>Rotate Left 90°</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","center")}>Center on Page</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
+        <button type="button" disabled={!selectedWordParts.some(part=>part.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
+        <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
+      </div>}
+
+      {wordTab==="home" && !selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Font and alignment tools — select text to enable">
+        <span className="ls-ribbon-group-label">Font · Paragraph</span>
+        <select aria-label="Font family" value="Arial" disabled><option>Arial</option></select>
+        <input aria-label="Font size" type="number" value={11} disabled/>
+        <button type="button" disabled title="Select a text object">B</button>
+        <button type="button" disabled title="Select a text object"><em>I</em></button>
+        <button type="button" disabled title="Select a text object"><u>U</u></button>
+        <button type="button" disabled title="Select a text object">≡</button>
+        <button type="button" disabled title="Select a text object">☷</button>
+        <small>Select a text or field box on the document to format it.</small>
+      </div>}
+      {wordTab==="home" && selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
+      <strong>Format:</strong>
+      <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
+      <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
+      <input aria-label="Font size" type="number" min={5} max={120} value={selected.size} onChange={event => edit({size:within(Number(event.target.value)||5,5,120)})}/>
+      <button type="button" title="Increase font size" onClick={() => edit({size:Math.min(120,selected.size+1)})}>A+</button>
+      <button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button>
+      <button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button>
+      <button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button>
+      <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
+      <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
+      <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
+      <button type="button" title="Justify paragraph" aria-pressed={selected.align==="justify"} onClick={()=>edit({align:"justify"})}>Justify</button>
+      <label>Line spacing <select aria-label="Line spacing ratio" value={selected.lineHeight??1.18} onChange={event=>edit({lineHeight:Number(event.target.value)})}>
+        {[.8,1,1.15,1.18,1.5,2,2.5,3].map(n=><option key={n} value={n}>{n}×</option>)}
+      </select></label>
+      <label>Letter gap <select aria-label="Letter spacing px" value={selected.letterSpacing??0}
+        onChange={event=>edit({letterSpacing:Number(event.target.value)})}>
+        {Array.from({length:21},(_,i)=>i*.5).map(n=><option key={n} value={n}>{n} px</option>)}
+        {!Array.from({length:21},(_,i)=>i*.5).includes(selected.letterSpacing)&&
+         <option value={selected.letterSpacing}>Legacy {selected.letterSpacing} px</option>}
+      </select></label>
+      <label>Font compress <select aria-label="Font compression percent" value={selected.fontCompression??100}
+        onChange={event=>edit({fontCompression:Number(event.target.value)})}>
+        {Array.from({length:11},(_,i)=>50+i*5).map(n=><option key={n} value={n}>{n}%</option>)}
+        {!Array.from({length:11},(_,i)=>50+i*5).includes(selected.fontCompression??100)&&
+         <option value={selected.fontCompression}>{selected.fontCompression}%</option>}
+      </select></label>
+      <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
+    </div>}
+    {wordTab==="review"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Document verification and audit">
+        <span className="ls-ribbon-group-label">Review · OCR · Proof</span>
+        <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors and "+result.filter(x=>x.severity==="warning").length+" warnings. Review before approval.");}}>Run Layout Audit</button>
+        <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
+        <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
+        <button type="button" disabled={!draft.elements.some(p=>p.needsReview)} onClick={findNextUnreviewed}>Next OCR Correction</button>
+        <button type="button" onClick={checkLegibility}>Accessibility / Legibility Check</button>
+        <span>{draft.elements.filter(item=>item.needsReview).length} unreadable/OCR lines to correct</span>
+        <span>{draft.elements.filter(p=>p.kind==="text"&&p.origin==="static").reduce((n,p)=>n+(p.label.trim()?p.label.trim().split(/\\s+/u).length:0),0)} static-label words</span>
+      </div>}
+    {wordTab==="review"&&legibilityFindings.length>0&&<details className="ls-legibility-panel">
+      <summary>Print legibility findings ({legibilityFindings.length}) — select an object to review</summary>
+      <div>{legibilityFindings.slice(0,25).map((finding,index)=><button type="button" key={finding.id+":"+index}
+        onClick={()=>{setSelectedId(finding.id);setWordSelectedIds([finding.id]);setSelectedPage(finding.page);}}>
+        {finding.severity}: page {finding.page} — {finding.message}
+      </button>)}</div>
+      {legibilityFindings.length>25&&<small>First 25 findings shown. Correct issues and run check again.</small>}
+    </details>}
+    {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
+      <strong>Find / Replace static text</strong>
+      <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
+      <label>Replace with <input type="text" maxLength={500} value={replaceWord} onChange={e=>setReplaceWord(e.target.value)} placeholder="New label text"/></label>
+      <label><input type="checkbox" checked={findAllPages} onChange={e=>setFindAllPages(e.target.checked)}/> All pages</label>
+      <button type="button" onClick={()=>{
+        const hits=findEditableLabels(draft.elements,findWord,findAllPages?undefined:selectedPage);
+        if(hits.length){setSelectedId(draft.elements[hits[0]].id);setWordSelectedIds([draft.elements[hits[0]].id]);setSelectedPage(draft.elements[hits[0]].page??1);}
+        setNotice(hits.length+" editable text object(s) found. Customer fields and preprinted layers are excluded.");
+      }}>Find</button>
+      <button type="button" onClick={()=>{
+        try{
+          const result=replaceEditableLabels(draft.elements,findWord,replaceWord,findAllPages?undefined:selectedPage);
+          if(result.changed){modify(current=>({...current,elements:result.parts}));setPhysicalChecked(false);setHardwareChecked(false);}
+          setNotice(result.changed+" static label occurrence(s) replaced. Recheck physical layout before approval.");
+        }catch(error){setNotice(error instanceof Error?error.message:"Cannot replace text.");}
+      }}>Replace all</button>
+    </div>}
+    {wordTab==="layout" && selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
+      <strong>Align selected ({selectedWordParts.length})</strong>
+      <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
+      <div className="ls-word-buttons">
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"left",target:"selection"})}>Left edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"center",target:"selection"})}>Horizontal centers</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"right",target:"selection"})}>Right edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"top",target:"selection"})}>Top edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"middle",target:"selection"})}>Vertical centers</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"bottom",target:"selection"})}>Bottom edges</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"baseline",target:"selection"})}>Baseline</button>
+        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal"})}>Distribute horizontally</button>
+        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical"})}>Distribute vertically</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"width"})}>Equal width</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"height"})}>Equal height</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"both"})}>Equal size</button>
+      </div>
+      <div className="ls-word-gaps">
+        <label>Exact gap (mm) <input type="number" min={0} max={50} step={.1} value={wordGapMm}
+          onChange={event=>{const value=Number(event.target.value);if(Number.isFinite(value)&&value>=0&&value<=50)setWordGapMm(value);}}/></label>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal",gapMm:wordGapMm})}>Horizontal exact gap</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical",gapMm:wordGapMm})}>Vertical exact gap</button>
+        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
+        <button type="button" disabled={!selectedWordParts.some(p=>p.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
+        <button type="button" disabled={selectedWordParts.length===0||selectedWordParts.every(p=>p.locked)} onClick={()=>lockWordSelection(true)}>Lock</button>
+        <button type="button" disabled={!selectedWordParts.some(p=>p.locked)} onClick={()=>lockWordSelection(false)}>Unlock</button>
+        <button type="button" disabled={selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete selected</button>
+      </div>
+    </div>}
+    </details>
+    {easyMode&&workspaceView==="design"&&<section className="ls-simple-flow" aria-label="Simple passbook editing and saving">
+      <div className="ls-simple-head">
+        <div><strong>Easy Passbook Designer</strong>
+          <p>Make your design in 4 steps. The original full Word tools are available under Advanced Tools.</p></div>
+        <span>{setup.output==="dotmatrix"?"Direct PR2 Draft":"Quick Passbook Draft"} · Layout {selectedLayoutSlot}</span>
+      </div>
+      <div className="ls-simple-step-row">
+        <button type="button" aria-expanded={simplePaperOpen} onClick={()=>setSimplePaperOpen(v=>!v)}>
+          <b>1</b><span><strong>Page Size & Fold</strong><small>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</small></span>
+        </button>
+        <button type="button" onClick={()=>{append("text","static","New text");setNotice("New editable text inserted. Click the text on the paper to change it.");}}>
+          <b>2</b><span><strong>Add Text</strong><small>Click it on the page to edit</small></span>
+        </button>
+        <button type="button" onClick={()=>{setMappingSource("customer");setNotice("Drag a rectangle on the passbook to choose a customer field.");}}>
+          <b>3</b><span><strong>Customer Data</strong><small>Drag a box on the page</small></span>
+        </button>
+        <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>
+          <b>4</b><span><strong>{previewOpen?"Hide Preview":"Preview Design"}</strong>
+            <small>{previewOnly?"With sample customer":"With selected customer"}</small></span>
+        </button>
+      </div>
+      {simplePaperOpen&&<PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
+        onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
+        onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>}
+      <div className="ls-simple-save-row" role="group" aria-label="Save and submit design">
+        <div className="ls-simple-save-status" role="status">
+          <strong>{dirty?"Unsaved changes":"Design ready to save"}</strong>
+          <small>{previewOnly?"Codespaces browser demo — no Firebase or Master Admin connection":
+            "Save your draft first; Client Admin can request Master approval after safety checks."}</small>
+        </div>
+        <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy} onClick={()=>{void save();}}>
+          {savingLayout?"Saving…":"Save Design"}
+        </button>
+        <button type="button" className="ls-simple-backup" disabled={busy||savingLayout}
+          onClick={()=>{void (async()=>{const ok=await save();if(ok)exportJson();})();}}>
+          Save & Download Backup
+        </button>
+        {previewOnly?
+          <button type="button" disabled title="Codespaces is an isolated demo. Export an editable JSON backup and use the authorized Windows Client Admin workflow for approval.">
+            Send to Master — Windows Only
+          </button>:
+          canSubmit?<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>
+            Send to Master for Approval
+          </button>:<span className="ls-simple-permission">Master approval is available to Client Admin only.</span>}
+      </div>
+      {previewOnly&&<p className="ls-simple-help">
+        Your design is saved only in this browser. Use <strong>Save & Download Backup</strong> to keep
+        the editable file. In the authorized Windows app, restore it under the same bank and
+        have the Client Admin submit it for Master review. Codespaces cannot send approvals.
+      </p>}
+      <button type="button" className="ls-simple-advanced" onClick={()=>setEasyMode(false)}>
+        Show All Word / Advanced Tools
+      </button>
+    </section>}
     <div className="ls-workflow-context">
       <span className="ls-workflow-indicator" aria-hidden="true"></span>
       {workspaceView==="design"
         ?"Edit locally with rulers, field mapping and live paper preview. Save a draft before seeking approval."
         :"Review generic bank templates and activation history. Hardware calibration is required before production use."}
     </div>
-    {workspaceView==="design" && <section className="ls-easy-guide" aria-label="Simple step-by-step layout creation">
-      <div className="ls-easy-heading">
-        <div><strong>Easy Layout Builder</strong><p>Make your passbook or account form in three simple steps. Your existing draft is not reset when switching steps.</p></div>
-        <button type="button" aria-pressed={!easyMode} onClick={()=>{setEasyMode(v=>!v);setActiveGuides([]);}}>
-          {easyMode?"Advanced tools":"Back to Easy Mode"}
-        </button>
-      </div>
-      {easyMode && <>
-        <div className="ls-easy-steps" role="group" aria-label="Layout steps">
-          {([
-            ["start","1","Start","Choose a blank page or import PDF"],
-            ["edit","2","Design","Add fields and adjust the preview"],
-            ["check","3","Check & save","Review print modes and save a draft"]
-          ] as const).map(([value,no,title,description])=>
-            <button key={value} type="button" aria-current={guidedStep===value?"step":undefined}
-              onClick={()=>setGuidedStep(value)}>
-              <span className="ls-easy-step-number">{no}</span><span><strong>{title}</strong><small>{description}</small></span>
-            </button>)}
-        </div>
-        <div className="ls-easy-explain">
-          {guidedStep==="start" ? <>
-            <strong>Step 1 · Choose how to begin</strong>
-            <p>For a new design, use Blank Layout. If you have a scanned sample, import its PDF below. Check the actual paper width, height and fold before continuing.</p>
-            <div className="ls-easy-paper">
-              <label>Measurement unit
-                <select value={unit} onChange={e=>setUnit(e.target.value as Unit)}><option value="mm">Millimetres</option><option value="cm">Centimetres</option><option value="in">Inches</option></select>
-              </label>
-              <label>Paper width ({unit})
-                <input type="number" min={50/factor(unit)} max={500/factor(unit)} step={0.1}
-                  value={valueInUnit(draft.widthMm,unit)} onChange={e=>setMeasure("widthMm",e.target.value)}/>
-              </label>
-              <label>Paper height ({unit})
-                <input type="number" min={50/factor(unit)} max={500/factor(unit)} step={0.1}
-                  value={valueInUnit(draft.heightMm,unit)} onChange={e=>setMeasure("heightMm",e.target.value)}/>
-              </label>
-              <label>Fold from top ({unit}, optional)
-                <input type="number" min={0} max={500/factor(unit)} step={0.1}
-                  value={valueInUnit(draft.foldMm,unit)} onChange={e=>setMeasure("foldMm",e.target.value)}/>
-              </label>
-            </div>
-            <small className="ls-easy-warning">Scanner A4 is not the passbook size. Confirm real paper measurements before printing.</small>
-            <div className="ls-easy-cta">
-              <button type="button" className="ls-primary" onClick={()=>{void startFromBlank();}}>Create blank layout</button>
-              <label className="ls-file-action">Import sample PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event=>{void importPdf(event);}}/></label>
-              <button type="button" onClick={()=>setGuidedStep("edit")}>Next: Design →</button>
-            </div>
-          </> : guidedStep==="edit" ? <>
-            <strong>Step 2 · Build your page</strong>
-            <p>Use Add Text, Customer Field, Bank Field or Photo Box. Select any object to change it on the right. Drag to move; use the paper preview to verify placement.</p>
-            <div className="ls-easy-cta">
-              <button type="button" onClick={()=>append("text","static","New text")}>+ Text</button>
-              <button type="button" onClick={()=>append("field","customer","Customer Field","customerName")}>+ Customer field</button>
-              <button type="button" onClick={()=>append("field","bank","Bank Information","branchName")}>+ Bank field</button>
-              <button type="button" className="ls-primary" onClick={()=>setGuidedStep("check")}>Next: Check & save →</button>
-            </div>
-          </> : <>
-            <strong>Step 3 · Review before saving</strong>
-            <p>Compare Quick (graphics) and Dot Matrix (text only). Inspect scan/OCR warnings and physical boundaries. Save Draft to Offline DB; sharing or activation still requires approval.</p>
-            <div className="ls-easy-cta">
-              <button type="button" onClick={()=>setGuidedStep("edit")}>← Back to design</button>
-              <button type="button" onClick={()=>{const results=auditPassbookTemplate(draft);setAudit(results);setNotice("Draft audit: "+results.filter(x=>x.severity==="error").length+" error(s). Review every warning before approval.");}}>Check layout</button>
-              <button type="button" className="ls-primary" disabled={busy||savingLayout} onClick={()=>{void save();}}>Save draft</button>
-            </div>
-          </>}
-        </div>
-      </>}
-    </section>}
+    {mappingSource&&<div className="ls-map-alert" role="status">Drag a box on the passbook paper, then choose the correct {mappingSource} field in Properties.
+      <button type="button" onClick={()=>{setMappingSource(null);mapStartRef.current=null;setMapPendingRect(null);}}>Cancel mapping</button>
+    </div>}
+    <div className="ls-slot-strip" role="group" aria-label="Editable layout slots">
+      {canSubmit&&<button type="button" onClick={()=>{void restorePrivateCloudDraft();}} disabled={busy||savingLayout||dirty}>
+        Restore Private Cloud Draft
+      </button>}
+      <label>{setup.output==="quick"?"Quick Passbook":"Passbook Print / PR2"} draft slot
+        <select value={selectedLayoutSlot} onChange={event=>{void changeDraftSlot(Number(event.target.value));}}>
+          {[1,2,3].map(no=><option key={no} value={no}>Layout {no}</option>)}
+        </select>
+      </label>
+      <small>Draft slot selection never changes the approved live print layout. Master approval and physical calibration remain separate.</small>
+    </div>
+    <div className="ls-preview-strip" role="group" aria-label="Read-only customer preview and draft status">
+      <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>👁 {previewOpen?"Hide Customer Preview":"Preview with Customer Data"}</button>
+      {previewOpen&&<label>Customer <select value={previewCustomerKey} onChange={e=>setPreviewCustomerKey(e.target.value)}>
+        {previewCustomers.map(item=><option key={item.key} value={item.key}>{item.display}</option>)}
+      </select></label>}
+      <small role="status">{autosaveStatus}</small>
+    </div>
     <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
     {(graphicWarnings.length>0||draft.sourceArtworkStatus==="needsReview") && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
       <strong>Source PDF artwork requires review — {graphicWarnings.length} warning(s)</strong>
@@ -1185,19 +2365,24 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={()=>setAudit(null)}>Close Audit</button>
     </div>}
     <div className="ls-catalog-panel">
-      <div className="ls-catalog-heading"><strong>Existing Approved Bank Templates</strong><button type="button" onClick={()=>setCatalogOpen(value=>!value)} aria-expanded={catalogOpen}>{catalogOpen?"Hide":"Show"}</button><button type="button" disabled={catalogBusy} onClick={()=>{setCatalogOpen(true);void refreshCatalog();}}>Refresh</button></div>
+      <div className="ls-catalog-heading"><strong>Shared Bank Layouts · Master Approved</strong><button type="button" onClick={()=>setCatalogOpen(value=>!value)} aria-expanded={catalogOpen}>{catalogOpen?"Hide":"Show"}</button><button type="button" disabled={catalogBusy} onClick={()=>{setCatalogOpen(true);void refreshCatalog();}}>Refresh</button></div>
       {catalogOpen && <>
         <p>Existing templates for {bankName || "the selected bank"} can be previewed and copied without recreating the layout. No other tenant's customer records are shared.</p>
         {catalog.length===0 ? <p>No verified shared template is available for this bank. Upload your own passbook PDF or design manually.</p> :
           <div className="ls-catalog-list">{catalog.filter(item=>item.mode===mode).map(item=><div key={item.id} className="ls-catalog-card">
-            <span>{item.bankName} · {item.mode==="passbook"?"Passbook":"Account Opening"}</span>
-            <small>{item.widthMm} × {item.heightMm} mm · {item.elements.length} editable elements</small>
+            <div className="ls-catalog-card-thumbnail" role="img" aria-label="Generic approved passbook thumbnail, no customer data">
+              {item.elements.slice(0,14).map(part=><span key={part.id} style={{left:(part.x/item.widthMm*100)+"%",top:(part.y/item.heightMm*100)+"%",width:Math.max(2,part.width/item.widthMm*100)+"%"}}>
+                {part.origin==="customer"?"••••":part.origin==="bank"?"[Bank]":part.kind==="text"||part.kind==="field"?part.label.slice(0,20):part.kind==="photo"?"▣":part.kind==="line"?"━":"▢"}
+              </span>)}
+            </div>
+            <span>{item.bankName} · Layout {item.requestedSlot??1} · {item.requestedOutput==="dotmatrix"?"Passbook Print (PR2)":item.mode==="accountOpening"?"Account Opening":"Quick Passbook"}</span>
+            <small>Master Approved · v{item.version??1} · {item.widthMm} × {item.heightMm} mm · {item.elements.length} elements · {item.updatedAt?"Updated "+new Date(item.updatedAt).toLocaleDateString():"Approved"} · Source: generic bank catalog</small>
             <button type="button" onClick={()=>setCatalogChoice(item)}>Preview</button>
           </div>)}</div>}
         {catalogChoice && <div className="ls-catalog-preview">
           <strong>Preview: {catalogChoice.bankName} · Generic template</strong>
           <div className="ls-catalog-mini-paper" style={{aspectRatio:catalogChoice.widthMm+"/"+catalogChoice.heightMm}}>{catalogChoice.elements.slice(0,35).map(part=><span key={part.id} style={{position:"absolute",left:(part.x/catalogChoice.widthMm*100)+"%",top:(part.y/catalogChoice.heightMm*100)+"%",fontSize:8,color:"#172334",maxWidth:(part.width/catalogChoice.widthMm*100)+"%",overflow:"hidden"}}>{part.kind==="text"||part.kind==="field"?part.origin==="customer"?"[Customer field]":part.origin==="bank"?"[Bank Information]":part.label:part.kind==="photo"?"□ PHOTO":part.kind==="line"?"────":""}</span>)}</div>
-          <div className="ls-actions"><button type="button" onClick={()=>{setWorkspaceView("design");void useCatalogTemplate(catalogChoice);}}>Use This Template</button>{canSubmit && <button type="button" disabled={busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Activate Verified Template</button>}
+          <div className="ls-actions"><button type="button" disabled={!canSubmit||busy} onClick={()=>{void selectApprovedTemplate("activate",catalogChoice.id);}}>Use Layout (Verified Slot)</button><button type="button" onClick={()=>{setWorkspaceView("design");void useCatalogTemplate(catalogChoice);}}>Make My Own Copy</button>
              <button type="button" onClick={()=>{setCatalogChoice(null);setCatalogOpen(false);}}>No, Upload My Own PDF</button></div>
         </div>}
       </>}
@@ -1209,8 +2394,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <button type="button" disabled={busy} onClick={()=>{void submitForReview();}}>Submit Generic Template for Master Review</button>
         </>}
         {canSubmit && <div className="ls-selection-status">
-           <strong>Workspace Layout Selection</strong>
-           <span>{layoutSelection?.active ? "Approved template "+layoutSelection.template?.id+" · revision "+layoutSelection.revision : "Custom layout not active. Existing bank print layout is unchanged."}</span>
+           <strong>Approved Live Layout · {setup.output==="dotmatrix"?"Passbook PR2":"Quick Passbook"} · Slot {selectedLayoutSlot}</strong>
+           <span>{layoutSelection?.active ? "Approved template "+layoutSelection.template?.id+" · revision "+layoutSelection.revision : "This slot is not active. Original bank printing remains unchanged."}</span>
            <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("rollback");}}>Rollback Version</button>
            <button type="button" disabled={busy||!layoutSelection?.active} onClick={()=>{void selectApprovedTemplate("disable");}}>Disable Custom Layout</button>
            <button type="button" onClick={()=>{void refreshSelection();}}>Refresh</button>
@@ -1219,41 +2404,15 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </div>
       {canReview && pendingReview.length>0 && <div className="ls-catalog-list">{pendingReview.map(item=><div key={item.id} className="ls-catalog-card">
         <span>{item.bankName} · {item.mode} · {item.elements.length} elements</span>
-        <small>Pending Master Review — inspect all text, physical measurements and customer-data safety</small>
+        <small>Requested {item.requestedOutput??"quick"} Layout {item.requestedSlot??1} ·
+          {item.autoActivateOnApproval?" Auto-activate only after verified physical checks":" Approval only; calibration still required"} ·
+          inspect source text, bank and customer-data safety</small>
         <button type="button" onClick={()=>setCatalogChoice(item)}>Inspect</button>
         <button type="button" onClick={()=>{void reviewCatalog(item,"approve");}}>Approve</button>
         <button type="button" onClick={()=>{void reviewCatalog(item,"reject");}}>Reject</button>
       </div>)}</div>}
     </div>
-    <section className="ls-tool-collection" aria-label="Document tools">
-      <div className="ls-tool-card ls-tool-primary">
-        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
-        <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
-      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
-        </div>
-      </div>
-      <div className="ls-tool-card ls-tool-primary">
-        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">02</span><div><strong>Text & Customer Data</strong><small>Common fields used on passbooks</small></div></div>
-        <div className="ls-ribbon" role="toolbar" aria-label="Add text and customer fields">
-      <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
-      <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
-      <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
-      <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
-        </div>
-      </div>
-      <details className="ls-tool-card ls-tool-secondary">
-        <summary><span className="ls-tool-icon" aria-hidden="true">03</span><span><strong>Graphics & Shapes</strong><small>Photo, logo, boxes, circles and lines</small></span><span aria-hidden="true">⌄</span></summary>
-        <div className="ls-ribbon" role="toolbar" aria-label="Insert graphics and shapes">
-      <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
-      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
-      <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
-      <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
-      <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
-      <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
-      <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
-        </div>
-      </details>
-    </section>
+
     {(suggestedLabels.length>0 || collisions.length>0) && <div className="ls-inference-panel">
       <strong>Review PDF labels and overlapping lines (not automatically approved)</strong>
       <p>{suggestedLabels.length} possible bank/customer labels · {collisions.length} possible overlapping text pairs. OCR can miss printed layers; confirm the physical passbook.</p>
@@ -1314,87 +2473,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{setSelectedPage(collision.page);setSelectedId(collision.secondId);}}>Second layer</button>
       </div>)}</div>}
     </div>}
-    <details className="ls-tool-card ls-word-suite">
-      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
-      <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
-      {selected && <div className="ls-format-ribbon" role="toolbar" aria-label="Office-style selected element formatting">
-      <strong>Format:</strong>
-      <select aria-label="Font family" value={selected.font} onChange={event => edit({font:event.target.value})}>{fonts.map(font=><option key={font} value={font}>{font}</option>)}</select>
-      <button type="button" title="Decrease font size" onClick={() => edit({size:Math.max(5,selected.size-1)})}>A−</button>
-      <input aria-label="Font size" type="number" min={5} max={120} value={selected.size} onChange={event => edit({size:within(Number(event.target.value)||5,5,120)})}/>
-      <button type="button" title="Increase font size" onClick={() => edit({size:Math.min(120,selected.size+1)})}>A+</button>
-      <button type="button" aria-pressed={selected.bold} onClick={() => edit({bold:!selected.bold})}><strong>B</strong></button>
-      <button type="button" aria-pressed={selected.italic} onClick={() => edit({italic:!selected.italic})}><em>I</em></button>
-      <button type="button" aria-pressed={selected.underline} onClick={() => edit({underline:!selected.underline})}><u>U</u></button>
-      <button type="button" title="Align left" aria-pressed={selected.align==="left"} onClick={() => edit({align:"left"})}>≡</button>
-      <button type="button" title="Center align" aria-pressed={selected.align==="center"} onClick={() => edit({align:"center"})}>☷</button>
-      <button type="button" title="Align right" aria-pressed={selected.align==="right"} onClick={() => edit({align:"right"})}>≣</button>
-      <button type="button" title="Justify paragraph" aria-pressed={selected.align==="justify"} onClick={()=>edit({align:"justify"})}>Justify</button>
-      <label>Line spacing <select aria-label="Line spacing ratio" value={selected.lineHeight??1.18} onChange={event=>edit({lineHeight:Number(event.target.value)})}>
-        {[.8,1,1.15,1.18,1.5,2,2.5,3].map(n=><option key={n} value={n}>{n}×</option>)}
-      </select></label>
-      <label>Letter gap <select aria-label="Letter spacing px" value={selected.letterSpacing??0}
-        onChange={event=>edit({letterSpacing:Number(event.target.value)})}>
-        {Array.from({length:21},(_,i)=>i*.5).map(n=><option key={n} value={n}>{n} px</option>)}
-        {!Array.from({length:21},(_,i)=>i*.5).includes(selected.letterSpacing)&&
-         <option value={selected.letterSpacing}>Legacy {selected.letterSpacing} px</option>}
-      </select></label>
-      <label>Font compress <select aria-label="Font compression percent" value={selected.fontCompression??100}
-        onChange={event=>edit({fontCompression:Number(event.target.value)})}>
-        {Array.from({length:11},(_,i)=>50+i*5).map(n=><option key={n} value={n}>{n}%</option>)}
-        {!Array.from({length:11},(_,i)=>50+i*5).includes(selected.fontCompression??100)&&
-         <option value={selected.fontCompression}>{selected.fontCompression}%</option>}
-      </select></label>
-      <label>Text color <input type="color" aria-label="Text color" value={selected.color} onChange={event => edit({color:event.target.value})}/></label>
-    </div>}
-    <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
-      <strong>Find / Replace static text</strong>
-      <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
-      <label>Replace with <input type="text" maxLength={500} value={replaceWord} onChange={e=>setReplaceWord(e.target.value)} placeholder="New label text"/></label>
-      <label><input type="checkbox" checked={findAllPages} onChange={e=>setFindAllPages(e.target.checked)}/> All pages</label>
-      <button type="button" onClick={()=>{
-        const hits=findEditableLabels(draft.elements,findWord,findAllPages?undefined:selectedPage);
-        if(hits.length){setSelectedId(draft.elements[hits[0]].id);setWordSelectedIds([draft.elements[hits[0]].id]);setSelectedPage(draft.elements[hits[0]].page??1);}
-        setNotice(hits.length+" editable text object(s) found. Customer fields and preprinted layers are excluded.");
-      }}>Find</button>
-      <button type="button" onClick={()=>{
-        try{
-          const result=replaceEditableLabels(draft.elements,findWord,replaceWord,findAllPages?undefined:selectedPage);
-          if(result.changed){modify(current=>({...current,elements:result.parts}));setPhysicalChecked(false);setHardwareChecked(false);}
-          setNotice(result.changed+" static label occurrence(s) replaced. Recheck physical layout before approval.");
-        }catch(error){setNotice(error instanceof Error?error.message:"Cannot replace text.");}
-      }}>Replace all</button>
-    </div>
-    {selected && <div className="ls-word-precision" role="toolbar" aria-label="Word precision tools">
-      <strong>Align selected ({selectedWordParts.length})</strong>
-      <span className="ls-word-hint">Ctrl/Shift+Click objects or use Ctrl+A · reference = active selected object</span>
-      <div className="ls-word-buttons">
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"left",target:"selection"})}>Left edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"center",target:"selection"})}>Horizontal centers</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"right",target:"selection"})}>Right edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"top",target:"selection"})}>Top edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"middle",target:"selection"})}>Vertical centers</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"bottom",target:"selection"})}>Bottom edges</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"align",direction:"baseline",target:"selection"})}>Baseline</button>
-        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal"})}>Distribute horizontally</button>
-        <button type="button" disabled={selectedWordParts.length<3} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical"})}>Distribute vertically</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"width"})}>Equal width</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"height"})}>Equal height</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"size",dimension:"both"})}>Equal size</button>
-      </div>
-      <div className="ls-word-gaps">
-        <label>Exact gap (mm) <input type="number" min={0} max={50} step={.1} value={wordGapMm}
-          onChange={event=>{const value=Number(event.target.value);if(Number.isFinite(value)&&value>=0&&value<=50)setWordGapMm(value);}}/></label>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"horizontal",gapMm:wordGapMm})}>Horizontal exact gap</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={()=>applyWordAction({kind:"distribute",axis:"vertical",gapMm:wordGapMm})}>Vertical exact gap</button>
-        <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
-        <button type="button" disabled={!selectedWordParts.some(p=>p.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
-        <button type="button" disabled={selectedWordParts.length===0||selectedWordParts.every(p=>p.locked)} onClick={()=>lockWordSelection(true)}>Lock</button>
-        <button type="button" disabled={!selectedWordParts.some(p=>p.locked)} onClick={()=>lockWordSelection(false)}>Unlock</button>
-        <button type="button" disabled={selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete selected</button>
-      </div>
-    </div>}
-    </details>
+
     {scanSuggestion && scanFrame && <div className="ls-scan-proposal" role="group" aria-label="Global scan calibration">
       <strong>Bank-independent scan calibration (unverified)</strong>
       {referencePages[0] && <div className="ls-scan-preview" style={{aspectRatio:scanFrame.pixelWidth+"/"+scanFrame.pixelHeight}}>
@@ -1481,32 +2560,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <button type="button" onClick={() => { void applyScannerSuggestion(); }}>Apply crop and measurements to local draft</button>
       <button type="button" onClick={() => {setScanSuggestion(null);setScanFrame(null);setScanPerspective(false);setScanCornerPercents(null);}}>Skip scan calibration</button>
     </div>}
-    <section className="ls-tool-card ls-page-card" aria-label="Page setup">
-      <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
-    <div className="ls-settings">
-      <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
-      <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
-      <label>Units <select value={unit} onChange={event => setUnit(event.target.value as Unit)}><option value="mm">mm</option><option value="cm">cm</option><option value="in">inch</option></select></label>
-      <label>Width {number(valueInUnit(draft.widthMm, unit), next => setMeasure("widthMm", String(next)), 0, 500, .1)}</label>
-      <label>Height {number(valueInUnit(draft.heightMm, unit), next => setMeasure("heightMm", String(next)), 0, 500, .1)}</label>
-      <label>Fold from top {number(valueInUnit(draft.foldMm, unit), next => setMeasure("foldMm", String(next)), 0, 500, .1)}</label>
-      <label>Print start {number(valueInUnit(draft.printStartMm, unit), next => setMeasure("printStartMm", String(next)), 0, 500, .1)}</label>
-      <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
-      {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
-      <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
-      <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
-      <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
-      <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
-      <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
-      <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
-      <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
-    </div>
-    </section>
+
     <div className="ls-workspace">
-      <aside className="ls-panel ls-layers">
-        <button type="button" className="ls-panel-title" onClick={() => setShowLayers(!showLayers)} aria-expanded={showLayers}>Layers ({draft.elements.length}) {showLayers ? "▾" : "▸"}</button>
-        {showLayers && <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={event=>selectWordObject(part,event.ctrlKey||event.metaKey||event.shiftKey)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>}
-      </aside>
+      {showLayers && <aside className="ls-panel ls-layers">
+        <button type="button" className="ls-panel-title" onClick={() => setShowLayers(false)} aria-expanded={true}>Layers ({draft.elements.length}) ▾</button>
+        <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={event=>selectWordObject(part,event.ctrlKey||event.metaKey||event.shiftKey)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>
+      </aside>}
       <div className="ls-canvas-wrap">
         <div className="ls-paper-stage" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
         {showRulers && <div className="ls-ruler-x" aria-hidden="true" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
@@ -1517,10 +2576,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {Array.from({length:Math.floor(draft.heightMm/10)+1},(_,index)=>index*10).map(mm=>
             <span key={mm} style={{top:mm*PX_PER_MM*zoom}}>{unit==="mm"?mm:valueInUnit(mm,unit)}</span>)}
         </div>}
-        <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Select an element then use arrow keys for fine adjustment." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
+        <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Double-click a text box to type directly, or select and use arrow keys." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
           backgroundImage:showGrid?"linear-gradient(to right,#b4d7e444 1px,transparent 1px),linear-gradient(to bottom,#b4d7e444 1px,transparent 1px)":undefined,
           backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event=>{
+          if(event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLInputElement)return;
           const cmd=event.ctrlKey||event.metaKey,lower=event.key.toLowerCase();
+          if(cmd&&lower==="c"){if(liveWordIds.length){event.preventDefault();copyWordSelection();}return;}
+          if(cmd&&lower==="x"){if(liveWordIds.length){event.preventDefault();cutWordSelection();}return;}
+          if(cmd&&lower==="v"){if(objectClipboard.length){event.preventDefault();pasteWordSelection();}return;}
           if(cmd&&lower==="z"){event.preventDefault();if(event.shiftKey)redo();else undo();return;}
           if(cmd&&lower==="y"){event.preventDefault();redo();return;}
           if(cmd&&lower==="a"){
@@ -1543,9 +2606,40 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             modify(current=>({...current,elements:next}));setPhysicalChecked(false);setHardwareChecked(false);
           }catch(error){setNotice(error instanceof Error?error.message:"Cannot move selection.");}
         }}>
+          {mappingSource&&<div className="ls-map-overlay" role="presentation"
+            title="Drag over the paper to create a mapped field box"
+            onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();
+              const start=mapPointer(event);mapStartRef.current=start;
+              setMapPendingRect({...start,width:0,height:0});event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={event=>{
+              if(!mapStartRef.current)return;
+              const start=mapStartRef.current,end=mapPointer(event);
+              setMapPendingRect({x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),
+                width:Math.abs(end.x-start.x),height:Math.abs(end.y-start.y)});
+            }}
+            onPointerUp={event=>{event.stopPropagation();finishMapping(event);}}
+            onPointerCancel={()=>{mapStartRef.current=null;setMapPendingRect(null);}}>
+            <span className="ls-map-hint">Draw {mappingSource==="customer"?"Customer":"Bank"} Data Box</span>
+            {mapPendingRect&&<div className="ls-map-preview" style={{left:mapPendingRect.x*PX_PER_MM*zoom,
+              top:mapPendingRect.y*PX_PER_MM*zoom,width:mapPendingRect.width*PX_PER_MM*zoom,
+              height:mapPendingRect.height*PX_PER_MM*zoom}}/>}
+          </div>}
           {referenceVisible && referencePages[selectedPage-1] && <img data-original-overlay="" aria-hidden="true" alt="" src={referencePages[selectedPage-1]} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"fill",opacity:referenceOpacity,pointerEvents:"none",zIndex:2}}/>}
-          {draft.foldMm > 0 && <div className="ls-fold" style={{top:draft.foldMm * PX_PER_MM * zoom}}><span>FOLD</span></div>}
-          {draft.printStartMm > 0 && <div className="ls-print-start" style={{top:draft.printStartMm * PX_PER_MM * zoom}}><span>PRINT START</span></div>}
+          <div className="ls-paper-safe-area" aria-hidden="true" style={{
+            left:pageSetupFor(draft).marginLeftMm*PX_PER_MM*zoom,
+            top:pageSetupFor(draft).marginTopMm*PX_PER_MM*zoom,
+            right:pageSetupFor(draft).marginRightMm*PX_PER_MM*zoom,
+            bottom:pageSetupFor(draft).marginBottomMm*PX_PER_MM*zoom
+          }}/>
+          {pageSetupFor(draft).foldAxis==="horizontal"&&draft.foldMm>0&&
+            <div className="ls-fold" style={{top:draft.foldMm*PX_PER_MM*zoom}}><span>BOOK FOLD</span></div>}
+          {pageSetupFor(draft).foldAxis==="vertical"&&draft.foldMm>0&&
+            <div className="ls-book-vertical-fold" style={{left:draft.foldMm*PX_PER_MM*zoom}}><span>BOOK FOLD</span></div>}
+          {draft.printStartMm>0&&pageSetupFor(draft).foldAxis==="vertical"?
+            <div className="ls-book-vertical-start" style={{left:draft.printStartMm*PX_PER_MM*zoom}}>
+              <span>DATA START</span></div>:draft.printStartMm>0?
+            <div className="ls-print-start" style={{top:draft.printStartMm*PX_PER_MM*zoom}}><span>DATA START</span></div>:null}
           {activeGuides.map(guide=><div key={guide.axis} aria-hidden="true"
             title={"Aligned to "+guide.targetId}
             style={{position:"absolute",pointerEvents:"none",zIndex:99999,
@@ -1555,19 +2649,65 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {ordered.map(part => {
             const visible = isLayoutLayerPrintable(part,preview,bankName);
             if (!visible) return null;
-            return <div key={part.id} onPointerDown={event => down(event, part)}
+            return <div key={part.id} onPointerDown={event => {
+                if(inlineTextEdit?.id===part.id || (event.detail>=2&&part.kind==="text"&&part.origin==="static"&&!part.locked))return;
+                down(event,part);
+              }}
+              onDoubleClick={event=>{
+                event.preventDefault();event.stopPropagation();
+                if(part.kind!=="text"||part.origin!=="static"||part.locked)return;
+                dragEnd();setSelectedId(part.id);setWordSelectedIds([part.id]);
+                inlineTextCancelRef.current=false;
+                setInlineTextEdit({id:part.id,text:part.label});
+              }}
               className={"ls-object " + (liveWordIds.includes(part.id) ? "selected " : "") + (part.locked ? "ls-locked " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
               style={toStyle(part)} title={part.label + " · " + part.origin}>
-              {part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : displayPart(part)}
-              {selectedId===part.id && !part.locked && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
+              {inlineTextEdit?.id===part.id?
+                <textarea className="ls-inline-word-edit" autoFocus spellCheck maxLength={500}
+                  aria-label="Edit text directly on passbook"
+                  value={inlineTextEdit.text}
+                  onChange={event=>setInlineTextEdit({id:part.id,text:event.target.value})}
+                  onPointerDown={event=>event.stopPropagation()}
+                  onKeyDown={event=>{
+                    event.stopPropagation();
+                    if(event.key==="Escape"){event.preventDefault();finishInlineTextEdit(true);}
+                    if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){
+                      event.preventDefault();finishInlineTextEdit(false);
+                    }
+                  }}
+                  onBlur={()=>finishInlineTextEdit(false)}/>:
+                part.kind==="image" && part.imageData ?
+                  <img alt={part.label} draggable={false} src={part.imageData}
+                    style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/>:displayPart(part)}
+              {selectedId===part.id && !part.locked && inlineTextEdit?.id!==part.id && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
             </div>;
           })}
         </div>
         </div>
-        <p className="ls-canvas-note">Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
+        <p className="ls-canvas-note">Double-click text to type · Ctrl+C/X/V: object clipboard · Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
       </div>
       <aside className="ls-panel ls-properties">
-        <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
+        <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Insert Field · फील्ड जोड़ें {showProps ? "▾" : "▸"}</button>
+        {showProps && <div className="ls-insert-fields">
+          <div className="ls-field-panel-tabs" role="group" aria-label="Field mapping source">
+            <button type="button" aria-pressed={fieldPanelTab==="bank"} onClick={()=>setFieldPanelTab("bank")}>Bank Info</button>
+            <button type="button" aria-pressed={fieldPanelTab==="customer"} onClick={()=>setFieldPanelTab("customer")}>Customer Data</button>
+          </div>
+          <p>Select a box on the paper to map it, or click a field to add a new box.</p>
+          <div className="ls-field-panel-list">
+            {(fieldPanelTab==="bank"?[...new Set(["bankName","branchName","branchAddress","phone","branchEmail","ifsc","micr","gstin",...Object.keys(bankValues).filter(key=>/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(key)&&!/(?:password|secret|credential|token|api_?key|private_?key|license|firebase|oauth|session|tenant|permission|admin|role|identity)/i.test(key))])]:customerFieldKeys).map(key=>
+              <button key={key} type="button" title={"Map "+key}
+                onClick={()=>{
+                  if(selected && ["rectangle","text","field"].includes(selected.kind)){
+                    edit({kind:"field",origin:fieldPanelTab,fieldKey:key,label:key,value:"",defaultValue:"",preprinted:false,
+                      dotMatrix:setup.output==="dotmatrix",quick:setup.output==="quick"});
+                  }else append("field",fieldPanelTab,key,key);
+                  setNotice("Mapped "+key+" to the selected tenant's "+(fieldPanelTab==="bank"?"Bank Information":"Customer Data")+". No preview customer value is saved.");
+                }}>
+                <span aria-hidden="true">{fieldPanelTab==="bank"?"♧":"◇"}</span>{key.replace(/([A-Z])/g," $1")}
+              </button>)}
+          </div>
+        </div>}
         {showProps && (selected ? <div className="ls-properties-body">
           {field(selected.kind==="text"?"Editable text / Paragraph":"Element name / Label",
             selected.kind==="text"?
@@ -1593,7 +2733,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
                 (origin==="customer"||origin==="bank"||origin==="dotmatrix"?true:selected.dotMatrix)});
             setLabelChecked(false);
           }}><option value="static">Static / Graphic text</option><option value="preprinted">Already printed on paper</option><option value="customer">Customer Data</option><option value="bank">Bank Information</option><option value="dotmatrix">Dot Matrix Data / Label</option></select>)}
-          {field("Mapped field key", <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. customerName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
+          {field("Mapped field key", selected.origin==="customer"?
+            <select value={selected.fieldKey} onChange={event=>edit({fieldKey:event.target.value})}>
+              {!customerFieldKeys.includes(selected.fieldKey)&&<option value={selected.fieldKey}>{selected.fieldKey||"Choose customer field"}</option>}
+              {customerFieldKeys.map(key=><option value={key} key={key}>{key}</option>)}
+            </select>:
+            <input value={selected.fieldKey} onChange={event => edit({ fieldKey: event.target.value })} placeholder="e.g. branchName" list={selected.origin==="bank" ? "ls-bank-fields" : undefined} />)}
           <datalist id="ls-bank-fields">{Object.keys(bankValues).sort().map(key=><option key={key} value={key}/>)}</datalist>
           {field("Default / Preview value", <input value={selected.defaultValue} onChange={event => edit({ defaultValue: event.target.value })} placeholder="Optional default" />)}
           {field("Manual field value", <input value={selected.value} onChange={event => edit({ value: event.target.value })} placeholder="Optional static override" />)}
@@ -1673,6 +2818,80 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </div> : <p className="ls-empty">Select an object to edit every property: text, dynamic mapping, font, color, size, layers, coordinates and print behavior.</p>)}
       </aside>
     </div>
+    {pageSetupOpen&&workspaceView==="design"&&<div className="ls-page-setup-backdrop">
+      <section className="ls-page-setup-dialog" role="dialog" aria-modal="true" aria-label="Passbook Page Setup">
+        <header><strong>Page Setup — Size, Margins & Fold</strong><button type="button" autoFocus onClick={()=>setPageSetupOpen(false)}>✕ Close</button></header>
+        <PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
+          onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
+          onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>
+        <footer><button type="button" className="ls-primary" onClick={()=>setPageSetupOpen(false)}>Done · Return to Document</button></footer>
+      </section>
+    </div>}
+    <div className="ls-designer-status" aria-label="Editor status and zoom">
+      <span>Page {selectedPage}/{Math.max(1,draft.pageCount||1)} · {draft.widthMm} × {draft.heightMm} mm · Fold: {pageSetupFor(draft).foldAxis==="horizontal"?"Horizontal":pageSetupFor(draft).foldAxis==="vertical"?"Vertical":"No Fold"}</span>
+      <span>{dirty?"Unsaved changes":"Draft saved"} · {setup.output==="dotmatrix"?"PR2 text-only":"Quick Passbook"}</span>
+      <button type="button" aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>Ruler</button>
+      <button type="button" aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>Grid</button>
+      <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=0.6} onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>−</button><strong>{Math.round(zoom*100)}%</strong><button type="button" aria-label="Zoom in" disabled={zoom>=2} onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>＋</button></span>
+    </div>
+    <details className="ls-extra-tools" aria-label="More document actions">
+      <summary>Additional tools and import shortcuts · Keep the editor visible above</summary>
+    <section className="ls-tool-collection" aria-label="Document tools">
+      <div className="ls-tool-card ls-tool-primary">
+        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
+        <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
+      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">Upload Word DOC/DOCX<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);}} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
+        </div>
+      </div>
+      <div className="ls-tool-card ls-tool-primary">
+        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">02</span><div><strong>Text & Customer Data</strong><small>Common fields used on passbooks</small></div></div>
+        <div className="ls-ribbon" role="toolbar" aria-label="Add text and customer fields">
+      <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
+      <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
+      <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
+      <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
+      <button type="button" aria-pressed={mappingSource==="customer"} onClick={()=>setMappingSource("customer")}>Draw Customer Data Box</button>
+      <button type="button" aria-pressed={mappingSource==="bank"} onClick={()=>setMappingSource("bank")}>Draw Bank Data Box</button>
+        </div>
+      </div>
+      <details className="ls-tool-card ls-tool-secondary">
+        <summary><span className="ls-tool-icon" aria-hidden="true">03</span><span><strong>Graphics & Shapes</strong><small>Photo, logo, boxes, circles and lines</small></span><span aria-hidden="true">⌄</span></summary>
+        <div className="ls-ribbon" role="toolbar" aria-label="Insert graphics and shapes">
+      <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
+      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
+      <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
+      <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
+      <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
+      <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
+      <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
+        </div>
+      </details>
+    </section>
+    <section className="ls-tool-card ls-page-card" aria-label="Page setup">
+      <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
+    <div className="ls-settings">
+      <button type="button" onClick={()=>setWordTab("layout")}>Page Setup: Size / Fold / Margins</button>
+      <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
+      <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
+      <span>Full open book {draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm · Start {draft.printStartMm} mm</span>
+      <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
+      {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
+      <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
+      <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
+      <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
+      <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
+      <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
+      <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
+      <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
+    </div>
+    </section>
+    </details>
+    {easyMode&&workspaceView==="design"&&<div className="ls-simple-bottom-save" role="group" aria-label="Always visible Save and Backup">
+      <span>{dirty?"Design changed":"Layout "+selectedLayoutSlot}</span>
+      <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy}
+        onClick={()=>{void save();}}>{savingLayout?"Saving…":"Save Design"}</button>
+      <button type="button" disabled={savingLayout||busy} onClick={exportJson}>Download Backup</button>
+    </div>}
     <footer className="ls-footer">Draft Windows Document Studio · Precision geometry and line spacing must be proofed on real paper. Only Master-approved and physically calibrated layouts may be activated. Existing bank printing and customer data remain unchanged.</footer>
   </section>;
 }
@@ -1682,9 +2901,16 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
  * navigation link: direct component imports also fail closed.
  */
 export default function CustomizeLayoutStudio(props:StudioProps) {
-  if(!windowsLayoutEngineAvailable())return <section role="alert" className="ls-windows-only">
+  const [setup,setSetup]=useState<LayoutSetup|null>(null);
+  const previewOnly=props.previewOnly===true&&codespacesLayoutPreviewAvailable();
+  if(!windowsLayoutEngineAvailable()&&!previewOnly)return <section role="alert" className="ls-windows-only">
     <h2>Windows EXE only</h2>
     <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
   </section>;
-  return <CustomizeLayoutStudioCore {...props}/>;
+  if(!setup)return <LayoutSetupWizard currentBank={props.bankName} banks={props.bankOptions??[props.bankName]}
+    accountOpening={props.mode==="accountOpening"} onOpen={setSetup}/>;
+  const sameBank=setup.bankName.trim().toLowerCase()===props.bankName.trim().toLowerCase();
+  return <CustomizeLayoutStudioCore key={setup.bankName+":"+setup.output+":"+setup.method}
+    {...props} previewOnly={previewOnly} bankName={setup.bankName} bankValues={sameBank?props.bankValues:{}} setup={setup}
+    onBackToSetup={()=>setSetup(null)}/>;
 }
