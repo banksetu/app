@@ -155,13 +155,13 @@ if(primaryInstance)app.whenReady().then(async()=>{
   autoUpdater.autoDownload=false;autoUpdater.autoInstallOnAppQuit=false;autoUpdater.allowDowngrade=false;
   autoUpdater.on('error',()=>{});autoUpdater.on('download-progress',progress=>{!window?.isDestroyed()&&window?.webContents.send('update:progress',{percent:Number(progress?.percent||0),transferred:Number(progress?.transferred||0),total:Number(progress?.total||0),bytesPerSecond:Number(progress?.bytesPerSecond||0)});});autoUpdater.on('update-downloaded',()=>{downloaded=true;!window?.isDestroyed()&&window?.webContents.send('update:ready',{ready:true});});
   const hasUpdateFeed=()=>app.isPackaged && fs.existsSync(path.join(process.resourcesPath,'app-update.yml'));
-  const testUpdater=require('./testUpdater.cjs').createTestUpdater({fetch:net.fetch,current:app.getVersion(),manifestUrl:'https://banksetu-app.web.app/version.json',directory:path.join(app.getPath('userData'),'updates'),backup:()=>store.backup(),launch:async file=>{const error=await shell.openPath(file);if(error)throw new Error(error);app.quit();}});
+  const testUpdater=require('./testUpdater.cjs').createTestUpdater({fetch:net.fetch,current:app.getVersion(),manifestUrl:'https://banksetu-app.web.app/version.json',platform:process.platform==='darwin'?'mac':'windows',directory:path.join(app.getPath('userData'),'updates'),backup:()=>store.backup(),launch:async file=>{const error=await shell.openPath(file);if(error)throw new Error(error);app.quit();}});
   const assertUpdateFeed=()=>{
     if (!app.isPackaged || !hasUpdateFeed()) throw new Error('Windows update feed is not packaged. Install the production EXE release.');
   };
   ipcMain.handle('update:version',event=>{trusted(event);return app.getVersion();});
   ipcMain.handle('update:check',async event=>{
-    trusted(event);if(!app.isPackaged)return testUpdater.check();assertUpdateFeed();downloaded=false;
+    trusted(event);if(!app.isPackaged||process.platform==='darwin')return testUpdater.check();assertUpdateFeed();downloaded=false;
     const result=await autoUpdater.checkForUpdates();const latestVersion=result?.updateInfo.version || app.getVersion();
     let changelog,releaseDate;
     try {
@@ -171,7 +171,7 @@ if(primaryInstance)app.whenReady().then(async()=>{
     const notes=typeof result?.updateInfo.releaseNotes==='string'?result.updateInfo.releaseNotes:'';
     return {latestVersion,notes,changelog,releaseDate};
   });
-  ipcMain.handle('update:install',async event=>{trusted(event);if(!app.isPackaged)return testUpdater.install();assertUpdateFeed();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
+  ipcMain.handle('update:install',async event=>{trusted(event);if(!app.isPackaged||process.platform==='darwin')return testUpdater.install();assertUpdateFeed();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
   openMain=async(page)=>{
     if(window&&!window.isDestroyed()){window.show();window.focus();if(page)window.webContents.send('system-notification:open',page);return;}
   window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});

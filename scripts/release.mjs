@@ -85,6 +85,8 @@ if (fs.existsSync(versionPath)) {
       releaseUrl: `https://github.com/banksetu/app/releases/tag/v${newVersion}`,
       androidBuild: nextMajor * 1000000 + nextMinor * 1000 + nextPatch,
       androidDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Android-${nextMajor * 1000000 + nextMinor * 1000 + nextPatch}.apk`,
+      macVersion: newVersion,
+      macDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-${newVersion}-arm64.dmg`,
       downloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Setup-${newVersion}-x64.exe`,
       windowsVersion: newVersion,
       windowsDownloadUrl: `https://github.com/banksetu/app/releases/download/v${newVersion}/BankSetu-Setup-${newVersion}-x64.exe`

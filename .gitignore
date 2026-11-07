@@ -38,6 +38,7 @@ web-app-dist/
 test-evidence/
 
 /build/pr2/
+/build/icon.icns
 
 # Generated only for private Codespaces Vite preview; never commit OCR model bytes.
 public/ocr/

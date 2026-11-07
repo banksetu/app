@@ -1,0 +1,45 @@
+{
+  "appId": "in.banksetu.desktop",
+  "productName": "Bank Setu",
+  "directories": {
+    "output": "desktop-release-macos"
+  },
+  "compression": "maximum",
+  "files": [
+    "dist/**",
+    "desktop/*.cjs",
+    "src/generated/licensePublicKey.json",
+    "!desktop/*.test.cjs",
+    "package.json",
+    "!desktop/*smoke.cjs"
+  ],
+  "asar": true,
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "artifactName": "BankSetu-${version}-arm64.${ext}",
+    "category": "public.app-category.finance",
+    "identity": null,
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
+    "notarize": false,
+    "electronLanguages": [
+      "en",
+      "hi"
+    ],
+    "icon": "build/icon.icns"
+  },
+  "dmg": {
+    "artifactName": "BankSetu-${version}-arm64.${ext}",
+    "title": "Bank Setu ${version}",
+    "format": "ULFO",
+    "sign": false,
+    "shrink": true
+  }
+}
