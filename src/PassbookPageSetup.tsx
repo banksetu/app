@@ -13,17 +13,31 @@ export default function PassbookPageSetup({
   page,unit,onUnit,onMeasurement,onPageSetup,onPreset,onOrientation
 }:Props){
   const [foldedView,setFoldedView]=useState(false);
+  const [editingMetric,setEditingMetric]=useState<{title:string;value:string}|null>(null);
   const cfg=pageSetupFor(page),measure=pageMeasurements(page);
   const showFolded=foldedView&&cfg.foldAxis!=="none";
   const p=Math.max(0.00001,page.widthMm),h=Math.max(.00001,page.heightMm);
   const axis=cfg.foldAxis;
-  const mmNumber=(title:string,value:number,update:(n:number)=>void,min=0,max=500)=>
-    <label className="ls-page-metric" key={title}><span>{title} ({unit})</span>
-      <input type="number" aria-label={title} min={toUnit(min,unit)} max={toUnit(max,unit)}
-        step={unit==="mm"?"0.1":"0.01"} value={toUnit(value,unit)}
-        onChange={event=>{if(event.target.value.trim()==="")return;const n=Number(event.target.value)*unitFactor(unit);
-          if(Number.isFinite(n))update(Math.round(n*1000)/1000);}}/>
+  // Keep the raw text while focused: users can select all, Backspace and type
+  // decimals without the controlled numeric input restoring the old value.
+  const mmNumber=(title:string,value:number,update:(n:number)=>void,min=0,max=500)=>{
+    const editing=editingMetric?.title===title;
+    const commit=(raw:string)=>{
+      setEditingMetric(null);
+      if(!raw.trim())return;
+      const n=Number(raw)*unitFactor(unit);
+      if(Number.isFinite(n)&&n>=min&&n<=max)update(Math.round(n*1000)/1000);
+    };
+    return <label className="ls-page-metric" key={title}><span>{title} ({unit})</span>
+      <input type="text" inputMode="decimal" aria-label={title}
+        title={`Enter a value between ${toUnit(min,unit)} and ${toUnit(max,unit)} ${unit}`}
+        value={editing?editingMetric.value:String(toUnit(value,unit))}
+        onFocus={()=>setEditingMetric({title,value:String(toUnit(value,unit))})}
+        onChange={event=>setEditingMetric({title,value:event.target.value})}
+        onBlur={event=>commit(event.target.value)}
+        onKeyDown={event=>{if(event.key==="Enter")event.currentTarget.blur();if(event.key==="Escape"){setEditingMetric(null);event.currentTarget.blur();}}}/>
     </label>;
+  };
   const foldMax=axis==="vertical"?page.widthMm:page.heightMm;
   const viewedWidth=showFolded&&axis==="vertical"?
     Math.max(page.foldMm,page.widthMm-page.foldMm):page.widthMm;
@@ -66,7 +80,7 @@ export default function PassbookPageSetup({
             {mmNumber("Full open height",page.heightMm,v=>onMeasurement("heightMm",v),50,500)}
           </div>
           <div className="ls-fold-direction-chooser" role="group" aria-label="Fold direction">
-            <strong>Book Fold Direction — किताब कैसे मुड़ेगी?</strong>
+            <strong>Book Fold Direction</strong>
             <div className="ls-fold-direction-options">
               {([
                 ["horizontal","Horizontal Fold","Top + Bottom halves"],
