@@ -88,6 +88,7 @@ export default function MasterTemplateManager({onBack}:{onBack:()=>void}){
       version:1,mode:item.mode,bankName:item.bankName,pageCount:item.pageCount??1,
       widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,
       printStartMm:item.printStartMm,pageSetup:item.pageSetup,
+      requestedOutput:item.requestedOutput??"quick",requestedSlot:item.requestedSlot??1,
       elements:item.elements.map(part=>({...part,value:"",imageData:undefined}))
     };
     if(!validatePersistedLayoutDraft(raw,item.mode,item.bankName)){
