@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { selectSsaReportEntries, ssaReportCounts } from "../src/core/ssaReportSelection.ts";
+import { ssaCardRows, SSA_CARD_TITLES } from "../src/core/ssaCardDetails.ts";
 
 const entry=(accountNo,entryDate,flags={})=>({
   entryId:"entry-"+accountNo+"-"+entryDate,accountNo,entryDate,
@@ -63,4 +64,45 @@ test("sidebar exactly follows the requested twelve-item order without PR2 suffix
     "Forms Send to Branch","Settings","Reports","Sync & Backup"]);
   assert.equal(nav.includes('label="Auto Passbook Generator"'),false);
   assert.equal(nav.includes('label="Passbook Print (PR2)"'),false);
+});
+
+
+test("four SSA KPI lists match the exact date/search-filtered card totals and show only enrolled schemes",()=>{
+  const filtered=[
+    entry("000111","2026-11-01",{apy:true}),
+    entry("000222","2026-11-07",{pmjjby:true}),
+    entry("000333","2026-11-12",{apy:true,pmjjby:true,pmsby:true}),
+    entry("000444","2026-11-14",{pmsby:true})
+  ];
+  const counts=ssaReportCounts(filtered);
+  assert.equal(ssaCardRows(filtered,"total").length,counts.entries);
+  assert.equal(ssaCardRows(filtered,"apy").length,counts.apy);
+  assert.equal(ssaCardRows(filtered,"pmjjby").length,counts.pmjjby);
+  assert.equal(ssaCardRows(filtered,"pmsby").length,counts.pmsby);
+  assert.deepEqual(ssaCardRows(filtered,"apy").map(row=>row.accountNo),["000111","000333"]);
+  assert.deepEqual(ssaCardRows(filtered,"pmjjby").map(row=>row.accountNo),["000222","000333"]);
+  assert.deepEqual(ssaCardRows(filtered,"pmsby").map(row=>row.accountNo),["000333","000444"]);
+  assert.deepEqual(Object.keys(SSA_CARD_TITLES),["total","apy","pmjjby","pmsby"]);
+});
+test("four KPI cards open customer-list popups and share the real All Customer Data preview",()=>{
+  const component=readFileSync(new URL("../src/SsaCampaign.tsx",import.meta.url),"utf8");
+  const list=readFileSync(new URL("../src/SsaCampaignCardDialog.tsx",import.meta.url),"utf8");
+  const style=readFileSync(new URL("../src/SsaCampaignCardDialog.css",import.meta.url),"utf8");
+  for(const scheme of ["total","apy","pmjjby","pmsby"]) {
+    assert.ok(component.includes('setCardKind("'+scheme+'")'),"KPI is not clickable: "+scheme);
+  }
+  assert.match(component,/entries=\{filtered\}/);
+  assert.match(component,/onPdf=\{async entry=>\{await report\("pdf"/);
+  assert.match(component,/audience:"customer",accountNo:entry\.accountNo/);
+  assert.match(list,/lazy\(\(\) => import\("\.\/AllCustomerData"\)\)/);
+  assert.match(list,/recordId:preview\.customerRecordId/);
+  assert.match(list,/onPreviewClose=\{\(\)=>setPreview\(null\)\}/);
+  assert.match(list,/entry\[\w+\]/s);
+  assert.match(list,/className="ssa-card-yes">Yes/);
+  assert.match(list,/aria-label=\{"Download SSA PDF for account "\+entry\.accountNo\}/);
+  assert.match(style,/z-index:2700/);
+  const customerPreview=readFileSync(new URL("../src/AllCustomerData.tsx",import.meta.url),"utf8");
+  assert.match(customerPreview,/onClick=\{closePreview\}>Close/);
+  assert.match(customerPreview,/Share/);
+  assert.match(customerPreview,/onClick=\{\(\) => void requireLicensedWrite\(\)\.then\(\(\)=>window\.print\(\)\)/);
 });
