@@ -4179,3 +4179,94 @@ html[data-appearance="dark"] .central-bank-document :is(h1,h2,h3,h4,h5,h6,p,span
 .app-message-dialog::backdrop{background:#030812b8}
 .app-message-dialog h2{font-size:21px;margin:0 0 14px;color:inherit}.app-message-dialog p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;line-height:1.55}
 .app-dialog-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:22px}.app-dialog-actions button{padding:10px 18px;border-radius:9px;border:1px solid #aebbd0;background:#eef2f8;color:#20324c;cursor:pointer;font:inherit}.app-dialog-actions .app-dialog-confirm{background:#2358aa;color:white;border-color:#2358aa}
+
+/* Portal-based BANK SETU dashboard/customer popups live under document.body
+   instead of inside .banksetu-app-shell. Read the existing verified
+   html[data-appearance] value; never create a competing theme preference. */
+@media screen {
+ html[data-appearance="dark"] :is(.dashboard-status-panel,.customer-preview-card){
+   color-scheme:dark!important;background:#142238!important;
+   color:#f4f8ff!important;border:1px solid #435b7b!important;
+   box-shadow:0 24px 72px #030915c9!important
+ }
+ html[data-appearance="dark"] .customer-preview-overlay{background:#030915d4!important}
+ html[data-appearance="dark"] .customer-preview-heading{
+   background:linear-gradient(110deg,#233958,#334d76)!important;
+   color:#fff!important
+ }
+ html[data-appearance="dark"] .customer-preview-heading :is(h2,p,.customer-preview-close){color:#fff!important}
+ html[data-appearance="dark"] .customer-preview-content,
+ html[data-appearance="dark"] .customer-preview-section,
+ html[data-appearance="dark"] .customer-preview-bottom{
+   background:#192a43!important;color:#f5f8ff!important;
+   border-color:#425977!important
+ }
+ html[data-appearance="dark"] .customer-preview-section h3{
+   background:#253b59!important;color:#f5f8ff!important
+ }
+ html[data-appearance="dark"] .customer-preview-section :is(dt,dd),
+ html[data-appearance="dark"] :is(.customer-preview-name,.customer-preview-account-label,.customer-preview-account-value,.customer-preview-address){
+   color:#f3f7ff!important
+ }
+ html[data-appearance="dark"] .customer-preview-section dl>div{border-color:#3f5570!important}
+ html[data-appearance="dark"] .customer-preview-status{
+   background:#184638!important;border-color:#357e62!important;color:#b7f9d7!important
+ }
+ html[data-appearance="dark"] .customer-preview-type{
+   background:#39253f!important;border-color:#a46399!important;color:#ffcfeb!important
+ }
+ html[data-appearance="dark"] .customer-preview-account-number button{
+   background:#24456a!important;border-color:#678cae!important;color:#f4faff!important
+ }
+ html[data-appearance="dark"] .customer-preview-actions button:not(:first-child){
+   background:#243d59!important;border-color:#567599!important;color:#f1f7ff!important
+ }
+ html[data-appearance="dark"] .customer-preview-actions button:first-child{
+   background:#b83b73!important;border-color:#e47daf!important;color:white!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel header,
+ html[data-appearance="dark"] .dashboard-status-panel footer{
+   border-color:#405571!important;color:#dbe8f9!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel :is(h2,p,strong,span){
+   color:#f3f7ff!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel input,
+ html[data-appearance="dark"] .dashboard-status-panel select{
+   background:#0c1a2e!important;color:#f3f7ff!important;border-color:#607b9d!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel .dashboard-status-row{
+   background:#1d314b!important;border-color:#3d5572!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel .dashboard-status-account button{
+   background:#284b72!important;color:#ecf6ff!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel header button{
+   color:#fff!important
+ }
+ html[data-appearance="dark"] .dashboard-status-panel .dashboard-status-error{color:#ffb6bd!important}
+ html[data-appearance="dark"] .dashboard-status-panel .dashboard-status-notice{color:#b0f3c6!important}
+ @media(max-width:650px){
+  .customer-preview-overlay{padding:max(3px,env(safe-area-inset-top,0px)) 3px max(3px,env(safe-area-inset-bottom,0px))}
+  .customer-preview-card{max-width:100%;min-width:0}
+  .customer-preview-account-number button{min-width:36px;min-height:36px}
+  .customer-preview-actions button{min-height:42px}
+  .dashboard-status-overlay{padding:max(4px,env(safe-area-inset-top,0px)) 4px max(4px,env(safe-area-inset-bottom,0px))}
+  .dashboard-status-panel{max-height:calc(100dvh - 16px)}
+ }
+}
+@media print {
+ html[data-appearance="dark"] .customer-preview-overlay,
+ html[data-appearance="dark"] .customer-preview-card,
+ html[data-appearance="dark"] .customer-preview-content,
+ html[data-appearance="dark"] .customer-preview-section,
+ html[data-appearance="dark"] .customer-preview-section h3,
+ html[data-appearance="dark"] .customer-preview-bottom{
+   background:white!important;color:#16263e!important;border-color:#d8e0e9!important;
+   box-shadow:none!important;color-scheme:light!important
+ }
+ html[data-appearance="dark"] .customer-preview-section :is(dt,dd),
+ html[data-appearance="dark"] :is(.customer-preview-name,.customer-preview-account-label,.customer-preview-account-value,.customer-preview-address){
+   color:#16263e!important
+ }
+}
