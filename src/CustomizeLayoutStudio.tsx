@@ -138,8 +138,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [workspaceView,setWorkspaceView]=useState<"design"|"library">("design");
-  const [easyMode,setEasyMode]=useState(false);
-  const [simplePaperOpen,setSimplePaperOpen]=useState(false);
   const [pageSetupOpen,setPageSetupOpen]=useState(false);
   const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help"|"format">("home");
   const [ribbonSearch,setRibbonSearch]=useState("");
@@ -195,7 +193,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [catalogBusy, setCatalogBusy] = useState(false);
   const [layoutSelection, setLayoutSelection] = useState<{active:boolean;revision:number;template?:{id:string;bankName:string;mode:Mode}|null}|null>(null);
   const [hardwareChecked, setHardwareChecked] = useState(false);
-  const [showProps, setShowProps] = useState(true);
+  const [showProps, setShowProps] = useState(false);
+  const canvasWrapRef=useRef<HTMLDivElement|null>(null);
   const [fieldPanelTab,setFieldPanelTab]=useState<"bank"|"customer">("bank");
   const undoRef = useRef<Draft[]>([]);
   const redoRef = useRef<Draft[]>([]);
@@ -254,6 +253,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       resetForNewWorkspace();
     }
   },[storageKey,resetForNewWorkspace]);
+  useEffect(()=>{if(selectedId)setShowProps(true);},[selectedId]);
+  const fitPaperWidth=()=>{
+    const available=(canvasWrapRef.current?.clientWidth??900)-64;
+    setZoom(Math.max(.5,Math.min(4,Math.round(available/(draft.widthMm*PX_PER_MM)*100)/100)));
+  };
   const selected = draft.elements.find(part => part.id === selectedId) || null;
   const liveWordIds=selectedId?(wordSelectedIds.includes(selectedId)?wordSelectedIds:[selectedId]):[];
   const selectedWordParts=draft.elements.filter(p=>liveWordIds.includes(p.id)&&(p.page??1)===selectedPage);
@@ -1742,7 +1746,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       case "shared":setWorkspaceView("library");setCatalogOpen(true);break;
     }
   };
-  return <section className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")}
+  return <section className={"layout-studio ls-view-"+workspaceView+" ls-advanced"}
     onKeyDown={event=>{
       if(event.altKey&&event.key==="/"){
         event.preventDefault();setRibbonSearchOpen(true);setWorkspaceView("design");
@@ -1769,53 +1773,33 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         PDF/Word conversion, page settings, editable objects and proof export use the real draft editor.
       </p>}
       <div className="ls-header-utilities">
-      <div className="ls-header-main-actions"><button type="button" className="ls-primary" disabled={savingLayout||busy} onClick={()=>{void save();}} title="Save this draft">▣ Save Draft{dirty ? " *" : ""}</button><button type="button" onClick={()=>{setWorkspaceView("design");if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}} title="Preview customer values without saving them">◉ {previewOpen?"Hide Preview":"Preview"}</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}} title="Submit for Master review">✓ Send to Master</button>}</div>
-      <details className="ls-header-extra">
-        <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
-        <div className="ls-header-extra-actions">
-          <button type="button" onClick={()=>{void startFromBlank();}}>New Blank Layout (Word-style)</button>
-          <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors, "+result.filter(x=>x.severity==="warning").length+" warnings.");}}>Run Layout Audit</button>
-          <button type="button" disabled={previewOnly||savingLayout||busy} onClick={()=>{void syncNow();}}>Sync / Recover Layouts</button>
-          <label className="ls-file-action">Restore Layout Backup (JSON)<input type="file" accept=".json,application/json"
-            onChange={event=>{void restoreDraftBackup(event);}}/></label>
-          <button type="button" onClick={undo} disabled={!undoRef.current.length}>↶ Undo</button><button type="button" onClick={redo} disabled={!redoRef.current.length}>↷ Redo</button><button type="button" onClick={() => {setTemporaryValues({});setNotice("Temporary print edits cleared; saved layout and customer records were unchanged.");}}>Clear Temporary Edits</button><button type="button" onClick={exportJson}>Export JSON</button><button type="button" disabled={busy} onClick={() => {void proofPdf();}}>Export {preview === "quick" ? "Quick" : "Dot Matrix"} Proof PDF</button><button type="button" disabled={busy} onClick={()=>{void calibrationPdf();}}>Export Physical Calibration Ruler (No Print)</button>
-        {mode==="passbook" && <button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (No Print)</button>}</div>
-      </details>
-    </div>
+        <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>File</button>
+        <button type="button" onClick={()=>{setWorkspaceView("design");if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>
+          {previewOpen?"Hide Preview":"Preview"}
+        </button>
+      </div>
     </header>
-    <nav className="ls-workflow-nav" aria-label="Passbook Designer sidebar">
-      <div className="ls-sidebar-brand"><strong>◉ BANK SETU</strong><small>Passbook Layout Designer</small></div>
+    <nav className="ls-workflow-nav" aria-label="Passbook Designer navigation">
+      <div className="ls-sidebar-brand"><strong>BANK SETU</strong><small>Document Designer</small></div>
       <button type="button" aria-pressed={workspaceView==="design"} onClick={()=>setWorkspaceView("design")}>
-        <span className="ls-workflow-number">⌂</span><span><strong>Layout Designer</strong></span>
-      </button>
-      <button type="button" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>
-        <span className="ls-workflow-number">＋</span><span><strong>नया डिजाइन बनाएँ</strong></span>
+        <span className="ls-workflow-number">▤</span><span><strong>Editor</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
-        <span className="ls-workflow-number">▤</span><span><strong>ड्राफ्ट / मेरे डिजाइन</strong></span>
+        <span className="ls-workflow-number">▣</span><span><strong>My Files</strong></span>
       </button>
-      <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);}}>
-        <span className="ls-workflow-number">◎</span><span><strong>Shared Bank Layouts</strong><small>Approved same-bank templates</small></span>
+      <button type="button" aria-pressed={workspaceView==="library"} onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog();}}>
+        <span className="ls-workflow-number">◎</span><span><strong>Templates</strong></span>
       </button>
-      <button type="button" disabled={!canReview} title={canReview?"Review pending bank layouts":"Only Master Admin can approve shared layouts"} onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
-        <span className="ls-workflow-number">✓</span><span><strong>मास्टर स्वीकृति</strong></span>
-      </button>
-      <button type="button" onClick={()=>{setWorkspaceView("design");setShowLayers(v=>!v);}}>
-        <span className="ls-workflow-number">▦</span><span><strong>Layout मैनेज / Layers</strong></span>
-      </button>
-      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("layout");setPageSetupOpen(true);}}>
-        <span className="ls-workflow-number">▱</span><span><strong>Page Size / Margins</strong></span>
-      </button>
-      <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
-        <span className="ls-workflow-number">⇩</span><span><strong>बैकअप / रिकवर</strong></span>
-      </button>
+      {canReview&&<button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
+        <span className="ls-workflow-number">✓</span><span><strong>Approvals</strong></span>
+      </button>}
       <button type="button" onClick={onBackToSetup}>
-        <span className="ls-workflow-number">⚙</span><span><strong>बैंक चयन / सेटिंग</strong></span>
+        <span className="ls-workflow-number">⚙</span><span><strong>Bank Setup</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("help");}}>
-        <span className="ls-workflow-number">?</span><span><strong>सहायता</strong></span>
+        <span className="ls-workflow-number">?</span><span><strong>Help</strong></span>
       </button>
-      <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
+      <div className="ls-sidebar-foot">Draft · No automatic release</div>
     </nav>
     <details className="ls-tool-card ls-word-suite" open>
       <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Free BANK SETU ribbon · Text, layout, shapes, fields and preview</small></span><span aria-hidden="true">⌄</span></summary>
@@ -1861,63 +1845,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {findRibbonCommands(ribbonSearch,8).length===0&&<p>No working tool matches this search.</p>}
         </div>}
       </div>
-      <div className="ls-ribbon-quick-tools" role="toolbar" aria-label="Quick passbook design tools">
-        <strong className="ls-ribbon-quick-label">★ Easy Tools</strong>
-        <button type="button" title="Insert a text box. Double-click it on paper to write."
-          onClick={()=>{setWordTab("home");append("text","static","New text");}}><span aria-hidden="true">T</span> Text Box</button>
-        <button type="button" title="Insert an editable two-row, three-column table."
-          onClick={()=>{setWordTab("insert");insertEditableTable(2,3);}}><span aria-hidden="true">▦</span> Table</button>
-        <button type="button" title="Add a field that uses the current customer's name, never another client's data."
-          onClick={()=>{setWordTab("mailings");append("field","customer","Customer Name","customerName");}}><span aria-hidden="true">♙</span> Customer Name</button>
-        <button type="button" title="Add a field from the current bank configuration."
-          onClick={()=>{setWordTab("mailings");append("field","bank","Branch Name","branchName");}}><span aria-hidden="true">⌂</span> Bank Field</button>
-        <label className="ls-file-action" title="Import a logo or photo for Quick Passbook. Not allowed in Direct PR2.">
-          <span aria-hidden="true">▣</span> Picture
-          <input type="file" accept="image/png,image/jpeg,image/webp"
-            disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}}/>
-        </label>
-        <label className="ls-file-action" title="Insert punctuation or a special character into an unlocked static text box, or create a new text box.">
-          Ω Symbols
-          <select aria-label="Insert quick symbol" value="" onChange={event=>insertWordSymbol(event.target.value)}>
-            <option value="">Choose…</option>
-            {[".",",",";",":","@","#","₹","%","&","*","+","-","/","_","=","(",")","[","]","?","!","•","।","॥","°","✓","©","®","™"].map(symbol=>
-              <option key={symbol} value={symbol}>{symbol}</option>)}
-          </select>
-        </label>
-        <button type="button" title="Choose full-open book width, height, fold orientation and print start."
-          onClick={()=>{setWordTab("layout");setPageSetupOpen(true);}}><span aria-hidden="true">▱</span> Book Size & Fold</button>
-        <button type="button" title="Generate a draft proof PDF; never triggers direct PR2 printer."
-          disabled={busy} onClick={()=>{void proofPdf();}}><span aria-hidden="true">◉</span> Preview PDF</button>
-        <button type="button" title="Save this private editable draft, without activating live printing."
-          disabled={savingLayout||busy} onClick={()=>{void save();}}><span aria-hidden="true">▣</span> Save Draft</button>
-        <details className="ls-ribbon-more-tools">
-          <summary title="More real passbook design tools">＋ More Tools</summary>
-          <div className="ls-ribbon-more-content" role="group" aria-label="Additional easy passbook tools">
-            <button type="button" title="Add the current customer's account number placeholder"
-              onClick={()=>{setWordTab("mailings");append("field","customer","Account Number","accountNumber");}}>◇ Account Number</button>
-            <button type="button" title="Add IFSC from active Bank Information"
-              onClick={()=>{setWordTab("mailings");append("field","bank","IFSC","ifsc");}}>◇ IFSC</button>
-            <button type="button" title="Add customer's nominee field"
-              onClick={()=>{setWordTab("mailings");append("field","customer","Nominee","nominee");}}>◇ Nominee</button>
-            <button type="button" title="Add a rectangle shape"
-              onClick={()=>{setWordTab("draw");append("rectangle","static","Rectangle");}}>▢ Rectangle</button>
-            <button type="button" title="Add a line"
-              onClick={()=>{setWordTab("draw");append("line","static","Line");}}>─ Line</button>
-            <button type="button" title="Add a circle or oval shape"
-              onClick={()=>{setWordTab("draw");append("ellipse","static","Circle");}}>◯ Oval</button>
-            <button type="button" title="Add a customer photo placeholder for Quick Passbook only"
-              disabled={setup.output==="dotmatrix"}
-              onClick={()=>{setWordTab("insert");append("photo","static","Photo Box");}}>▣ Photo Box</button>
-            <button type="button" title="Select text or a shape and edit precise width/height/X/Y"
-              disabled={!selected} onClick={()=>setWordTab("format")}>▣ Object Format</button>
-            <button type="button" title="Show the ruler along the paper edges"
-              aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>▥ Ruler</button>
-            <button type="button" title="Show alignment grid on page"
-              aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>▦ Grid</button>
-          </div>
-        </details>
-        <span className="ls-ribbon-quick-help">Tip: choose a tool → click or drag on the page → edit on the right.</span>
-      </div>
       {wordTab==="format"&&<div className="ls-word-tab-content ls-object-format-ribbon"
         role="toolbar" aria-label="Format selected layout object">
         {selected?<><div className="ls-word-command-family" role="group" aria-label="Position">
@@ -1954,15 +1881,21 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
               onChange={e=>edit({opacity:Number(e.target.value)})}/></label>
             </div></div></>:<span>Select a document object to open its format tools.</span>}
       </div>}
-      {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
+      {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File, draft and approval"><span className="ls-ribbon-group-label">File · Draft · Approval · Backup</span>
         <button type="button" disabled={busy} onClick={()=>{void startFromBlank();}}>▤ New Blank</button>
         <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>▣ Save Draft</button>
+        {canSubmit&&<button type="button" className="ls-file-submit" disabled={savingLayout||busy}
+          onClick={()=>{void saveAndSubmit();}}>✓ Save &amp; Submit to Master</button>}
+        {previewOnly&&<span>Demo only — submit from the signed-in Windows Client Admin.</span>}
+        <button type="button" disabled={previewOnly||savingLayout||busy} onClick={()=>{void syncNow();}}>Sync / Recover Draft</button>
         <button type="button" disabled={busy} onClick={()=>{void proofPdf();}}>◉ Preview / Proof PDF</button>
         <button type="button" onClick={exportJson}>Download Editable Backup</button>
         <label className="ls-file-action">Restore Editable Backup
           <input type="file" accept=".json,application/json" onChange={event=>{void restoreDraftBackup(event);}}/>
         </label>
         <button type="button" onClick={()=>{void calibrationPdf();}}>Export Calibration PDF</button>
+        {mode==="passbook"&&<button type="button" disabled={busy} onClick={()=>{void verifyPr2Raster();}}>Check PR2 Raster (Proof)</button>}
+        <button type="button" onClick={()=>{setTemporaryValues({});setNotice("Temporary print values cleared; saved draft unchanged.");}}>Clear Preview-only Values</button>
         <label className="ls-file-action">Open Word
           <input type="file" accept=".doc,.docx,application/msword" onChange={event=>{
             const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);
@@ -2106,16 +2039,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
         <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
+        <button type="button" onClick={fitPaperWidth}>Fit Paper Width</button>
         <button type="button" onClick={()=>setZoom(.8)}>Zoom 80%</button>
-        <button type="button" onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>Zoom −</button>
-        <button type="button" onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>Zoom +</button>
+        <button type="button" onClick={()=>setZoom(v=>Math.max(.5,Math.round((v-.1)*10)/10))}>Zoom −</button>
+        <button type="button" onClick={()=>setZoom(v=>Math.min(4,Math.round((v+.1)*10)/10))}>Zoom +</button>
         <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
         <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
         <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
         <button type="button" disabled={!referencePages[selectedPage-1]} aria-pressed={referenceVisible} onClick={()=>setReferenceVisible(v=>!v)}>Original Overlay</button>
         <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>Customer Preview</button>
         <label>Zoom <select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>
-          {[.6,.8,1,1.5,2].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
+          {[.5,.6,.75,.8,1,1.25,1.5,2,3,4].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}
         </select></label>
         <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label>
         <label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> Grid</label>
@@ -2285,66 +2219,6 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </div>
     </div>}
     </details>
-    {easyMode&&workspaceView==="design"&&<section className="ls-simple-flow" aria-label="Simple passbook editing and saving">
-      <div className="ls-simple-head">
-        <div><strong>Easy Passbook Designer</strong>
-          <p>Make your design in 4 steps. The original full Word tools are available under Advanced Tools.</p></div>
-        <span>{setup.output==="dotmatrix"?"Direct PR2 Draft":"Quick Passbook Draft"} · Layout {selectedLayoutSlot}</span>
-      </div>
-      <div className="ls-simple-step-row">
-        <button type="button" aria-expanded={simplePaperOpen} onClick={()=>setSimplePaperOpen(v=>!v)}>
-          <b>1</b><span><strong>Page Size & Fold</strong><small>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</small></span>
-        </button>
-        <button type="button" onClick={()=>{append("text","static","New text");setNotice("New editable text inserted. Click the text on the paper to change it.");}}>
-          <b>2</b><span><strong>Add Text</strong><small>Click it on the page to edit</small></span>
-        </button>
-        <button type="button" onClick={()=>{setMappingSource("customer");setNotice("Drag a rectangle on the passbook to choose a customer field.");}}>
-          <b>3</b><span><strong>Customer Data</strong><small>Drag a box on the page</small></span>
-        </button>
-        <button type="button" onClick={()=>{if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}}>
-          <b>4</b><span><strong>{previewOpen?"Hide Preview":"Preview Design"}</strong>
-            <small>{previewOnly?"With sample customer":"With selected customer"}</small></span>
-        </button>
-      </div>
-      {simplePaperOpen&&<PassbookPageSetup page={draft} unit={unit} onUnit={setUnit}
-        onMeasurement={changePageMeasurement} onPageSetup={changePageSetup}
-        onPreset={choosePaperPreset} onOrientation={changePageOrientation}/>}
-      <div className="ls-simple-save-row" role="group" aria-label="Save and submit design">
-        <div className="ls-simple-save-status" role="status">
-          <strong>{dirty?"Unsaved changes":"Design ready to save"}</strong>
-          <small>{previewOnly?"Codespaces browser demo — no Firebase or Master Admin connection":
-            "Save your draft first; Client Admin can request Master approval after safety checks."}</small>
-        </div>
-        <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy} onClick={()=>{void save();}}>
-          {savingLayout?"Saving…":"Save Design"}
-        </button>
-        <button type="button" className="ls-simple-backup" disabled={busy||savingLayout}
-          onClick={()=>{void (async()=>{const ok=await save();if(ok)exportJson();})();}}>
-          Save & Download Backup
-        </button>
-        {previewOnly?
-          <button type="button" disabled title="Codespaces is an isolated demo. Export an editable JSON backup and use the authorized Windows Client Admin workflow for approval.">
-            Send to Master — Windows Only
-          </button>:
-          canSubmit?<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>
-            Send to Master for Approval
-          </button>:<span className="ls-simple-permission">Master approval is available to Client Admin only.</span>}
-      </div>
-      {previewOnly&&<p className="ls-simple-help">
-        Your design is saved only in this browser. Use <strong>Save & Download Backup</strong> to keep
-        the editable file. In the authorized Windows app, restore it under the same bank and
-        have the Client Admin submit it for Master review. Codespaces cannot send approvals.
-      </p>}
-      <button type="button" className="ls-simple-advanced" onClick={()=>setEasyMode(false)}>
-        Show All Word / Advanced Tools
-      </button>
-    </section>}
-    <div className="ls-workflow-context">
-      <span className="ls-workflow-indicator" aria-hidden="true"></span>
-      {workspaceView==="design"
-        ?"Edit locally with rulers, field mapping and live paper preview. Save a draft before seeking approval."
-        :"Review generic bank templates and activation history. Hardware calibration is required before production use."}
-    </div>
     {mappingSource&&<div className="ls-map-alert" role="status">Drag a box on the passbook paper, then choose the correct {mappingSource} field in Properties.
       <button type="button" onClick={()=>{setMappingSource(null);mapStartRef.current=null;setMapPendingRect(null);}}>Cancel mapping</button>
     </div>}
@@ -2590,7 +2464,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" className="ls-panel-title" onClick={() => setShowLayers(false)} aria-expanded={true}>Layers ({draft.elements.length}) ▾</button>
         <div className="ls-layer-list">{[...ordered].reverse().map(part => <button key={part.id} type="button" className={selectedId === part.id ? "ls-layer selected" : "ls-layer"} onClick={event=>selectWordObject(part,event.ctrlKey||event.metaKey||event.shiftKey)}><span>{part.kind === "photo" ? "▣" : part.kind === "rectangle" ? "▢" : part.kind === "line" ? "─" : part.origin === "customer" || part.origin === "bank" ? "◇" : "T"}</span><span>{selectionLabel(part)}</span><small>{part.origin}</small></button>)}</div>
       </aside>}
-      <div className="ls-canvas-wrap">
+      <div className="ls-canvas-wrap" ref={canvasWrapRef}>
         <div className="ls-paper-stage" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
         {showRulers && <div className="ls-ruler-x" aria-hidden="true" style={{width:draft.widthMm*PX_PER_MM*zoom}}>
           {Array.from({length:Math.floor(draft.widthMm/10)+1},(_,index)=>index*10).map(mm=>
@@ -2708,10 +2582,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           })}
         </div>
         </div>
-        <p className="ls-canvas-note">Double-click text to type · Ctrl+C/X/V: object clipboard · Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
+        <p className="ls-canvas-note">Double-click text to edit · Drag to move · Use Zoom below for fine alignment · Ctrl+Z to undo</p>
       </div>
       <aside className="ls-panel ls-properties">
-        <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Insert Field · फील्ड जोड़ें {showProps ? "▾" : "▸"}</button>
+        <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Properties {showProps ? "▾" : "▸"}</button>
         {showProps && <div className="ls-insert-fields">
           <div className="ls-field-panel-tabs" role="group" aria-label="Field mapping source">
             <button type="button" aria-pressed={fieldPanelTab==="bank"} onClick={()=>setFieldPanelTab("bank")}>Bank Info</button>
@@ -2856,67 +2730,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <span>{dirty?"Unsaved changes":"Draft saved"} · {setup.output==="dotmatrix"?"PR2 text-only":"Quick Passbook"}</span>
       <button type="button" aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>Ruler</button>
       <button type="button" aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>Grid</button>
-      <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=0.6} onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>−</button><strong>{Math.round(zoom*100)}%</strong><button type="button" aria-label="Zoom in" disabled={zoom>=2} onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>＋</button></span>
+      <button type="button" aria-pressed={showProps} onClick={()=>setShowProps(v=>!v)}>Properties</button>
+      <button type="button" onClick={fitPaperWidth}>Fit Width</button>
+      <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=.5} onClick={()=>setZoom(v=>Math.max(.5,Math.round((v-.1)*10)/10))}>−</button>
+      <input type="range" aria-label="Editor zoom 50 to 400 percent" min={.5} max={4} step={.05} value={zoom} onChange={event=>setZoom(Number(event.target.value))}/>
+      <strong>{Math.round(zoom*100)}%</strong>
+      <button type="button" aria-label="Zoom in" disabled={zoom>=4} onClick={()=>setZoom(v=>Math.min(4,Math.round((v+.1)*10)/10))}>＋</button></span>
     </div>
-    <details className="ls-extra-tools" aria-label="More document actions">
-      <summary>Additional tools and import shortcuts · Keep the editor visible above</summary>
-    <section className="ls-tool-collection" aria-label="Document tools">
-      <div className="ls-tool-card ls-tool-primary">
-        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">01</span><div><strong>Start & Import</strong><small>Choose your source document and graphics</small></div></div>
-        <div className="ls-ribbon" role="toolbar" aria-label="Import source document">
-      <label className="ls-file-action">Upload PDF<input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { void importPdf(event); }} /></label><label className="ls-file-action">Upload Word DOC/DOCX<input type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={busy} onChange={event=>{const file=event.target.files?.[0];event.target.value="";if(file)void importWordFile(file);}} /></label><label className="ls-file-action">＋ Logo / Graphic<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{void importGraphic(event);}} /></label>
-        </div>
-      </div>
-      <div className="ls-tool-card ls-tool-primary">
-        <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">02</span><div><strong>Text & Customer Data</strong><small>Common fields used on passbooks</small></div></div>
-        <div className="ls-ribbon" role="toolbar" aria-label="Add text and customer fields">
-      <button type="button" onClick={() => append("text", "static", "New text")}>＋ Text</button>
-      <button type="button" onClick={() => append("text", "preprinted", "Preprinted Label")}>＋ Label</button>
-      <button type="button" onClick={() => append("field", "customer", "Customer Field", "customerName")}>＋ Customer</button>
-      <button type="button" onClick={() => append("field", "bank", "Bank Information", "branchName")}>＋ Bank Field</button>
-      <button type="button" aria-pressed={mappingSource==="customer"} onClick={()=>setMappingSource("customer")}>Draw Customer Data Box</button>
-      <button type="button" aria-pressed={mappingSource==="bank"} onClick={()=>setMappingSource("bank")}>Draw Bank Data Box</button>
-        </div>
-      </div>
-      <details className="ls-tool-card ls-tool-secondary">
-        <summary><span className="ls-tool-icon" aria-hidden="true">03</span><span><strong>Graphics & Shapes</strong><small>Photo, logo, boxes, circles and lines</small></span><span aria-hidden="true">⌄</span></summary>
-        <div className="ls-ribbon" role="toolbar" aria-label="Insert graphics and shapes">
-      <button type="button" onClick={() => append("text", "dotmatrix", "Dot Matrix Field", "custom")}>＋ Dot Matrix</button>
-      <button type="button" onClick={() => append("photo", "static", "Photo Box")}>▣ Photo Box</button><button type="button" onClick={() => { const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);}}>▣ Bank Logo Field</button>
-      <button type="button" onClick={() => append("rectangle", "static", "Box")}>▢ Rectangle</button>
-      <button type="button" onClick={() => append("ellipse", "static", "Circle / Oval")}>◯ Ellipse</button>
-      <button type="button" onClick={() => append("line", "static", "Line")}>─ Line</button>
-      <button type="button" onClick={() => append("text", "static", "Branch Manager")}>＋ Manager</button>
-      <button type="button" onClick={() => append("text", "static", "Instructions")}>＋ Instructions</button>
-        </div>
-      </details>
-    </section>
-    <section className="ls-tool-card ls-page-card" aria-label="Page setup">
-      <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
-    <div className="ls-settings">
-      <button type="button" onClick={()=>setWordTab("layout")}>Page Setup: Size / Fold / Margins</button>
-      <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
-      <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
-      <span>Full open book {draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm · Start {draft.printStartMm} mm</span>
-      <button type="button" disabled={diffBusy || !referencePages[selectedPage-1]} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original vs Editor"}</button>
-      {visualDiff && <span title="Only a pixel diagnostic, not bank passbook print certification">Pixel difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%</span>}
-      <label><input type="checkbox" checked={referenceVisible} onChange={event=>setReferenceVisible(event.target.checked)}/> Show Original Reference</label>
-      <label>Reference opacity <input aria-label="Original reference opacity" type="range" min={0.1} max={0.9} step={0.1} value={referenceOpacity} onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
-      <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
-      <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
-      <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
-      <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
-      <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
-    </div>
-    </section>
-    </details>
-    {easyMode&&workspaceView==="design"&&<div className="ls-simple-bottom-save" role="group" aria-label="Always visible Save and Backup">
-      <span>{dirty?"Design changed":"Layout "+selectedLayoutSlot}</span>
-      <button type="button" className="ls-simple-save-primary" disabled={savingLayout||busy}
-        onClick={()=>{void save();}}>{savingLayout?"Saving…":"Save Design"}</button>
-      <button type="button" disabled={savingLayout||busy} onClick={exportJson}>Download Backup</button>
-    </div>}
-    <footer className="ls-footer">Draft Windows Document Studio · Precision geometry and line spacing must be proofed on real paper. Only Master-approved and physically calibrated layouts may be activated. Existing bank printing and customer data remain unchanged.</footer>
+    <footer className="ls-footer">Editing only · Save / Submit / Backup: File tab · Live printing requires Master approval and physical calibration.</footer>
   </section>;
 }
 
