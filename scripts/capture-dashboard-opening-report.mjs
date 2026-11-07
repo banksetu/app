@@ -57,11 +57,23 @@ const snap=async(page,filename,title,detail)=>{
 const open=async(theme,mobile=false)=>{
  const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1440,height:930},
    deviceScaleFactor:1,isMobile:mobile,hasTouch:mobile});
- page.on("pageerror",error=>runtimeErrors.push(String(error)));
+ page.on("pageerror",error=>{runtimeErrors.push(String(error));console.error("PAGE ERROR:",error);});
+ page.on("console",message=>{if(message.type()==="error")console.error("CONSOLE ERROR:",message.text());});
+ page.on("response",response=>{if(response.status()>=400)
+   console.error("HTTP ERROR:",response.status(),response.url());});
  await page.goto("http://127.0.0.1:5173/dashboard-opening-proof.html?theme="+theme,
    {waitUntil:"domcontentloaded",timeout:30000});
- await page.locator('.dashboard-opening-panel').waitFor({timeout:25000});
- await page.locator('.dashboard-opening-panel tbody tr').first().waitFor({timeout:15000});
+ try{
+   await page.locator('.dashboard-opening-panel').waitFor({timeout:14000});
+   await page.locator('.dashboard-opening-panel tbody tr').first().waitFor({timeout:15000});
+ }catch(error){
+   console.error("RENDER ERROR",String(error));
+   console.error("URL",page.url());
+   console.error("PAGE BODY",String(await page.locator("body").innerText()).slice(0,2600));
+   console.error("PAGE HTML",String(await page.content()).slice(0,2800));
+   await page.screenshot({path:join(output,"capture-diagnostic-"+theme+(mobile?"-mobile":"-desktop")+".png")});
+   throw error;
+ }
  return page;
 };
 try{
