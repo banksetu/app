@@ -14,11 +14,12 @@ test("account-opening dates are real account dates, not software-entry timestamp
    {name:"B",accountOpeningDate:"01/11/2026",createdAt:"2024-01-01"},
    {name:"C",accountOpeningDate:"31-10-2026",createdAt:"2026-11-05"},
    {name:"D",createdAt:"2026-11-06"},
-   {name:"E",openingDate:"07-Nov-2026"}
+   {name:"E",openingDate:"07-Nov-2026"},
+   {name:"Future",accountOpeningDate:"20/11/2026"}
  ];
  assert.equal(localMonth(now),"2026-11");
- assert.equal(currentMonthOpeningCount(rows,now),3);
- assert.deepEqual(matchingOpeningCustomers(rows,"2026-11-01","2026-11-30").map(x=>x.name),["A","E","B"]);
+ assert.equal(currentMonthOpeningCount(rows,now),3,"future opening dates are not counted before they occur");
+ assert.deepEqual(matchingOpeningCustomers(rows,"2026-11-01","2026-11-30").map(x=>x.name),["Future","A","E","B"]);
  assert.equal(openingDateKey(rows[3]),null);
  assert.equal(openingDateKey(rows[2]),"2026-10-31");
 });
@@ -53,6 +54,7 @@ test("dashboard report reuses the existing full preview with actions, never crea
  const customers=readFileSync(new URL("../src/AllCustomerData.tsx",import.meta.url),"utf8");
  assert.match(dashboard,/This Month Account Openings/);
  assert.match(dashboard,/currentMonthOpeningCount\(analyticsRows\)/);
+ assert.match(dashboard,/useMemo\(\(\)=>analyticsRows\?currentMonthOpeningCount/);
  assert.match(dashboard,/DashboardAccountOpeningReport/);
  for(const word of ["One Month","Month Range","Date Range","Customer Name","Account Number","Account Opening Date","Active Status","Copy account number"]){
   assert.ok(report.includes(word),word);
