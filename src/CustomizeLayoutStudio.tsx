@@ -13,6 +13,7 @@ import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
 import {wordTransform,wordNudge,wordGroup,wordGroupIds,type WordAction} from "./layoutWordGeometry.ts";
+import {findRibbonCommands,type SupportedRibbonAction} from "./layoutRibbonCommandSearch.ts";
 import {changeStaticTextCase,copyRibbonObjects,pasteRibbonObjects,type RibbonCase} from "./layoutRibbonEditing.ts";
 import {smartSnap,type SnapGuide} from "./layoutSmartGuides.ts";
 import {findEditableLabels,replaceEditableLabels} from "./layoutWordFindReplace.ts";
@@ -140,6 +141,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [simplePaperOpen,setSimplePaperOpen]=useState(false);
   const [pageSetupOpen,setPageSetupOpen]=useState(false);
   const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help">("home");
+  const [ribbonSearch,setRibbonSearch]=useState("");
+  const [ribbonSearchOpen,setRibbonSearchOpen]=useState(false);
+  const ribbonSearchRef=useRef<HTMLInputElement|null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
@@ -1635,7 +1639,54 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const selectionLabel = (part: LayoutPart) => part.label || part.fieldKey || part.kind;
   const field = (label: string, node: React.ReactNode) => <label className="ls-field"><span>{label}</span>{node}</label>;
   const number = (value: number, update: (next: number) => void, min = -1000, max = 1000, step = 1) => <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) update(within(next, min, max)); }} />;
-  return <section className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")} aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
+  // Office/LibreOffice/Docs-inspired offline tool finder. Only actions
+  // explicitly wired below are advertised as commands.
+  const runRibbonCommand=(id:SupportedRibbonAction)=>{
+    setRibbonSearchOpen(false);setRibbonSearch("");
+    switch(id){
+      case "new":setWordTab("file");void startFromBlank();break;
+      case "save":setWordTab("file");void save();break;
+      case "backup":setWordTab("file");exportJson();break;
+      case "proof":setWordTab("file");void proofPdf();break;
+      case "undo":undo();break;
+      case "redo":redo();break;
+      case "copy":copyWordSelection();break;
+      case "paste":pasteWordSelection();break;
+      case "find":setWordTab("review");break;
+      case "text":setWordTab("insert");append("text","static","New text");break;
+      case "table":setWordTab("insert");insertEditableTable(tableRows,tableColumns);break;
+      case "customer":setWordTab("mailings");append("field","customer","Account holder","name");break;
+      case "account":setWordTab("mailings");append("field","customer","Account number","accountNo");break;
+      case "bank":setWordTab("mailings");append("field","bank","Bank Name","bankName");break;
+      case "header":setWordTab("insert");insertDocumentDecoration("header");break;
+      case "footer":setWordTab("insert");insertDocumentDecoration("footer");break;
+      case "page-number":setWordTab("insert");insertDocumentDecoration("pageNumber");break;
+      case "line":setWordTab("draw");append("line","static","Line");break;
+      case "rectangle":setWordTab("draw");append("rectangle","static","Box");break;
+      case "page-setup":setWordTab("layout");setPageSetupOpen(true);break;
+      case "group":setWordTab("layout");groupWordSelection();break;
+      case "lock":setWordTab("layout");lockWordSelection(true);break;
+      case "unlock":setWordTab("layout");lockWordSelection(false);break;
+      case "ruler":setWordTab("view");setShowRulers(v=>!v);break;
+      case "grid":setWordTab("view");setShowGrid(v=>!v);break;
+      case "zoom":setWordTab("view");setZoom(1);break;
+      case "audit":setWordTab("review");{
+        const result=auditPassbookTemplate(draft);setAudit(result);
+        setNotice("Draft audit: "+result.filter(item=>item.severity==="error").length+
+          " errors and "+result.filter(item=>item.severity==="warning").length+" warnings.");
+      }break;
+      case "ocr":setWordTab("review");findNextUnreviewed();break;
+      case "shared":setWorkspaceView("library");setCatalogOpen(true);break;
+    }
+  };
+  return <section className={"layout-studio ls-view-"+workspaceView+(easyMode?" ls-guided":" ls-advanced")}
+    onKeyDown={event=>{
+      if(event.altKey&&event.key==="/"){
+        event.preventDefault();setRibbonSearchOpen(true);setWorkspaceView("design");
+        ribbonSearchRef.current?.focus();
+      }
+    }}
+    aria-label={mode === "passbook" ? "Customize Passbook" : "Customize Account Opening Form"}>
     <header className="ls-header">
       <div className="ls-heading">
         <span className="ls-brand-mark" aria-hidden="true">BS</span>
@@ -1712,6 +1763,34 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             {tab[0].toUpperCase()+tab.slice(1)}
           </button>)}
       </nav>
+      <div className="ls-ribbon-tool-finder">
+        <label htmlFor="ls-ribbon-command-search">⌕ Find a tool</label>
+        <input id="ls-ribbon-command-search" ref={ribbonSearchRef} type="search"
+          aria-label="Search available editing tools" autoComplete="off"
+          placeholder="Search commands (Alt+/)"
+          value={ribbonSearch}
+          onFocus={()=>setRibbonSearchOpen(true)}
+          onChange={event=>{setRibbonSearch(event.target.value);setRibbonSearchOpen(true);}}
+          onKeyDown={event=>{
+            if(event.key==="Escape"){event.preventDefault();setRibbonSearchOpen(false);ribbonSearchRef.current?.blur();}
+            if(event.key==="Enter"){
+              event.preventDefault();
+              const first=findRibbonCommands(ribbonSearch,8)[0];
+              if(first)runRibbonCommand(first.id);
+            }
+          }}/>
+        {ribbonSearchOpen&&<div className="ls-ribbon-tool-results" role="group" aria-label="Matching usable ribbon commands">
+          <div className="ls-ribbon-tool-results-head"><strong>Available tools</strong>
+            <button type="button" onClick={()=>setRibbonSearchOpen(false)}>Close</button>
+          </div>
+          {findRibbonCommands(ribbonSearch,8).map(cmd=><button type="button" key={cmd.id}
+            onClick={()=>runRibbonCommand(cmd.id)}
+            title={"Run "+cmd.label+" in "+cmd.tab+" tab"}>
+            <span>{cmd.label}</span><small>{cmd.tab}</small>
+          </button>)}
+          {findRibbonCommands(ribbonSearch,8).length===0&&<p>No working tool matches this search.</p>}
+        </div>}
+      </div>
       {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
         <button type="button" disabled={busy} onClick={()=>{void startFromBlank();}}>▤ New Blank</button>
         <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>▣ Save Draft</button>
