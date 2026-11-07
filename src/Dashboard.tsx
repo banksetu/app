@@ -1112,12 +1112,21 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
           {!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="cloud-sync" label="Sync & Backup" active={activePage === "sync-backup"} spinning={syncStatus.syncing} onClick={() => openPage("sync-backup")} />}
         </nav>
-        <div className="banksetu-appearance" role="group" aria-label="Appearance">
-          <button type="button" className="banksetu-appearance-toggle" data-mode={appearance} aria-label={`Switch to ${appearance === 'dark' ? 'light' : 'dark'} appearance`} aria-pressed={appearance === 'dark'} onClick={() => changeAppearance(appearance === 'dark' ? 'light' : 'dark')}>
-            <span className="banksetu-appearance-sun" aria-hidden="true">☀</span>
-            <span className="banksetu-appearance-moon" aria-hidden="true">☾</span>
-            <span className="banksetu-appearance-thumb" aria-hidden="true" />
-          </button>
+        <div className="banksetu-appearance" role="group" aria-label="Appearance: Light, Dark, Glass">
+          <div className="banksetu-appearance-track" data-mode={appearance}
+            onPointerUp={event=>{
+              if(event.pointerType==="mouse"&&event.button!==0)return;
+              const bounds=event.currentTarget.getBoundingClientRect();
+              if(bounds.width<1)return;
+              const index=Math.max(0,Math.min(2,Math.floor((event.clientX-bounds.left)/bounds.width*3)));
+              changeAppearance((["light","dark","glass"] as Appearance[])[index]);
+            }}>
+            <span className="banksetu-appearance-thumb" aria-hidden="true"/>
+            {(["light","dark","glass"] as Appearance[]).map(mode=><button key={mode}
+              type="button" aria-label={mode==="glass"?"Glass Effect":mode==="dark"?"Dark Mode":"Light Mode"}
+              aria-pressed={appearance===mode} title={mode==="glass"?"Glass Effect":mode==="dark"?"Dark Mode":"Light Mode"}
+              onClick={()=>changeAppearance(mode)}>{mode==="light"?"☀":mode==="dark"?"☾":"◇"}</button>)}
+          </div>
         </div>
 
       </aside>
@@ -1421,7 +1430,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             {adminMenuOpen && createPortal(
 
-              <div style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
+              <div className="banksetu-admin-menu" style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
 
                 <button
 
@@ -1437,6 +1446,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
                 </button>
 
+
+                {appearance==="glass" && <button type="button" className="banksetu-glass-admin-action"
+                  style={styles.adminMenuItem} onClick={() => {setAdminMenuOpen(false);setGlassDialogOpen(true);}}>
+                  ◉ Appearance &amp; Background
+                </button>}
 
                 {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
@@ -1961,6 +1975,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
         </div>
 
       )}
+
+      {glassDialogOpen&&appearance==="glass"&&<Suspense fallback={null}>
+        <GlassAppearancePanel initial={glassSettings} existingCustomUrl={glassWallpaperUrl}
+          onClose={()=>setGlassDialogOpen(false)} onSave={saveGlassPreferences}/>
+      </Suspense>}
 
       {/* DASHBOARD COLOR */}
 
