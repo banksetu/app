@@ -115,7 +115,7 @@ test("status analytics reuses This Month Account Openings count and the same exi
  assert.match(dashboard,/onMonthOpeningsClick=\{\(\)=>setOpeningReportOpen\(true\)\}/);
  assert.match(dashboard,/openingReportOpen&&<Suspense/);
  assert.match(section,/title:'This Month Account Openings', count:monthOpenings/);
- assert.match(section,/onClick:item\.onClick/);
+ assert.match(section,/onClick=\{item\.onClick\}/);
  assert.match(section,/title:'KYC Pending'.*onClick:onKycClick/);
  assert.match(section,/title:'Passbook Pending'.*onClick:onPassbookClick/);
  assert.doesNotMatch(section,/Inactive Accounts|Dormant Accounts|inactiveAccounts/);
