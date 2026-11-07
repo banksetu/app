@@ -290,7 +290,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           if(!active||customerListScope()!==intendedScope)return;
           const verified=customers.find(customer=>identity(customer)===identity(previewCustomer));
           if(verified)setSelected({...previewCustomer,...verified});
-          else setError("This customer is no longer available in this workspace.");
+          else {setSelected(null);onPreviewClose?.();}
         })
         .catch(reason=>{
           if(active&&customerListScope()===intendedScope)
