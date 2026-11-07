@@ -35,9 +35,12 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
 
   const start=mode==="month"?monthStart(month):
     mode==="months"?monthStart(fromMonth):startDate;
-  const end=mode==="month"?
-    (month===localMonth()?localTodayKey():monthEnd(month)):
+  const today=localTodayKey();
+  const requestedEnd=mode==="month"?monthEnd(month):
     mode==="months"?monthEnd(toMonth):endDate;
+  // Opening reports count accounts opened, not future-dated planned accounts.
+  // The current-month card and every popup filter use the same cutoff.
+  const end=requestedEnd&&requestedEnd>today?today:requestedEnd;
   const invalid=!start||!end||end<start;
   const matches=useMemo(()=>start&&end&&end>=start?matchingOpeningCustomers(customers,start,end):[],[customers,start,end]);
   const queried=useMemo(()=>{
@@ -111,12 +114,12 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
               placeholder="Name, account number or status…" onChange={event=>setSearch(event.target.value)}/>
           </label>
         </div>
-        {invalid?<p role="alert" className="dashboard-opening-error">Choose a valid date range with the start before the end.</p>:null}
+        {invalid?<p role="alert" className="dashboard-opening-error">Choose a valid date range. The start must be on or before today and the end date.</p>:null}
         {error?<p role="alert" className="dashboard-opening-error">{error}</p>:null}
         {message&&<p role="status" className="dashboard-opening-message">{message}</p>}
         <div className="dashboard-opening-overview">
           <div><small>Accounts Opened</small><strong>{loading?"…":numberLabel(matches.length)}</strong></div>
-          <div><small>Selected Period</small><strong>{start&&end?formatDate(start)+" – "+formatDate(end):"Choose dates"}</strong></div>
+          <div><small>Selected Period</small><strong>{!invalid&&start&&end?formatDate(start)+" – "+formatDate(end):"Choose dates"}</strong></div>
           {amounts.length>0&&<div><small>Known Opening Amount ({amounts.length})</small><strong>{moneyLabel(totalAmount)}</strong></div>}
         </div>
         <div className="dashboard-opening-table-scroll">
