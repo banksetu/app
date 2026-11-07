@@ -1744,7 +1744,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {wordTab==="help"&&<div className="ls-word-tab-content" role="note" aria-label="Editing help and shortcuts">
         <strong>Word-style Editing Shortcuts</strong>
         <span>Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+A Select visible · Ctrl/Shift+Click multi-select ·
-        Ctrl+G Group · Ctrl+Shift+G Ungroup · Arrow keys move by 0.1 mm · Shift+Arrows 1 mm</span>
+        Ctrl+C/X/V Copy/Cut/Paste draft objects · Ctrl+G Group · Ctrl+Shift+G Ungroup · Arrow keys 0.1 mm · Shift+Arrows 1 mm</span>
         <button type="button" onClick={()=>setWordTab("layout")}>Open Page Setup</button>
         <button type="button" onClick={()=>setWordTab("mailings")}>Open Data Mapping</button>
         <small>Specialized Office features such as macros, email merge, full bibliography
@@ -2242,6 +2242,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event=>{
           if(event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLInputElement)return;
           const cmd=event.ctrlKey||event.metaKey,lower=event.key.toLowerCase();
+          if(cmd&&lower==="c"){if(liveWordIds.length){event.preventDefault();copyWordSelection();}return;}
+          if(cmd&&lower==="x"){if(liveWordIds.length){event.preventDefault();cutWordSelection();}return;}
+          if(cmd&&lower==="v"){if(objectClipboard.length){event.preventDefault();pasteWordSelection();}return;}
           if(cmd&&lower==="z"){event.preventDefault();if(event.shiftKey)redo();else undo();return;}
           if(cmd&&lower==="y"){event.preventDefault();redo();return;}
           if(cmd&&lower==="a"){
@@ -2341,7 +2344,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           })}
         </div>
         </div>
-        <p className="ls-canvas-note">Double-click text to type · Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
+        <p className="ls-canvas-note">Double-click text to type · Ctrl+C/X/V: object clipboard · Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
       </div>
       <aside className="ls-panel ls-properties">
         <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Insert Field · फील्ड जोड़ें {showProps ? "▾" : "▸"}</button>
