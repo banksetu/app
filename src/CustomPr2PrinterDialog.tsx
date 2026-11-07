@@ -5,9 +5,30 @@ import {confirmAction} from './uiDialogs';
 import {rasterizePassbook,calibrationRaster,type Pr2Device,type Pr2Settings,type Pr2Raster,type Pr2Outcome} from './platform/pr2';
 import './Pr2PrinterDialog.css';
 const defaults:Pr2Settings={profile:'epson-plq20-pr2-v1',verticalResolution:240,offsetX:0,offsetY:0,confirmMode:false,confirmModel:false,acceptRaster:false,baud:9600,parity:'None',dataBits:8,stopBits:1};
-export default function CustomPr2PrinterDialog({bankName,onClose,onComplete,customPdfBase64,requirePhysicalConfirmation=false}:{bankName:string;onClose:()=>void;onComplete:(result:Pr2Outcome)=>void;customPdfBase64?:string;requirePhysicalConfirmation?:boolean}){
+export default function CustomPr2PrinterDialog({bankName,onClose,onComplete,customPdfBase64,requirePhysicalConfirmation=false,layoutId}:{bankName:string;onClose:()=>void;onComplete:(result:Pr2Outcome)=>void;customPdfBase64?:string;requirePhysicalConfirmation?:boolean;layoutId?:string}){
  const [scope]=useState(()=>identity()),[devices,setDevices]=useState<Pr2Device[]>([]),[deviceId,setDeviceId]=useState(''),[settings,setSettings]=useState(defaults),[raster,setRaster]=useState<Pr2Raster|null>(null),[preview,setPreview]=useState(''),[message,setMessage]=useState('Preparing the active bank template…'),[busy,setBusy]=useState(true),[checked,setChecked]=useState(false),[done,setDone]=useState(false);
  const [pendingPhysical,setPendingPhysical]=useState<Pr2Outcome|null>(null);
+ const [rememberSetup,setRememberSetup]=useState(true);
+ // Scoped to verified user/tenant, selected bank and template; never import
+ // another bank's X/Y alignment or treat its hardware checks as certified.
+ const savedKey="bankSetuPr2Verified:v1:"+scope+":"+bankName.trim().toLowerCase()+":"+(layoutId||"legacy");
+ const loadSaved=()=>{
+   try{
+     const raw=JSON.parse(localStorage.getItem(savedKey)||"null") as
+       {deviceId?:string;settings?:Pr2Settings;savedAt?:number}|null;
+     if(!raw||typeof raw.deviceId!=="string"||!raw.settings||
+        !Number.isFinite(raw.savedAt)||!raw.settings.confirmMode||!raw.settings.confirmModel)return null;
+     if(!Number.isFinite(raw.settings.offsetX)||!Number.isFinite(raw.settings.offsetY)||
+        Math.abs(raw.settings.offsetX)>10||Math.abs(raw.settings.offsetY)>10)return null;
+     return raw;
+   }catch{return null;}
+ };
+ const persistVerified=()=>{
+   if(!rememberSetup||!device||!layoutId)return;
+   try{localStorage.setItem(savedKey,JSON.stringify({
+     deviceId:device.id,settings:{...settings,acceptRaster:false},savedAt:Date.now()
+   }));}catch{/* Printer completes safely even if local preference storage is unavailable. */}
+ };
  const job=useRef(''),running=useRef(false),alive=useRef(true);const api=window.bankSetuPr2!,device=devices.find(d=>d.id===deviceId);
  const patch=(value:Partial<Pr2Settings>)=>{setSettings(old=>({...old,...value}));setChecked(false);};
  useEffect(()=>{alive.current=true;const stop=api.onProgress(event=>{if(event.id===job.current&&alive.current)setMessage(event.message);});
@@ -17,7 +38,12 @@ export default function CustomPr2PrinterDialog({bankName,onClose,onComplete,cust
    const rendered=await rasterizePassbook(customPdfBase64??prepared.pdf);if(!alive.current)return;
    setRaster(rendered.raster);setPreview(rendered.preview);setDevices(list.devices);
    const remembered=list.devices.find(d=>d.id===list.preferences?.deviceId),matches=list.devices.filter(d=>d.profile);
-   if(remembered){setDeviceId(remembered.id);setSettings({...defaults,...list.preferences,acceptRaster:false});}else if(matches.length===1)setDeviceId(matches[0].id);
+   const cached=loadSaved(),verifiedDevice=cached&&list.devices.find(d=>d.id===cached.deviceId&&!d.requiresReview);
+   if(verifiedDevice&&cached?.settings){
+     setDeviceId(verifiedDevice.id);setSettings({...defaults,...cached.settings,acceptRaster:false});
+   }else if(remembered){
+     setDeviceId(remembered.id);setSettings({...defaults,...list.preferences,acceptRaster:false});
+   }else if(matches.length===1)setDeviceId(matches[0].id);
    setMessage(list.devices.length?
      (customPdfBase64?"Custom approved layout raster prepared with current client fields. Inspect before sending; paper alignment remains unverified.":"Choose/check the printer. Graphics preserve the source geometry at 180 dpi; physical alignment requires a real test.")
      :"No USB/COM/LPT printer found. Connect the printer and reopen this dialog.");
@@ -36,7 +62,9 @@ export default function CustomPr2PrinterDialog({bankName,onClose,onComplete,cust
  }catch(e){setMessage((e as Error).message);}finally{running.current=false;setBusy(false);}};
  return <div className="pr2-overlay"><section className="pr2-dialog" role="dialog" aria-modal="true" aria-label="Bank Setu Universal PR2 Printer Bridge">
   <h2>Bank Setu Universal PR2 Printer Bridge</h2><p>{bankName} · current passbook layout · Windows direct device transport</p>
-  <label>Printer<select disabled={busy||done} value={deviceId} onChange={e=>{setDeviceId(e.target.value);setChecked(false);}}><option value="">Select a printer</option>{devices.map(d=><option key={d.id} value={d.id}>{d.name} · {d.transport}</option>)}</select></label>
+  <label>Printer<select disabled={busy||done} value={deviceId} onChange={e=>{setDeviceId(e.target.value);setChecked(false);setSettings(old=>({...old,confirmMode:false,confirmModel:false,acceptRaster:false}));}}><option value="">Select a printer</option>{devices.map(d=><option key={d.id} value={d.id}>{d.name} · {d.transport}</option>)}</select></label>
+  <p>Saved printer/X/Y settings are reused only for this bank and approved template on this verified Windows workspace. Printer check, current proof review and physical paper confirmation remain required.</p>
+  {layoutId&&<label><input type="checkbox" checked={rememberSetup} onChange={e=>setRememberSetup(e.target.checked)}/> Remember this printer and its verified X/Y alignment after a successful physical print check</label>}
   <p>PLQ-20/20M has a documented graphics profile. PLQ-32, PLQ-35 and other models require their command/capability verification; their names alone do not enable this profile.</p>
   <fieldset disabled={busy||done}><label><input type="checkbox" checked={settings.confirmModel} onChange={e=>patch({confirmModel:e.target.checked})}/> I checked that the physical printer is PLQ-20/20M.</label><label><input type="checkbox" checked={settings.confirmMode} onChange={e=>patch({confirmMode:e.target.checked})}/> The printer configuration sheet shows PR2/Olivetti mode.</label>
   <label>Printer vertical resolution<select value={settings.verticalResolution} onChange={e=>patch({verticalResolution:Number(e.target.value)})}><option value={240}>240 units/inch</option><option value={216}>216 units/inch</option></select></label>
@@ -47,7 +75,7 @@ export default function CustomPr2PrinterDialog({bankName,onClose,onComplete,cust
   <p role="status">{message}</p>
   {pendingPhysical&&<div className="pr2-physical-ack" role="group">
     <p>Printer transport reported completion. Inspect the physical passbook for correct page, no duplicate and X/Y alignment before marking it printed.</p>
-    <button disabled={busy} onClick={()=>{const outcome=pendingPhysical;setPendingPhysical(null);if(outcome?.completed)onComplete(outcome);}}>
+    <button disabled={busy} onClick={()=>{const outcome=pendingPhysical;setPendingPhysical(null);if(outcome?.completed){persistVerified();onComplete(outcome);}}}>
       I inspected the actual passbook and confirm this print
     </button>
   </div>}
