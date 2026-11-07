@@ -146,6 +146,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [objectClipboard,setObjectClipboard]=useState<LayoutPart[]>([]);
   const [tableRows,setTableRows]=useState(2);
   const [tableColumns,setTableColumns]=useState(3);
+  const [inlineTextEdit,setInlineTextEdit]=useState<{id:string;text:string}|null>(null);
   const [snapGrid, setSnapGrid] = useState(false);
   const [smartGuidesEnabled,setSmartGuidesEnabled]=useState(false);
   const [activeGuides,setActiveGuides]=useState<SnapGuide[]>([]);
@@ -481,6 +482,20 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setPreviewOpen(true);
       setNotice(customers.length+" local customers available for read-only preview. This data never enters the saved template or shared catalog.");
     }catch(error){setNotice("Customer preview unavailable: "+(error instanceof Error?error.message:"No verified local customer repository"));}
+  };
+  const finishInlineTextEdit=(cancel=false)=>{
+    const pending=inlineTextEdit;
+    setInlineTextEdit(null);
+    if(!pending||cancel)return;
+    const original=draft.elements.find(p=>p.id===pending.id);
+    if(!original||original.kind!=="text"||original.origin!=="static"||original.locked)return;
+    if(pending.text===original.label)return;
+    if(pending.text.length>500){setNotice("Text is limited to 500 characters per layout box.");return;}
+    modify(current=>({...current,elements:current.elements.map(part=>
+      part.id===pending.id&&part.kind==="text"&&part.origin==="static"&&!part.locked?
+        {...part,label:pending.text}:part)}));
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setNotice("Text saved to editable draft. Use Undo to restore the previous wording.");
   };
   const edit = (change: Partial<LayoutPart>) => {
     if (!selectedId||selected?.locked===true) return;
@@ -2222,9 +2237,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {Array.from({length:Math.floor(draft.heightMm/10)+1},(_,index)=>index*10).map(mm=>
             <span key={mm} style={{top:mm*PX_PER_MM*zoom}}>{unit==="mm"?mm:valueInUnit(mm,unit)}</span>)}
         </div>}
-        <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Select an element then use arrow keys for fine adjustment." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
+        <div className="ls-paper" role="application" tabIndex={0} aria-label="Editable passbook page. Double-click a text box to type directly, or select and use arrow keys." style={{width:draft.widthMm * PX_PER_MM * zoom, height:draft.heightMm * PX_PER_MM * zoom,
           backgroundImage:showGrid?"linear-gradient(to right,#b4d7e444 1px,transparent 1px),linear-gradient(to bottom,#b4d7e444 1px,transparent 1px)":undefined,
           backgroundSize:showGrid?(5*PX_PER_MM*zoom)+"px "+(5*PX_PER_MM*zoom)+"px":undefined}} onPointerMove={dragging} onPointerUp={dragEnd} onPointerCancel={dragEnd} onKeyDown={event=>{
+          if(event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLInputElement)return;
           const cmd=event.ctrlKey||event.metaKey,lower=event.key.toLowerCase();
           if(cmd&&lower==="z"){event.preventDefault();if(event.shiftKey)redo();else undo();return;}
           if(cmd&&lower==="y"){event.preventDefault();redo();return;}
@@ -2291,16 +2307,41 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {ordered.map(part => {
             const visible = isLayoutLayerPrintable(part,preview,bankName);
             if (!visible) return null;
-            return <div key={part.id} onPointerDown={event => down(event, part)}
+            return <div key={part.id} onPointerDown={event => {
+                if(inlineTextEdit?.id===part.id || (event.detail>=2&&part.kind==="text"&&part.origin==="static"&&!part.locked))return;
+                down(event,part);
+              }}
+              onDoubleClick={event=>{
+                event.preventDefault();event.stopPropagation();
+                if(part.kind!=="text"||part.origin!=="static"||part.locked)return;
+                dragEnd();setSelectedId(part.id);setWordSelectedIds([part.id]);
+                setInlineTextEdit({id:part.id,text:part.label});
+              }}
               className={"ls-object " + (liveWordIds.includes(part.id) ? "selected " : "") + (part.locked ? "ls-locked " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
               style={toStyle(part)} title={part.label + " · " + part.origin}>
-              {part.kind==="image" && part.imageData ? <img alt={part.label} draggable={false} src={part.imageData} style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/> : displayPart(part)}
-              {selectedId===part.id && !part.locked && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
+              {inlineTextEdit?.id===part.id?
+                <textarea className="ls-inline-word-edit" autoFocus spellCheck maxLength={500}
+                  aria-label="Edit text directly on passbook"
+                  value={inlineTextEdit.text}
+                  onChange={event=>setInlineTextEdit({id:part.id,text:event.target.value})}
+                  onPointerDown={event=>event.stopPropagation()}
+                  onKeyDown={event=>{
+                    event.stopPropagation();
+                    if(event.key==="Escape"){event.preventDefault();finishInlineTextEdit(true);}
+                    if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){
+                      event.preventDefault();finishInlineTextEdit(false);
+                    }
+                  }}
+                  onBlur={()=>finishInlineTextEdit(false)}/>:
+                part.kind==="image" && part.imageData ?
+                  <img alt={part.label} draggable={false} src={part.imageData}
+                    style={{width:"100%",height:"100%",objectFit:"fill",pointerEvents:"none"}}/>:displayPart(part)}
+              {selectedId===part.id && !part.locked && inlineTextEdit?.id!==part.id && <div className="ls-resize-handle" role="presentation" onPointerDown={event=>beginResize(event,part)} title="Drag to resize element" />}
             </div>;
           })}
         </div>
         </div>
-        <p className="ls-canvas-note">Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
+        <p className="ls-canvas-note">Double-click text to type · Drag objects · Ctrl/Shift+Click: multi-select · Ctrl+A: Select all page objects · Ctrl+G: Group · Ctrl+Shift+G: Ungroup · Arrows: 0.1 mm · Shift+Arrows: 1 mm · Fold markers are guides</p>
       </div>
       <aside className="ls-panel ls-properties">
         <button type="button" className="ls-panel-title" onClick={() => setShowProps(!showProps)} aria-expanded={showProps}>Insert Field · फील्ड जोड़ें {showProps ? "▾" : "▸"}</button>
