@@ -108,7 +108,17 @@ try{
    await snap(page,id+"-report",theme.toUpperCase()+" / "+(mobile?"PHONE":"DESKTOP")+" – Opening Report",
       "Running Account Opening Report. Date filtering, four fields, Copy button. Opening Amount removed.");
    await page.locator('.dashboard-opening-panel tbody tr').first().click();
-   await page.locator('.customer-preview-card').waitFor({timeout:15000});
+   try{
+     await page.locator('.customer-preview-card').waitFor({timeout:9000});
+   }catch(error){
+     console.error("PREVIEW RENDER ERROR:",String(error));
+     console.error("BODY AFTER CLICK:",String(await page.locator("body").innerText()).slice(0,3000));
+     console.error("PORTALS:",await page.locator(".dashboard-opening-overlay,.customer-preview-overlay,.dashboard-opening-preview-loading").count());
+     console.error("PAGE ERRORS:",runtimeErrors.slice(-8));
+     console.error("VITE LOG:",String(await readFile("/tmp/banksetu-report-vite.log","utf8").catch(()=>"(no log)")).slice(-6000));
+     await page.screenshot({path:join(output,"capture-preview-diagnostic-"+id+".png")});
+     throw error;
+   }
    await snap(page,id+"-preview",theme.toUpperCase()+" / "+(mobile?"PHONE":"DESKTOP")+" – Customer Preview",
       "Same All Customer Data preview component, showing Share, Print, Close. Synthetic details.");
    await page.getByRole('button',{name:'Close preview'}).click();
