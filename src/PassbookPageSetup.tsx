@@ -1,4 +1,4 @@
-import {useEffect,useState,type CSSProperties} from "react";
+import {useEffect,useRef,useState,type CSSProperties} from "react";
 import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type MeasuredPage,type PageSetup} from "./layoutPageSetup.ts";
 type Unit="mm"|"cm"|"in";
 type Props={
@@ -18,8 +18,13 @@ function EditableMetric({title,unit,value,min,max,onCommit}:{
   const [raw,setRaw]=useState(()=>String(toUnit(value,unit)));
   const [focused,setFocused]=useState(false);
   const [error,setError]=useState("");
+  const cancelRef=useRef(false);
   useEffect(()=>{if(!focused)setRaw(String(toUnit(value,unit)));},[value,unit,focused]);
   const commit=()=>{
+    if(cancelRef.current){
+      cancelRef.current=false;setRaw(String(toUnit(value,unit)));
+      setError("");setFocused(false);return;
+    }
     const entered=raw.trim().replace(",",".");
     const number=entered===""?NaN:Number(entered);
     const mm=number*unitFactor(unit);
@@ -36,12 +41,12 @@ function EditableMetric({title,unit,value,min,max,onCommit}:{
     <input type="text" inputMode="decimal" autoComplete="off" spellCheck={false}
       aria-label={title} aria-invalid={!!error} value={raw}
       title={"Select all, Backspace, or type a new measurement in "+unit}
-      onFocus={event=>{setFocused(true);setError("");event.currentTarget.select();}}
+      onFocus={event=>{cancelRef.current=false;setFocused(true);setError("");event.currentTarget.select();}}
       onChange={event=>{setRaw(event.target.value);setError("");}}
       onBlur={commit}
       onKeyDown={event=>{
         if(event.key==="Enter"){event.preventDefault();event.currentTarget.blur();}
-        if(event.key==="Escape"){event.preventDefault();setRaw(String(toUnit(value,unit)));event.currentTarget.blur();}
+        if(event.key==="Escape"){event.preventDefault();cancelRef.current=true;event.currentTarget.blur();}
       }}/>
     {error&&<small role="alert">{error}</small>}
   </label>;
