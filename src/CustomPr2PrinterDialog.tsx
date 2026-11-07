@@ -17,19 +17,20 @@ export default function CustomPr2PrinterDialog({bankName,onClose,onComplete,cust
      const raw=JSON.parse(localStorage.getItem(savedKey)||"null") as
        {deviceId?:string;settings?:Pr2Settings;savedAt?:number}|null;
      if(!raw||typeof raw.deviceId!=="string"||!raw.settings||
-        !Number.isFinite(raw.savedAt)||!raw.settings.confirmMode||!raw.settings.confirmModel)return null;
+        (typeof raw.savedAt!=="number"||!Number.isFinite(raw.savedAt))||!raw.settings.confirmMode||!raw.settings.confirmModel)return null;
      if(!Number.isFinite(raw.settings.offsetX)||!Number.isFinite(raw.settings.offsetY)||
         Math.abs(raw.settings.offsetX)>10||Math.abs(raw.settings.offsetY)>10)return null;
      return raw;
    }catch{return null;}
  };
+ const job=useRef(''),running=useRef(false),alive=useRef(true);const api=window.bankSetuPr2!,device=devices.find(d=>d.id===deviceId);
  const persistVerified=()=>{
    if(!rememberSetup||!device||!layoutId)return;
    try{localStorage.setItem(savedKey,JSON.stringify({
      deviceId:device.id,settings:{...settings,acceptRaster:false},savedAt:Date.now()
    }));}catch{/* Printer completes safely even if local preference storage is unavailable. */}
  };
- const job=useRef(''),running=useRef(false),alive=useRef(true);const api=window.bankSetuPr2!,device=devices.find(d=>d.id===deviceId);
+
  const patch=(value:Partial<Pr2Settings>)=>{setSettings(old=>({...old,...value}));setChecked(false);};
  useEffect(()=>{alive.current=true;const stop=api.onProgress(event=>{if(event.id===job.current&&alive.current)setMessage(event.message);});
   const changed=()=>{void api.cancel({scope,id:job.current}).catch(()=>{});onClose();};window.addEventListener('banksetu-workspace-change',changed);
