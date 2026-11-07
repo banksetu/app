@@ -54,11 +54,13 @@ test("all four report actions launch a common dialog and print selection never u
   assert.match(css,/@page\{size:A4 landscape/);
   assert.match(css,/page-break-inside:avoid/);
 });
-test("menu preserves historical v1.0.142 order with only new passbook and SSA entries inserted",()=>{
+test("sidebar exactly follows the requested twelve-item order without PR2 suffix or generator",()=>{
   const source=readFileSync(new URL("../src/Dashboard.tsx",import.meta.url),"utf8");
   const nav=source.slice(source.indexOf('<nav style={styles.nav}>'),source.indexOf("</nav>",source.indexOf('<nav style={styles.nav}>')));
   const labels=[...nav.matchAll(/<NavButton[^>]+label="([^"]+)"/g)].map(m=>m[1]);
-  assert.deepEqual(labels,["Dashboard","Customer Entry","Quick Passbook","Passbook Print (PR2)",
-    "Auto Passbook Generator","All Customer Data","Customers","Account Opening PDF Sample",
-    "Forms Send to Branch","SSA Campaign","Settings","Reports","Sync & Backup"]);
+  assert.deepEqual(labels,["Dashboard","Customer Entry","Quick Passbook","Passbook Print",
+    "All Customer Data","Customers","Account Opening PDF","SSA Campaign",
+    "Forms Send to Branch","Settings","Reports","Sync & Backup"]);
+  assert.equal(nav.includes('label="Auto Passbook Generator"'),false);
+  assert.equal(nav.includes('label="Passbook Print (PR2)"'),false);
 });
