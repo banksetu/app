@@ -38,6 +38,18 @@ const html='<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta na
 if(process.argv.includes("--prepare")){
  await writeFile("dashboard-opening-proof.html",html);
  await writeFile("src/dashboard-opening-proof-entry.tsx",fixture);
+ // Screenshot-only build alias: never access real Firebase sessions, Google
+ // Sheets, cached customer records, or a tenant-scoped production database.
+ await writeFile("src/dashboard-proof-customer-list.ts",
+   'export type CachedCustomer=Record<string,unknown>&{rowNumber?:number;recordId?:string};\\n'+
+   'export const customerListScope=()=>"visual-proof:synthetic-only";\\n'+
+   'export const readCustomerListCache=(_scope:string):CachedCustomer[]=>[];\\n'+
+   'export const writeCustomerListCache=(_scope:string,_rows:CachedCustomer[])=>{};\\n');
+ await writeFile("vite.dashboard-proof.config.mjs",
+   'import {defineConfig} from "vite";\\n'+
+   'import react from "@vitejs/plugin-react";\\n'+
+   'import {resolve} from "node:path";\\n'+
+   'export default defineConfig({plugins:[react()],resolve:{alias:[{find:/customerListCache(?:\\\\.ts)?$/,replacement:resolve(process.cwd(),"src/dashboard-proof-customer-list.ts")}]},server:{port:5173,host:"127.0.0.1",strictPort:true,hmr:false}});\\n');
  console.log("Prepared isolated screenshot-only React fixture with 6 synthetic customer rows.");
  process.exit(0);
 }
