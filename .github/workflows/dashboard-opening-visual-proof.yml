@@ -1,0 +1,51 @@
+name: Dashboard Account Opening Visual Proof (Draft Only)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/dashboard-opening-visual-proof.yml
+      - scripts/capture-dashboard-opening-report.mjs
+      - src/DashboardAccountOpeningReport.tsx
+      - src/DashboardAccountOpeningReport.css
+      - src/AllCustomerData.tsx
+      - src/App.css
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  render-screens:
+    if: github.event.pull_request.number == 102 || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Prepare isolated sample report on the real app renderer
+        run: node scripts/capture-dashboard-opening-report.mjs --prepare
+      - name: Start Vite (no live Firebase/customer data)
+        run: |
+          CODESPACE_NAME=banksetu-dashboard-proof npm run dev > /tmp/banksetu-report-vite.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:5173/dashboard-opening-proof.html >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/banksetu-report-vite.log
+          exit 1
+      - name: Capture actual Light/Dark + Mobile/Desktop UI
+        run: node scripts/capture-dashboard-opening-report.mjs
+      - name: Save screenshot ZIP for Hindi PDF
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dashboard-report-pr102-light-dark-mobile-screens
+          path: dashboard-opening-real-screens/
+          retention-days: 7
+          if-no-files-found: warn
