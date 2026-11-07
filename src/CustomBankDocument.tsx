@@ -118,6 +118,7 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
       }
       if(!raw||!validatePersistedLayoutDraft(raw,layoutMode,bankName))
         throw Error("This slot has no compatible saved editable template. Save the layout in Designer first.");
+      raw.requestedOutput=layoutOutput;raw.requestedSlot=activeSlot;
       // Never put resolved customer names, account numbers or customer photos into a shared backup.
       if(Array.isArray(raw.elements))raw.elements=raw.elements.map(part=>{
         const element=part as Record<string,unknown>;
