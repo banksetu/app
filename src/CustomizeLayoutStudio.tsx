@@ -167,9 +167,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [scanCornerPercents,setScanCornerPercents]=useState<PerspectiveQuad|null>(null);
   const [scanHasImportedObjects,setScanHasImportedObjects]=useState(false);
   const [referencePages, setReferencePages] = useState<string[]>([]);
-  const [referenceOpacity, setReferenceOpacity] = useState(0.4);
+  const [referenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
-  const [visualDiff, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
+  const [, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
   const [diffBusy, setDiffBusy] = useState(false);
   const [pr2Proof, setPr2Proof] = useState("");
   const [audit, setAudit] = useState<AuditItem[] | null>(null);
@@ -1924,9 +1924,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
         <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(2,0)}>Indent +2 mm</button>
         <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(-2,0)}>Outdent −2 mm</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({bold:!selected.bold})}>Toggle Bold</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({italic:!selected.italic})}>Toggle Italic</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({underline:!selected.underline})}>Toggle Underline</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({bold:!selected.bold});}}>Toggle Bold</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({italic:!selected.italic});}}>Toggle Italic</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({underline:!selected.underline});}}>Toggle Underline</button>
         </div></div>
         <div className="ls-word-command-family" role="group" aria-label="Change Case"><strong>Change Case</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
