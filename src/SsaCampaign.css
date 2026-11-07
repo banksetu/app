@@ -89,5 +89,16 @@
   body.ssa-campaign-printing .ssa-print-report h2{font-size:18px}
   body.ssa-campaign-printing .ssa-print-report th,body.ssa-campaign-printing .ssa-print-report td{padding:6px 8px;border:1px solid #999;text-align:left}
   body.ssa-campaign-printing .ssa-print-report table{white-space:normal;font-size:10px}
+  body.ssa-campaign-printing .ssa-print-report table{table-layout:fixed;width:100%;border-collapse:collapse}
+  body.ssa-campaign-printing .ssa-print-report thead{display:table-header-group}
+  body.ssa-campaign-printing .ssa-print-report tr{break-inside:avoid;page-break-inside:avoid}
+  body.ssa-campaign-printing .ssa-print-report th,body.ssa-campaign-printing .ssa-print-report td{white-space:normal;overflow-wrap:anywhere;vertical-align:top;font-size:10px;line-height:1.35}
+  body.ssa-campaign-printing .ssa-print-report th:nth-child(1){width:14%}
+  body.ssa-campaign-printing .ssa-print-report th:nth-child(2){width:32%}
+  body.ssa-campaign-printing .ssa-print-report th:nth-child(3){width:24%}
+  body.ssa-campaign-printing .ssa-print-report th:nth-child(4){width:10%}
+  body.ssa-campaign-printing .ssa-print-report th:nth-child(5){width:10%}
+  body.ssa-campaign-printing .ssa-print-report th:nth-child(6){width:10%}
+
   @page{size:A4 landscape;margin:10mm}
 }
