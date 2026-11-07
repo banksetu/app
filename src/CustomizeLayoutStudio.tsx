@@ -1687,21 +1687,30 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </label>
       </div>}
       {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools"><span className="ls-ribbon-group-label">Clipboard · Paragraph · Editing</span>
+        <div className="ls-word-command-family" role="group" aria-label="Clipboard"><strong>Clipboard</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selectedWordParts.length} onClick={copyWordSelection}>Copy</button>
         <button type="button" disabled={!selectedWordParts.length||selectedWordParts.some(p=>p.locked)} onClick={cutWordSelection}>Cut</button>
         <button type="button" disabled={!objectClipboard.length} onClick={pasteWordSelection}>Paste</button>
         <button type="button" disabled={!selectedWordParts.length||selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="History & Format"><strong>History & Format</strong><div className="ls-word-command-items">
         <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
         <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
         <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
         <button type="button" disabled={!selected||!styleClipboard} onClick={pasteSelectedStyle}>Paste Format</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Lists"><strong>Lists</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Change Case"><strong>Change Case</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
         <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("upper")}>UPPERCASE</button>
         <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("lower")}>lowercase</button>
         <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("title")}>Title Case</button>
         <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("sentence")}>Sentence case</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Objects"><strong>Objects</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{
           if(!selected)return;
           const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
@@ -1709,6 +1718,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           modify(current=>({...current,elements:[...current.elements,newPart]}));
           setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
         }}>Duplicate Object</button>
+        </div></div>
       </div>}
       {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes"><span className="ls-ribbon-group-label">Drawing · Field Boxes</span>
         <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
@@ -1751,30 +1761,44 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
       </div>}
       {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects"><span className="ls-ribbon-group-label">Text · Tables · Illustrations · Fields · Symbols</span>
+        <div className="ls-word-command-family" role="group" aria-label="Text"><strong>Text</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>append("text","static","New text")}>+ Text Box</button>
         <button type="button" onClick={()=>append("text","preprinted","Printed Label")}>+ Label</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Pictures"><strong>Pictures</strong><div className="ls-word-command-items">
         <label className="ls-file-action">◩ Picture<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}} /></label>
         <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>{const part=addPart("image","bank","Bank Logo","bankLogo",15,18);part.width=38;part.height=25;part.dotMatrix=false;part.page=selectedPage;modify(current=>({...current,elements:[...current.elements,part]}));setSelectedId(part.id);setWordSelectedIds([part.id]);}}>Bank Logo</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Dynamic Fields"><strong>Dynamic Fields</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>append("field","customer","Customer Field","name")}>+ Customer Field</button>
         <button type="button" onClick={()=>append("field","bank","Bank Field","branchName")}>+ Bank Field</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Illustrations"><strong>Illustrations</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>append("photo","static","Photo Box")}>Photo Box</button>
         <button type="button" onClick={()=>append("rectangle","static","Rectangle")}>Rectangle</button>
         <button type="button" onClick={()=>append("ellipse","static","Circle")}>Circle</button>
         <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Tables"><strong>Tables</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>insertEditableTable(2,3)}>Insert 2×3 Table</button>
         <button type="button" onClick={()=>insertEditableTable(3,4)}>Insert 3×4 Table</button>
         <label>Rows <input type="number" min={1} max={8} value={tableRows} onChange={e=>setTableRows(within(Number(e.target.value)||1,1,8))}/></label>
         <label>Columns <input type="number" min={1} max={8} value={tableColumns} onChange={e=>setTableColumns(within(Number(e.target.value)||1,1,8))}/></label>
         <button type="button" onClick={()=>insertEditableTable(tableRows,tableColumns)}>Insert Custom Table</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Page Elements"><strong>Page Elements</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>insertDocumentDecoration("header")}>Header</button>
         <button type="button" onClick={()=>insertDocumentDecoration("footer")}>Footer</button>
         <button type="button" onClick={()=>insertDocumentDecoration("pageNumber")}>Page Number</button>
+        </div></div>
+        <div className="ls-word-command-family" role="group" aria-label="Symbols"><strong>Symbols</strong><div className="ls-word-command-items">
         <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
           onChange={event=>insertWordSymbol(event.target.value)}>
           <option value="">Insert symbol…</option>
           {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
             <option key={symbol+index} value={symbol}>{symbol}</option>)}
         </select></label>
+        </div></div>
       </div>}
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
