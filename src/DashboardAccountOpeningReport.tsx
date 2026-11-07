@@ -120,7 +120,7 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
         </div>
         <div className="dashboard-opening-table-scroll">
           <table>
-            <thead><tr><th>Customer Name</th><th>Account Number</th><th>Account Opening Date</th><th>Active Status</th></tr></thead>
+            <thead><tr><th>Customer Name</th><th>Account Number</th><th>Account Opening Date</th><th>Active Status</th>{amounts.length>0&&<th>Opening Amount</th>}</tr></thead>
             <tbody>
               {shown.map((customer,index)=>{
                 const account=openingAccountNo(customer),date=openingDateKey(customer);
@@ -129,13 +129,14 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
                   tabIndex={0} aria-label={"Open customer preview: "+openingCustomerName(customer)}
                   title="Click to open the same All Customer Data preview"
                   onClick={()=>openCustomer(customer)}
-                  onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();openCustomer(customer);}}}>
+                  onKeyDown={event=>{if(event.currentTarget===event.target&&event.key==="Enter"){event.preventDefault();openCustomer(customer);}}}>
                   <td><strong>{openingCustomerName(customer)}</strong></td>
                   <td className="dashboard-opening-number"><span>{account||"—"}</span>
                     {account&&<button type="button" aria-label={"Copy account number "+account}
                       onClick={event=>{event.stopPropagation();void copyAccount(account);}}>Copy</button>}</td>
                   <td>{date?formatDate(date):"—"}</td>
                   <td><span className={"dashboard-opening-status "+(status.toLowerCase()==="active"?"is-active":status.toLowerCase()==="inactive"?"is-inactive":"")}>{status}</span></td>
+                  {amounts.length>0&&<td>{openingAmount(customer)!==null?moneyLabel(openingAmount(customer)!):"—"}</td>}
                 </tr>;
               })}
             </tbody>
