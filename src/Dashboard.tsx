@@ -9,8 +9,9 @@ import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerAnalytics } from "./core/dashboardAnalytics";
+import { currentMonthOpeningCount } from "./core/accountOpeningReport";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -53,6 +54,7 @@ import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 const CustomerEntry = lazy(() => import("./CustomerEntry"));
+const SsaCampaign = lazy(() => import("./SsaCampaign"));
 const Settings = lazy(() => import("./Settings"));
 const AdvancedAdmin = lazy(() => import("./AdvancedAdmin"));
 const MasterClients = lazy(() => import("./MasterClients"));
@@ -61,6 +63,7 @@ const SelectedBankDocument = lazy(() => import("./SelectedBankDocument"));
 const Customers = lazy(() => import("./Customers"));
 const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
 const AllCustomerData = lazy(() => import("./AllCustomerData"));
+const DashboardAccountOpeningReport = lazy(() => import("./DashboardAccountOpeningReport"));
 const Reports = lazy(() => import("./Reports"));
 
 
@@ -276,6 +279,7 @@ type PageName =
   | "bank-formats"
 
   | "forms-send-to-branch"
+  | "ssa-campaign"
   | "search"
 
   | "reports"
@@ -1042,15 +1046,17 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <nav style={styles.nav}>
           <NavButton icon="dashboard" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
-{!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
-{!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
-{!licenseReadOnly && <NavButton icon="printer" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
           <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-          <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
-{!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
+          {!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
           {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
+          {!licenseReadOnly && <NavButton icon="chart" label="SSA Campaign" active={activePage === "ssa-campaign"} onClick={() => openPage("ssa-campaign")} />}
+          {!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
+          {!licenseReadOnly && <NavButton icon="printer" label="Passbook Print (PR2)" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
+          {!licenseReadOnly && canCustomizeLayout && <NavButton icon="file-search" label="Auto Passbook Generator" active={activePage === "customize-passbook"} onClick={() => openPage("customize-passbook")} />}
+          <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+          {!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || userRole === "admin") && <NavButton icon="settings" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
-{!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="cloud-sync" label="Sync & Backup" active={activePage === "sync-backup"} spinning={syncStatus.syncing} onClick={() => openPage("sync-backup")} />}
         </nav>
         <div className="banksetu-appearance" role="group" aria-label="Appearance">
@@ -1541,6 +1547,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
           {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={{...bankInfo,...bankExtraFields}} bankLogo={bankLogo} />}
+
+          {activePage === "ssa-campaign" && !licenseReadOnly && bankSettingsReady && <SsaCampaign />}
 
           {activePage === "reports" && !licenseReadOnly && (
 
@@ -3101,14 +3109,30 @@ function DashboardHome({
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
+  const [openingReportOpen,setOpeningReportOpen]=useState(false);
+  const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
   useEffect(() => {
     const refreshDashboardAfterWorkspaceReady = () => {
+      // Do not display previous tenant's cached account-opening results while
+      // the newly verified workspace is loading its own scoped customer list.
+      setAnalyticsRows(null);
+      setStatsLoading(true);
+      setStatsError("");
+      statsLoadedOnce.current=false;
+      setOpeningReportOpen(false);
+      setStatusPanel(null);
+      setWorkspaceVersion((version) => version + 1);
+    };
+    const refreshDashboardAfterSync = () => {
       setWorkspaceVersion((version) => version + 1);
     };
     window.addEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
-    window.addEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);
-    return () => {window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);window.removeEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);};
+    window.addEventListener("banksetu-sync-change", refreshDashboardAfterSync);
+    return () => {
+      window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+      window.removeEventListener("banksetu-sync-change", refreshDashboardAfterSync);
+    };
   }, []);
 
   useEffect(() => {
@@ -3462,11 +3486,11 @@ function DashboardHome({
 
     [
 
-      "⏸",
+      "📅",
 
-      "Inactive Accounts",
+      "This Month Account Openings",
 
-      dashboardStats.inactiveAccounts,
+      monthOpenings,
 
     ],
 
@@ -3512,7 +3536,7 @@ function DashboardHome({
 
             className="dashboard-stat-card"
             aria-label={`Open ${title}`}
-            onClick={() => index === 0 ? openPage("all-customer-data") : setStatusPanel(index === 1 ? "kyc" : index === 2 ? "passbook" : "inactive")}
+            onClick={() => index === 0 ? openPage("all-customer-data") : index===3 ? setOpeningReportOpen(true) : setStatusPanel(index === 1 ? "kyc" : "passbook")}
 
           style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
@@ -3536,7 +3560,7 @@ function DashboardHome({
 
             <div className="dashboard-stat-value" style={styles.statValue}>
 
-              {statsLoading ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
+              {(statsLoading || (index===3&&analyticsRows===null)) ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
@@ -3552,6 +3576,10 @@ function DashboardHome({
 
       </section>
       {statusPanel && <DashboardStatusPanel type={statusPanel} accountRole={accountRole} onClose={() => setStatusPanel(null)} />}
+      {openingReportOpen&&<Suspense fallback={<p role="status">Opening Account Opening Report…</p>}>
+        <DashboardAccountOpeningReport customers={analyticsRows??[]} loading={statsLoading} error={statsError}
+          onClose={()=>setOpeningReportOpen(false)}/>
+      </Suspense>}
 
       <section className="dashboard-quick-panel" style={styles.panel}>
 

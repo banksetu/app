@@ -291,7 +291,7 @@ async function applySyncProtection(scope:string, protection:SyncProtection) {
       if(!record.customer.photoUrl&&!record.customer.photoAvailable&&!record.customer.photoDataUrl&&record.customer.photoState!=="NO_PHOTO")record.customer.photoIndexWaiting=true;
     }
     if(protection.resetId && state.resetId!==protection.resetId){
-      if(state.operations.length||state.records.some(hasUnsyncedContent))
+      if(state.operations.length||state.ssaOperations?.length||state.records.some(hasUnsyncedContent))
         throw new Error("A shared reset is pending. Back up and resolve this device's unsynced changes before clearing its local database; uploads are paused.");
       state.records=[];state.operations=[];state.pull=undefined;state.resetId=protection.resetId;
     }
@@ -376,10 +376,11 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if(initial.photoPresence)photoPresence.set(scope,{checkedAt:initial.photoPresence.checkedAt,ids:new Set(initial.photoPresence.customerIds)});
   let shouldPull=refresh || !!recovering?.pending || !!initial.pull?.cursor || !!initial.pull?.changePending || !initial.pull?.lastCompletedAt || Date.now()-initial.pull.lastCompletedAt>=IDLE_RECONCILE_MS;
   const pending=initial.operations.some(operation=>operation.state==="pending");
+  const ssaPending=(initial.ssaOperations||[]).some(operation=>operation.state==="pending");
   const photoRetryDue=Date.now()-(photoInventoryRetry.get(scope)||0)>=60000;
   const photoCheckDue=!!initial.photoDiscoveryError&&photoRetryDue || initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || !!initial.records.length&&!initial.photoIndex&&!initial.photoPresence&&photoRetryDue || !!initial.photoIndex && (initial.photoIndex.complete?Date.now()-initial.photoIndex.checkedAt>=IDLE_RECONCILE_MS:photoRetryDue);
-  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<IDLE_RECONCILE_MS){await hashPhotoBaseline(scope,signal);return;}
-  if(!shouldPull&&!pending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
+  if(!shouldPull&&!pending&&!ssaPending&&!initial.records.some(needsPhoto)&&initial.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash)&&initial.photoIndex?.complete&&Date.now()-initial.photoIndex.checkedAt<IDLE_RECONCILE_MS){await hashPhotoBaseline(scope,signal);return;}
+  if(!shouldPull&&!pending&&!ssaPending&&!initial.records.some(needsPhoto)&&!photoCheckDue)return;
   let protection=await send({action:"getSyncProtection",...(!recovering?.pending&&initial.pull?.changeEpoch&&initial.pull?.changeCursor!==undefined&&!initial.pull.cursor&&initial.pull.lastCompletedAt?{changeEpoch:initial.pull.changeEpoch,changeCursor:initial.pull.changeCursor}:{})}) as SyncProtection;
   await applySyncProtection(scope,protection);
   // Only the authenticated, connection-checked POST can retire an old AFSM
@@ -498,6 +499,49 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
     }
   }
   if(syncedCustomerEvent)void signalCustomerSync(syncedCustomerEvent.eventId,syncedCustomerEvent.action);
+  // SSA Campaign is an additional queue in the existing verified workspace and
+  // existing scheduler. It does not touch the Sheet1 customer operation queue.
+  const ssaUpload=(await repository.read(scope)).ssaOperations?.filter(op=>op.state==="pending").slice(0,15)||[];
+  for(const op of ssaUpload){
+    if(identity()!==scope||signal?.aborted)return;
+    const before=await repository.read(scope);
+    const queued=before.ssaOperations?.find(item=>item.operationId===op.operationId&&item.state==="pending");
+    if(!queued)continue;
+    // Preserve order for create -> edit sequences on the same campaign entry.
+    if(before.ssaOperations?.some(item=>item.entryId===op.entryId&&item.state==="pending"&&item.createdAt<op.createdAt))continue;
+    const local=before.ssaEntries?.find(item=>item.entryId===op.entryId);
+    const value=await send({action:"syncSsaCampaignEntry",
+      operation:{...op,baseRevision:op.mode==="update"?(local?.revision||op.baseRevision):0}});
+    if(!value.success){
+      const code=String(value.code||""),message=String(value.message||"SSA Campaign sync failed.");
+      if(code==="INVALID_ACTION")throw new Error("SSA Campaign requires the updated tenant Apps Script Code.gs. Your pending SSA entries are retained.");
+      if(["CONFLICT","DUPLICATE","CUSTOMER_NOT_FOUND","CUSTOMER_MISMATCH","INVALID_INPUT","NOT_FOUND"].includes(code)){
+        await repository.transact(scope,state=>{
+          const failed=state.ssaOperations?.find(item=>item.operationId===op.operationId);
+          if(failed){failed.state=code==="CONFLICT"?"conflict":"failed";failed.error=message;
+            if(value.entry&&typeof value.entry==="object")failed.remoteEntry=value.entry as typeof failed.entry;}
+        });
+        actionNotice("warning","SSA entry needs review",message);
+        continue;
+      }
+      throw new Error(message+" Pending SSA changes are retained for retry.");
+    }
+    if(!value.entry||typeof value.entry!=="object"||String(value.entry.entryId)!==op.entryId)
+      throw new Error("SSA acknowledgment did not match the pending entry. Local changes remain queued.");
+    const acknowledged=value.entry as import("./schema").SsaCampaignEntry;
+    await repository.transact(scope,state=>{
+      const currentOp=state.ssaOperations?.find(item=>item.operationId===op.operationId);
+      if(!currentOp)return;
+      state.ssaOperations=state.ssaOperations?.filter(item=>item.operationId!==op.operationId);
+      const current=state.ssaEntries?.find(item=>item.entryId===op.entryId);
+      const hasMore=state.ssaOperations?.some(item=>item.entryId===op.entryId);
+      if(current){
+        if(hasMore){current.revision=acknowledged.revision;current.createdAt=acknowledged.createdAt;current.pending=true;}
+        else Object.assign(current,{...acknowledged,pending:false,syncError:""});
+      }
+    });
+    actionNotice("success","SSA synced","Campaign entry saved in the tenant's SSA Campaign Google Sheet.");
+  }
   // At most four 250-row pages per sync; resume the cursor on the next tick.
   const started=Date.now();
   for(let page=0;shouldPull && page<4 && Date.now()-started<20000;page++) {
@@ -684,12 +728,16 @@ function activeRecords(records: CachedRecord[], operations: QueueOperation[]) {
     seen.add(record.recordId);return true;
   });
 }
-export async function getActiveLocalCustomers() {
+export type ActiveLocalCustomer = Customer & {
+  rowNumber:number;recordId:string;
+  photoDataUrl:undefined;pdfDataUrl:undefined;photoPreview:undefined;
+};
+export async function getActiveLocalCustomers():Promise<ActiveLocalCustomer[]> {
   const state=await repository.read(identity());
   return activeRecords(state.records,state.operations).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({
     ...record.customer,rowNumber:record.rowNumber,recordId:record.recordId,
     photoDataUrl:undefined,pdfDataUrl:undefined,photoPreview:undefined,
-  }));
+  } as ActiveLocalCustomer));
 }
 // Export reads the same active, tenant-scoped records as the customer list.
 // Photos are included only here; normal list/sync snapshots stay lightweight.
@@ -723,7 +771,7 @@ export async function resetLocalDatabase() {
   try {
     await running.get(scope);
     const current=await repository.read(scope);
-    if(current.operations.length||current.records.some(hasUnsyncedContent))
+    if(current.operations.length||current.ssaOperations?.length||current.records.some(hasUnsyncedContent))
       throw new Error("Back up and resolve every pending or unsynced customer before resetting. Local data was not cleared.");
     const url=sessionStorage.getItem("bankSetuBridgeUrl")!;
     const connectionId=sessionStorage.getItem("bankSetuConnectionId");
@@ -737,7 +785,7 @@ export async function resetLocalDatabase() {
     };
     await applySyncProtection(scope,await send("getSyncProtection"));
     const verified=await repository.read(scope);
-    if(verified.operations.length||verified.records.some(hasUnsyncedContent))
+    if(verified.operations.length||verified.ssaOperations?.length||verified.records.some(hasUnsyncedContent))
       throw new Error("Unsynced changes remain on this device. Local data was not cleared.");
     const resetId=crypto.randomUUID();
     const published=await send("publishLocalReset",resetId);
@@ -749,7 +797,7 @@ export async function resetLocalDatabase() {
   if(state.pull?.cursor)throw new Error("Reset marker is applied; customer download is still in progress. Run Sync again to complete it.");
   return activeRecords(state.records,state.operations).length;
 }
-export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);const recovery=await window.bankSetuDesktop?.recoveryStatus(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});const afsmWarning=afsmBridgeUpgrade.get(scope)?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&state.operations.some(op=>op.state==="pending"&&op.action==="markAfsmSent")?AFSM_BRIDGE_UPGRADE_MESSAGE:"";return {recoveryPending:recovery?.pending===true,recoveryDownloaded:recovery?.downloaded||0,recoveryCursor:recovery?.cursor||0,recoveryOriginalFound:recovery?.originalFound===true,records:activeRecords(state.records,state.operations).length,syncing:running.has(scope),syncStage:syncStages.get(scope)||"",paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(scope)||afsmWarning,photoIndexing:state.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoIndexComplete:state.photoIndex?.complete===true,pullCursor:state.pull?.cursor||0,photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
+export async function getLocalStatus() { const scope=identity();const state=await repository.read(scope);const recovery=await window.bankSetuDesktop?.recoveryStatus(scope);if(state.photoPresence)photoPresence.set(scope,{checkedAt:state.photoPresence.checkedAt,ids:new Set(state.photoPresence.customerIds)});const afsmWarning=afsmBridgeUpgrade.get(scope)?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&state.operations.some(op=>op.state==="pending"&&op.action==="markAfsmSent")?AFSM_BRIDGE_UPGRADE_MESSAGE:"";return {recoveryPending:recovery?.pending===true,recoveryDownloaded:recovery?.downloaded||0,recoveryCursor:recovery?.cursor||0,recoveryOriginalFound:recovery?.originalFound===true,records:activeRecords(state.records,state.operations).length,syncing:running.has(scope),syncStage:syncStages.get(scope)||"",paused:syncPaused,lastCompletedAt:state.pull?.lastCompletedAt||0,error:syncErrors.get(scope)||afsmWarning,photoIndexing:state.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash) || (state.photoIndex? !state.photoIndex.complete : !state.photoPresence&&state.records.some(record=>blankPhotoMetadata(record.customer))),photoIndexComplete:state.photoIndex?.complete===true,pullCursor:state.pull?.cursor||0,photoUploads:state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,photoRetry:!!state.photoDiscoveryError||state.records.some(record=>photoCandidate(record)&&!!record.photoFailures),photoError:state.photoDiscoveryError||"",mediaPending:state.records.filter(record=>photoCandidate(record)&&!!(record.customer.photoUrl||record.customer.photoAvailable)).length+state.operations.filter(op=>op.state==="pending"&&(op.customer.photoDataUrl||op.customer.photoRemoved)).length,pending:state.operations.filter(op=>op.state==="pending").length+(state.ssaOperations||[]).filter(op=>op.state==="pending").length,conflicts:state.operations.filter(op=>op.state!=="pending").length+(state.ssaOperations||[]).filter(op=>op.state!=="pending").length,downloading:!!state.pull?.cursor,cacheLimited:state.pull?.cacheLimited===true}; }
 /** Read-only tenant-scoped evidence for photo retries. Never include photo bytes or customer personal fields. */
 export async function getPhotoSyncDiagnostics() {
   const scope=identity(),state=await repository.read(scope);
@@ -810,7 +858,7 @@ export function startLocalSync() {
           if(localModeEnabled()&&sessionStorage.getItem("bankSetuWorkspaceReady")==="true"){
             const scope=identity();const refresh=refreshRequested;refreshRequested=false;await syncNow(refresh,signal);if(stopped||signal.aborted)return;
             if(identity()===scope){const state=await repository.read(scope);const recoveryPending=(await window.bankSetuDesktop?.recoveryStatus(scope))?.pending===true;const afsmWaiting=afsmBridgeUpgrade.get(scope);const afsmBlocked=afsmWaiting?.url===sessionStorage.getItem("bankSetuBridgeUrl")&&afsmWaiting.retryAt>Date.now();const oldPhotoBridge=state.photoDiscoveryError===PHOTO_BRIDGE_UPGRADE_MESSAGE;
-              if(state.pull?.cursor||state.pull?.changePending||(!recoveryPending&&state.operations.some(op=>op.state==="pending" && (op.action!=="markAfsmSent"||!afsmBlocked)))||(!oldPhotoBridge&&state.records.some(needsPhoto)))delay=250;
+              if(state.pull?.cursor||state.pull?.changePending||(!recoveryPending&&(state.operations.some(op=>op.state==="pending" && (op.action!=="markAfsmSent"||!afsmBlocked))||(state.ssaOperations||[]).some(op=>op.state==="pending")))||(!oldPhotoBridge&&state.records.some(needsPhoto)))delay=250;
               else {const waiting=oldPhotoBridge?[]:state.records.filter(photoCandidate);if(waiting.length)delay=Math.min(delay,Math.max(250,Math.min(...waiting.map(record=>record.photoRetryAt||Date.now()))-Date.now()));
                 if(afsmBlocked)delay=Math.min(delay,Math.max(1000,afsmWaiting.retryAt-Date.now()));
                 if(state.records.some(record=>!record.pending&&record.customer.photoNeedsBaselineHash))delay=250;

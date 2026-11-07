@@ -135,14 +135,18 @@ export function snapshot(customer: Customer, card?: HTMLElement | null, forPdf=f
   })();
 }
 
-export default function AllCustomerData() {
+/** Reuse the exact All Customer Data preview UI from the dashboard report.
+ * A preview-only instance never loads the customer's entire table. */
+export default function AllCustomerData({previewCustomer,onPreviewClose}:{
+  previewCustomer?:Customer;onPreviewClose?:()=>void
+}={}) {
   const [scope] = useState(()=>customerListScope());
   const [cached] = useState(()=>readCustomerListCache(scope));
   const [query, setQuery] = useState("");
   const previewCard = useRef<HTMLDivElement>(null);
   const previewOverlay = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<Customer[]>(()=>cached.slice(0,LOCAL_PAGE_SIZE));
-  const [selected, setSelected] = useState<Customer | null>(null);
+  const [selected, setSelected] = useState<Customer | null>(previewCustomer??null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [more, setMore] = useState(false);
@@ -214,6 +218,7 @@ export default function AllCustomerData() {
   }, [selected]);
 
   useEffect(() => {
+    if(previewCustomer)return;
     let timer: ReturnType<typeof setTimeout>;
     const reconcile = () => {
       clearTimeout(timer);
@@ -229,9 +234,10 @@ export default function AllCustomerData() {
     };
     window.addEventListener("banksetu-sync-change", reconcile);
     return () => {clearTimeout(timer);window.removeEventListener("banksetu-sync-change", reconcile);};
-  }, [query,scope,showLocal]);
+  }, [query,scope,showLocal,previewCustomer]);
 
   useEffect(() => {
+    if(previewCustomer)return;
     const id = ++generation.current;
     if (!query.trim()) {
       void getActiveLocalCustomers().then(customers=>{
@@ -259,7 +265,7 @@ export default function AllCustomerData() {
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query,previewCustomer]);
 
   const open = async (customer: Customer) => {
     setSelected(customer); setError("");
@@ -268,6 +274,57 @@ export default function AllCustomerData() {
       if (result.success && identity(customer) === identity(result.customer || {})) setSelected({...customer,...result.customer});
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Full customer preview unavailable."); }
   };
+
+  useEffect(()=>{
+    if(!previewCustomer)return;
+    let active=true;
+    const intendedScope=customerListScope();
+    setSelected(previewCustomer);
+    setError("");setCopyMessage("");
+    // Use only the current workspace's existing local repository when offline.
+    // Do not make a second customer/preview engine or force an authenticated
+    // network fetch that cannot succeed in local-first mode.
+    if(localModeEnabled()){
+      void getActiveLocalCustomers()
+        .then(customers=>{
+          if(!active||customerListScope()!==intendedScope)return;
+          const verified=customers.find(customer=>identity(customer)===identity(previewCustomer));
+          if(verified)setSelected({...previewCustomer,...verified});
+          else {setSelected(null);onPreviewClose?.();}
+        })
+        .catch(reason=>{
+          if(active&&customerListScope()===intendedScope)
+            setError(reason instanceof Error?reason.message:"Full local customer preview unavailable.");
+        });
+    }else if(previewCustomer.recordId||Number.isFinite(Number(previewCustomer.rowNumber))&&
+              Number(previewCustomer.rowNumber)>0){
+      // Identical authorized detail endpoint and identity check as the
+      // existing All Customer Data table's row-click handler.
+      void request({action:"getCustomerByRowNumber",
+        rowNumber:previewCustomer.rowNumber,recordId:previewCustomer.recordId})
+        .then(result=>{
+          if(active&&customerListScope()===intendedScope&&result.success&&
+             identity(previewCustomer)===identity(result.customer||{}))
+            setSelected({...previewCustomer,...result.customer});
+        })
+        .catch(reason=>{
+          if(active&&customerListScope()===intendedScope)
+            setError(reason instanceof Error?reason.message:"Full customer preview unavailable.");
+        });
+    }
+    return()=>{active=false;};
+  },[previewCustomer]);
+
+  const closePreview=()=>{setSelected(null);onPreviewClose?.();};
+
+  useEffect(()=>{
+    if(!previewCustomer)return;
+    const onKey=(event:KeyboardEvent)=>{
+      if(event.key==="Escape"){event.stopPropagation();setSelected(null);onPreviewClose?.();}
+    };
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[previewCustomer,onPreviewClose]);
 
   const share = async () => {
     if (!selected || sharing) return;
@@ -310,7 +367,8 @@ export default function AllCustomerData() {
     finally {setSharing(false);}
   };
 
-  return <section className="all-customer-data" style={{background:"var(--app-dark-surface, #fff)",borderRadius:16,padding:20}}>
+  return <section className="all-customer-data" style={previewCustomer?{display:"contents"}:{background:"var(--app-dark-surface, #fff)",borderRadius:16,padding:20}}>
+    {!previewCustomer&&<>
     <h2>All Customer Data</h2>
     <input aria-label="Search all customer data" placeholder="Search customer ID, account number, name, Aadhaar, mobile…" value={query} onChange={event => setQuery(event.target.value)}
       style={{width:"100%",boxSizing:"border-box",padding:12,borderRadius:10,border:"1px solid #d7d7df",marginBottom:16}} />
@@ -337,10 +395,13 @@ export default function AllCustomerData() {
       {loading && <p role="status">Loading customers…</p>}
       {!query.trim() && more && <button type="button" disabled={loading} onClick={() => void loadPage()}>Load more customers</button>}
     </div>
-    {selected && createPortal(<div ref={previewOverlay} className="customer-preview-overlay" data-print-root="active" data-print-profile="safe" role="presentation" onClick={() => setSelected(null)}>
+    </>}
+    {selected && createPortal(<div ref={previewOverlay} className="customer-preview-overlay" data-print-root="active" data-print-profile="safe" role="presentation" onClick={closePreview}>
       <div ref={previewCard} className="customer-preview-card" role="dialog" aria-modal="true" aria-label="Customer Preview" onClick={event => event.stopPropagation()}>
-        <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={() => setSelected(null)}>×</button></div>
+        <div className="customer-preview-heading"><span className="customer-preview-avatar">●</span><div><h2>Bank Setu – Customer Preview</h2><p>Complete details and passbook preview</p></div><button className="customer-preview-close" type="button" aria-label="Close preview" onClick={closePreview}>×</button></div>
         <div className="customer-preview-content">
+          {error&&<p role="alert" style={{color:"#ba2455"}}>{error}</p>}
+          {copyMessage&&<p role="status">{copyMessage}</p>}
           <div className="customer-preview-identity">
             {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)
               ? <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" />
@@ -376,7 +437,7 @@ export default function AllCustomerData() {
           <div className="customer-preview-actions">
             <button type="button" disabled={sharing} onClick={() => void share()}>{sharing ? "Preparing / sharing…" : "Share"}</button>
             <button type="button" onClick={() => void requireLicensedWrite().then(()=>window.print()).catch(reason=>setError(reason instanceof Error?reason.message:"License verification is required to print."))}>Print</button>
-            <button type="button" onClick={() => setSelected(null)}>Close</button>
+            <button type="button" onClick={closePreview}>Close</button>
           </div>
         </div>
       </div>
