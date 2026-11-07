@@ -9,7 +9,7 @@
   --ls-accent:#1264b7;
   --ls-soft:#e6f2ff;
   display:grid;
-  grid-template-columns:192px minmax(0,1fr);
+  grid-template-columns:132px minmax(0,1fr);
   gap:0;
   padding:0;
   border:1px solid #a9c2dc;
@@ -25,14 +25,14 @@
   flex-wrap:wrap;justify-content:space-between;gap:7px 11px;
   background:linear-gradient(180deg,#1166bd 0%,#00417e 100%)!important;
   border:0!important;border-radius:0!important;margin:0!important;
-  padding:8px 14px!important;box-shadow:none!important;min-height:52px;color:#fff;
+  padding:6px 12px!important;box-shadow:none!important;min-height:43px;color:#fff;
 }
 .layout-studio .ls-header .ls-wizard-link {color:#fff;background:transparent;border:1px solid #9bc6ef66;padding:5px 7px;border-radius:4px}
 .layout-studio .ls-header > button:not(.ls-wizard-link) {background:#1869b8;color:#fff;border-color:#6bade0;padding:5px 7px;border-radius:5px}
 .layout-studio .ls-heading {flex:1 1 270px;align-items:center;gap:9px}
 .layout-studio .ls-brand-mark {
   background:transparent;box-shadow:none;border:1px solid #a0d2ff;
-  border-radius:6px;width:34px;height:34px;flex-basis:34px;font-size:11px
+  border-radius:4px;width:28px;height:28px;flex-basis:28px;font-size:10px
 }
 .layout-studio .ls-header .ls-heading-copy h2 {font-size:18px;line-height:1.15;margin:0;color:#fff;letter-spacing:0}
 .layout-studio .ls-header .ls-heading-copy p,.layout-studio .ls-header .ls-status-tags {display:none}
@@ -53,18 +53,18 @@
   border-right:1px solid #1b6aab;box-shadow:inset -3px 0 11px #001e4020;
 }
 .layout-studio .ls-sidebar-brand {display:grid;gap:4px;padding:8px 13px 17px;color:#fff;border-bottom:1px solid #ffffff30}
-.layout-studio .ls-sidebar-brand strong {font-size:17px;letter-spacing:.2px}
+.layout-studio .ls-sidebar-brand strong {font-size:12px;letter-spacing:.1px}
 .layout-studio .ls-sidebar-brand small {font-size:10px;color:#bfdbfa}
 .layout-studio .ls-workflow-nav button {
   display:flex;align-items:center;justify-content:flex-start;gap:9px;
-  min-height:39px;padding:7px 9px;border:0;border-bottom:1px solid #ffffff13;
+  min-height:36px;padding:6px 8px;border:0;border-bottom:1px solid #ffffff13;
   border-radius:0;background:transparent;color:#f2f8ff;text-align:left;box-shadow:none;
 }
 .layout-studio .ls-workflow-nav button:hover,
 .layout-studio .ls-workflow-nav button[aria-pressed="true"] {
   background:#2079c5;border-color:#ffffff30;box-shadow:inset 3px 0 0 #bfe3ff;
 }
-.layout-studio .ls-workflow-nav strong {font-size:11px;font-weight:700;color:inherit}
+.layout-studio .ls-workflow-nav strong {font-size:10px;font-weight:600;color:inherit}
 .layout-studio .ls-workflow-nav small {font-size:9px;color:#cee4fb}
 .layout-studio .ls-workflow-number,
 .layout-studio .ls-workflow-nav button[aria-pressed="true"] .ls-workflow-number {
@@ -82,9 +82,9 @@
 .layout-studio .ls-word-tab-content button,.layout-studio .ls-word-tab-content .ls-file-action {border-radius:3px;padding:5px 8px;min-height:30px;font-size:11px}
 .layout-studio .ls-word-suite .ls-format-ribbon {margin:0;padding:7px 9px;border-radius:0;box-shadow:none;background:#fff}
 .layout-studio > .ls-workspace {order:3}
-.layout-studio .ls-workspace {display:grid;grid-template-columns:minmax(0,1fr) minmax(235px,278px);align-items:start;gap:0;background:#dce6f2}
+.layout-studio .ls-workspace {display:grid;grid-template-columns:minmax(0,1fr) minmax(210px,244px);align-items:start;gap:0;background:#dce6f2}
 .layout-studio .ls-canvas-wrap {
-  grid-column:1;min-height:520px;max-height:calc(100vh - 215px);overflow:auto;
+  grid-column:1;min-height:630px;max-height:calc(100vh - 175px);overflow:auto;
   padding:19px 15px 22px;border:0;border-radius:0;
   background:#e4eaf2;background-image:none;
 }
@@ -166,8 +166,8 @@
 .ls-start-wizard button.ls-primary {background:#0b5fb6;border-color:#0b5fb6}
 .ls-start-wizard > footer {padding:8px 20px 16px;margin:0}
 @media(max-width:1120px){
- .layout-studio {grid-template-columns:162px minmax(0,1fr)}
- .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(200px,240px)}
+ .layout-studio {grid-template-columns:120px minmax(0,1fr)}
+ .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(180px,225px)}
  .layout-studio .ls-workflow-nav strong {font-size:10px}
  .layout-studio .ls-word-tabs button {padding:6px 8px}
 }
@@ -565,4 +565,120 @@ html[data-appearance="dark"] .ls-start-wizard,
     position:fixed;left:5vw;right:5vw;top:20vh;width:90vw;
     max-height:60vh;grid-template-columns:repeat(2,minmax(0,1fr))
   }
+}
+
+/* November 2026 Word-like client workspace refresh.
+   Only presentation and editor chrome; never change physical paper, PR2 PDF
+   coordinates, bank template activation, or customer storage. */
+.layout-studio {border-radius:6px;box-shadow:none}
+.layout-studio .ls-header .ls-heading-copy h2 {font-size:15px}
+.layout-studio .ls-header-utilities {display:flex;gap:5px;align-items:center}
+.layout-studio .ls-header-utilities > button {
+  min-height:29px;padding:5px 10px;border:1px solid #8cb3d7;border-radius:3px;
+  background:#fff;color:#165186;font:600 11px "Segoe UI",Arial,sans-serif
+}
+.layout-studio .ls-sidebar-brand {padding:9px 8px 12px}
+.layout-studio .ls-sidebar-brand small {font-size:9px}
+.layout-studio .ls-workflow-nav button {gap:5px;white-space:normal}
+.layout-studio .ls-workflow-nav .ls-workflow-number {
+  width:17px;height:18px;flex-basis:17px;font-size:13px
+}
+.layout-studio .ls-workflow-nav .ls-sidebar-foot {padding:8px;font-size:9px}
+.layout-studio > .ls-word-suite {padding:0 6px 4px;background:#f8fafd;border-bottom:1px solid #b4cadf}
+.layout-studio .ls-word-tabs {background:transparent}
+.layout-studio .ls-word-tabs button {
+  min-height:27px!important;padding:4px 8px;font-size:11px;
+  border:0!important;border-radius:0!important;background:transparent!important
+}
+.layout-studio .ls-word-tabs button[aria-pressed="true"] {
+  background:#fff!important;border:0!important;
+  box-shadow:inset 0 -2px 0 #1264b7
+}
+.layout-studio .ls-word-suite .ls-word-tab-content {
+  min-height:61px;padding:5px 6px;background:#fff;border:0;
+  box-shadow:none;gap:4px
+}
+.layout-studio .ls-word-tab-content:has(> .ls-word-command-family) {
+  min-height:87px;padding:4px 5px
+}
+.layout-studio .ls-word-command-family {
+  min-width:90px;min-height:76px;padding:3px 8px 2px;
+  background:transparent;border-right:1px solid #d9e2ef
+}
+.layout-studio .ls-word-command-family > strong {
+  padding-top:3px;font-size:9px;color:#566e85
+}
+.layout-studio .ls-word-command-items {
+  min-height:46px;max-height:72px;gap:1px
+}
+.layout-studio .ls-word-command-items > button,
+.layout-studio .ls-word-command-items > label,
+.layout-studio .ls-word-tab-content > button,
+.layout-studio .ls-word-tab-content > .ls-file-action {
+  min-height:25px!important;padding:4px 6px!important;
+  background:transparent!important;border:1px solid transparent!important;
+  border-radius:3px!important;box-shadow:none!important;
+  color:#19466f;font-size:10.5px!important;font-weight:550
+}
+.layout-studio .ls-word-command-items > button:hover:not(:disabled),
+.layout-studio .ls-word-tab-content > button:hover:not(:disabled),
+.layout-studio .ls-word-tab-content > .ls-file-action:hover {
+  background:#e9f3ff!important;border-color:#d1e3f8!important
+}
+.layout-studio .ls-file-backstage button.ls-file-submit {
+  background:#e5f4e8!important;color:#14572a!important;
+  border:1px solid #b4dbbb!important;font-weight:750
+}
+.layout-studio .ls-word-suite .ls-format-ribbon {
+  padding:4px 6px;border:0;border-top:1px solid #e3ecf5;background:#fff
+}
+.layout-studio .ls-ribbon-tool-finder {right:7px;top:1px;background:transparent;box-shadow:none}
+.layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(210px,235px);min-height:630px}
+.layout-studio .ls-workspace:has(.ls-properties .ls-panel-title[aria-expanded="false"]) {
+  grid-template-columns:minmax(0,1fr) 38px
+}
+.layout-studio .ls-properties {min-height:630px;overflow:hidden}
+.layout-studio .ls-properties .ls-panel-title[aria-expanded="false"] {
+  writing-mode:vertical-rl;min-height:125px;width:38px;padding:8px 9px;
+  font-size:10px;white-space:nowrap
+}
+.layout-studio .ls-canvas-wrap {
+  min-height:630px;max-height:calc(100vh - 176px);
+  padding:18px 18px 8px;background:#e6ebf2
+}
+.layout-studio .ls-canvas-note {margin:10px auto!important;line-height:1.4!important;font-size:10px}
+.layout-studio > .ls-notice {
+  background:transparent!important;border:0!important;border-radius:0!important;
+  box-shadow:none!important;color:#385875;padding:5px 12px;margin:0;font-size:11px
+}
+.layout-studio > .ls-slot-strip,.layout-studio > .ls-preview-strip {
+  padding:5px 9px;margin:0 7px;border:0;border-radius:0;
+  background:#f9fbff;box-shadow:none
+}
+.layout-studio .ls-designer-status {padding:5px 9px;font-size:10.5px}
+.layout-studio .ls-zoom-controls {gap:5px;white-space:nowrap}
+.layout-studio .ls-zoom-controls input[type="range"] {width:112px;accent-color:#1264b7}
+.layout-studio .ls-zoom-controls > strong {min-width:38px;text-align:center}
+.layout-studio .ls-page-setup .ls-page-metric input {
+  width:100%;min-width:80px;box-sizing:border-box;min-height:34px;
+  background:#fff;border:1px solid #a9c2dd;border-radius:4px;
+  font-size:14px;font-variant-numeric:tabular-nums;padding:6px 9px;user-select:text
+}
+.layout-studio .ls-page-setup .ls-page-metric input:focus {
+  outline:2px solid #277bd0;outline-offset:1px;border-color:#277bd0
+}
+.layout-studio .ls-page-setup .ls-page-metric input[aria-invalid="true"] {border-color:#bf3c3c}
+@media (max-width:1120px) and (min-width:811px) {
+ .layout-studio {grid-template-columns:116px minmax(0,1fr)}
+ .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) 208px}
+}
+@media (max-width:810px) {
+ .layout-studio .ls-workspace,.layout-studio .ls-workspace:has(.ls-properties .ls-panel-title[aria-expanded="false"]) {
+   grid-template-columns:minmax(0,1fr)
+ }
+ .layout-studio .ls-properties .ls-panel-title[aria-expanded="false"] {
+   writing-mode:horizontal-tb;width:auto;min-height:35px
+ }
+ .layout-studio .ls-canvas-wrap {min-height:400px;max-height:70vh;padding:12px}
+ .layout-studio .ls-zoom-controls input[type="range"] {width:80px}
 }
