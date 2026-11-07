@@ -28,7 +28,7 @@ import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
 import PassbookPageSetup from "./PassbookPageSetup";
-import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,type PageSetup} from "./layoutPageSetup.ts";
+import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,withFoldDirection,type PageSetup,type FoldAxis} from "./layoutPageSetup.ts";
 import {importWordDocx} from "./layoutWordDocumentImport";
 import {importLegacyWordDoc} from "./layoutLegacyWordImport";
 import {customerRepository} from "./core/customerRepository";
@@ -549,12 +549,18 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     updatePageGeometry({[key]:value},"Changed "+key);
   };
   const changePageSetup=(next:PageSetup)=>{
-    const old=pageSetupFor(draft),foldChanged=old.foldAxis!==next.foldAxis;
-    const max=next.foldAxis==="vertical"?draft.widthMm:draft.heightMm;
-    const fold=next.foldAxis==="none"?0:foldChanged?Math.round(max/2*1000)/1000:draft.foldMm;
-    const printStart=next.foldAxis==="none"?0:foldChanged?
-      Math.min(max,Math.round((fold+12)*1000)/1000):draft.printStartMm;
-    updatePageGeometry({pageSetup:next,foldMm:fold,printStartMm:printStart},"Changed fold or margins");
+    const previous=pageSetupFor(draft);
+    if(previous.foldAxis!==next.foldAxis){
+      const converted=withFoldDirection(draft,next.foldAxis);
+      updatePageGeometry({pageSetup:{...next,foldAxis:converted.pageSetup!.foldAxis},
+        foldMm:converted.foldMm,printStartMm:converted.printStartMm},
+        "Changed book fold direction to "+next.foldAxis);
+    }else updatePageGeometry({pageSetup:next},"Changed paper margins");
+  };
+  const chooseFoldDirection=(axis:FoldAxis)=>{
+    const cfg=pageSetupFor(draft);
+    if(cfg.foldAxis===axis)return;
+    changePageSetup({...cfg,foldAxis:axis});
   };
   const choosePaperPreset=(presetId:string)=>{
     const preset=presetGeometry(presetId);if(!preset)return;
@@ -1816,8 +1822,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <p className="ls-tool-note">Free built-in BANK SETU editing tools — no Microsoft account, Microsoft 365 subscription or Word installation required. Select a text object to format it; unsupported Office-only commands are not offered.</p>
       <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
         {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
-          <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
-            {tab[0].toUpperCase()+tab.slice(1)}
+          <button key={tab} type="button" aria-pressed={wordTab===tab}
+            title={"Open "+tab+" ribbon tools"}
+            onClick={()=>setWordTab(tab)}>
+            <span className="ls-word-tab-icon" aria-hidden="true">{({
+              file:"▤",home:"⌂",insert:"⊞",draw:"✎",design:"◈",layout:"▱",
+              references:"§",mailings:"◇",review:"✓",view:"◉",help:"?"
+            } as const)[tab]}</span>{tab[0].toUpperCase()+tab.slice(1)}
           </button>)}
         {selected&&<button type="button" className="ls-contextual-tab" aria-pressed={wordTab==="format"}
           onClick={()=>setWordTab("format")}>Object Format</button>}
@@ -1849,6 +1860,29 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           </button>)}
           {findRibbonCommands(ribbonSearch,8).length===0&&<p>No working tool matches this search.</p>}
         </div>}
+      </div>
+      <div className="ls-ribbon-quick-tools" role="toolbar" aria-label="Quick passbook design tools">
+        <strong className="ls-ribbon-quick-label">★ Easy Tools</strong>
+        <button type="button" title="Insert a text box. Double-click it on paper to write."
+          onClick={()=>{setWordTab("home");append("text","static","New text");}}><span aria-hidden="true">T</span> Text Box</button>
+        <button type="button" title="Insert an editable two-row, three-column table."
+          onClick={()=>{setWordTab("insert");insertEditableTable(2,3);}}><span aria-hidden="true">▦</span> Table</button>
+        <button type="button" title="Add a field that uses the current customer's name, never another client's data."
+          onClick={()=>{setWordTab("mailings");append("field","customer","Customer Name","customerName");}}><span aria-hidden="true">♙</span> Customer Name</button>
+        <button type="button" title="Add a field from the current bank configuration."
+          onClick={()=>{setWordTab("mailings");append("field","bank","Branch Name","branchName");}}><span aria-hidden="true">⌂</span> Bank Field</button>
+        <label className="ls-file-action" title="Import a logo or photo for Quick Passbook. Not allowed in Direct PR2.">
+          <span aria-hidden="true">▣</span> Picture
+          <input type="file" accept="image/png,image/jpeg,image/webp"
+            disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}}/>
+        </label>
+        <button type="button" title="Choose full-open book width, height, fold orientation and print start."
+          onClick={()=>{setWordTab("layout");setPageSetupOpen(true);}}><span aria-hidden="true">▱</span> Book Size & Fold</button>
+        <button type="button" title="Generate a draft proof PDF; never triggers direct PR2 printer."
+          disabled={busy} onClick={()=>{void proofPdf();}}><span aria-hidden="true">◉</span> Preview PDF</button>
+        <button type="button" title="Save this private editable draft, without activating live printing."
+          disabled={savingLayout||busy} onClick={()=>{void save();}}><span aria-hidden="true">▣</span> Save Draft</button>
+        <span className="ls-ribbon-quick-help">Tip: choose a tool → click or drag on the page → edit on the right.</span>
       </div>
       {wordTab==="format"&&<div className="ls-word-tab-content ls-object-format-ribbon"
         role="toolbar" aria-label="Format selected layout object">
@@ -2072,6 +2106,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>setPageSetupOpen(true)}>▤ Margins</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>▣ Orientation</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>▱ Size</button>
+        <label className="ls-layout-fold-shortcut">Book Fold
+          <select aria-label="Quick choose book fold direction" value={pageSetupFor(draft).foldAxis}
+            onChange={e=>chooseFoldDirection(e.target.value as FoldAxis)}>
+            <option value="horizontal">Horizontal Fold (Top / Bottom)</option>
+            <option value="vertical">Vertical Fold (Left / Right)</option>
+            <option value="none">No Fold (Flat)</option>
+          </select>
+        </label>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
         <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(!selected)return;edit({rotation:(selected.rotation+90)%360});}}>Rotate 90°</button>
