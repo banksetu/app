@@ -38,7 +38,7 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
   const end=mode==="month"?monthEnd(month):
     mode==="months"?monthEnd(toMonth):endDate;
   const invalid=!start||!end||end<start;
-  const matches=useMemo(()=>invalid?[]:matchingOpeningCustomers(customers,start,end),[customers,invalid,start,end]);
+  const matches=useMemo(()=>start&&end&&end>=start?matchingOpeningCustomers(customers,start,end):[],[customers,start,end]);
   const queried=useMemo(()=>{
     const query=search.trim().toLocaleLowerCase();
     return query?matches.filter(row=>[openingCustomerName(row),openingAccountNo(row),openingStatus(row)]
