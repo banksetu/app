@@ -298,6 +298,15 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
 
   const closePreview=()=>{setSelected(null);onPreviewClose?.();};
 
+  useEffect(()=>{
+    if(!previewCustomer)return;
+    const onKey=(event:KeyboardEvent)=>{
+      if(event.key==="Escape"){event.stopPropagation();setSelected(null);onPreviewClose?.();}
+    };
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[previewCustomer,onPreviewClose]);
+
   const share = async () => {
     if (!selected || sharing) return;
     const notice = (type: "success" | "error" | "progress",message: string) => {
