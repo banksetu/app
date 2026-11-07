@@ -30,7 +30,7 @@ test("step 7: page alignment works in physical mm with arbitrary tall and wide f
  assert.throws(()=>alignElementToPage({x:0,y:0,width:501,height:10},{widthMm:190,heightMm:175},"horizontal","center"));
 });
 test("step 7: blank creation, rulers, style clipboard and physical alignment are connected to editor",()=>{
- for(const anchor of ["New Blank Layout (Word-style)","startFromBlank","startBlankLayout",
+ for(const anchor of ["New Blank","startFromBlank","startBlankLayout",
   "ls-ruler-x","ls-ruler-y","Copy Style","Paste Style","Align object to physical page",
   "mm","cm","in","Undo","Redo"]){
    assert.ok(editor.includes(anchor),"Missing Word-style control: "+anchor);
