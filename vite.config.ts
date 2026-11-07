@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const packageJson = JSON.parse(
   readFileSync("./package.json", "utf-8")
@@ -12,10 +13,24 @@ const codespaceName = process.env.CODESPACE_NAME?.trim();
 const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN?.trim() || "app.github.dev";
 const forwardedHost = codespaceName ? `${codespaceName}-5173.${forwardingDomain}` : undefined;
 
-export default defineConfig({
+// The auto-passbook editor is Windows EXE only. Non-Windows bundles resolve
+// its lazy imports to an inert placeholder instead of shipping heavy PDF/OCR
+// editor modules into Android APK or public web JavaScript chunks.
+export default defineConfig(({mode})=>{
+  const nonWindowsLayout = mode==="web" || mode==="android" ||
+    process.env.BANKSETU_BUILD_TARGET==="android";
+  const unavailable=fileURLToPath(new URL("./src/platform/layoutUnavailable.tsx",import.meta.url));
+  return {
   plugins: [react()],
+  resolve: {
+    alias: nonWindowsLayout ? [
+      {find:/^\.\/CustomizeLayoutStudio$/,replacement:unavailable},
+      {find:/^\.\/WorkspaceTemplateDocument$/,replacement:unavailable},
+    ] : [],
+  },
 
   define: {
+    __BANKSETU_CODESPACES_LAYOUT_PREVIEW__: JSON.stringify(mode==="development" && Boolean(codespaceName)),
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },
 
@@ -31,4 +46,5 @@ export default defineConfig({
       interval: 300,
     },
   },
+  };
 });

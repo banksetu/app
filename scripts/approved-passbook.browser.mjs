@@ -11,19 +11,26 @@ const customer={enrolId:'000001',accountNo:'0001234567890',name:'TEST CUSTOMER',
 fs.writeFileSync('test-evidence/menu.html','<div id="root"></div><script type="module" src="/test-evidence/menu.tsx"></script>');
 fs.writeFileSync('test-evidence/menu.tsx',`import React from 'react';import{createRoot}from'react-dom/client';import Passbook from'../src/Passbook';const q=new URLSearchParams(location.search);const bank=${JSON.stringify(bank)};if(q.get('bank')==='union')Object.assign(bank,{bankName:'Union Bank of India',passbookBank:'Union Bank of India',branchName:'UNION TEST BRANCH',address:'UNION TEST ADDRESS'});if(q.get('tenant')==='second')Object.assign(bank,{branchName:'SECOND BRANCH',micr:'900000009',ifsc:'EFGH0000002'});sessionStorage.setItem('bankSetuTenantId','synthetic-test-only');window.testCalls=[];createRoot(document.getElementById('root')).render(<Passbook bankInfo={bank} formatType={q.get('mode')==='quick'?'quickPassbook':'passbook'}/>);`);
 const mocks={
- './core/localData':`export function identity(){return 'synthetic:user:tenant:connection';}export async function getDataIdToken(){return 'synthetic';}export async function localDataFetch(url,options){const body=JSON.parse(options.body);window.testCalls.push(body);return{json:async()=>body.action==='searchCustomer'?{success:true,customer:${JSON.stringify(customer)},rowNumber:1}:{success:true}};}`,
+ './core/localData':`export async function getDataIdToken(){return 'synthetic';}export async function localDataFetch(url,options){const body=JSON.parse(options.body);window.testCalls.push(body);return{json:async()=>body.action==='searchCustomer'?{success:true,customer:${JSON.stringify(customer)},rowNumber:1}:{success:true}};}`,
  './core/licenseAccess':`export async function requireLicensedWrite(){if(window.blockTestLicense)throw Error('License suspended');}`,
  'firebase/auth':`export function getAuth(){return{currentUser:{uid:'synthetic'}};}`,
  './tenantApi':`export function getTenantApiUrl(){return '/synthetic-bridge';}`,
- './platform/print':`export async function printCurrentDocument(){window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
+ './platform/print':`export async function printCurrentDocument(){if(window.blockTestLicense)throw Error('License suspended');window.printCount=(window.printCount||0)+1;return{accepted:true,confirmation:'printer'};}`,
 };
-const server=await createServer({configFile:false,root:process.cwd(),plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if((importer?.endsWith('/src/Passbook.tsx')||importer?.endsWith('/src/Pr2PrinterDialog.tsx'))&&mocks[source])return '\0test:'+source;if(importer?.endsWith('/src/PrintAlignmentPreview.tsx')&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
+const server=await createServer({configFile:false,root:process.cwd(),cacheDir:'node_modules/.vite-approved-passbook',optimizeDeps:{noDiscovery:true,include:['react','react-dom/client']},plugins:[{name:'synthetic-passbook-only',enforce:'pre',resolveId(source,importer){if(importer?.endsWith('/src/Passbook.tsx')&&mocks[source])return '\0test:'+source;if((importer?.endsWith('/src/PrintAlignmentPreview.tsx')||importer?.endsWith('/src/printAlignmentStorage.ts'))&&source==='./firebase')return '\0test:firebase';},load(id){if(id==='\0test:firebase')return 'export const auth={currentUser:null};';if(id.startsWith('\0test:'))return mocks[id.slice(6)];}},react()],server:{host:'127.0.0.1',port:5197,strictPort:true}});
+const openPassbookPage=async(page,url)=>{
+ for(let attempt=0;attempt<2;attempt++){
+  await page.goto(url,{waitUntil:'domcontentloaded'});
+  try{await page.locator('.passbook-search-input').waitFor({state:'visible',timeout:15000});return;}
+  catch(error){if(attempt)throw error;await page.waitForTimeout(500);}
+ }
+};
 let browser;
 try{
  await server.listen();
  browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{}),args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--use-gl=angle','--use-angle=swiftshader']});
  const page=await browser.newPage({viewport:{width:1300,height:1000}});page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5197/test-evidence/menu.html');
+ await openPassbookPage(page,'http://127.0.0.1:5197/test-evidence/menu.html');
  await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();
  await page.locator('.pb-approved-artwork').waitFor();
  assert.equal(await page.locator('[data-field="branchName"]').getAttribute('aria-label'),'branchName: TEST BRANCH');
@@ -41,6 +48,8 @@ try{
  assert.equal(await page.locator('svg>g').first().innerHTML(),labels);
  assert.deepEqual(await page.evaluate(()=>window.testCalls.map(x=>x.action)),['searchCustomer']);
  await page.getByRole('button',{name:'Print Passbook',exact:false}).click();
+ await page.getByRole('dialog',{name:/Choose print alignment/}).waitFor();
+ await page.getByRole('button',{name:/Yes · Adjust Alignment/}).click();
  const frame=page.frameLocator('iframe');await frame.locator('.pb-approved-artwork path').first().waitFor();
  assert.equal(await frame.locator('.pb-approved-artwork path').count(),await page.locator('.passbook-shell .pb-approved-artwork path').count());
  await page.getByRole('button',{name:/Test Print/}).click();
@@ -49,18 +58,19 @@ try{
  await page.getByRole('button',{name:/Final Print/}).click();
  await page.waitForFunction(()=>window.testCalls.some(x=>x.action==='markPassbookPrinted'));
  assert.equal(await page.locator('.status-chip').innerText(),'Printed');
+ await page.getByRole('button',{name:'Print Passbook',exact:false}).click();await page.getByRole('button',{name:/No · Open Print Preview/}).click();await page.waitForFunction(()=>window.printCount===3);
  await page.emulateMedia({media:'print'});await page.pdf({path:'test-evidence/menu-print.pdf',preferCSSPageSize:true,printBackground:true});
  await page.emulateMedia({media:'screen'});
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.locator('[data-field="holder"] path').count(),'A MUCH LONGER CUSTOMER NAME FOR TEST'.replaceAll(' ','').length);
- await page.evaluate(()=>window.blockTestLicense=true);await page.getByRole('button',{name:/Print Passbook/}).click();await page.getByRole('button',{name:/Test Print/}).click();await page.getByRole('alert').filter({hasText:'License suspended'}).waitFor();
- assert.equal(await page.evaluate(()=>window.printCount),2);assert.deepEqual(errors,[]);
+ await page.evaluate(()=>window.blockTestLicense=true);await page.getByRole('button',{name:/Print Passbook/}).click();await page.getByRole('button',{name:/Yes · Adjust Alignment/}).click();await page.getByRole('button',{name:/Test Print/}).click();await page.getByRole('alert').filter({hasText:'License suspended'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.printCount),3);assert.deepEqual(errors,[]);
  console.log('PASS: real Passbook menu search → bank/customer mapping → temporary edit → alignment iframe → test print without status mutation → accepted final print → mobile fixed artwork → suspended license blocked.');
  await page.close();
  for(const bank of ['assam','union'])for(const mode of ['print','quick']){
   const page=await browser.newPage({viewport:{width:1300,height:1100}});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(`http://127.0.0.1:5197/test-evidence/menu.html?bank=${bank}&mode=${mode}`);
+  await openPassbookPage(page,`http://127.0.0.1:5197/test-evidence/menu.html?bank=${bank}&mode=${mode}`);
   await page.locator('.passbook-search-input').fill('0001234567890');await page.getByRole('button',{name:'Search',exact:true}).click();
   const isAssam=bank==='assam';
   await page.locator(isAssam?'.pb-approved-artwork':'.union-document').waitFor();
@@ -68,7 +78,7 @@ try{
   const value=async(key)=>isAssam?(await field(key).getAttribute('aria-label')).slice(key.length+2):await field(key).innerText();
   assert.equal(await value('nominee'),isAssam?'1':'2');
   assert.equal(await value('accountNo'),customer.accountNo);
-  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.match(await value('address4'),/ASSAM/);}
+  if(isAssam){assert.equal(await value('openedOn'),'24-08-2024');assert.match(`${await value('address3')} ${await value('address4')}`,/ASSAM/);}
   else{assert.equal(await page.locator('.union-upper').count(),mode==='quick'?1:0);assert.equal(await page.locator('.pb-approved-artwork').count(),0);}
   const openEdit=async()=>{
    if(isAssam&&mode==='print'){
@@ -84,7 +94,7 @@ try{
   await page.getByRole('button',{name:'Apply to Preview',exact:true}).click();
   assert.equal(await value('accountNo'),edits['Account Number']);assert.equal(await value('nominee'),'3');
   if(isAssam){
-   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(await value('address4'),'ASSAM, PIN-001200');assert.equal(await value('address3'),'');
+   assert.equal(await value('openedOn'),'18-10-2026');assert.equal(await value('address1'),'C/O EDITED GUARDIAN');assert.equal(await value('address2'),'VILL-TEST, P.O-TEST');assert.equal(`${await value('address3')} ${await value('address4')}`.trim(),'ASSAM, PIN-001200');
   }else assert.equal(await value('address'),'C/O EDITED GUARDIAN\nVILL-TEST, P.O-TEST\nASSAM, PIN-001200');
   await openEdit();for(const [label,text]of Object.entries(edits))assert.equal(await input(label).inputValue(),text);
   await page.getByRole('button',{name:'Cancel Changes',exact:true}).click();
@@ -96,12 +106,13 @@ try{
   }
   // The normal alignment preview must contain the same edited renderer.
   await page.getByRole('button',{name:/Print Passbook/}).click();
+  await page.getByRole('button',{name:/Yes · Adjust Alignment/}).click();
   await page.frameLocator('iframe').locator(isAssam?'.pb-approved-artwork':'.union-document').waitFor();
   assert.deepEqual(errors,[]);await page.close();
   console.log(`PASS: ${bank} ${mode}: bank selection, default nominee, all temporary edits, cancel, no customer write, alignment preview`);
  }
  const other=await browser.newPage();
- await other.goto('http://127.0.0.1:5197/test-evidence/menu.html?tenant=second&mode=quick');
+ await openPassbookPage(other,'http://127.0.0.1:5197/test-evidence/menu.html?tenant=second&mode=quick');
  await other.locator('.passbook-search-input').fill(customer.accountNo);await other.getByRole('button',{name:'Search',exact:true}).click();
  await other.locator('.pb-approved-artwork').waitFor();
  assert.equal(await other.locator('[data-field="branchName"]').getAttribute('aria-label'),'branchName: SECOND BRANCH');

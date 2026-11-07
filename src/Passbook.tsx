@@ -2,7 +2,6 @@ import Pr2PrinterDialog from "./Pr2PrinterDialog";
 import { windowsPr2, WINDOWS_PR2_MESSAGE } from "./platform/pr2";
 import { showMessage } from "./uiDialogs";
 import { localDataFetch, getDataIdToken } from "./core/localData";
-import { requireLicensedWrite } from "./core/licenseAccess";
 import {
 
   useState,
@@ -18,8 +17,13 @@ import { getTenantApiUrl } from "./tenantApi";
 
 import AssamQuickPassbook, { isAssamBank, isUnionBank, type PassbookBankInfo } from "./AssamQuickPassbook";
 import UnionPassbook from "./UnionPassbook";
+import PnbPassbook from "./PnbPassbook";
+import CentralBankPassbook from "./CentralBankPassbook";
+import { isCentralBank, isPnbBank } from "./bankDocumentPolicy";
 import WordPassbookInfo, { wordPassbookProblems, wordPassbookValues } from "./WordPassbookInfo";
 import PrintAlignmentPreview, { type PrintOffset } from "./PrintAlignmentPreview";
+import { savedPrintOffset } from "./printAlignmentStorage";
+import PrintAlignmentChoice from "./PrintAlignmentChoice";
 import { printCurrentDocument, type PrintOutcome } from "./platform/print";
 import { PASSBOOK_PAPER_WIDTH_MM, PASSBOOK_CONTENT_END_MM, LEFT_LABEL_X_MM, LEFT_COLON_X_MM, LEFT_VALUE_X_MM,
   RIGHT_LABEL_X_MM, RIGHT_CODE_COLON_X_MM, RIGHT_CODE_VALUE_X_MM, RIGHT_HOLDER_COLON_X_MM,
@@ -94,6 +98,28 @@ type Customer = {
   photoPreview?: string;
   jointHolder?: string;
   issueDate?: string;
+  accountType?: string;
+  acType?: string;
+  accountCategory?: string;
+  modeOfOperation?: string;
+  operationMode?: string;
+  operatingInstruction?: string;
+  pnbBranchOffice?: string;
+  pnbBranchPhone?: string;
+  pnbMicr?: string;
+  pnbIfsc?: string;
+  pnbTollFree?: string;
+  pnbTolledPhone?: string;
+  pnbPrincipalOfficer?: string;
+  pnbPrincipalPhone?: string;
+  pnbPrincipalFax?: string;
+  pnbModeOfOperation?: string;
+  pnbNominationSerial?: string;
+  pnbDistrict?: string;
+  pnbState?: string;
+  pnbCountry?: string;
+  pnbIssueDate?: string;
+  pnbDicgcAmount?: string;
 
 };
 
@@ -136,6 +162,27 @@ type EditableCustomer = Pick<
   | "fullAddress"
 
   | "pan"
+  | "uidaiNo"
+  | "pinCode"
+  | "pnbBranchOffice"
+  | "pnbBranchPhone"
+  | "pnbMicr"
+  | "pnbIfsc"
+  | "pnbTollFree"
+  | "pnbTolledPhone"
+  | "pnbPrincipalOfficer"
+  | "pnbPrincipalPhone"
+  | "pnbPrincipalFax"
+  | "pnbModeOfOperation"
+  | "pnbNominationSerial"
+  | "pnbDistrict"
+  | "pnbState"
+  | "pnbCountry"
+  | "pnbIssueDate"
+  | "pnbDicgcAmount"
+  | "accountType"
+  | "modeOfOperation"
+  | "operatingInstruction"
 
 >;
 
@@ -182,6 +229,18 @@ const emptyCustomer: Customer = {
   aofNo: "",
 
 };
+
+const PNB_EDIT_FIELDS: Array<[keyof EditableCustomer,string]> = [
+  ["uidaiNo","Aadhaar Number"],["pinCode","PIN Code"],
+  ["pnbBranchOffice","Branch Office"],["pnbBranchPhone","Branch Phone"],
+  ["pnbMicr","MICR Code"],["pnbIfsc","IFSC Code"],
+  ["pnbTollFree","Toll Free Number"],["pnbTolledPhone","Tolled Number"],
+  ["pnbPrincipalOfficer","Principal Nodal Officer"],["pnbPrincipalPhone","Principal Officer Phone"],
+  ["pnbPrincipalFax","Principal Officer Fax"],["pnbModeOfOperation","Mode of Operation"],
+  ["pnbNominationSerial","Nomination SL. No."],["pnbDistrict","District"],
+  ["pnbState","State"],["pnbCountry","Country"],
+  ["pnbIssueDate","Date of Issue"],["pnbDicgcAmount","DICGC Amount"],
+];
 
 
 
@@ -307,6 +366,32 @@ function makePrintAddress(customer: Customer) {
 
 }
 
+function withPnbPrintDefaults(customer: Customer, bankInfo?: PassbookBankInfo): Customer {
+  const branchOffice=[bankInfo?.branchName,bankInfo?.branchDistrict,bankInfo?.branchPinCode]
+    .map(value=>safe(value)).filter(Boolean).join(", ");
+  return {
+    ...customer,
+    pnbBranchOffice:safe(customer.pnbBranchOffice)||branchOffice,
+    pnbBranchPhone:safe(customer.pnbBranchPhone)||safe(bankInfo?.branchPhone),
+    pnbMicr:safe(customer.pnbMicr)||safe(bankInfo?.micr),
+    pnbIfsc:safe(customer.pnbIfsc)||safe(bankInfo?.ifsc),
+    pnbModeOfOperation:safe(customer.pnbModeOfOperation)||safe(customer.modeOfOperation),
+    pnbDistrict:safe(customer.pnbDistrict),
+    pnbState:safe(customer.pnbState),
+    pnbCountry:safe(customer.pnbCountry),
+    pnbIssueDate:safe(customer.pnbIssueDate)||safe(customer.issueDate),
+  };
+}
+
+function withCentralPrintDefaults(customer: Customer): Customer {
+  return {
+    ...customer,
+    accountType:safe(customer.accountType||customer.acType||customer.accountCategory)||"SAVINGS",
+    modeOfOperation:safe(customer.modeOfOperation||customer.operationMode)||"SELF",
+    operatingInstruction:safe(customer.operatingInstruction)||"SINGLY",
+  };
+}
+
 function PassbookInfoFields({customer,bank}: {customer:Customer; bank:{name:string;addressLine1:string;postOffice:string;district:string;pin:string;email:string;ifsc:string;micr:string;branchCode:string}}) {
   const values:Record<string,string>={
     branchName:bank.name,branchAddress:passbookBranchAddress(bank.addressLine1,bank.postOffice),
@@ -352,9 +437,11 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
   const missingBranch = missingPassbookBranchFields(BRANCH);
   const isAssamQuick = formatType === "quickPassbook" && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isUnion = isUnionBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isPnb = isPnbBank(bankInfo?.passbookBank || bankInfo?.bankName);
+  const isCentral = isCentralBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const isApprovedAssamPrint = formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank || bankInfo?.bankName);
   const alignmentBank = bankInfo?.passbookBank || bankInfo?.bankName || "";
-  const alignmentEnabled = isUnion || isAssamBank(alignmentBank);
+  const alignmentEnabled = isUnion || isPnb || isCentral || isAssamBank(alignmentBank);
 
 
   const [query, setQuery] = useState("");
@@ -381,7 +468,11 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
   const [printing, setPrinting] = useState(false);
   const [alignmentOpen, setAlignmentOpen] = useState(false);
+  const [alignmentChoice, setAlignmentChoice] = useState<"system" | "pr2" | null>(null);
+  const [alignmentMode, setAlignmentMode] = useState<"system" | "pr2">("system");
   const [directPrinting, setDirectPrinting] = useState(false);
+  const [directOffset, setDirectOffset] = useState<PrintOffset>({x:0,y:0});
+  const [directTestOnly, setDirectTestOnly] = useState(false);
 
 
 
@@ -539,7 +630,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const result = await apiRequest({
         action: "searchCustomer",
         query: searchValue,
-        includePhoto: isAssamQuick || isUnion,
+        includePhoto: isAssamQuick || ((isUnion || isPnb || isCentral) && formatType === "quickPassbook"),
       });
 
       const matches: CustomerMatch[] = Array.isArray(result.matches)
@@ -556,12 +647,14 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
         return;
       }
 
-      const loaded: Customer = {
+      let loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
         ...((isApprovedAssamPrint || isAssamQuick) ? {nominee:'1'} : {}),
         photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
+      if (isPnb) loaded=withPnbPrintDefaults(loaded,bankInfo);
+      if (isCentral) loaded=withCentralPrintDefaults(loaded);
 
       setCustomer(loaded);
       setPreviewCustomer({ ...loaded });
@@ -590,15 +683,17 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const result = await apiRequest({
         action: "getCustomerByRowNumber",
         rowNumber: match.rowNumber,
-        includePhoto: isAssamQuick || isUnion,
+        includePhoto: isAssamQuick || ((isUnion || isPnb || isCentral) && formatType === "quickPassbook"),
       });
 
-      const loaded: Customer = {
+      let loaded: Customer = {
         ...emptyCustomer,
         ...(result.customer || {}),
         ...((isApprovedAssamPrint || isAssamQuick) ? {nominee:'1'} : {}),
         photoPreview: result.photo?.previewDataUrl || result.customer?.photoPreview || "",
       };
+      if (isPnb) loaded=withPnbPrintDefaults(loaded,bankInfo);
+      if (isCentral) loaded=withCentralPrintDefaults(loaded);
 
       setCustomer(loaded);
       setPreviewCustomer({ ...loaded });
@@ -737,6 +832,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
   const printPassbook = async (offset?: PrintOffset, test = false, duplex = false): Promise<PrintOutcome | void> => {
+    let alignedPage: HTMLElement | null = null;
     if (formatType === 'passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) {
       setError(`Complete Bank Information before printing: ${missingBranch.join(', ')}.`); return;
     }
@@ -778,7 +874,9 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
     try {
-      await requireLicensedWrite();
+      // printCurrentDocument owns the shared license gate. Keeping a second
+      // verification here made every normal passbook print repeat the same
+      // signed-receipt work before the preview could open.
 
       if (isApprovedAssamPrint || isAssamQuick) {
         const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
@@ -804,6 +902,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       if (offset) {
         const page = document.querySelector<HTMLElement>(".passbook-page");
         if (!page) throw new Error("Passbook print layout is unavailable.");
+        alignedPage = page;
         page.style.setProperty("--alignment-x", `${offset.x}mm`);
         page.style.setProperty("--alignment-y", `${offset.y}mm`);
         page.classList.add("alignment-print-active");
@@ -888,6 +987,10 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
     } finally {
 
+      alignedPage?.classList.remove("alignment-print-active");
+      alignedPage?.style.removeProperty("--alignment-x");
+      alignedPage?.style.removeProperty("--alignment-y");
+
       setPrinting(false);
 
     }
@@ -908,12 +1011,26 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
       const problems = wordPassbookProblems(wordPassbookValues(previewCustomer, BRANCH), isAssamQuick);
       if (problems.length) { setError(problems.join(' ')); return; }
     }
-    try { await requireLicensedWrite(); setError(""); setMessage(""); setDirectPrinting(true); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Printing is unavailable.'); }
+    setError(""); setMessage("");
+    if (alignmentEnabled) setAlignmentChoice("pr2");
+    else { setDirectOffset({x:0,y:0}); setDirectTestOnly(false); setDirectPrinting(true); }
+  };
+
+  const adjustChosenAlignment=()=>{
+    if(!alignmentChoice)return;
+    setAlignmentMode(alignmentChoice);setAlignmentChoice(null);setAlignmentOpen(true);
+  };
+
+  const skipChosenAlignment=()=>{
+    if(!alignmentChoice)return;
+    const mode=alignmentChoice,offset=savedPrintOffset(alignmentBank);
+    setAlignmentChoice(null);
+    if(mode==="system")void printPassbook(offset,false,false);
+    else {setDirectOffset(offset);setDirectTestOnly(false);setDirectPrinting(true);}
   };
 
   const directPrintCompleted = async () => {
-    setMessage("PR2 printer acknowledged processing and paper release. Check the physical print.");
+    setMessage("Print completed.");
     try {
       await apiRequest({ action: "markPassbookPrinted", rowNumber });
       setCustomer(previous => previous ? { ...previous, passbookStatus: "Printed" } : previous);
@@ -935,8 +1052,8 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
   return (
 
-    <div className="passbook-page">
-      {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
+    <div className="passbook-page" data-print-root="active" data-print-profile={formatType === "passbook" ? "exact" : "safe"}>
+      {directPrinting && <Pr2PrinterDialog bankName={bankInfo?.passbookBank || bankInfo?.bankName || "Active bank"} offset={directOffset} testOnly={directTestOnly} onClose={() => setDirectPrinting(false)} onComplete={() => void directPrintCompleted()} />}
 
       <style>{`
 
@@ -1996,6 +2113,18 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
           }
 
+          .pnb-document,
+          .pnb-document * {
+
+            visibility: visible !important;
+
+          }
+
+          .central-bank-document,
+          .central-bank-document * {
+            visibility: visible !important;
+          }
+
           .union-document {
 
             position: fixed !important;
@@ -2164,24 +2293,48 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
           @media print {
             html, body { width:210mm!important; height:297mm!important; }
             .passbook-shell { width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:175mm!important; overflow:visible!important; }
-            .passbook-cover-space { height:85mm!important; }
-            .passbook-print-area { top:85mm!important; width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:85mm!important; }
+            .passbook-cover-space { height:88mm!important; }
+            .passbook-print-area { top:93mm!important; width:${PASSBOOK_PAPER_WIDTH_MM}mm!important; height:87mm!important; }
           }
         ` : ""}
         ${isUnion ? `
-          @page { size: 210mm 297mm; margin: 0; }
+          @page { size: 210mm 215mm; margin: 0; }
           @media print {
-            html, body { width:210mm!important; height:297mm!important; }
-            .union-document { width:210mm!important; height:170mm!important; overflow:visible!important; }
-            .union-lower { top:85mm!important; height:85mm!important; }
-            .union-fold { top:85mm!important; }
+            html, body { width:210mm!important; height:215mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:210mm!important; height:215mm!important; overflow:hidden!important; }
+            .union-document { width:203.2mm!important; height:215mm!important; overflow:visible!important; }
+            .union-lower { top:107mm!important; height:108mm!important; }
+            .union-fold { top:107mm!important; }
+          }
+        ` : ""}
+        ${isPnb ? `
+          @page { size: A4 portrait; margin: 0; }
+          @media print {
+            html, body { width:210mm!important; height:297mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:210mm!important; height:297mm!important; padding:0!important; overflow:visible!important; }
+            .pnb-preview { width:210mm!important; height:297mm!important; padding:0!important; overflow:visible!important; }
+            .pnb-document { position:absolute!important; left:0!important; top:0!important; width:213mm!important; height:190mm!important; margin:0!important; transform:scale(${210/213})!important; transform-origin:top left!important; overflow:visible!important; }
+          }
+        ` : ""}
+        ${isCentral ? `
+          @page { size: 190mm 173mm; margin: 0; }
+          @media print {
+            html, body { width:190mm!important; height:173mm!important; overflow:hidden!important; }
+            .passbook-page { position:fixed!important; inset:0!important; width:190mm!important; height:173mm!important; padding:0!important; overflow:visible!important; }
+            .central-preview { width:190mm!important; height:173mm!important; padding:0!important; overflow:visible!important; }
+            .central-bank-document { position:absolute!important; left:0!important; top:0!important; width:190mm!important; height:173mm!important; margin:0!important; overflow:hidden!important; }
           }
         ` : ""}
         @media print {
           .passbook-page.alignment-print-active .union-document,
           .passbook-page.alignment-print-active .assam-quick-document,
+          .passbook-page.alignment-print-active .central-bank-document,
           .passbook-page.alignment-print-active .passbook-shell {
             transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) !important;
+          }
+          .passbook-page.alignment-print-active .pnb-document {
+            transform: translate(var(--alignment-x, 0mm), var(--alignment-y, 0mm)) scale(${210/213}) !important;
+            transform-origin: top left !important;
           }
         }
       `}</style>
@@ -2398,7 +2551,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-          {isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
+          {isCentral ? <CentralBankPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isPnb ? <PnbPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : isAssamQuick ? <AssamQuickPassbook customer={p} bankInfo={bankInfo} onEdit={() => setEditMode(true)} /> : isUnion ? <UnionPassbook customer={p} bankInfo={bankInfo} bankLogo={bankLogo} formatType={formatType} onEdit={() => setEditMode(true)} /> : (
 <div className="passbook-shell" style={isApprovedAssamPrint?{width:`${PASSBOOK_PAPER_WIDTH_MM}mm`}:undefined}>
 
             {/* HOVER EDIT */}
@@ -2688,6 +2841,31 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
                 </div>
 
+                {isPnb && PNB_EDIT_FIELDS.map(([field,label]) => <EditInput
+                  key={field}
+                  label={label}
+                  value={safe(p[field])}
+                  onChange={(value) => changePreviewField(field,value)}
+                />)}
+
+                {isCentral && <>
+                  <EditInput
+                    label="Account Type"
+                    value={safe(p.accountType)||"SAVINGS"}
+                    onChange={(value) => changePreviewField("accountType",value)}
+                  />
+                  <EditInput
+                    label="Mode"
+                    value={safe(p.modeOfOperation)||"SELF"}
+                    onChange={(value) => changePreviewField("modeOfOperation",value)}
+                  />
+                  <EditInput
+                    label="Operating"
+                    value={safe(p.operatingInstruction)||"SINGLY"}
+                    onChange={(value) => changePreviewField("operatingInstruction",value)}
+                  />
+                </>}
+
               </div>
 
 
@@ -2743,7 +2921,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
               className="passbook-button print-button"
 
-              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) setAlignmentOpen(true); else void printPassbook(); }}
+              onClick={() => { if (formatType==='passbook' && isAssamBank(bankInfo?.passbookBank) && missingBranch.length) { setError(`Complete Bank Information: ${missingBranch.join(', ')}.`); return; } if (alignmentEnabled) setAlignmentChoice("system"); else void printPassbook(); }}
 
               disabled={printing}
 
@@ -2759,7 +2937,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
 
 
-            {!isAssamQuick && (<button
+            {!isAssamQuick && !((isPnb || isCentral) && formatType === "quickPassbook") && (<button
 
               type="button"
 
@@ -2777,7 +2955,7 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
                 ? "Sending to PR2..."
 
-                : "Direct Printer Send"}
+                : "Olivetti Mode Print"}
 
             </button>)}
 
@@ -2805,10 +2983,15 @@ export default function Passbook({ formatType = "passbook", bankInfo, bankLogo, 
 
       {alignmentOpen && alignmentEnabled && <PrintAlignmentPreview
         bankName={alignmentBank}
-        sourceSelector={isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
+        sourceSelector={isCentral ? ".passbook-page .central-bank-document" : isPnb ? ".passbook-page .pnb-document" : isUnion ? ".passbook-page .union-document" : isAssamQuick ? ".passbook-page .assam-quick-document" : ".passbook-page .passbook-shell"}
+        printMode={alignmentMode}
         onClose={() => setAlignmentOpen(false)}
-        onPrint={(offset, test, duplex) => printPassbook(offset, test, duplex)}
+        onPrint={(offset, test, duplex) => {
+          if (alignmentMode === "system") return printPassbook(offset, test, duplex);
+          setDirectOffset(offset); setDirectTestOnly(test); setAlignmentOpen(false); setDirectPrinting(true);
+        }}
       />}
+      {alignmentChoice&&alignmentEnabled&&<PrintAlignmentChoice bankName={alignmentBank} mode={alignmentChoice} saved={savedPrintOffset(alignmentBank)} onClose={()=>setAlignmentChoice(null)} onAdjust={adjustChosenAlignment} onSkip={skipChosenAlignment}/>}
     </div>
 
   );

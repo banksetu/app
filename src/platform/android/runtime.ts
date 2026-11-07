@@ -1,7 +1,6 @@
 import {showMessage} from '../../uiDialogs';
 import { requireLicensedWrite } from "../../core/licenseAccess";
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { App } from '@capacitor/app';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
@@ -16,9 +15,6 @@ const NativeUpdate = registerPlugin<{
 export function startAndroidRuntime() {
   if (!isAndroid()) return;
   window.print = () => { void printAndroidDocument(false).catch(error => showMessage(error instanceof Error?error.message:'Printing could not be started. Please retry.')); };
-  void App.addListener('appStateChange', ({ isActive }) => {
-    if (isActive) window.dispatchEvent(new Event('online'));
-  });
 }
 export async function printAndroidDocument(duplex: boolean) {
   await requireLicensedWrite();

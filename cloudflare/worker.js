@@ -3,6 +3,10 @@ import { DEFAULT_FLAGS, DEFAULT_PRICING, DEFAULT_PAYMENT_DETAILS, validatePaymen
 import { createOfflineSession } from "./offlineSession.js";
 import { parseGoogleResource, validateResourceOwnership } from "./googleConnection.js";
 import { createSupportMediaService } from "./supportMedia.js";
+import { normalizedBankKey, sanitizeLayoutTemplate } from "./layoutTemplates.js";
+import { layoutSelectionKey, normalizedActivationRecord, previousApprovedVersion } from "./layoutActivation.js";
+import {layoutCloudPaths,safeCloudManifest,changedLayoutSlots,nextCloudManifest,compactLayoutTemplate,inflateLayoutTemplate,validCloudSlot} from "./layoutCloudSync.js";
+import {privateLayoutDraftPath,privateDraftRevision,validatePrivateLayoutDraft} from "./layoutPrivateDraft.js";
 export function workspaceBankSettingsPath(actor) {
   const role = String(actor.profile?.role || "").toLowerCase();
   if (role === "client_admin" && actor.profile.tenantId) return "/tenantSettings/" + encodeURIComponent(actor.profile.tenantId);
@@ -21,7 +25,7 @@ export function validateWorkspaceBankPatch(body) {
       bankInfo[key] = input[key].trim();
     }
     // Optional for older clients/workspaces. Keep unrelated tenant settings intact.
-    const extraLimits = {branchAddress:240,branchPostOffice:120,branchDistrict:120,branchPinCode:6,branchEmail:254,ifsc:11,micr:9,branchCode:20};
+    const extraLimits = {branchAddress:240,branchPostOffice:120,branchDistrict:120,branchState:120,branchPinCode:6,branchEmail:254,branchPhone:30,ifsc:11,micr:9,branchCode:20,gstin:15,ckyc:30};
     for (const [key,limit] of Object.entries(extraLimits)) {
       if (input[key] === undefined) continue;
       if (typeof input[key] !== "string" || input[key].trim().length > limit) throw new Error("Enter valid passbook branch details.");
@@ -30,9 +34,25 @@ export function validateWorkspaceBankPatch(body) {
     if (bankInfo.branchPinCode && !/^\d{6}$/.test(bankInfo.branchPinCode)) throw new Error("Branch PIN must have six digits.");
     if (bankInfo.ifsc && !/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(bankInfo.ifsc)) throw new Error("Enter a valid 11-character IFSC.");
     if (bankInfo.micr && !/^\d{9}$/.test(bankInfo.micr)) throw new Error("Branch MICR must have nine digits.");
+    if (bankInfo.gstin && !/^[A-Za-z0-9]{15}$/.test(bankInfo.gstin)) throw new Error("GSTIN must have 15 letters and digits.");
     if (bankInfo.branchEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bankInfo.branchEmail)) throw new Error("Enter a valid branch email.");
     if (!bankInfo.bankName || !bankInfo.passbookBank) throw new Error("Enter Bank / CSP name and select a bank.");
     Object.assign(output, bankInfo, { bankInfo });
+  }
+  // Optional extensible Bank Information fields. Store separately from the
+  // historical bankInfo map so legacy printers, sheets and backups are stable.
+  if (body.bankExtraFields !== undefined) {
+    const fields = body.bankExtraFields;
+    if (!fields || typeof fields !== "object" || Array.isArray(fields) || Object.keys(fields).length > 32)
+      throw new Error("Enter up to 32 custom Bank Information fields.");
+    const safe = Object.create(null);
+    for (const [key, value] of Object.entries(fields)) {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || key === "__proto__" ||
+          typeof value !== "string" || value.trim().length > 180)
+        throw new Error("Custom Bank Information fields must have valid names and values.");
+      safe[key] = value.trim();
+    }
+    output.bankExtraFields = safe;
   }
   if (body.bankLogo !== undefined) {
     if (typeof body.bankLogo !== "string" || body.bankLogo.length > 150000 ||
@@ -288,6 +308,8 @@ async function putDocument(env, path, fields) {
 
 const pushTokenPattern = /^[A-Za-z0-9_:\-]{80,4096}$/;
 const pushDevicePattern = /^[a-f0-9-]{36}$/;
+const PUSH_RETENTION_MS = 30 * 86400000;
+const SYNC_PUSH_COOLDOWN_MS = 5 * 60000;
 export function validatePushRegistration(body) {
   if (!pushDevicePattern.test(String(body.deviceId || "")) || !pushTokenPattern.test(String(body.token || ""))) return false;
   return body.platform === "android";
@@ -309,7 +331,7 @@ async function handlePushRegistration(request, env, actor, route) {
     if (old.uid === actor.uid) await firestoreRequest(env, path, { method: "DELETE" });
     return json({ success: true });
   }
-  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token && old.scopedData === (body.scopedData===true) &&
+  if (old.uid === actor.uid && old.tenantId === tenantId && old.token === body.token && old.scopedData === (body.scopedData===true) && old.isMaster === isMasterActor(actor) &&
       Date.parse(old.expiresAt || "") > now && Date.parse(old.updatedAt || "") > now - 60_000)
     return json({ success: true, throttled: true });
   if (!existing) {
@@ -319,7 +341,7 @@ async function handlePushRegistration(request, env, actor, route) {
     } }) });
     if (rows.filter(row => Date.parse(decodeFields(row.document?.fields || {}).expiresAt || "") > now).length >= 5) return json({ error: "Too many registered devices." }, 429);
   }
-  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, scopedData:body.scopedData===true,platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
+  await putDocument(env, path, { uid: actor.uid, tenantId, token: body.token, scopedData:body.scopedData===true,isMaster:isMasterActor(actor),platform: "android", expiresAt: new Date(now + 30 * 86400000), updatedAt: new Date(now).toISOString() });
   return json({ success: true });
 }
 
@@ -336,7 +358,23 @@ async function preparePushJob(env, tenantId, event) {
   } }) });
   const seen = new Set();
   const deviceIds = rows.filter(row => {const record=licenseFields(row.document), key=record.uid+":"+record.token;if(seen.has(key))return false;seen.add(key);return true;}).map(row=>row.document?.name?.split("/").pop()).filter(id=>pushDevicePattern.test(id||""));
-  return deviceIds.length ? { tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date().toISOString() } : null;
+  const now=Date.now();
+  return deviceIds.length ? { targetMode:"tenant",tenantId, event, priority:event.category==="update"?1:0,deviceIds, cursor: 0, leaseUntil: 0, createdAt: new Date(now).toISOString(), expiresAt:new Date(now+PUSH_RETENTION_MS) } : null;
+}
+
+async function prepareUserPushJob(env, recipientUids, event, excludeUid="") {
+  const targets=[...new Set(recipientUids.map(value=>String(value||'')).filter(value=>value&&value!==excludeUid&&value.length<=128))];
+  if(!targets.length)return null;
+  const documents=[];
+  for(const target of targets){
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{
+      from:[{collectionId:"pushDevices"}],where:{fieldFilter:{field:{fieldPath:"uid"},op:"EQUAL",value:{stringValue:target}}},limit:5
+    }})});
+    documents.push(...rows.filter(row=>row.document).map(row=>row.document));
+  }
+  const seen=new Set(),deviceIds=documents.filter(document=>{const record=licenseFields(document),key=record.uid+":"+record.token;if(seen.has(key))return false;seen.add(key);return true;}).map(document=>document.name?.split('/').pop()).filter(id=>pushDevicePattern.test(id||''));
+  const now=Date.now();
+  return deviceIds.length?{targetMode:"users",targetUids:targets,tenantId:"support",event,priority:0,deviceIds,cursor:0,leaseUntil:0,createdAt:new Date(now).toISOString(),expiresAt:new Date(now+PUSH_RETENTION_MS)}:null;
 }
 
 export async function drainQueuedPush(env, tenantId, eventDocId) {
@@ -353,34 +391,53 @@ export async function drainQueuedPush(env, tenantId, eventDocId) {
   }
   if (!doc) return;
   const id = doc.name.split("/").pop(), job = licenseFields(doc), now = Date.now();
+  if (Date.parse(job.expiresAt || "") <= now) {
+    await licenseCommit(env,[{delete:doc.name,currentDocument:{updateTime:doc.updateTime}}]).catch(()=>undefined);
+    return;
+  }
   if (Number(job.leaseUntil || 0) > now) return;
   if (!Array.isArray(job.deviceIds) || !job.event || !job.tenantId) return;
   try { await licenseCommit(env, [licenseWrite(env, "pendingPushEvents", id, {...job, leaseUntil:now + 60_000}, {updateTime:doc.updateTime})]); }
   catch(error){if([409,412].includes(error.status))return;throw error;}
   const claimed = await licenseDoc(env, "/pendingPushEvents/" + id);
   if (!claimed) return;
-  const tenant = await licenseDoc(env, "/tenants/" + encodeURIComponent(job.tenantId));
-  if (licenseFields(tenant).status !== "active") {
-    await licenseCommit(env, [{delete:claimed.name,currentDocument:{updateTime:claimed.updateTime}}]);return;
+  if(job.targetMode!=="users"){
+    const tenant = await licenseDoc(env, "/tenants/" + encodeURIComponent(job.tenantId));
+    if (licenseFields(tenant).status !== "active") {
+      await licenseCommit(env, [{delete:claimed.name,currentDocument:{updateTime:claimed.updateTime}}]);return;
+    }
   }
-  const profiles = new Map(), tokens = new Set(), stale = [], started = Date.now();
+  const profiles = new Map(),tenants=new Map(), tokens = new Set(), stale = [], started = Date.now();
   let cursor = Math.max(0, Number(job.cursor || 0));
   for (let count = 0; cursor < job.deviceIds.length && count < 8 && Date.now() - started < 15_000; count++, cursor++) {
     const deviceId = job.deviceIds[cursor];
     if (!pushDevicePattern.test(String(deviceId))) continue;
     const device = await licenseDoc(env, "/pushDevices/" + encodeURIComponent(deviceId)), record = licenseFields(device);
-    if (!device || record.tenantId !== job.tenantId || !record.uid || !pushTokenPattern.test(String(record.token || "")) || !Number.isFinite(Date.parse(record.expiresAt || "")) || Date.parse(record.expiresAt) <= now) continue;
+    if (!device || (job.targetMode!=="users"&&record.tenantId !== job.tenantId) || !record.uid || !pushTokenPattern.test(String(record.token || "")) || !Number.isFinite(Date.parse(record.expiresAt || "")) || Date.parse(record.expiresAt) <= now) continue;
+    if(job.targetMode==="users"&&(!Array.isArray(job.targetUids)||!job.targetUids.includes(record.uid)))continue;
     if (!profiles.has(record.uid)) profiles.set(record.uid, await getProfile(env, record.uid));
     const profile = profiles.get(record.uid);
-    if (profile?.tenantId !== job.tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active" || tokens.has(record.token)) continue;
+    if(job.targetMode==="users"){
+      const role=String(profile?.role||'').toLowerCase(),masterScope=String(record.tenantId||'').startsWith('master:');
+      if(masterScope){if(!['master_owner','master_admin','admin'].includes(role))continue;}
+      else{
+        if(profile?.tenantId!==record.tenantId||profile.status!=="approved"||profile.subscriptionStatus!=="active")continue;
+        if(!tenants.has(record.tenantId))tenants.set(record.tenantId,licenseFields(await licenseDoc(env,"/tenants/"+encodeURIComponent(record.tenantId))));
+        if(tenants.get(record.tenantId)?.status!=="active")continue;
+      }
+    }else if (profile?.tenantId !== job.tenantId || profile.status !== "approved" || profile.subscriptionStatus !== "active") continue;
+    if(tokens.has(record.token))continue;
     tokens.add(record.token);
     const event = job.event;
     let result;
     try { result = await fetch("https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(env.FIREBASE_PROJECT_ID) + "/messages:send", {
       method:"POST", headers:{authorization:"Bearer " + await serviceAccessToken(env),"content-type":"application/json"}, signal:AbortSignal.timeout(5000),
-      body:JSON.stringify({message:{token:record.token,...(record.scopedData===true?{}:{notification:{title:event.title,body:event.body}}),
-        data:{page:event.page||"license-management",category:event.category||"license",eventId:event.id,uid:record.uid,tenantId:job.tenantId,title:event.title,body:event.body},
-        android:{priority:"HIGH",ttl:"86400s",...(record.scopedData===true?{}:{notification:{channel_id:"banksetu_"+(event.category||"license"),tag:event.id,click_action:"BANKSETU_PUSH"}})}
+      // High-priority data-only delivery always reaches the scoped native
+      // service, including when the WebView is closed. The service verifies the
+      // bound UID/workspace before it displays a generic OS notification.
+      body:JSON.stringify({message:{token:record.token,
+        data:{page:event.page||"license-management",category:event.category||"license",eventId:event.id,uid:record.uid,tenantId:record.tenantId,title:event.title,body:event.body},
+        android:{priority:"HIGH",ttl:"604800s"}
       }})
     }); } catch { break; } // Keep this recipient queued for the next invocation.
     if (!result.ok) {
@@ -405,6 +462,116 @@ export async function sendTenantPush(env, tenantId, event) {
   } catch(error){console.warn("Bank Setu push delivery queued/unavailable",error instanceof Error?error.message:"unknown");}
 }
 
+export async function sendUserPush(env, recipientUids, event, excludeUid="") {
+  try{
+    const targets=[...new Set(recipientUids)].sort(),scope=`support:${targets.join(',')}`,id=await pushEventId(scope,event.id),job=await prepareUserPushJob(env,targets,event,excludeUid);
+    if(!job)return false;
+    try{await licenseCommit(env,[licenseWrite(env,"pendingPushEvents",id,job,{exists:false})]);}
+    catch(error){if(![409,412].includes(error.status))throw error;}
+    await drainQueuedPush(env,"support",id);
+    return true;
+  }catch(error){console.warn("Bank Setu user push queued/unavailable",error instanceof Error?error.message:"unknown");return false;}
+}
+
+async function handlePushTest(env,actor){
+  const queued=await sendUserPush(env,[actor.uid],{id:`test:${Date.now()}`,title:"Bank Setu notifications enabled",body:"Android background notifications are connected to this signed-in account.",category:"update",page:"dashboard"});
+  return json({success:true,queued,message:queued?"Test notification sent.":"No registered Android device was found. Re-enable System notifications and retry."});
+}
+
+async function supportMasterUids(env){
+  const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{from:[{collectionId:"pushDevices"}],where:{fieldFilter:{field:{fieldPath:"isMaster"},op:"EQUAL",value:{booleanValue:true}}},limit:20}})});
+  return [...new Set(rows.map(row=>licenseFields(row.document).uid).filter(Boolean))];
+}
+
+async function sendSupportPush(env,actor,result){
+  if(!result||result.replayed||!result.messageId||!result.clientUid)return;
+  const recipients=isMasterActor(actor)||actor.profile?.role==='master_admin'?[result.clientUid]:await supportMasterUids(env);
+  await sendUserPush(env,recipients,{id:`support:${result.messageId}`,title:"Bank Setu Support",body:isMasterActor(actor)||actor.profile?.role==='master_admin'?"You have a new reply from Bank Setu Support.":"A client sent a new support message.",category:"support",page:"support"},actor.uid);
+}
+
+export async function handleSyncPushEvent(request,env,actor) {
+  const role=String(actor.profile?.role||"").toLowerCase(),tenantId=String(actor.profile?.tenantId||"");
+  if(!["client_admin","client_user"].includes(role)||!tenantId)return json({error:"A verified client workspace is required."},403);
+  const body=await request.json().catch(()=>({})),eventId=String(body.eventId||""),action=String(body.action||"");
+  if(!/^[a-f0-9-]{36}$/i.test(eventId)||!["saveCustomer","updateCustomer","deleteCustomer"].includes(action))return json({error:"Invalid sync notification."},400);
+  const now=Date.now(),stateId=await pushEventId("sync-state",tenantId),state=await licenseDoc(env,"/pushSyncSignals/"+stateId),current=licenseFields(state);
+  if(Number(current.lastNotifiedAt||0)>now-SYNC_PUSH_COOLDOWN_MS)return json({success:true,suppressed:true});
+  const event={id:"sync:"+Math.floor(now/SYNC_PUSH_COOLDOWN_MS),title:"New customer data available",body:"Customer changes from another device are ready to sync.",category:"sync",page:"sync-backup"};
+  const job=await preparePushJob(env,tenantId,event);
+  if(!job)return json({success:true,queued:false});
+  const queueId=await pushEventId(tenantId,event.id);
+  try{
+    await licenseCommit(env,[
+      licenseWrite(env,"pushSyncSignals",stateId,{tenantId,lastNotifiedAt:now,updatedAt:new Date(now).toISOString()},state?{updateTime:state.updateTime}:{exists:false}),
+      licenseWrite(env,"pendingPushEvents",queueId,job,{exists:false}),
+    ]);
+  }catch(error){if(![409,412].includes(error.status))throw error;return json({success:true,suppressed:true});}
+  await drainQueuedPush(env,tenantId,queueId);
+  return json({success:true,queued:true});
+}
+
+const LICENSE_INQUIRY_EMAIL = "banksetu2026@gmail.com";
+
+async function deliverLicenseInquiryEmail(env, notificationId) {
+  if (!/^[a-f0-9-]{36}$/i.test(String(notificationId || "")) || !env.BANKSETU_APPS_SCRIPT_URL) return;
+  let document = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`);
+  if (!document) return;
+  let record = licenseFields(document), now = Date.now();
+  if (record.status === "sent" || record.status === "cancelled") return;
+  if (record.status === "sending" && Number(record.leaseUntil || 0) > now) return;
+  if (Number(record.nextAttemptAt || 0) > now) return;
+  try {
+    await licenseCommit(env, [licenseWrite(env, "licenseNotificationOutbox", notificationId, {
+      ...record, status: "sending", leaseUntil: now + 60_000, attempts: Number(record.attempts || 0) + 1, updatedAt: new Date(now).toISOString(),
+    }, { updateTime: document.updateTime })]);
+  } catch (error) { if ([409, 412].includes(error.status)) return; throw error; }
+  document = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`);
+  record = licenseFields(document);
+  if (!document || record.status !== "sending") return;
+  try {
+    const response = await fetch(env.BANKSETU_APPS_SCRIPT_URL, {
+      method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(12_000),
+      body: JSON.stringify({ action: "notifyLicenseInquiry", notificationId, accessToken: await serviceAccessToken(env) }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.success !== true) throw new Error(result.message || "Inquiry email service did not confirm delivery.");
+    const latest = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`);
+    if (licenseFields(latest).status !== "sent") throw new Error("Inquiry email delivery was not recorded.");
+    const inquiry=await licenseDoc(env,`/licenseRequests/${notificationId}`),inquiryFields=licenseFields(inquiry);
+    if(inquiry&&inquiryFields.kind==="inquiry"&&inquiryFields.status==="pending")await licenseCommit(env,[licenseWrite(env,"licenseRequests",notificationId,{...inquiryFields,notificationStatus:"sent",notificationError:"",notificationSentAt:new Date().toISOString(),updatedAt:new Date().toISOString()},{updateTime:inquiry.updateTime})]).catch(()=>undefined);
+  } catch (error) {
+    const latest = await licenseDoc(env, `/licenseNotificationOutbox/${notificationId}`).catch(() => null), current = licenseFields(latest);
+    const errorMessage=String(error instanceof Error ? error.message : "Email delivery failed").slice(0,240);
+    if (latest && current.status !== "sent") {
+      const delay = Math.min(6 * 60 * 60_000, 60_000 * Math.pow(2, Math.min(8, Number(current.attempts || 1) - 1)));
+      await licenseCommit(env, [licenseWrite(env, "licenseNotificationOutbox", notificationId, {
+        ...current, status: "pending", leaseUntil: 0, nextAttemptAt: Date.now() + delay,
+        lastError: errorMessage, updatedAt: new Date().toISOString(),
+      }, { updateTime: latest.updateTime })]).catch(() => undefined);
+    }
+    const inquiry=await licenseDoc(env,`/licenseRequests/${notificationId}`).catch(()=>null),inquiryFields=licenseFields(inquiry);
+    if(inquiry&&inquiryFields.kind==="inquiry"&&inquiryFields.status==="pending")await licenseCommit(env,[licenseWrite(env,"licenseRequests",notificationId,{...inquiryFields,notificationStatus:"retry_pending",notificationError:errorMessage,updatedAt:new Date().toISOString()},{updateTime:inquiry.updateTime})]).catch(()=>undefined);
+    console.warn("Bank Setu inquiry email queued for retry", error instanceof Error ? error.message : "unknown");
+  }
+}
+
+async function drainLicenseInquiryEmails(env) {
+  // Query only live jobs so an ever-growing history of sent notifications can
+  // never crowd a pending inquiry out of the cron batch.
+  const rows = await firestoreRequest(env, ":runQuery", { method: "POST", body: JSON.stringify({ structuredQuery: {
+    from: [{ collectionId: "licenseNotificationOutbox" }],
+    where: { fieldFilter: { field: { fieldPath: "active" }, op: "EQUAL", value: { booleanValue: true } } },
+    limit: 50,
+  } }) }).catch(() => []);
+  const now = Date.now();
+  const candidate = rows.map(row => row.document).filter(Boolean).find(document => {
+    const item = licenseFields(document);
+    return item.kind === "license_inquiry" && item.status !== "sent" && item.status !== "cancelled"
+      && Number(item.nextAttemptAt || 0) <= now && (item.status !== "sending" || Number(item.leaseUntil || 0) <= now);
+  });
+  if (candidate) await deliverLicenseInquiryEmail(env, candidate.name.split("/").pop());
+}
+
 export async function deliverScheduledNotices(env) {
   // Resume one license per tick. Never scan every tenant in one Free invocation.
   const state = await licenseDoc(env, "/appSettings/pushSweep"), sweep = licenseFields(state);
@@ -414,6 +581,11 @@ export async function deliverScheduledNotices(env) {
   catch(error){if(!pageToken||error.status!==400)throw error;listing=await firestoreRequest(env,"/tenantLicenses?pageSize=1");}
   let latest = "";
   try { const response = await fetch("https://banksetu-app.web.app/version.json",{signal:AbortSignal.timeout(5000)});if(response.ok){const value=await response.json();latest=String(value.androidVersion||value.version||"");} }catch{/* License events do not depend on update metadata. */}
+  let masterUpdateVersion=String(sweep.masterUpdateVersion||"");
+  if(/^\d+\.\d+\.\d+$/.test(latest)&&latest!==masterUpdateVersion){
+    const masters=await supportMasterUids(env);
+    if(masters.length){await sendUserPush(env,masters,{id:"master-update:"+latest,title:"Bank Setu software update",body:"Version "+latest+" is available. Open Bank Setu to check for updates.",category:"update",page:"dashboard"});masterUpdateVersion=latest;}
+  }
   for (const doc of listing.documents || []) {
     const license = licenseFields(doc), tenantId = license.tenantId;
     if (!tenantId) continue;
@@ -427,14 +599,14 @@ export async function deliverScheduledNotices(env) {
       const id = await pushEventId(tenantId,event.id);
       if (await licenseDoc(env,"/pushEventClaims/"+id)) continue;
       const at = new Date().toISOString(), job = await preparePushJob(env,tenantId,event);
-      const writes = [licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at},{exists:false})];
+      const writes = [licenseWrite(env,"pushEventClaims",id,{tenantId,eventId:event.id,at,expiresAt:new Date(Date.now()+PUSH_RETENTION_MS)},{exists:false})];
       if(event.category!=="update")writes.push(licenseWrite(env,"licenseAudit",id,{tenantId,action:view.state.includes("expired")?"expired":view.state==="expiring_soon"?"expiry_warning":"activated",actorUid:"system",at,plan:license.plan},{exists:false}));
       if(job)writes.push(licenseWrite(env,"pendingPushEvents",id,job,{exists:false}));
       try{await licenseCommit(env,writes);}catch(error){if(![409,412].includes(error.status))throw error;}
       break; // At most one new event per tick; unclaimed events remain discoverable.
     }
   }
-  await licenseCommit(env,[licenseWrite(env,"appSettings","pushSweep",{pageToken:listing.nextPageToken||"",updatedAt:new Date().toISOString()},state?{updateTime:state.updateTime}:{exists:false})]);
+  await licenseCommit(env,[licenseWrite(env,"appSettings","pushSweep",{pageToken:listing.nextPageToken||"",masterUpdateVersion,updatedAt:new Date().toISOString()},state?{updateTime:state.updateTime}:{exists:false})]);
 }
 
 async function purgeExpiredPushDevices(env) {
@@ -445,6 +617,19 @@ async function purgeExpiredPushDevices(env) {
   for (const row of rows) {
     const id = row.document?.name?.split('/').pop();
     if (id && pushDevicePattern.test(id)) await firestoreRequest(env, `/pushDevices/${id}`, { method: "DELETE" });
+  }
+}
+
+export async function purgeExpiredPushArtifacts(env) {
+  // Bounded cleanup keeps the free-tier database small without ever scanning
+  // or touching customer/sync collections.
+  const now={timestampValue:new Date().toISOString()};
+  for(const collectionId of ["pendingPushEvents","pushEventClaims"]){
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{
+      from:[{collectionId}],where:{fieldFilter:{field:{fieldPath:"expiresAt"},op:"LESS_THAN_OR_EQUAL",value:now}},limit:2
+    }})}).catch(()=>[]);
+    const writes=rows.map(row=>row.document).filter(Boolean).map(document=>({delete:document.name,currentDocument:{updateTime:document.updateTime}}));
+    if(writes.length)await licenseCommit(env,writes);
   }
 }
 
@@ -533,6 +718,18 @@ async function getGoogleSetupConfig(env, actor) {
       operatorName: String(settings.operatorName || info.operatorName || ""),
       address: String(settings.address || info.address || ""),
       mobile: String(settings.mobile || info.mobile || ""),
+      branchAddress: String(settings.branchAddress || info.branchAddress || ""),
+      branchPostOffice: String(settings.branchPostOffice || info.branchPostOffice || ""),
+      branchDistrict: String(settings.branchDistrict || info.branchDistrict || ""),
+      branchState: String(settings.branchState || info.branchState || ""),
+      branchPinCode: String(settings.branchPinCode || info.branchPinCode || ""),
+      branchEmail: String(settings.branchEmail || info.branchEmail || ""),
+      branchPhone: String(settings.branchPhone || info.branchPhone || ""),
+      ifsc: String(settings.ifsc || info.ifsc || ""),
+      micr: String(settings.micr || info.micr || ""),
+      branchCode: String(settings.branchCode || info.branchCode || ""),
+      gstin: String(settings.gstin || info.gstin || ""),
+      ckyc: String(settings.ckyc || info.ckyc || ""),
     },
     spreadsheetId: workspaceVerified ? String(settings.spreadsheetId || "") : "",
     photoFolderId: workspaceVerified ? String(settings.photoFolderId || "") : "",
@@ -566,6 +763,9 @@ function licenseFields(document) { return decodeFields(document?.fields || {}); 
 function licenseName(env, collection, id) { return firestoreDocumentName(env, `/${collection}/${encodeURIComponent(id)}`); }
 function licenseWrite(env, collection, id, fields, precondition = { exists: false }) {
   return { update: { name: licenseName(env, collection, id), fields: encodeFields(fields) }, currentDocument: precondition };
+}
+function licenseDelete(env, collection, id, precondition) {
+  return { delete: licenseName(env, collection, id), ...(precondition ? { currentDocument: precondition } : {}) };
 }
 async function licenseCommit(env, writes) {
   return firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes }) });
@@ -610,7 +810,7 @@ async function handleLicensing(request, env, actor, route, context) {
     if (!challengeResult.success || challengeResult.hostname !== "banksetu-app.web.app") return json({ error: "Verification failed. Please retry." }, 403);
     const id = inquiry.requestId;
     const existing = await licenseDoc(env, `/licenseRequests/${id}`);
-    if (existing) return json({ success: true, referenceId: id });
+    if (existing) return json({ success: true });
     const ip = request.headers.get("CF-Connecting-IP") || "";
     if (!ip) return json({ error: "Request verification is unavailable." }, 503);
     const rateKey = await crypto.subtle.importKey("raw", encoder.encode(env.LICENSE_TURNSTILE_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -620,11 +820,19 @@ async function handleLicensing(request, env, actor, route, context) {
     const nowMs = Date.now();
     if (rateDocs.some(doc => nowMs - Number(licenseFields(doc).lastRequestMs || 0) < 15 * 60_000)) return json({ error: "Please wait 15 minutes before sending another request." }, 429);
     const now = new Date(nowMs).toISOString();
-    const writes = [licenseWrite(env, "licenseRequests", id, { ...inquiry, kind: "inquiry", status: "pending", paymentStatus: "not_paid", createdAt: now, updatedAt: now, quotedPaise: null, quoteRequiresConfirmation: true })];
+    const requestRecord = { ...inquiry, requestedPlan: inquiry.plan, kind: "inquiry", onboardingStage: "client_creation_required", status: "pending", paymentStatus: "not_paid", notificationStatus:"pending", notificationError:"", createdAt: now, updatedAt: now, quotedPaise: null, quoteRequiresConfirmation: true };
+    const writes = [
+      licenseWrite(env, "licenseRequests", id, requestRecord),
+      licenseWrite(env, "licenseNotificationOutbox", id, {
+        kind: "license_inquiry", requestId: id, recipient: LICENSE_INQUIRY_EMAIL, status: "pending", attempts: 0,
+        active: true, leaseUntil: 0, nextAttemptAt: nowMs, createdAt: now, updatedAt: now,
+      }, { exists: false }),
+    ];
     rateIds.forEach((key, index) => writes.push(licenseWrite(env, "licenseRequestLimits", key, { lastRequestMs: nowMs }, rateDocs[index] ? { updateTime: rateDocs[index].updateTime } : { exists: false })));
     try { await licenseCommit(env, writes); }
     catch (error) { if (error.status === 409) return json({ error: "Another request was just received. Please wait before retrying." }, 429); throw error; }
-    return json({ success: true, referenceId: id });
+    context?.waitUntil(deliverLicenseInquiryEmail(env, id));
+    return json({ success: true });
   }
   if (!actor) return json({ error: "Sign in is required." }, 401);
   if(route==="/license-my-requests"){
@@ -654,6 +862,15 @@ async function handleLicensing(request, env, actor, route, context) {
     ]);
     return json({ success: true, pricing, paymentDetails, flags });
   }
+  if (route === "/license-admin-inquiry-status") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{
+      from:[{collectionId:"licenseRequests"}],
+      where:{fieldFilter:{field:{fieldPath:"status"},op:"EQUAL",value:{stringValue:"pending"}}},limit:51,
+    }})});
+    const pending=rows.filter(row=>row.document).map(row=>({...licenseFields(row.document),id:row.document.name.split("/").at(-1)})).filter(item=>item.kind==="inquiry").sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+    return json({count:pending.length,truncated:pending.length>50,latest:pending.slice(0,5).map(item=>({id:item.id,name:item.name||item.clientName||"Applicant",bankName:item.bankName||"",requestedPlan:item.requestedPlan||item.plan||"",createdAt:item.createdAt||""})),checkedAt:new Date().toISOString()});
+  }
   if (route === "/license-admin-list") {
     if (!master) return json({ error: "Master Admin access is required." }, 403);
     const query = async collection => {
@@ -672,7 +889,7 @@ async function handleLicensing(request, env, actor, route, context) {
     const owners=new Map(ownerPage.records.filter(item=>item.role==="client_admin" && item.tenantId).map(item=>[item.tenantId,item]));
     const tenantNames=new Map(currentTenants.map(item=>[item.tenantId||item.id,item.bankName||""]));
     const licenses = licensePage.records.filter(item=>tenantNames.has(item.tenantId)).map(item=>({...item,bankName:tenantNames.get(item.tenantId)||"",viewState:(()=>{try{return licenseView(item,Date.now(),settings.pricing.graceDays).state;}catch{return "pending";}})()}));
-    const requests=requestPage.records.filter(item=>!item.tenantId||tenantNames.has(item.tenantId)).map(item=>({...item,bankName:item.bankName||tenantNames.get(item.tenantId)||"",clientName:item.clientName||item.name||""}));
+    const requests=requestPage.records.filter(item=>!item.tenantId||tenantNames.has(item.tenantId)).map(item=>({...item,bankName:item.bankName||tenantNames.get(item.tenantId)||"",clientName:item.clientName||item.name||"",notificationStatus:item.notificationStatus||"unknown",notificationError:item.notificationError||""}));
     const stateCount = state => licenses.filter(item => {
       try { return licenseView(item, Date.now(), settings.pricing.graceDays).state === state; }
       catch { return false; }
@@ -707,11 +924,12 @@ async function handleLicensing(request, env, actor, route, context) {
     let receipt = null;
     if (found && view.canWrite) {
       const expiry = ["annual","demo"].includes(license.plan) ? Date.parse(license.expiresAt) : Infinity;
-      const validUntil = Math.min(serverTime + 5 * 86400000, expiry);
+      const validUntil = Math.min(serverTime + 24 * 60 * 60 * 1000, expiry);
       const signed = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, { purpose: "banksetu-license-v1", uid: actor.uid, tenantId, revision: license.revision, state: view.state, issuedAt: serverTime, validUntil, expiresAt: license.expiresAt, plan: license.plan });
       receipt = { payload: signed.payload, signature: signed.signature };
     }
-    const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:serverTime+5*86400000});
+    const statusExpiry=found&&view.canWrite&&["annual","demo"].includes(license.plan)?Date.parse(license.expiresAt):Infinity;
+    const signedStatus = await createOfflineSession(env.FIREBASE_SERVICE_ACCOUNT, {purpose:"banksetu-license-status-v1",uid:actor.uid,tenantId,revision:found?license.revision:0,state:view.state,canWrite:view.canWrite,plan:found?license.plan:null,expiresAt:found?license.expiresAt:null,issuedAt:serverTime,validUntil:Math.min(serverTime+24*60*60*1000,statusExpiry)});
     return json({ uid:actor.uid,tenantId,license: found ? license : null, view, receipt, authorization:{payload:signedStatus.payload,signature:signedStatus.signature}, pricing: settings.pricing, paymentDetails:settings.paymentDetails, flags: settings.flags, serverTime: new Date(serverTime).toISOString(), legacyAccess:false });
   }
   if (route === "/license-request-change") {
@@ -865,6 +1083,42 @@ async function handleLicensing(request, env, actor, route, context) {
     context?.waitUntil(sendTenantPush(env, tenantId, { id, title: "Bank Setu license updated", body: "Your paid license was approved. Open Bank Setu for details." }));
     return json({success:true,license:next});
   }
+  if (route === "/license-admin-email-retry") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body=await request.json().catch(()=>({})),id=String(body.requestId||"");
+    if(!/^[a-f0-9-]{36}$/i.test(id))return json({error:"Invalid request ID."},400);
+    const requestDoc=await licenseDoc(env,`/licenseRequests/${id}`),item=licenseFields(requestDoc);
+    if(!requestDoc||item.kind!=="inquiry"||item.status!=="pending")return json({error:"Only a pending inquiry email can be retried."},409);
+    const outbox=await licenseDoc(env,`/licenseNotificationOutbox/${id}`),current=licenseFields(outbox),now=new Date().toISOString();
+    if(current.status==="sent")return json({success:true,status:"sent",repeated:true});
+    await licenseCommit(env,[
+      licenseWrite(env,"licenseNotificationOutbox",id,{
+        ...current,kind:"license_inquiry",requestId:id,recipient:LICENSE_INQUIRY_EMAIL,status:"pending",active:true,
+        attempts:Number(current.attempts||0),nextAttemptAt:0,leaseUntil:0,lastError:"",updatedAt:now,createdAt:current.createdAt||now,
+      },outbox?{updateTime:outbox.updateTime}:{exists:false}),
+      licenseWrite(env,"licenseRequests",id,{...item,notificationStatus:"pending",notificationError:"",updatedAt:now},{updateTime:requestDoc.updateTime}),
+    ]);
+    context?.waitUntil(deliverLicenseInquiryEmail(env,id));
+    return json({success:true,status:"pending"});
+  }
+  if (route === "/license-admin-delete-request") {
+    if (!master) return json({ error: "Master Admin access is required." }, 403);
+    const body=await request.json().catch(()=>({})),id=String(body.requestId||"");
+    if(!/^[a-f0-9-]{36}$/i.test(id))return json({error:"Invalid request ID."},400);
+    const requestDoc=await licenseDoc(env,`/licenseRequests/${id}`);
+    if(!requestDoc)return json({success:true,repeated:true,deleted:0});
+    const item=licenseFields(requestDoc);
+    if(item.kind!=="inquiry"||item.status!=="rejected")return json({error:"Reject this inquiry before permanently deleting it."},409);
+    const [outbox,auditRows]=await Promise.all([
+      licenseDoc(env,`/licenseNotificationOutbox/${id}`),
+      firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({structuredQuery:{from:[{collectionId:"licenseAudit"}],where:{fieldFilter:{field:{fieldPath:"requestId"},op:"EQUAL",value:{stringValue:id}}},limit:100}})}),
+    ]);
+    const writes=[licenseDelete(env,"licenseRequests",id,{updateTime:requestDoc.updateTime})];
+    if(outbox)writes.push(licenseDelete(env,"licenseNotificationOutbox",id,{updateTime:outbox.updateTime}));
+    for(const row of auditRows){if(row.document)writes.push({delete:row.document.name,currentDocument:{updateTime:row.document.updateTime}});}
+    await licenseCommit(env,writes);
+    return json({success:true,deleted:writes.length});
+  }
   if (route === "/license-admin-decision") {
     if (!master) return json({ error: "Master Admin access is required." }, 403);
     const body = await request.json().catch(() => ({}));
@@ -877,7 +1131,52 @@ async function handleLicensing(request, env, actor, route, context) {
     if (item.status !== "pending") return json({ error: "Request is not pending." }, 409);
     const action = String(body.action || "");
     if (!["approve", "reject"].includes(action)) return json({ error: "Invalid decision." }, 400);
-    if (item.kind === "inquiry") return json({ error: "First create or associate the client using the existing Master Admin provisioning flow; then assign a license to the verified tenant." }, 409);
+    if (item.kind === "inquiry") {
+      const now = new Date().toISOString();
+      if (action === "reject") {
+        const outbox=await licenseDoc(env,`/licenseNotificationOutbox/${id}`),writes=[
+          licenseWrite(env, "licenseRequests", id, { ...item, status: "rejected", onboardingStage: "rejected", paymentStatus: "rejected", decidedAt: now, decidedBy: actor.uid, updatedAt: now }, { updateTime: requestDoc.updateTime }),
+          licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: "inquiry_rejected", requestId: id, tenantId: String(item.tenantId || ""), actorUid: actor.uid, at: now }),
+        ];
+        if(outbox){const notification=licenseFields(outbox);writes.push(licenseWrite(env,"licenseNotificationOutbox",id,{...notification,status:"cancelled",active:false,leaseUntil:0,nextAttemptAt:0,updatedAt:now},{updateTime:outbox.updateTime}));}
+        await licenseCommit(env,writes);
+        return json({ success: true, status: "rejected" });
+      }
+      const tenantId = String(item.tenantId || ""), clientUid = String(item.clientUid || "");
+      const tenantDoc = /^[a-zA-Z0-9_-]{1,128}$/.test(tenantId) ? await licenseDoc(env, `/tenants/${tenantId}`) : null;
+      const clientDoc = clientUid ? await licenseDoc(env, `/users/${encodeURIComponent(clientUid)}`) : null;
+      const tenant = licenseFields(tenantDoc), client = licenseFields(clientDoc);
+      if (!tenantDoc || tenant.status !== "active" || tenant.ownerUid !== clientUid || !clientDoc || client.role !== "client_admin" || client.tenantId !== tenantId || String(client.email || "").toLowerCase() !== String(item.email || "").toLowerCase() || item.onboardingStage !== "client_created") return json({ error: "Create and link the Client Admin before approving this inquiry." }, 409);
+      if (await licenseDoc(env, `/tenantLicenses/${tenantId}`)) return json({ error: "This client already has a license. Refresh License Management." }, 409);
+      // Master Admin may choose a different final entitlement while reviewing
+      // an inquiry; the submitted value remains preserved in the audit trail.
+      const selectedPlan = String(body.plan || item.requestedPlan || item.plan || "");
+      if (!["demo", "annual", "lifetime"].includes(selectedPlan)) return json({ error: "Select Demo, Annual or Lifetime before approval." }, 400);
+      const startAt = licenseStartDate(body.startDate);
+      if (startAt === null) return json({ error: "Select a valid India activation date." }, 400);
+      const durationMonths = body.durationMonths === undefined ? 12 : Number(body.durationMonths);
+      let license, paidPaise = 0;
+      if (selectedPlan === "demo") {
+        const activatedAt = startAt || now;
+        license = { tenantId, plan: "demo", status: Date.parse(activatedAt) > Date.now() ? "scheduled" : "active", demoOnly: false, activatedAt, expiresAt: new Date(Date.parse(activatedAt) + 5 * 86400000).toISOString(), paidPaise: 0, revision: 1, updatedAt: now, lastRequestId: id };
+      } else {
+        if (body.paymentConfirmed !== true) return json({ error: "Master Admin must confirm payment before approval." }, 400);
+        const configured = selectedPlan === "annual" ? settings.pricing.annualPaise : settings.pricing.lifetimePaise;
+        if (!configured || !settings.pricing[selectedPlan === "annual" ? "annualAvailable" : "lifetimeAvailable"]) return json({ error: "The selected paid plan is not available." }, 409);
+        paidPaise = body.paidPaise === undefined ? configured : Number(body.paidPaise);
+        if (!Number.isSafeInteger(paidPaise) || paidPaise <= 0 || paidPaise > 100_000_000 || selectedPlan === "annual" && (!Number.isInteger(durationMonths) || durationMonths < 1 || durationMonths > 120)) return json({ error: "Confirm the paid amount and valid duration." }, 400);
+        license = transitionLicense(null, { kind: selectedPlan, id, quotedPaise: paidPaise, startAt, durationMonths }, now, settings.pricing);
+        license.tenantId = tenantId; license.graceDays = settings.pricing.graceDays;
+      }
+      const decided = { ...item, requestedPlan: selectedPlan, status: "approved", onboardingStage: "approved", paymentStatus: selectedPlan === "demo" ? "not_required" : "payment_confirmed", decidedAt: now, decidedBy: actor.uid, updatedAt: now, quotedPaise: selectedPlan === "demo" ? 0 : paidPaise };
+      await licenseCommit(env, [
+        licenseWrite(env, "licenseRequests", id, decided, { updateTime: requestDoc.updateTime }),
+        licenseWrite(env, "tenantLicenses", tenantId, license, { exists: false }),
+        licenseWrite(env, "licenseAudit", crypto.randomUUID(), { action: selectedPlan === "demo" ? "inquiry_demo_activated" : "inquiry_approved", requestId: id, tenantId, actorUid: actor.uid, at: now, plan: selectedPlan, paidPaise, activatedAt: license.activatedAt, expiresAt: license.expiresAt, paymentStatus: decided.paymentStatus }),
+      ]);
+      context?.waitUntil(sendTenantPush(env, tenantId, { id, title: selectedPlan === "demo" ? "Bank Setu demo activated" : "Bank Setu license approved", body: selectedPlan === "demo" ? "Your five-day Demo is ready. Sign in to complete setup." : "Your Bank Setu license is ready. Sign in to complete setup." }));
+      return json({ success: true, status: "approved", tenantId, license });
+    }
     const tenantId = String(item.tenantId || "");
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)) return json({ error: "Invalid tenant." }, 400);
     const tenantDoc = await licenseDoc(env, `/tenants/${tenantId}`);
@@ -1029,8 +1328,17 @@ async function handleMasterOperation(request, env, actor, route) {
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
     const bankName = String(body.bankName || "").trim();
+    const inquiryId = String(body.inquiryId || "").trim();
     if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !bankName || bankName.length > 120 || password.length < 8 || password.length > 128) {
       return json({ error: "Enter a valid client name, email, bank name and password (at least 8 characters)." }, 400);
+    }
+    let inquiryDoc = null, inquiry = {};
+    if (inquiryId) {
+      if (!/^[a-f0-9-]{36}$/i.test(inquiryId)) return json({ error: "Select a valid pending inquiry." }, 400);
+      inquiryDoc = await licenseDoc(env, `/licenseRequests/${inquiryId}`);
+      inquiry = licenseFields(inquiryDoc);
+      if (!inquiryDoc || inquiry.kind !== "inquiry" || inquiry.status !== "pending" || inquiry.onboardingStage !== "client_creation_required" || inquiry.tenantId) return json({ error: "This inquiry is no longer waiting for client creation." }, 409);
+      if (String(inquiry.email || "").trim().toLowerCase() !== email) return json({ error: "Use the same verified email address submitted with this inquiry." }, 409);
     }
     const setup = await firestoreRequest(env, "/appSettings/googleSetup").catch(() => null);
     const setupData = decodeFields(setup?.fields || {});
@@ -1044,14 +1352,18 @@ async function handleMasterOperation(request, env, actor, route) {
     const tenantId = crypto.randomUUID().replaceAll("-", "");
     try {
       const now = new Date().toISOString();
-      const docs = [
-        [firestoreDocumentName(env, `/licenseAudit/${crypto.randomUUID()}`), {action:"client_created",tenantId,actorUid:actor.uid,at:now}],
+      const documents = [
+        [firestoreDocumentName(env, `/licenseAudit/${crypto.randomUUID()}`), {action:"client_created",tenantId,actorUid:actor.uid,at:now,...(inquiryId?{requestId:inquiryId}:{})}],
         [firestoreDocumentName(env, `/tenants/${tenantId}`), { tenantId, clientId: tenantId, ownerUid: newUid, name, email, bankName, maxUsers: 2, clientUserCount: 0, status: "active", createdAt: now, createdBy: actor.uid }],
         [firestoreDocumentName(env, `/tenantSettings/${tenantId}`), { tenantId, bankName, apiUrl: String(setupData.apiUrl), spreadsheetId: "", photoFolderId: "", bankInfo: {}, bankLogo: "", updatedAt: now, updatedBy: actor.uid }],
         [firestoreDocumentName(env, `/users/${newUid}`), { name, email, role: "client_admin", tenantId, clientId: tenantId, parentClientUid: actor.uid, bankName, maxUsers: 2, status: "approved", subscriptionStatus: "active", licenseRequired: true, createdAt: now, createdBy: actor.uid }],
       ];
-      await firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes: docs.map(([docName, fields]) => ({ update: { name: docName, fields: encodeFields(fields) }, currentDocument: { exists: false } })) }) });
-      return json({ success: true, uid: newUid, tenantId, role: "client_admin" });
+      const writes = documents.map(([docName, fields]) => ({ update: { name: docName, fields: encodeFields(fields) }, currentDocument: { exists: false } }));
+      if (inquiryDoc) writes.push(licenseWrite(env, "licenseRequests", inquiryId, {
+        ...inquiry, name, email, bankName, tenantId, clientUid: newUid, onboardingStage: "client_created", updatedAt: now, linkedBy: actor.uid,
+      }, { updateTime: inquiryDoc.updateTime }));
+      await firestoreRequest(env, ":commit", { method: "POST", body: JSON.stringify({ writes }) });
+      return json({ success: true, uid: newUid, tenantId, inquiryId: inquiryId || null, role: "client_admin" });
     } catch (error) {
       await authDelete(env, newUid).catch(() => undefined);
       throw error;
@@ -1068,7 +1380,7 @@ async function handleMasterOperation(request, env, actor, route) {
     if (patch.bankInfo) {
       const previous=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
       const old=decodeFields(previous?.fields||{});
-      const extra=["branchAddress","branchPostOffice","branchDistrict","branchPinCode","branchEmail","ifsc","micr","branchCode"];
+      const extra=["branchAddress","branchPostOffice","branchDistrict","branchState","branchPinCode","branchEmail","branchPhone","ifsc","micr","branchCode","gstin","ckyc"];
       for(const key of extra) if(patch.bankInfo[key]===undefined && typeof (old.bankInfo||{})[key]==="string") {
         patch.bankInfo[key]=old.bankInfo[key];
       }
@@ -1100,7 +1412,8 @@ async function handleMasterOperation(request, env, actor, route) {
   }
   if(route === "/master-system-status") {
     if(!isMasterActor(actor))return json({error:"Master Admin permission is required."},403);
-    return json(await masterUsage(env,serviceAccessToken,firestoreRequest,decodeFields));
+    const body=await request.json().catch(()=>({}));
+    return json(await masterUsage(env,serviceAccessToken,firestoreRequest,decodeFields,{force:body.force===true}));
   }
   if (route === "/get-offline-session") {
     if(isMasterActor(actor)) {
@@ -1233,6 +1546,354 @@ async function handleMasterOperation(request, env, actor, route) {
     return json({ success: true, tenantId });
   }
 
+  // PRIVATE unfinished design recovery: same authenticated Worker, separate
+  // tenant-only document. Never publish it to the Master-approved public catalog.
+  if(["/layout-private-read","/layout-private-save"].includes(route)){
+    if(!["client_admin","client_user"].includes(role)||!actor.profile.tenantId)
+      return json({error:"A verified client workspace is required."},403);
+    if(route==="/layout-private-save"&&role!=="client_admin")
+      return json({error:"Only the Client Admin can update private layout drafts."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(actor.profile.tenantId);
+    const mode=String(body.mode||"");
+    const slotId=String(body.slotId||"");
+    let path;
+    try{path=privateLayoutDraftPath(tenantId,normalizedBankKey(String(body.bankName||"")),mode,slotId);}
+    catch(error){return json({error:error.message},400);}
+    const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const currentBank=String(settings.passbookBank||settings.bankInfo?.passbookBank||"").trim();
+    if(!currentBank||normalizedBankKey(currentBank)!==normalizedBankKey(String(body.bankName||"")))
+      return json({error:"Private layout belongs to another or unconfigured bank."},403);
+    const bankKey=normalizedBankKey(currentBank);
+    const found=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+    const row=decodeFields(found?.fields||{});
+    let revision=0;
+    try{revision=privateDraftRevision(found?row:null,tenantId,bankKey,mode,slotId);}
+    catch(error){return json({error:error.message},409);}
+    if(route==="/layout-private-read"){
+      if(!found)return json({success:true,revision:0,bankName:currentBank,mode,slotId,draft:null});
+      let draft;
+      try{draft=validatePrivateLayoutDraft(await inflateLayoutTemplate(row),currentBank,mode);}
+      catch(error){return json({error:"Private draft integrity check failed: "+error.message},409);}
+      return json({success:true,revision,bankName:currentBank,mode,slotId,draft});
+    }
+    if(!Number.isSafeInteger(body.expectedRevision)||body.expectedRevision!==revision)
+      return json({error:"Private draft changed on another device. Download and review before overwriting."},409);
+    let template,compressed;
+    try{
+      template=validatePrivateLayoutDraft(body.draft,currentBank,mode);
+      compressed=await compactLayoutTemplate(template);
+    }catch(error){return json({error:error.message},400);}
+    const next={
+      tenantId,bankKey,bankName:currentBank,mode,slotId,
+      revision:revision+1,hash:compressed.hash,size:compressed.size,
+      encoding:compressed.encoding,payload:compressed.payload,
+      updatedBy:actor.uid,updatedAt:new Date().toISOString()
+    };
+    try{
+      await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[{
+        update:{name:firestoreDocumentName(env,path),fields:encodeFields(next)},
+        currentDocument:found?{updateTime:found.updateTime}:{exists:false}
+      }]})});
+    }catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Private draft changed while saving. Local draft is safe; review cloud copy."},409);
+      throw error;
+    }
+    return json({success:true,revision:next.revision,hash:compressed.hash});
+  }
+  // Private compact layout recovery is an extension of the EXISTING
+  // authenticated Worker / Firestore tenant service, NOT a second sync engine.
+  // No scanned PDF, full customer value, credential, AI model or image is uploaded.
+  if (["/layout-sync-index","/layout-sync-download","/layout-sync-publish"].includes(route)) {
+    if(!["client_admin","client_user"].includes(role)||!actor.profile.tenantId)
+      return json({error:"A verified client workspace is required."},403);
+    if(route==="/layout-sync-publish"&&role!=="client_admin")
+      return json({error:"Only the Client Admin can sync new layout backups."},403);
+    const body=await request.json().catch(()=>({}));
+    const mode=String(body.mode||"");
+    if(!["passbook","accountOpening"].includes(mode))
+      return json({error:"Invalid bank layout mode."},400);
+    const tenantId=String(actor.profile.tenantId);
+    const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const bankName=String(settings.passbookBank||settings.bankInfo?.passbookBank||"").trim();
+    const bankKey=normalizedBankKey(bankName);
+    if(!bankKey || String(body.bankName||"").trim().toLowerCase()!==bankName.toLowerCase())
+      return json({error:"Layout bank must match your verified Bank Information."},403);
+    let paths;
+    try{paths=layoutCloudPaths(tenantId,bankKey,mode,body.slotId);}
+    catch(error){return json({error:error.message},400);}
+    const manifestDoc=await firestoreRequest(env,paths.manifest)
+      .catch(error=>error.status===404?null:Promise.reject(error));
+    const empty={tenantId,bankKey,mode,revision:0,slots:[]};
+    let manifest;
+    try{manifest=manifestDoc
+      ? safeCloudManifest(decodeFields(manifestDoc.fields||{}),tenantId,bankKey,mode)
+      : empty;
+    }catch(error){return json({error:error.message},409);}
+    if(route==="/layout-sync-index"){
+      const changed=changedLayoutSlots(manifest,body.known||{});
+      return json({success:true,tenantId,bankKey,mode,revision:manifest.revision,
+        slots:manifest.slots,changed});
+    }
+    let slotId;
+    try{slotId=validCloudSlot(body.slotId);}
+    catch(error){return json({error:error.message},400);}
+    const entry=manifest.slots.find(item=>item.slotId===slotId);
+    if(route==="/layout-sync-download"){
+      if(!entry)return json({error:"This client does not own the requested layout slot."},404);
+      const stored=await firestoreRequest(env,paths.slot)
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const row=decodeFields(stored?.fields||{});
+      if(!row||row.tenantId!==tenantId||row.bankKey!==bankKey||
+         row.mode!==mode||row.slotId!==slotId||
+         row.hash!==entry.hash||row.revision!==entry.revision||
+         row.size!==entry.size||row.encoding!=="gzip-base64")
+        return json({error:"Cloud template backup requires recovery review; previous local layout was not changed."},409);
+      return json({success:true,bankName,mode,slotId,revision:entry.revision,
+        hash:entry.hash,size:entry.size,encoding:row.encoding,payload:row.payload});
+    }
+    // Strict server-side privacy sanitizer runs BEFORE any cloud storage or
+    // compression. Shared publication still needs separate Master approval.
+    let generic;
+    try{generic=sanitizeLayoutTemplate(body.template,bankName);}
+    catch(error){return json({error:"Only reviewed generic, non-customer layout data can be backed up: "+error.message},400);}
+    const expectedManifestRevision=body.expectedManifestRevision;
+    const expectedSlotRevision=body.expectedSlotRevision;
+    if(!Number.isSafeInteger(expectedSlotRevision)||expectedSlotRevision<0||
+       !Number.isSafeInteger(expectedManifestRevision)||expectedManifestRevision<0)
+       return json({error:"Expected layout and manifest versions are required."},400);
+    if(expectedManifestRevision!==manifest.revision||
+       expectedSlotRevision!==(entry?.revision||0))
+      return json({error:"A layout changed in another session. Download or review conflict before retrying."},409);
+    let compact,next;
+    try{
+      compact=await compactLayoutTemplate(generic);
+      if(entry?.hash===compact.hash)
+        return json({success:true,unchanged:true,mode,slotId,bankKey,
+          revision:entry.revision,hash:entry.hash,manifestRevision:manifest.revision});
+      next=nextCloudManifest(manifest,{slotId,hash:compact.hash,size:compact.size},
+        new Date().toISOString(),expectedManifestRevision);
+    }catch(error){return json({error:error.message},400);}
+    const record={
+      tenantId,bankKey,mode,slotId,revision:next.slots.find(item=>item.slotId===slotId).revision,
+      ...compact,updatedAt:new Date().toISOString(),updatedBy:actor.uid
+    };
+    const writes=[
+      {update:{name:firestoreDocumentName(env,paths.slot),fields:encodeFields(record)},
+        currentDocument:entry
+          ? {updateTime:(await firestoreRequest(env,paths.slot)).updateTime}:{exists:false}},
+      {update:{name:firestoreDocumentName(env,paths.manifest),fields:encodeFields(next)},
+        currentDocument:manifestDoc?{updateTime:manifestDoc.updateTime}:{exists:false}}
+    ];
+    try{await firestoreRequest(env,":commit",{
+      method:"POST",body:JSON.stringify({writes})
+    });}
+    catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Another device modified this layout. Retry after synchronizing its latest version."},409);
+      throw error;
+    }
+    return json({success:true,mode,slotId,bankKey,
+      revision:record.revision,hash:compact.hash,manifestRevision:next.revision,
+      size:compact.size});
+  }
+
+  // Generic, reviewed bank templates; samples and customer records never enter this catalog.
+  if (route === "/submit-layout-template") {
+    if (role !== "client_admin" || !actor.profile.tenantId)
+      return json({error:"Only a licensed Client Admin can submit a bank layout for review."},403);
+    const body=await request.json().catch(()=>({}));
+    const tenantId=String(actor.profile.tenantId);
+    const current=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId));
+    const configured=decodeFields(current.fields||{});
+    const bankName=String(configured.passbookBank || configured.bankInfo?.passbookBank || "").trim();
+    let template;
+    try { template=sanitizeLayoutTemplate(body.template,bankName); }
+    catch(error){return json({error:error.message},400);}
+    const requestedOutput=String(body.output||"quick");
+    const requestedSlot=body.slot===undefined?1:Number(body.slot);
+    try{layoutSelectionKey(tenantId,template.mode,requestedOutput,requestedSlot);}
+    catch(error){return json({error:error.message},400);}
+    // Do not auto-apply unless the submitting Client Admin has explicitly
+    // certified the physical sample, printed labels and printer calibration.
+    const autoActivateOnApproval=body.autoActivateOnApproval===true &&
+      body.confirmedPhysicalSample===true&&body.confirmedPrintedLabels===true&&
+      body.confirmedPrinterCalibration===true;
+    const id=crypto.randomUUID();
+    await putDocument(env,"/layoutTemplateCatalog/"+id,{
+      ...template,id,status:"pending",originTenantId:tenantId,
+      requestedOutput,requestedSlot,autoActivateOnApproval,
+      submittedBy:actor.uid,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+    });
+    return json({success:true,id,status:"pending"});
+  }
+  if (route === "/review-layout-template") {
+    if (!isMasterActor(actor)) return json({error:"Only the Master Admin can approve shared layouts."},403);
+    const body=await request.json().catch(()=>({}));
+    const id=String(body.id||"");
+    if(!/^[a-f0-9-]{36}$/.test(id)||!["approve","reject"].includes(body.action))return json({error:"Choose a valid review action."},400);
+    const path="/layoutTemplateCatalog/"+id;
+    const found=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+    if(!found)return json({error:"Template was not found."},404);
+    const template=decodeFields(found.fields||{});
+    if(template.status!=="pending")return json({error:"Only pending submissions can be reviewed."},409);
+    // All published content must still satisfy the server sanitizer; never
+    // trust an unreviewed customer record or arbitrary attachment.
+    try { sanitizeLayoutTemplate(template,template.bankName); }
+    catch(error) { return json({error:"Template validation failed before approval: "+error.message},400); }
+    const status=body.action==="approve"?"approved":"rejected";
+    const now=new Date().toISOString();
+    const reviewed={status,reviewedBy:actor.uid,reviewedAt:now,updatedAt:now};
+    // Another Master session may have reviewed the submission between GET and
+    // write. Preserve the current document's template fields and never let the
+    // second review silently overwrite an approved/rejected outcome.
+    const write={
+      update:{name:firestoreDocumentName(env,path),fields:encodeFields(reviewed)},
+      updateMask:{fieldPaths:Object.keys(reviewed)},
+      currentDocument:{updateTime:found.updateTime}
+    };
+    const writes=[write];
+    let activatedSlot=null;
+    if(status==="approved"&&template.autoActivateOnApproval===true){
+      const tenantId=String(template.originTenantId||"");
+      let selectionId;
+      try{selectionId=layoutSelectionKey(tenantId,template.mode,template.requestedOutput,template.requestedSlot);}
+      catch(error){return json({error:"Auto-activation target is invalid: "+error.message},409);}
+      const settingsDoc=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(tenantId))
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const settings=decodeFields(settingsDoc?.fields||{});
+      if(normalizedBankKey(settings.passbookBank||settings.bankInfo?.passbookBank||"")!==template.bankKey)
+        return json({error:"The submitting workspace changed bank. Master approval cannot auto-activate a different bank."},409);
+      const selectionPath="/tenantLayoutSelections/"+selectionId;
+      const oldSelectionDoc=await firestoreRequest(env,selectionPath)
+        .catch(error=>error.status===404?null:Promise.reject(error));
+      const oldSelection=decodeFields(oldSelectionDoc?.fields||{});
+      if(oldSelection.templateId&&oldSelection.bankKey!==template.bankKey)
+        return json({error:"A different bank owns the requested slot. Disable it before approval."},409);
+      let nextSelection;
+      try{nextSelection=normalizedActivationRecord(oldSelection,id,actor.uid,now);}
+      catch(error){return json({error:"Cannot auto-apply template: "+error.message},409);}
+      const saved={...nextSelection,tenantId,mode:template.mode,bankKey:template.bankKey,
+        output:template.requestedOutput,slot:template.requestedSlot,
+        updatedBy:actor.uid,updatedAt:now};
+      writes.push({update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
+        currentDocument:oldSelectionDoc?{updateTime:oldSelectionDoc.updateTime}:{exists:false}});
+      activatedSlot={output:template.requestedOutput,slot:template.requestedSlot,revision:nextSelection.revision};
+    }
+    try{await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes})});}
+    catch(error){
+      if(error.status===409||error.status===400)
+        return json({error:"Layout review changed in another session. Refresh before making a new decision."},409);
+      throw error;
+    }
+    return json({success:true,id,status,activatedSlot});
+  }
+  if (route === "/get-workspace-layout-selection" || route === "/set-workspace-layout-selection") {
+    if (!["client_admin","client_user"].includes(role) || !actor.profile.tenantId)
+      return json({error:"A signed-in client workspace is required."},403);
+    if (route === "/set-workspace-layout-selection" && role !== "client_admin")
+      return json({error:"Only the Client Admin can select or roll back a verified template."},403);
+    const body=await request.json().catch(()=>({}));
+    const mode=String(body.mode||"");
+    const output=body.output===undefined?"quick":String(body.output);
+    const slot=body.slot===undefined?1:Number(body.slot);
+    let id;
+    try { id=layoutSelectionKey(actor.profile.tenantId,mode,output,slot); }
+    catch(error){return json({error:error.message},400);}
+    const tenantId=String(actor.profile.tenantId),settingsPath="/tenantSettings/"+encodeURIComponent(tenantId);
+    const settingsDoc=await firestoreRequest(env,settingsPath).catch(error=>error.status===404?null:Promise.reject(error));
+    const settings=decodeFields(settingsDoc?.fields||{});
+    const bankKey=normalizedBankKey(settings.passbookBank||settings.bankInfo?.passbookBank||"");
+    if(!bankKey)return json({error:"Select a bank in Bank Information before using custom templates."},409);
+    const selectionPath="/tenantLayoutSelections/"+id;
+    const oldDoc=await firestoreRequest(env,selectionPath).catch(error=>error.status===404?null:Promise.reject(error));
+    const old=decodeFields(oldDoc?.fields||{});
+    if (route === "/get-workspace-layout-selection") {
+      // Legacy versions stored one approved passbook selection shared by both
+      // outputs. Keep its verified PR2 visibility until a distinct PR2 slot-1
+      // is activated; never write to or overwrite the legacy record here.
+      let effective=old;
+      if(mode==="passbook"&&output==="dotmatrix"&&slot===1&&!oldDoc){
+        const legacyPath="/tenantLayoutSelections/"+layoutSelectionKey(tenantId,mode);
+        const legacyDoc=await firestoreRequest(env,legacyPath).catch(error=>error.status===404?null:Promise.reject(error));
+        const legacy=decodeFields(legacyDoc?.fields||{});
+        if(legacy.templateId&&legacy.bankKey===bankKey)effective=legacy;
+      }
+      if(!effective.templateId || effective.bankKey!==bankKey) return json({active:false,bankKey,mode,output,slot,revision:effective.revision||0,template:null});
+      const templateDoc=await firestoreRequest(env,"/layoutTemplateCatalog/"+effective.templateId).catch(error=>error.status===404?null:Promise.reject(error));
+      const template=decodeFields(templateDoc?.fields||{});
+      if(template.status!=="approved" || template.mode!==mode || template.bankKey!==bankKey)
+        return json({active:false,bankKey,mode,output,slot,revision:effective.revision||0,template:null});
+      return json({active:true,bankKey,mode,output,slot,revision:effective.revision,activatedAt:effective.activatedAt,template:{
+        id:template.id,bankName:template.bankName,mode:template.mode,
+        widthMm:template.widthMm,heightMm:template.heightMm,foldMm:template.foldMm,
+        printStartMm:template.printStartMm,pageSetup:template.pageSetup,pageCount:template.pageCount||1,elements:template.elements
+      }});
+    }
+    const action=String(body.action||"");
+    if(!["activate","rollback","disable"].includes(action))return json({error:"Choose activate, rollback or disable."},400);
+    if(body.confirmedPhysicalSample!==true || body.confirmedPrintedLabels!==true ||
+       body.confirmedPrinterCalibration!==true)
+       return json({error:"Physical sample, preprinted labels and printer calibration must all be confirmed."},409);
+    if(old.templateId && old.bankKey!==bankKey && action!=="disable")
+      return json({error:"Bank changed since the previous custom layout. Disable that layout before selecting a new bank."},409);
+    let templateId="";
+    if(action==="activate")templateId=String(body.templateId||"");
+    if(action==="rollback")templateId=previousApprovedVersion(old);
+    if(action==="rollback"&&!templateId)return json({error:"No earlier verified layout version to restore."},409);
+    if(templateId){
+      if(!/^[a-f0-9-]{36}$/.test(templateId))return json({error:"Invalid template selection."},400);
+      const selected=await firestoreRequest(env,"/layoutTemplateCatalog/"+templateId).catch(error=>error.status===404?null:Promise.reject(error));
+      const template=decodeFields(selected?.fields||{});
+      if(template.status!=="approved"||template.mode!==mode||template.bankKey!==bankKey)
+        return json({error:"Select a Master-approved template for your currently selected bank and format."},409);
+    }
+    let next;
+    try { next=normalizedActivationRecord(old,templateId||null,actor.uid,new Date().toISOString()); }
+    catch(error){return json({error:error.message},409);}
+    const saved={...next,tenantId,mode,output,slot,bankKey,updatedBy:actor.uid,updatedAt:new Date().toISOString()};
+    const write={update:{name:firestoreDocumentName(env,selectionPath),fields:encodeFields(saved)},
+      currentDocument:oldDoc?{updateTime:oldDoc.updateTime}:{exists:false}};
+    try {await firestoreRequest(env,":commit",{method:"POST",body:JSON.stringify({writes:[write]})});}
+    catch(error){if(error.status===409 || error.status===400)return json({error:"Template version changed. Refresh before retrying."},409);throw error;}
+    return json({success:true,active:Boolean(templateId),mode,output,slot,revision:next.revision,templateId:templateId||null});
+  }
+  if (route === "/list-layout-templates") {
+    if (!["master_owner","admin","client_admin","client_user"].includes(role))
+      return json({error:"Sign in to view available templates."},403);
+    const body=await request.json().catch(()=>({}));
+    const pending=body.pending===true;
+    if(pending && !isMasterActor(actor))return json({error:"Only the Master Admin can review pending templates."},403);
+    const bankName=String(body.bankName||"").trim();
+    const bankKey=normalizedBankKey(bankName);
+    if(!pending && (!bankName || bankName.length>120 || !bankKey))return json({error:"Select a bank first."},400);
+    if(!pending && !isMasterActor(actor) && actor.profile.tenantId){
+      const current=await firestoreRequest(env,"/tenantSettings/"+encodeURIComponent(actor.profile.tenantId));
+      const saved=decodeFields(current.fields||{});
+      if(normalizedBankKey(saved.passbookBank||saved.bankInfo?.passbookBank)!==bankKey)
+        return json({error:"The selected bank does not match this workspace."},403);
+    }
+    const key=pending?"status":"bankKey";
+    const value=pending?"pending":bankKey;
+    const rows=await firestoreRequest(env,":runQuery",{method:"POST",body:JSON.stringify({
+      structuredQuery:{from:[{collectionId:"layoutTemplateCatalog"}],where:{fieldFilter:{field:{fieldPath:key},op:"EQUAL",value:{stringValue:value}}},limit:50}
+    })});
+    const templates=(Array.isArray(rows)?rows:[]).filter(row=>row.document).map(row=>decodeFields(row.document.fields||{}))
+      .filter(item=>pending?item.status==="pending":item.status==="approved")
+      .slice(0,25).map(item=>({
+        id:String(item.id||""),bankName:item.bankName,mode:item.mode,status:item.status,version:Number(item.version)||1,
+        widthMm:item.widthMm,heightMm:item.heightMm,foldMm:item.foldMm,printStartMm:item.printStartMm,
+        elements:item.elements,pageSetup:item.pageSetup,updatedAt:item.updatedAt||item.createdAt||"",
+        requestedOutput:item.requestedOutput||"quick",requestedSlot:item.requestedSlot||1,
+        autoActivateOnApproval:item.autoActivateOnApproval===true
+      }));
+    return json({success:true,templates});
+  }
   if (route === "/save-bank-format-template" || route === "/save-bank-format-mapping") {
     if (role !== "client_admin" || !actor.profile.tenantId) return json({ error: "Only a Client Admin can change this workspace's bank formats." }, 403);
     const tenantId = String(actor.profile.tenantId);
@@ -1650,9 +2311,33 @@ async function handleSupportMedia(request,env,actor,route){
     const raw=new Uint8Array(bytes);let offset=0;for(const part of parts){raw.set(part,offset);offset+=part.byteLength;}
     let body;try{body=JSON.parse(new TextDecoder().decode(raw));}catch{return json({error:'Invalid support request.'},400);}
     if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid support request.'},400);
-    const action={'/support-media-send':'send','/support-media-read':'read','/support-media-delete':'remove','/support-media-reply':'reply'}[route];
-    return json(await supportMedia[action](env,actor,body),200,{'cache-control':'private, no-store'});
+    const action={'/support-message-send':'text','/support-media-send':'send','/support-media-read':'read','/support-media-reply':'reply'}[route];
+    const result=await supportMedia[action](env,actor,body);
+    if(['text','send','reply'].includes(action))await sendSupportPush(env,actor,result);
+    return json(result,200,{'cache-control':'private, no-store'});
   }catch(error){return json({error:error instanceof Error?error.message:'Support media request failed.'},error.status||500,{'cache-control':'private, no-store'});}
+}
+
+async function deleteSupportConversation(request,env,actor){
+  if(!isMasterActor(actor))return json({error:'Only the Master Admin can delete a complete support conversation.'},403);
+  const body=await request.json().catch(()=>({})),clientUid=String(body.clientUid||'');
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(clientUid))return json({error:'Choose a valid support conversation.'},400);
+  const path=`/supportConversations/${encodeURIComponent(clientUid)}`,conversation=await firestoreRequest(env,path).catch(error=>error.status===404?null:Promise.reject(error));
+  if(!conversation)return json({success:true,deleted:false});
+  const tenantId=String(decodeFields(conversation.fields||{}).tenantId||'');
+  if(!tenantId)return json({error:'Support conversation workspace is invalid; deletion stopped.'},409);
+  await supportMedia.purgeConversation(env,clientUid);
+  for(let batch=0;batch<40;batch++){
+    const listing=await firestoreRequest(env,`${path}/messages?pageSize=50`),messages=listing.documents||[];
+    if(!messages.length)break;
+    for(const message of messages){
+      if(!message.name?.startsWith(`${firestoreDocumentName(env,path)}/messages/`)||String(decodeFields(message.fields||{}).tenantId||'')!==tenantId)throw Object.assign(new Error('Support conversation data mismatch; deletion stopped.'),{status:409});
+    }
+    await firestoreRequest(env,':commit',{method:'POST',body:JSON.stringify({writes:messages.map(message=>({delete:message.name}))})});
+    if(batch===39)throw Object.assign(new Error('Support conversation cleanup is incomplete. Retry deletion.'),{status:503});
+  }
+  await firestoreRequest(env,path,{method:'DELETE'});
+  return json({success:true,deleted:true});
 }
 async function licensePublicKey(env) {
   if (!cachedLicensePublicKey) {
@@ -1665,7 +2350,7 @@ async function licensePublicKey(env) {
 export default {
   async scheduled(_event, env) {
     const results=await Promise.allSettled([supportMedia.purgeExpired(env),(async()=>{
-      await purgeExpiredPushDevices(env);await deliverScheduledNotices(env);await drainQueuedPush(env);
+      await purgeExpiredPushDevices(env);await purgeExpiredPushArtifacts(env);await deliverScheduledNotices(env);await drainQueuedPush(env);await drainLicenseInquiryEmails(env);
     })()]);
     const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
   },
@@ -1695,9 +2380,9 @@ export default {
         "/account-action", "/delete-user", "/create-client-user", "/create-client", "/create-client-invite",
         "/get-google-setup", "/save-google-setup", "/save-client-registration",
         "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template",
-        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status",
-        "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-state",
-        "/push-register", "/push-unregister", "/afsm-confirmation", "/support-media-send", "/support-media-read", "/support-media-delete", "/support-media-reply",
+        "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-private-read", "/layout-private-save", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status",
+        "/license-public", "/license-inquiry", "/license-me", "/license-my-requests", "/license-admin-settings", "/license-save-settings", "/license-admin-list", "/license-admin-inquiry-status", "/license-admin-history", "/license-admin-assign", "/license-admin-change", "/license-admin-demo", "/license-admin-demo-convert", "/license-request-change", "/license-admin-decision", "/license-admin-email-retry", "/license-admin-delete-request", "/license-admin-state",
+        "/push-register", "/push-unregister", "/push-sync-event", "/push-test", "/afsm-confirmation", "/support-message-send", "/support-media-send", "/support-media-read", "/support-media-reply", "/support-conversation-delete",
       ];
       if (!supportedRoutes.includes(route)) {
         return json({ error: "Not found." }, 404, cors);
@@ -1718,11 +2403,17 @@ export default {
         actor = await verifyActor(request, env);
       }
       if (actor?.error) return new Response(actor.error.body, { status: actor.error.status, headers: { ...Object.fromEntries(actor.error.headers), ...cors } });
-      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/presence-heartbeat", "/master-system-status"];
+      const migratedRoutes = ["/afsm-confirmation", "/create-client", "/create-client-invite", "/get-google-setup", "/save-google-setup", "/save-client-registration", "/bootstrap-master-owner", "/get-offline-session", "/connect-option-b", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/layout-private-read", "/layout-private-save", "/layout-sync-index", "/layout-sync-download", "/layout-sync-publish", "/submit-layout-template", "/review-layout-template", "/list-layout-templates", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/presence-heartbeat", "/master-system-status"];
       const result = route.startsWith("/license-")
         ? await handleLicensing(request, env, actor, route, context)
-        : route.startsWith('/support-media-')
+        : route === '/support-conversation-delete'
+        ? await deleteSupportConversation(request,env,actor)
+        : route.startsWith('/support-media-')||route==='/support-message-send'
         ? await handleSupportMedia(request,env,actor,route)
+        : route === "/push-test"
+        ? await handlePushTest(env,actor)
+        : route === "/push-sync-event"
+        ? await handleSyncPushEvent(request,env,actor)
         : route.startsWith("/push-")
         ? await handlePushRegistration(request, env, actor, route)
         : migratedRoutes.includes(route)

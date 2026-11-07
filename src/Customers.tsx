@@ -3,13 +3,13 @@ import { afsmDisplay } from "./core/afsm";
 import { identity } from "./core/localData";
 import { snapshot } from "./AllCustomerData";
 import { isAndroid, printAndroidPdf } from "./platform/android/runtime";
-import { customerPdfBuilder, customersPerPdfPage } from "./core/customerPdf";
+import { createFastCustomerPdf, customersPerPdfPage } from "./core/customerPdf";
 import PdfDocumentPreview from "./PdfDocumentPreview";
 import { classifyRecovery } from "./core/recovery";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import ModalPortal from "./ModalPortal";
 import { localDataFetch, localModeEnabled, getDataIdToken, getLocalExportCustomers, getActiveLocalCustomers, getLocalStatus, recordSafeRecovery } from "./core/localData";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
 
   useEffect,
@@ -17,6 +17,7 @@ import {
   useRef,
 
   type FormEvent,
+  type Ref,
 
 } from "react";
 
@@ -26,6 +27,11 @@ import { requireLicensedWrite } from "./core/licenseAccess";
 import { loadPdfCustomers, selectCustomerPdfRecords } from "./core/pdfSelection";
 
 const desktopBridge = () => (window as Window & {bankSetuDesktop?: {shareImage?: (image:string)=>Promise<void>;saveCustomerPdf?: (base64:string)=>Promise<{saved?:boolean;cancelled?:boolean}>;openCustomerPdf?: (base64:string)=>Promise<{opened?:boolean}>}}).bankSetuDesktop;
+
+type CustomerNoticeType = "success" | "error" | "progress" | "warning";
+function sendCustomerNotice(type:CustomerNoticeType,title:string,message:string) {
+  window.dispatchEvent(new CustomEvent("banksetu-notification",{detail:{type,title,message}}));
+}
 
 /* =========================================================
 
@@ -228,6 +234,7 @@ export default function Customers() {
   const [pdfTo, setPdfTo] = useState("");
   const [pdfSearch, setPdfSearch] = useState("");
   const [pdfSelected, setPdfSelected] = useState<Set<string>>(new Set());
+  const customerPreviewCard = useRef<HTMLDivElement>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfIncomplete, setPdfIncomplete] = useState(false);
   const pdfGenerating = useRef(false);
@@ -246,6 +253,7 @@ export default function Customers() {
   const openPdfSelection = async () => {
     if (pdfLoading || pdfGenerating.current) return;
     setError(""); setPdfBlob(null); setPdfOpen(true); setPdfLoading(true); setPdfSelected(new Set());
+    sendCustomerNotice("progress","Loading customers","Preparing customer PDF selection.");
     try {
       await requireLicensedWrite();
       const [records, status] = localModeEnabled()
@@ -258,12 +266,13 @@ export default function Customers() {
       try {
         const selection=await loadPdfCustomers(records,status.downloading || status.cacheLimited,navigator.onLine,requestPage);
         setPdfRecords(selection.records);setPdfIncomplete(selection.incomplete);
+        sendCustomerNotice("success","Customers ready",`${selection.records.length} customer record(s) are ready for PDF selection.`);
       } catch (reason) {
         if (!records.length) throw reason;
         setPdfRecords(records);setPdfIncomplete(true);
         setError("Google customer pages are unavailable. Only this device's cached customers are selected; review the partial count before generating.");
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not read customers for PDF preview."); }
+    } catch (reason) { const text=reason instanceof Error ? reason.message : "Could not read customers for PDF preview.";setError(text);sendCustomerNotice("error","Customer PDF unavailable",text); }
     finally { setPdfLoading(false); }
   };
 
@@ -389,6 +398,7 @@ export default function Customers() {
     setCustomer(null);
     setCustomerMatches([]);
     setShowMatchModal(false);
+    sendCustomerNotice("progress","Searching customer","Checking the verified customer workspace.");
 
     try {
       const result = await apiRequest({
@@ -411,6 +421,7 @@ export default function Customers() {
           result.message ||
             `${matches.length} matching customers found. Please select the required customer.`
         );
+        sendCustomerNotice("success","Customers found",`${matches.length} matching customers found. Select the required customer.`);
         return;
       }
 
@@ -421,15 +432,14 @@ export default function Customers() {
 
       setCustomer(loadedCustomer);
       setMessage("Customer loaded successfully.");
+      sendCustomerNotice("success","Customer loaded","Customer Preview is ready.");
     } catch (err) {
       setCustomer(null);
       setCustomerMatches([]);
       setShowMatchModal(false);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Customer could not be loaded."
-      );
+      const text=err instanceof Error ? err.message : "Customer could not be loaded.";
+      setError(text);
+      sendCustomerNotice("error","Customer search failed",text);
     } finally {
       setLoading(false);
     }
@@ -441,6 +451,7 @@ export default function Customers() {
 
     setSelectedMatchLoading(match.rowNumber);
     setError("");
+    sendCustomerNotice("progress","Loading customer","Preparing the selected Customer Preview.");
 
     try {
       const result = await apiRequest({
@@ -458,12 +469,11 @@ export default function Customers() {
       setCustomerMatches([]);
       setShowMatchModal(false);
       setMessage("Selected customer loaded successfully.");
+      sendCustomerNotice("success","Customer loaded","Selected Customer Preview is ready.");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Selected customer could not be loaded."
-      );
+      const text=err instanceof Error ? err.message : "Selected customer could not be loaded.";
+      setError(text);
+      sendCustomerNotice("error","Customer load failed",text);
     } finally {
       setSelectedMatchLoading(null);
     }
@@ -513,8 +523,9 @@ export default function Customers() {
 
     setError("");
 
-    try { await requireLicensedWrite(); window.print(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "License verification is required to print."); }
+    sendCustomerNotice("progress","Preparing print","Opening the customer print preview.");
+    try { await requireLicensedWrite(); window.print();sendCustomerNotice("success","Print dialog opened","Choose the printer or cancel from the system print dialog."); }
+    catch (reason) { const text=reason instanceof Error ? reason.message : "License verification is required to print.";setError(text);sendCustomerNotice("error","Print unavailable",text); }
 
   };
 
@@ -555,23 +566,30 @@ export default function Customers() {
   const shareCustomer = async () => {
     if (!customer) return;
     try {
+      sendCustomerNotice("progress","Preparing share","Rendering the Customer Preview image.");
       await requireLicensedWrite();
-      const blob = await snapshot(customer as unknown as Record<string, unknown>);
+      if (!customerPreviewCard.current) throw new Error("Customer preview is unavailable. Open it again and retry.");
+      const blob = await snapshot(customer as unknown as Record<string, unknown>,customerPreviewCard.current);
       const name = "BankSetu-customer-preview.png";
       if (isAndroid()) {
         const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",")[1]);reader.onerror=reject;reader.readAsDataURL(blob);});
         const file = await Filesystem.writeFile({path:name,data,directory:Directory.Cache});
+        sendCustomerNotice("progress","Opening share options","Customer Preview image is ready.");
         await Promise.race([Share.share({title:"Bank Setu Customer Preview",files:[file.uri],dialogTitle:"Share customer preview"}),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error("Android sharing did not open. Please try again.")),20000))]);
+        sendCustomerNotice("success","Share options opened","Choose the app or recipient for the Customer Preview image.");
       } else if (desktopBridge()?.shareImage) {
         const data = await new Promise<string>((resolve,reject) => {const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
         await desktopBridge()!.shareImage!(data);
         setMessage("Preview image copied. Paste it into the WhatsApp chat.");
+        sendCustomerNotice("success","Preview image ready","Attach the saved Customer Preview image in the required app.");
       } else if (navigator.share && navigator.canShare?.({files:[new File([blob],name,{type:"image/png"})]})) {
         await navigator.share({files:[new File([blob],name,{type:"image/png"})],title:"Bank Setu Customer Preview"});
+        sendCustomerNotice("success","Share options opened","Choose the app or recipient for the Customer Preview image.");
       } else {
         const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setMessage("Preview image downloaded for sharing.");
+        sendCustomerNotice("success","Preview image downloaded","The Customer Preview image is ready for sharing.");
       }
-    } catch (cause) {setError(cause instanceof Error?cause.message:"Could not share preview image.");}
+    } catch (cause) {const text=cause instanceof Error?cause.message:"Could not share preview image.";setError(text);sendCustomerNotice("error","Share unavailable",text);}
   };
 
   const pdfBase64 = (blob:Blob) => new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('PDF data could not be read.'));reader.readAsDataURL(blob);});
@@ -609,40 +627,22 @@ export default function Customers() {
     if(!pdfValid||!records.length||pdfGenerating.current)return;
     pdfGenerating.current=true;pdfCancelled.current=false;setPdfLoading(true);setPdfBlob(null);setAfsmBatch(null);setError('');setPdfProgress(0);
     try{
+      sendCustomerNotice("progress","Rendering PDF",`Preparing ${records.length} customer record(s).`);
       await requireLicensedWrite();
       const batchScope=localModeEnabled()?identity():null;
       const batchIds=records.map(record=>String(record.recordId||""));
-      const builder=customerPdfBuilder();
-      for(let index=0;index<records.length;index++){
-        if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
-        const item=previewCustomer(records[index]);
-        const host=document.createElement('div');host.style.cssText='position:fixed;top:0;left:0;width:1100px;z-index:-1;pointer-events:none';
-        host.innerHTML=renderToStaticMarkup(<CustomerPreviewCard customer={item}/>);
-        document.body.appendChild(host);
-        try{
-          const card=host.querySelector<HTMLElement>('.customer-preview');
-          if(!card)throw Error('Customer preview layout is unavailable.');
-          card.classList.add('pdf-capture');
-          card.style.cssText+=';width:1100px!important;max-height:none!important;overflow:visible!important';
-          const image=await snapshot(item as unknown as Record<string,unknown>,card,true);
-          const size=card.getBoundingClientRect();
-          const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Customer PDF image could not be read.'));reader.readAsDataURL(image);});
-          builder.add({dataUrl,width:size.width,height:card.scrollHeight});
-        }finally{host.remove();}
-        setPdfProgress(index+1);
-        if(index%customersPerPdfPage===customersPerPdfPage-1)await new Promise(resolve=>setTimeout(resolve,0));
-      }
+      const file=await createFastCustomerPdf(records,{cancelled:()=>pdfCancelled.current,progress:done=>setPdfProgress(done)});
       if(pdfCancelled.current)throw Error('PDF generation cancelled. No customer data was changed.');
-      const file=builder.finish();if(file.size<1000)throw Error('PDF output is empty. Retry generation.');
       await requireLicensedWrite();
       if(batchScope&&identity()!==batchScope)throw Error("Workspace changed. Generate the PDF again.");
-      setPdfBlob(file);setPdfCount(builder.count);
+      setPdfBlob(file);setPdfCount(records.length);
       if(batchScope&&batchIds.every(Boolean))setAfsmBatch({scope:batchScope,ids:batchIds,operationId:crypto.randomUUID()});
-      setMessage(`${builder.count} customer records in ${Math.ceil(builder.count/customersPerPdfPage)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
+      setMessage(`${records.length} customer records in ${Math.ceil(records.length/customersPerPdfPage)} A4 PDF page(s).${pdfIncomplete?' This device may have an incomplete cloud cache.':''}`);
+      sendCustomerNotice("success","Customer PDF ready",`${records.length} customer record(s) rendered successfully.`);
       recordSafeRecovery('pdf','generate','verified');
     }catch(reason){
       recordSafeRecovery(classifyRecovery(reason),'generate','attention');
-      setError(reason instanceof Error?reason.message:'PDF generation failed. You can retry without changing customer data.');
+      const text=reason instanceof Error?reason.message:'PDF generation failed. You can retry without changing customer data.';setError(text);sendCustomerNotice("error","PDF rendering failed",text);
     }finally{pdfGenerating.current=false;setPdfLoading(false);}
   };
 
@@ -654,7 +654,7 @@ export default function Customers() {
 
   return (
 
-    <div className="customers-page">
+    <div className="customers-page" data-print-root="active" data-print-profile="safe">
 
       <style>{`
 
@@ -1896,6 +1896,148 @@ export default function Customers() {
             gap: 4px;
           }
 
+          .preview-wrapper {
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+          }
+
+          .customer-preview {
+            width: 100%;
+            min-width: 0;
+            min-height: 0;
+            padding: 12px;
+            border-radius: 14px;
+            overflow: hidden;
+          }
+
+          .customer-preview-heading {
+            margin-bottom: 10px;
+            padding-bottom: 7px;
+          }
+
+          .customer-preview-heading h2 {
+            font-size: 16px;
+            letter-spacing: .35px;
+          }
+
+          .customer-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 88px;
+            grid-template-rows: auto auto;
+            gap: 8px 9px;
+            align-items: start;
+            min-width: 0;
+          }
+
+          .customer-grid > .info-column:first-child {
+            grid-column: 1;
+            grid-row: 1;
+          }
+
+          .customer-grid > .info-column:nth-child(2) {
+            grid-column: 1 / -1;
+            grid-row: 2;
+          }
+
+          .customer-grid > .photo-section {
+            grid-column: 2;
+            grid-row: 1;
+            align-items: center;
+            min-width: 0;
+          }
+
+          .customer-preview .info-row {
+            grid-template-columns: minmax(82px, 39%) 5px minmax(0, 1fr);
+            gap: 2px;
+            margin-bottom: 6px;
+            font-size: 11px;
+            line-height: 1.28;
+            min-width: 0;
+          }
+
+          .customer-preview .info-label,
+          .customer-preview .info-colon,
+          .customer-preview .info-value {
+            min-width: 0;
+          }
+
+          .customer-preview .info-label {
+            font-size: 10.5px;
+            line-height: 1.25;
+            white-space: normal;
+          }
+
+          .customer-preview .info-value {
+            overflow-wrap: anywhere;
+            word-break: normal;
+          }
+
+          .customer-preview .customer-address {
+            line-height: 1.35;
+          }
+
+          .customer-preview .photo-box {
+            width: 82px;
+            height: 98px;
+            border-width: 1px;
+          }
+
+          .customer-preview .photo-label {
+            margin-top: 4px;
+            font-size: 8px;
+            text-align: center;
+          }
+
+          .customer-preview .customer-status-strip {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            margin-top: 10px;
+            padding: 9px 0 0;
+            min-width: 0;
+          }
+
+          .customer-preview .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+            text-align: center;
+          }
+
+          .customer-preview .status-item span {
+            width: 100%;
+            font-size: 8.5px;
+            line-height: 1.2;
+            white-space: normal;
+            text-align: center;
+          }
+
+          .customer-preview .status-item strong {
+            width: 100%;
+            font-size: 10.5px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            overflow-wrap: normal;
+            word-break: normal;
+            text-align: center;
+          }
+
+          .customer-actions {
+            gap: 8px;
+            margin-top: 14px;
+          }
+
+          .customer-actions .action-button {
+            flex: 1 1 132px;
+            min-height: 42px;
+            padding: 0 12px;
+            font-size: 12px;
+          }
+
         }
 
         .pdf-dialog{width:min(960px,96vw);max-height:90vh;overflow:auto;background:#fff;color:#15283a;border-radius:16px;box-shadow:0 20px 70px #102d3855;padding:24px}
@@ -1906,6 +2048,47 @@ export default function Customers() {
         .pdf-results{max-height:210px;overflow:auto;background:#fff;border:1px solid #dce8f5;border-radius:8px}.pdf-results label{display:block;padding:9px;border-bottom:1px solid #e8eef5}.pdf-results input{margin-right:8px}
         .pdf-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}.pdf-actions button{border:0;border-radius:8px;padding:12px 18px;cursor:pointer}.pdf-actions button:last-child{background:#1469e7;color:white}.pdf-actions button:disabled{opacity:.5;cursor:not-allowed}
         @media(max-width:650px){.pdf-dialog{padding:16px}.pdf-layout{grid-template-columns:1fr}.pdf-modes{grid-template-columns:1fr 1fr}.pdf-mode{padding:10px;font-size:13px}}
+
+        /* Direct single-customer print: keep the on-screen card layout on one A4 page.
+           This is intentionally separate from the compact All PDF capture. */
+        @media print {
+          @page { size: A4 portrait; margin: 10mm; }
+          html,body { width:210mm!important; min-height:297mm!important; margin:0!important; padding:0!important; background:#fff!important; }
+          body * { visibility:hidden!important; }
+          .customer-preview,.customer-preview * { visibility:visible!important; }
+          .customer-preview {
+            position:absolute!important;
+            top:0!important;
+            left:0!important;
+            width:190mm!important;
+            min-height:0!important;
+            max-height:277mm!important;
+            overflow:hidden!important;
+            margin:0!important;
+            padding:7mm!important;
+            border:1px solid #d8dee8!important;
+            border-radius:4mm!important;
+            box-shadow:none!important;
+            background:#fff!important;
+            color:#111827!important;
+            break-inside:avoid!important;
+            page-break-inside:avoid!important;
+          }
+          .customer-preview .customer-preview-heading { margin-bottom:7mm!important; padding-bottom:3mm!important; border-bottom:2px solid #1f2937!important; background:#fff!important; color:#111827!important; }
+          .customer-preview .customer-preview-heading h2 { color:#111827!important; font-size:18pt!important; }
+          .customer-preview .customer-grid { display:grid!important; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) 32mm!important; gap:6mm!important; align-items:start!important; overflow:visible!important; }
+          .customer-preview .info-column { min-width:0!important; text-align:left!important; }
+          .customer-preview .info-row { display:grid!important; grid-template-columns:31mm 3mm minmax(0,1fr)!important; gap:1mm!important; margin-bottom:3mm!important; align-items:start!important; font-size:9pt!important; line-height:1.35!important; text-align:left!important; }
+          .customer-preview .info-label,.customer-preview .info-colon { color:#374151!important; }
+          .customer-preview .info-value { color:#111827!important; text-align:left!important; overflow-wrap:anywhere!important; }
+          .customer-preview .photo-section { display:flex!important; flex-direction:column!important; align-items:center!important; }
+          .customer-preview .photo-box { width:30mm!important; height:36mm!important; border:1px solid #374151!important; background:#f3f4f6!important; }
+          .customer-preview .photo-label { color:#374151!important; font-size:8pt!important; }
+          .customer-preview .customer-status-strip { display:grid!important; grid-template-columns:repeat(3,minmax(0,1fr))!important; gap:4mm!important; margin-top:6mm!important; padding-top:4mm!important; border-top:1px solid #d1d5db!important; background:#fff!important; color:#111827!important; text-align:left!important; }
+          .customer-preview .status-item { display:grid!important; grid-template-columns:auto minmax(0,1fr)!important; gap:2mm!important; text-align:left!important; }
+          .customer-preview .status-item span { color:#374151!important; font-size:8pt!important; }
+          .customer-preview .status-item strong { color:#111827!important; font-size:9pt!important; text-align:left!important; }
+        }
       `}</style>
 
       {/* =============================================
@@ -1996,7 +2179,7 @@ export default function Customers() {
 
       </form>
 
-      {pdfOpen && <div className="match-modal-backdrop" role="presentation" onMouseDown={event => { if(event.target === event.currentTarget && !pdfLoading) setPdfOpen(false); }}>
+      {pdfOpen && <ModalPortal><div className="match-modal-backdrop" role="presentation" onMouseDown={event => { if(event.target === event.currentTarget && !pdfLoading) setPdfOpen(false); }}>
         <div className="pdf-dialog" role="dialog" aria-modal="true" aria-labelledby="pdf-title">
           <h2 id="pdf-title">📄 Generate Customer PDFs</h2>
           {error && <p role="alert">{error}</p>}
@@ -2013,11 +2196,11 @@ export default function Customers() {
               <small>Output: one A4 PDF preview with the existing customer layout. The PDF has five customer sections per A4 page. Preview, save and print controls appear after generation.</small>
             </div>
           </div>
-          <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfGenerating.current)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfGenerating.current?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
+          <div className="pdf-actions"><button type="button" onClick={()=>{if(pdfLoading)pdfCancelled.current=true;else setPdfOpen(false);}}>{pdfLoading?'Cancel generation':'Cancel'}</button><button type="button" disabled={!pdfValid || !pdfChosen.length || pdfLoading} onClick={()=>void makeAllCustomersPdf(pdfChosen)}>{pdfLoading?`Preparing ${pdfProgress}/${pdfChosen.length}…`:"Generate PDF"}</button></div></>}
         </div>
-      </div>}
+      </div></ModalPortal>}
 
-      {showMatchModal && customerMatches.length > 1 && (
+      {showMatchModal && customerMatches.length > 1 && <ModalPortal>
         <div
           className="match-modal-backdrop"
           role="dialog"
@@ -2109,7 +2292,7 @@ export default function Customers() {
             </div>
           </div>
         </div>
-      )}
+      </ModalPortal>}
 
       {/* =============================================
 
@@ -2172,7 +2355,7 @@ export default function Customers() {
           </div>
 
           <div style={{padding:"12px",background:"var(--app-dark-surface, white)",color:"var(--app-dark-text, #18354d)",borderRadius:8}}><strong>Form Send to Branch</strong>: {afsmDisplay(customer as unknown as Record<string,unknown>)}</div>
-          <CustomerPreviewCard customer={customer} />
+          <CustomerPreviewCard customer={customer} cardRef={customerPreviewCard} />
 
           {/* =========================================
 
@@ -2273,23 +2456,9 @@ export default function Customers() {
 
 }
 
-function previewCustomer(value: Record<string, unknown>): Customer {
-  const field = (key: string) => String(value[key] ?? "");
-  return {
-    ...emptyCustomer, afsmStatus:field("afsmStatus"),afsmSentAt:field("afsmSentAt"), enrolId:field("enrolId"), accountNo:field("accountNo"), name:field("name"),
-    coName:field("coName") || field("fatherName"), status:field("status"), gender:field("gender"),
-    contact:field("contact") || field("mobile"), accountOpeningDate:field("accountOpeningDate"),
-    address:field("address"), nominee:field("nominee"), postOffice:field("postOffice"),
-    passbookStatus:field("passbookStatus"), uidaiNo:field("uidaiNo"), dbtStatus:field("dbtStatus"),
-    purposeOfAdvance:field("purposeOfAdvance"), fullAddress:field("fullAddress"),
-    pinCode:field("pinCode"), pan:field("pan"), aofNo:field("aofNo"),
-    photoPreview:field("photoPreview") || field("photoDataUrl"),
-  };
-}
-
-function CustomerPreviewCard({customer}:{customer:Customer}) {
+function CustomerPreviewCard({customer,cardRef}:{customer:Customer;cardRef?:Ref<HTMLDivElement>}) {
   return (
-          <div className="customer-preview">
+          <div ref={cardRef} className="customer-preview">
 
             <div className="customer-preview-heading">
 
@@ -2357,7 +2526,7 @@ function CustomerPreviewCard({customer}:{customer:Customer}) {
 
             </div>
 
-            <div className="customer-status-strip">
+            <div className="customer-status-strip customer-preview-share-exclude">
 
               <div className="status-item">
 

@@ -16,6 +16,10 @@ on:
       - src/core/photoState.ts
       - apps-script/Code.gs
       - desktop/**
+      - scripts/license-ui.test.mjs
+      - scripts/support-rules.test.mjs
+      - scripts/pnb-passbook.test.mjs
+      - scripts/central-bank-passbook.test.mjs
       - .github/workflows/publish-app-release.yml
 permissions:
   contents: read
@@ -80,7 +84,7 @@ jobs:
           node scripts/release-notes.mjs
           node scripts/pin-license-key.mjs
           npm ci
-          npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && npm run check:schema && npm run build
+          npm run check:desktop-syntax && npm run test:worker && npm run test:local && npm run test:bridge && npm run test:updates && npm run check:schema && npm run build
           git config user.name 'banksetu-release-bot'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add package.json package-lock.json public/version.json src/generated/licensePublicKey.json
@@ -90,24 +94,32 @@ jobs:
           echo "name=$NEXT" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: BankSetu-Release-Notes
-          path: release-notes.md
-          if-no-files-found: error
+      - name: Stage the new release and its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.prepare.outputs.name }}
+          RELEASE_SHA: ${{ steps.prepare.outputs.sha }}
+        run: |
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --draft --title "Bank Setu $VERSION" --notes-file release-notes.md
   android:
     needs: version
+    permissions:
+      contents: write
     uses: ./.github/workflows/android-release.yml
     with:
       version_code: ${{ needs.version.outputs.code }}
       version_name: ${{ needs.version.outputs.name }}
       release_ref: ${{ needs.version.outputs.sha }}
+      staged_release: v${{ needs.version.outputs.name }}
     secrets: inherit
   windows:
     needs: version
+    permissions:
+      contents: write
     uses: ./.github/workflows/windows-signed-release.yml
     with:
       release_ref: ${{ needs.version.outputs.sha }}
+      staged_release: v${{ needs.version.outputs.name }}
     secrets: inherit
   publish:
     needs: [version, android, windows]
@@ -118,32 +130,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ needs.version.outputs.sha }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: BankSetu-Android-SIGNED
-          path: release
-      - uses: actions/download-artifact@v4
-        with:
-          name: BankSetu-Windows-SIGNED
-          path: release
-      - uses: actions/download-artifact@v4
-        with:
-          name: BankSetu-Release-Notes
-          path: notes
       - name: Publish complete release only
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.name }}
           RELEASE_SHA: ${{ needs.version.outputs.sha }}
+          ANDROID_BUILD: ${{ needs.version.outputs.code }}
         run: |
           set -euo pipefail
-          test -s release/latest.yml
-          test -s "release/BankSetu-Setup-$VERSION-x64.exe"
-          test -s "release/BankSetu-Android-${{ needs.version.outputs.code }}.apk"
-          test -s notes/release-notes.md
-          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo 'Release tag already exists; refusing overwrite.'; exit 1; fi
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --draft --title "Bank Setu $VERSION" --notes-file notes/release-notes.md
-          gh release upload "v$VERSION" release/* --repo "$GITHUB_REPOSITORY"
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > "$RUNNER_TEMP/release.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const release = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/release.json', 'utf8'));
+          const windows = 'BankSetu-Setup-' + process.env.VERSION + '-x64.exe';
+          const android = 'BankSetu-Android-' + process.env.ANDROID_BUILD + '.apk';
+          const required = [windows, windows + '.blockmap', android, 'latest.yml', 'SHA256SUMS.txt'];
+          if (!release.isDraft || release.targetCommitish !== process.env.RELEASE_SHA ||
+              !required.every(name => release.assets.some(asset => asset.name === name && asset.state === 'uploaded' && asset.size > 0))) {
+            throw Error('Draft release target or staged assets are incomplete');
+          }
+          NODE
           gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           node scripts/verify-public-release.mjs public/version.json
   hosting:
@@ -171,6 +177,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/verify-public-release.mjs portfolio-dist/version.json
+      - name: Verify download links for signed-out clients
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const manifest = JSON.parse(readFileSync('portfolio-dist/version.json', 'utf8'));
+          for (const key of ['windowsDownloadUrl', 'androidDownloadUrl']) {
+            const response = await fetch(manifest[key], { method: 'HEAD', signal: AbortSignal.timeout(30000) });
+            if (!response.ok) throw Error(key + ' returned HTTP ' + response.status + ' without GitHub sign-in');
+          }
+          NODE
       - name: Prepare Firebase credential
         env:
           FIREBASE_DEPLOY_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BANKSETU_69E2F }}

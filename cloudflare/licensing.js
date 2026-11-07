@@ -112,6 +112,6 @@ export function validateInquiry(input) {
   const s = (key, max) => typeof input[key] === "string" && input[key].trim().length <= max ? input[key].trim() : null;
   const name = s("name", 100), mobile = s("mobile", 20), email = s("email", 254), bankName = s("bankName", 120);
   const location = s("location", 120), message = s("message", 500);
-  if (!name || !bankName || !mobile || !/^\+?[0-9][0-9\s-]{7,18}$/.test(mobile) || email === null || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || location === null || message === null || !["demo", "annual", "lifetime", "undecided"].includes(input.plan) || !/^[a-f0-9-]{36}$/.test(input.requestId || "")) throw new Error("Enter valid contact details and a request ID.");
+  if (!name || !bankName || !mobile || !/^\+?[0-9][0-9\s-]{7,18}$/.test(mobile) || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || location === null || message === null || !["demo", "annual", "lifetime", "undecided"].includes(input.plan) || !/^[a-f0-9-]{36}$/.test(input.requestId || "")) throw new Error("Enter valid contact details, including an email address, and a request ID.");
   return { name, mobile, email, bankName, location, message, plan: input.plan, requestId: input.requestId };
 }

@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from "react";
+import ModalPortal from "./ModalPortal";
 
 const cameraError=(error:unknown)=>{
   const name=(error as DOMException)?.name;
@@ -50,7 +51,7 @@ export default function CustomerCamera({onUse,onClose}:{onUse:(photo:Blob)=>Prom
     try{await onUse(captured);}catch(cause){setError(cameraError(cause));}
     finally{setBusy(false);}
   };
-  return <div className="customer-camera-overlay" onClick={onClose}>
+  return <ModalPortal><div className="customer-camera-overlay" onClick={onClose}>
     <section className="customer-camera-dialog" role="dialog" aria-modal="true" aria-label="Capture customer photo" onClick={event=>event.stopPropagation()}>
       <header><strong>📷 Customer Photo</strong><button type="button" aria-label="Close camera" onClick={onClose}>×</button></header>
       <div className="customer-camera-preview">
@@ -72,5 +73,5 @@ export default function CustomerCamera({onUse,onClose}:{onUse:(photo:Blob)=>Prom
           :<button type="button" disabled={loading||!!error||busy} onClick={()=>void capture()}>Capture</button>}
       </footer>
     </section>
-  </div>;
+  </div></ModalPortal>;
 }

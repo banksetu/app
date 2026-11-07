@@ -62,7 +62,7 @@ test("rejects an unconfigured website origin", async () => {
 });
 
 test("requires Firebase sign-in before account and tenant setup actions", async () => {
-  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/push-register", "/push-unregister"]) {
+  for (const path of ["/account-action", "/delete-user", "/get-google-setup", "/configure-tenant-data", "/save-bank-format-template", "/save-bank-format-mapping", "/save-workspace-bank-settings", "/get-workspace-layout-selection", "/set-workspace-layout-selection", "/push-register", "/push-unregister", "/push-sync-event"]) {
     const response = await worker.fetch(new Request(`https://worker.example${path}`, {
       method: "POST",
       headers: { origin: "https://banksetu-app.web.app", "content-type": "application/json" },
@@ -150,12 +150,25 @@ test("bank settings patches preserve unrelated Drive and template configuration"
   assert.equal(patch.bankName,"Bank");assert.deepEqual(patch.bankInfo,{...bankInfo,bankName:"Bank"});
   assert(!("spreadsheetId" in patch));assert(!("bankFormats" in patch));assert(!("tenantId" in patch));
   assert.deepEqual(validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,AAAA"}),{bankLogo:"data:image/png;base64,AAAA"});
-  const extended=validateWorkspaceBankPatch({bankInfo:{...bankInfo,branchAddress:"Main Road",branchPostOffice:"Post A",branchDistrict:"District A",branchPinCode:"123456",branchEmail:"branch@example.invalid",ifsc:"ABCD0123456",micr:"123456789",branchCode:"7345"}});
-  assert.equal(extended.bankInfo.branchPinCode,"123456");assert.equal(extended.ifsc,"ABCD0123456");
+  const extended=validateWorkspaceBankPatch({bankInfo:{...bankInfo,branchAddress:"Main Road",branchPostOffice:"Post A",branchDistrict:"District A",branchState:"Assam",branchPinCode:"123456",branchPhone:"268644",branchEmail:"branch@example.invalid",ifsc:"ABCD0123456",micr:"123456789",branchCode:"7345",gstin:"18AAACC2498P3Z0",ckyc:"CKYC-001"}});
+  assert.equal(extended.bankInfo.branchPinCode,"123456");assert.equal(extended.ifsc,"ABCD0123456");assert.equal(extended.bankInfo.branchState,"Assam");assert.equal(extended.bankInfo.branchPhone,"268644");assert.equal(extended.bankInfo.gstin,"18AAACC2498P3Z0");assert.equal(extended.bankInfo.ckyc,"CKYC-001");
   assert.throws(()=>validateWorkspaceBankPatch({bankInfo:{...bankInfo,branchPinCode:"abc"}}),/PIN/);
   assert.throws(()=>validateWorkspaceBankPatch({bankInfo:{...bankInfo,ifsc:"wrong"}}),/IFSC/);
+  assert.throws(()=>validateWorkspaceBankPatch({bankInfo:{...bankInfo,gstin:"short"}}),/GSTIN/);
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"https://untrusted.example/logo"}));
   assert.throws(()=>validateWorkspaceBankPatch({bankLogo:"data:image/png;base64,"+"A".repeat(150000)}));
+});
+
+test("custom Bank Information fields reject unexpected or excessive data", () => {
+  const good=validateWorkspaceBankPatch({bankExtraFields:{GSTIN:"22AAAAA0000A1Z5",branchManager:"A. Manager"}});
+  assert.equal(good.bankExtraFields.GSTIN,"22AAAAA0000A1Z5");
+  assert.equal(good.bankExtraFields.branchManager,"A. Manager");
+  assert(!("bankInfo" in good));
+  for(const bad of [
+    {"a.b":"x"}, JSON.parse('{"__proto__":"x"}'), {"0value":"x"},
+    {GSTIN:12}, {GSTIN:"x".repeat(181)},
+    Object.fromEntries(Array.from({length:33},(_,i)=>["field"+i,"x"])),
+  ]) assert.throws(()=>validateWorkspaceBankPatch({bankExtraFields:bad}));
 });
 
 test("Option B validates exact Google resource hosts and verified resource ownership", async () => {

@@ -6,7 +6,19 @@ import vm from 'node:vm';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import {renderToStaticMarkup} from 'react-dom/server';
-const source=ts.transpileModule(fs.readFileSync('src/Dashboard.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const dashboardSource=fs.readFileSync('src/Dashboard.tsx','utf8');
+const hookPosition=name=>{
+  const offset=dashboardSource.indexOf('const ['+name);
+  assert(offset>0,'Dashboard hook is present: '+name);
+  // Count all generic and non-generic hooks. Nested types such as
+  // useState<Record<string,string>> make regexes that expect one '>' incorrect.
+  const componentStart=dashboardSource.indexOf('function Dashboard(');
+  assert(componentStart>=0&&componentStart<offset);
+  return (dashboardSource.slice(componentStart,offset).match(/\buseState\s*(?=[(<])/g)||[]).length+1;
+};
+const activePageHook=hookPosition('activePage');
+const bankSettingsReadyHook=hookPosition('bankSettingsReady');
+const source=ts.transpileModule(dashboardSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const noticeSource=ts.transpileModule(fs.readFileSync('src/LicenseNotice.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 function render(page,blocked){
  const storage={getItem:()=>null,setItem(){},removeItem(){}};
@@ -14,13 +26,14 @@ function render(page,blocked){
  const exports={};
  const component=name=>props=>React.createElement('div',{'data-component':name},name==='LicenseNotice'?props.permission.state:undefined);
  const require=path=>{
-  if(path==='react')return {...React,useState:value=>{index++;return React.useState(index===2?page:index===23?true:value);}};
+  if(path==='react')return {...React,lazy:loader=>{const name=String(loader).match(/require\(["']\.\/(.+?)["']\)/)?.[1]||'DeferredPage';return component(name);},useState:value=>{index++;return React.useState(index===activePageHook?page:index===bankSettingsReadyHook?true:value);}};
   if(path==='react/jsx-runtime')return jsx;
   if(path==='react-dom')return {createPortal:()=>null};
   if(path==='./core/useSyncStatus')return {useSyncStatus:()=>({records:1,pending:1,online:true})};
   if(path==='./SupportCenter')return {__esModule:true,default:component('SupportCenter'),useSupportUnread:()=>0};
   if(path==='./core/licensePolicy')return {canOpenLicensePage:(name,readOnly)=>!readOnly||['dashboard','customers','all-customer-data','settings','sync-backup','license-management','support'].includes(name)};
   if(path==='./core/localData')return {localModeEnabled:()=>false};
+  if(path==='./platform/layoutEngineGate')return {windowsLayoutEngineAvailable:()=>false};
   if(path==='./core/appearance')return {storedAppearance:()=> 'light',appearanceStorageKey:()=> 'test'};
   if(path.endsWith('.png'))return {__esModule:true,default:'logo.png'};
   if(path==='./tenantApi')return {tenantStorageKey:key=>key,getTenantApiUrl:()=>''};
@@ -34,9 +47,31 @@ test('read-only dashboard removes protected menus and blocks already selected ro
   const html=render(page,true);
   for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF Sample'])assert(!html.includes(label),label);
   assert(!html.includes('data-component="CustomerEntry"'));assert(!html.includes('data-component="SelectedBankDocument"'));assert(!html.includes('data-component="BankFormats"'));
-  for(const label of ['Dashboard','All Customer Data','Customers','Settings','Sync &amp; Backup','License Management'])assert(html.includes(label),label);
+  for(const label of ['Dashboard','All Customer Data','Customers','Settings','Sync &amp; Backup'])assert(html.includes(label),label);
   assert(html.includes('suspended'));
  }
+});
+test('license navigation moves from the sidebar to the profile menu without changing its route',()=>{
+ const dashboard=fs.readFileSync('src/Dashboard.tsx','utf8');
+ assert.doesNotMatch(dashboard,/<NavButton icon="🪪" label="License Management"/);
+ assert.match(dashboard,/className="admin-license-menu-item"/);
+ assert.match(dashboard,/setAdminMenuOpen\(false\); openPage\("license-management"\);/);
+ assert.match(dashboard,/← Back to Dashboard/);
+ assert.match(dashboard,/onClick=\{\(\) => openPage\("dashboard"\)\}/);
+ const license=dashboard.indexOf('className="admin-license-menu-item"');
+ const logout=dashboard.indexOf('↪ Logout',license);
+ assert(license>dashboard.indexOf('Advanced Administrator Control')&&logout>license,'License Management must remain immediately above the final Logout action');
+});
+test('floating support position is temporary and returns to its bottom-right home',()=>{
+ const support=fs.readFileSync('src/FloatingSupportButton.tsx','utf8');
+ assert.match(support,/const returnDelayMs=5000/);
+ assert.match(support,/localStorage\.removeItem\(storageKey\)/);
+ assert.doesNotMatch(support,/localStorage\.setItem\(storageKey/);
+ assert.match(support,/window\.addEventListener\('resize',snapHome\)/);
+ assert.match(support,/window\.visualViewport\?\.addEventListener\('resize',snapHome\)/);
+ assert.match(support,/returnHomeLater\(\)/);
+ assert.match(support,/window\.innerWidth<700\?2:12\+configuredSafeBottom/);
+ assert.match(support,/window\.innerWidth<700\?2:12/);
 });
 test('valid license retains protected menu access',()=>{
  const html=render('passbook',false);

@@ -1,12 +1,12 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-type Category = 'update'|'sync'|'network'|'license';
-export type SystemNotice = { key:string; title:string; body:string; page:'dashboard'|'sync-backup'|'license-management'; category:Category; cooldownMs?:number };
+type Category = 'update'|'sync'|'network'|'license'|'support';
+export type SystemNotice = { key:string; title:string; body:string; page:'dashboard'|'sync-backup'|'license-management'|'support'; category:Category; cooldownMs?:number };
 const android = registerPlugin<{ requestPermissions():Promise<{granted:boolean}>; show(options:{id:number;title:string;body:string;page:string;category:Category}):Promise<void>; getPendingTap():Promise<{page?:string}>; addListener(name:'notificationOpened',listener:(event:{page:string})=>void):Promise<{remove():Promise<void>}> }>('BankSetuNotifications');
 const timestamps=new Map<string,number>();
 let nextId=1;
 let androidPermission:boolean|undefined;
-const destinations=new Set(['dashboard','sync-backup','license-management']);
+const destinations=new Set(['dashboard','sync-backup','license-management','support']);
 export function notifySystem(event:SystemNotice){
   if(typeof window==='undefined')return;
   try{if(localStorage.getItem('bankSetuSystemNotifications')==='off')return;}catch{ /* Optional local setting. */ }

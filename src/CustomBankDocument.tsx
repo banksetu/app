@@ -1,26 +1,73 @@
 import UnionAccountOpening from "./UnionAccountOpening";
 import UnionPassbook from "./UnionPassbook";
 import { localDataFetch, getDataIdToken } from "./core/localData";
-import { useCallback, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import {callBankSetuWorker} from "./workerApi";
+import {templateCanRender,type ApprovedLayout} from "./layoutRuntimeValues";
+import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
+const WorkspaceTemplateDocument=lazy(()=>import("./WorkspaceTemplateDocument"));
 import { auth } from "./firebase";
 import { getTenantApiUrl } from "./tenantApi";
 import BankFormatPrint from "./BankFormatPrint";
 import type { BankDocumentType } from "./bankDocumentPolicy";
 import type { PassbookBankInfo } from "./AssamQuickPassbook";
 type Match = { rowNumber: number; name?: string; accountNo?: string; enrolId?: string };
-export default function CustomBankDocument({ formatType, bankInfo }: { formatType: BankDocumentType; bankInfo: PassbookBankInfo }) {
+export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: { formatType: BankDocumentType; bankInfo: PassbookBankInfo; bankLogo?:string }) {
   const clientSearch = sessionStorage.getItem("bankSetuAccountRole") === "client_admin";
   const [templateLogo,setTemplateLogo]=useState("");
   const [overrides,setOverrides]=useState({dateOfBirth:"",religion:"",category:""});
   const [query,setQuery] = useState("");
   const [customer,setCustomer] = useState<Record<string,unknown> | null>(null);
+  const [customerRow,setCustomerRow] = useState<number|null>(null);
   const [matches,setMatches] = useState<Match[]>([]);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
+  const [activeLayout,setActiveLayout]=useState<ApprovedLayout|null>(null);
+  const [activeSlot,setActiveSlot]=useState(1);
+  const searchEpoch=useRef(0);
+  const [workspaceEpoch,setWorkspaceEpoch]=useState(0);
   const onConfigured = useCallback(() => {}, []);
   const unionAof = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType === "accountOpening";
   const unionPassbook = /^(union bank of india|union bank|ubi)$/i.test((bankInfo.passbookBank || "").trim()) && formatType !== "accountOpening";
   const title = formatType === "accountOpening" ? "Account Opening PDF" : formatType === "quickPassbook" ? "Quick Passbook" : "Passbook Print";
+  const layoutMode=formatType==="accountOpening"?"accountOpening":"passbook";
+  const layoutOutput=formatType==="passbook"?"dotmatrix":"quick";
+  useEffect(()=>{
+    let live=true;
+    setActiveLayout(null);
+    // Android/Web must not fetch or activate the Windows-only layout engine.
+    if(!windowsLayoutEngineAvailable())return ()=>{live=false;};
+    void (async()=>{
+      try{
+        const state=await callBankSetuWorker<{active:boolean;template:ApprovedLayout|null}>("/get-workspace-layout-selection",{mode:layoutMode,output:layoutOutput,slot:layoutMode==="accountOpening"?1:activeSlot});
+        if(live && state.active && state.template && templateCanRender(state.template,bankInfo.passbookBank||"",layoutMode))
+          setActiveLayout(state.template);
+      }catch{/* Offline or no active custom template: keep the original bank print renderer unchanged. */}
+    })();
+    return()=>{live=false;};
+  },[layoutMode,layoutOutput,activeSlot,bankInfo.passbookBank,workspaceEpoch]);
+  // Changing the bank or signed-in workspace must immediately forget all
+  // displayed customer data; late search responses cannot repopulate another
+  // tenant's preview. This does not touch stored customer records.
+  useEffect(()=>{
+    const invalidate=()=>{
+      searchEpoch.current+=1;
+      setCustomer(null);setCustomerRow(null);setMatches([]);
+      setBusy(false);setError("");setActiveLayout(null);setActiveSlot(1);
+    };
+    invalidate();
+    const onWorkspaceChange=()=>{
+      invalidate();
+      // Re-fetch activation in the new verified tenant and discard any
+      // pending response from the previous tenant, even for the same bank.
+      setWorkspaceEpoch(epoch=>epoch+1);
+    };
+    window.addEventListener("banksetu-workspace-change",onWorkspaceChange);
+    return ()=>{
+      searchEpoch.current+=1;
+      window.removeEventListener("banksetu-workspace-change",onWorkspaceChange);
+    };
+  },[layoutMode,bankInfo.passbookBank]);
   const request = async (body: Record<string,unknown>) => {
     const user=auth.currentUser, url=getTenantApiUrl();
     if (!user || !url) throw new Error("Connect this workspace's Google account first.");
@@ -30,20 +77,40 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     return result;
   };
   const load = async (rowNumber?: number) => {
-    setBusy(true); setError(""); setCustomer(null); setMatches([]);
+    const epoch=++searchEpoch.current;
+    setBusy(true); setError(""); setCustomer(null); setMatches([]);setCustomerRow(null);
     try {
       const result=await request(rowNumber ? {action:"getCustomerByRowNumber",rowNumber} : {action:"searchCustomer",query:query.trim()});
+      if(epoch!==searchEpoch.current)return;
       if(result.multipleMatches && result.matches?.length) {setMatches(result.matches);return;}
       if(!result.customer) throw new Error("No customer found.");
       setOverrides({dateOfBirth:String(result.customer.dateOfBirth || result.customer.dob || ""),religion:String(result.customer.religion || ""),category:String(result.customer.category || "")});
+      setCustomerRow(Number.isSafeInteger(Number(rowNumber||result.rowNumber||result.customer.rowNumber)) && Number(rowNumber||result.rowNumber||result.customer.rowNumber)>0
+        ?Number(rowNumber||result.rowNumber||result.customer.rowNumber):null);
       setCustomer({...result.customer,branchName:bankInfo.branchName,ifsc:bankInfo.ifsc});
-    } catch(reason) {setError(reason instanceof Error ? reason.message : "Search failed.");}
-    finally {setBusy(false);}
+    } catch(reason) {if(epoch===searchEpoch.current)setError(reason instanceof Error ? reason.message : "Search failed.");}
+    finally {if(epoch===searchEpoch.current)setBusy(false);}
   };
   const search=(event:FormEvent)=>{event.preventDefault();if(query.trim())void load();};
-  return <section className="custom-bank-document" style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
+  const completedPr2=async()=>{
+    if(!customerRow){setError("The printer acknowledged printing, but this customer has no verified row number. Passbook status was NOT changed. Do not print again solely to update status.");return;}
+    try{
+      await request({action:"markPassbookPrinted",rowNumber:customerRow});
+      setCustomer(current=>current?{...current,passbookStatus:"Printed"}:current);
+    }catch(error){
+      setError("PR2 device acknowledged printing, but passbook status could not be saved. Do not print again just to update it. "+(error instanceof Error?error.message:""));
+    }
+  };
+  return <section className="custom-bank-document" data-print-root="active" data-print-profile={formatType === "quickPassbook" ? "safe" : "exact"} style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
+    {windowsLayoutEngineAvailable()&&layoutMode==="passbook"&&<label style={{display:"inline-flex",alignItems:"center",gap:9,marginBottom:12}}>
+      {layoutOutput==="dotmatrix"?"PR2 Passbook Print Layout":"Quick Passbook Layout"}
+      <select value={activeSlot} aria-label="Approved passbook layout slot" onChange={event=>setActiveSlot(Number(event.target.value))}
+        style={{minHeight:36,borderRadius:7,padding:"6px 10px"}}>
+        {[1,2,3].map(n=><option key={n} value={n}>Layout {n}</option>)}
+      </select>
+    </label>}
     {clientSearch ? <form className="client-document-search" onSubmit={search}>
       <label htmlFor="client-document-query">UNIVERSAL CUSTOMER SEARCH</label>
       <div><input id="client-document-query" placeholder="Account No. / Customer ID / Aadhaar / Mobile / AOF No. / Name" value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off" />
@@ -64,6 +131,12 @@ export default function CustomBankDocument({ formatType, bankInfo }: { formatTyp
     {matches.map(match=><button type="button" key={match.rowNumber} disabled={busy} onClick={()=>void load(match.rowNumber)}>{match.name} · {match.accountNo} · {match.enrolId}</button>)}
     {customer && !unionAof && formatType === "accountOpening" && <label>Optional bank logo <input type="file" accept="image/png,image/jpeg" onChange={event=>{const file=event.target.files?.[0];if(!file||file.size>2*1024*1024)return;const reader=new FileReader();reader.onload=()=>setTemplateLogo(String(reader.result));reader.readAsDataURL(file);}} /></label>}
     {customer && formatType === "accountOpening" && <div style={{display:"flex",flexWrap:"wrap",gap:12,marginTop:12}}>{(["dateOfBirth","religion","category"] as const).map(field=><label key={field}>{field === "dateOfBirth" ? "Date of Birth ✎" : field === "religion" ? "Religion ✎" : "Category ✎"}<input aria-label={`Edit ${field}`} type={field==="dateOfBirth"?"date":"text"} value={overrides[field]} onChange={event=>setOverrides(current=>({...current,[field]:event.target.value}))} /></label>)}<small>ये edits इस print preview के लिए हैं।</small></div>}
-    {unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
+    {windowsLayoutEngineAvailable() && activeLayout && customer ? <Suspense fallback={<p>Preparing approved custom layout…</p>}><WorkspaceTemplateDocument
+      key={`${bankInfo.passbookBank}:${activeLayout.id}:${customerRow??""}:${customer.enrolId??customer.accountNo??""}`}
+      template={activeLayout} bankName={bankInfo.passbookBank||""} customer={{...customer,...overrides}}
+      bankInfo={bankInfo as Record<string,unknown>}
+      output={formatType==="passbook"?"dotmatrix":"quick"} bankLogo={templateLogo||bankLogo}
+      onPr2Complete={()=>{void completedPr2();}} /></Suspense>
+    : unionAof ? (customer ? <UnionAccountOpening key={`${customer.enrolId}-${customer.accountNo}`} customer={{...customer,...overrides}} /> : <p>Search a customer to preview the Union Bank account opening form.</p>) : unionPassbook ? (customer ? <UnionPassbook customer={Object.fromEntries(Object.entries(customer).map(([key,value]) => [key,String(value ?? "")]))} bankInfo={bankInfo} formatType={formatType === "quickPassbook" ? "quickPassbook" : "passbook"} /> : <p>Search a customer to preview the Union Bank passbook.</p>) : <BankFormatPrint formatType={formatType} bankName={bankInfo.passbookBank || ""} customer={customer ? {...customer,...overrides,templateLogo} : {}} onConfigured={onConfigured} allowPrint={!!customer} />}
   </section>;
 }

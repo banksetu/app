@@ -1,0 +1,156 @@
+name: Layout Studio Draft Validation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - src/Dashboard.tsx
+      - src/platform/layoutEngineGate.ts
+      - src/platform/layoutUnavailable.tsx
+      - vite.config.ts
+      - package.json
+      - scripts/build-android-client.mjs
+      - scripts/check-layout-target-bundle.mjs
+      - src/CustomizeLayoutStudio.tsx
+      - src/CustomizeLayoutStudio.css
+      - src/layoutWordGeometry.ts
+      - src/layoutTypography.ts
+      - scripts/layout-word-geometry.test.mjs
+      - src/layoutScanGeometry.ts
+      - src/layoutPerspectiveGeometry.ts
+      - src/layoutImportReview.ts
+      - src/layoutLayerRepair.ts
+      - src/layoutGraphicsCoverage.ts
+      - src/layoutProofPdf.ts
+      - src/CustomBankDocument.tsx
+      - src/BankFormatPrint.tsx
+      - src/SelectedBankDocument.tsx
+      - src/WorkspaceTemplateDocument.tsx
+      - src/WorkspaceTemplateDocument.css
+      - src/layoutActivation.ts
+      - src/layoutRuntimeValues.ts
+      - src/layoutCustomerValue.ts
+      - src/layoutFieldInference.ts
+      - src/layoutOnDeviceOCR.ts
+      - src/layoutVectorImport.ts
+      - src/layoutTemplateAudit.ts
+      - src/layoutOutputPolicy.ts
+      - src/layoutOutputPreflight.ts
+      - src/layoutBlankDocument.ts
+      - src/layoutTypography.ts
+      - src/layoutLocalState.ts
+      - src/layoutLocalStore.ts
+      - src/layoutGenericUpload.ts
+      - src/layoutCloudRecovery.ts
+      - cloudflare/layoutCloudSync.js
+      - src/Pr2PrinterDialog.tsx
+      - src/CustomPr2PrinterDialog.tsx
+      - src/layoutVisualDiff.ts
+      - cloudflare/layoutActivation.js
+      - cloudflare/layoutTemplates.js
+      - scripts/layout-*.test.mjs
+      - scripts/license-ui.test.mjs
+      - cloudflare/worker.js
+      - cloudflare/worker.test.js
+      - scripts/layout-studio.test.mjs
+      - .github/workflows/layout-studio-draft.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  layout-studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test scripts/layout-*.test.mjs
+      - run: npm run test:worker
+      - run: npm run test:local
+      - run: npm run test:bridge
+      - run: npm run test:pr2
+      - run: node --test scripts/bank-pdf.test.mjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs desktop/print-preview.test.cjs
+      - run: npm run build
+      - run: node scripts/check-layout-target-bundle.mjs windows dist
+      - run: node --test scripts/ocr-offline-integration.test.mjs
+      - run: npx vite build --mode web --outDir web-app-dist
+      - run: node scripts/check-layout-target-bundle.mjs web web-app-dist
+
+  windows-installer-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 100
+    name: Windows unsigned installer smoke (draft only)
+    needs: layout-studio
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --test desktop/print-preview.test.cjs desktop/pr2.test.cjs
+      - run: npm run desktop:pack:unsigned
+      - run: node scripts/check-layout-target-bundle.mjs windows dist
+      - name: Check draft installer exists
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem desktop-release -Filter "BankSetu-Setup-*.exe" -ErrorAction SilentlyContinue)
+          if ($files.Count -eq 0) { throw "No unsigned Windows test installer produced" }
+          foreach ($lang in @("eng", "hin")) { if (!(Test-Path "dist/ocr/lang/$lang.traineddata")) { throw "Offline OCR $lang model missing from packaged app inputs" } }
+          Write-Host "Unsigned draft installer built successfully; no deployment or publishing performed."
+      - name: Save unsigned Windows EXE for physical QA only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: banksetu-layout-draft-windows-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop-release/BankSetu-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+  android-debug-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 100
+    name: Android debug build smoke (draft only)
+    needs: layout-studio
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run android:sync
+      - run: node scripts/check-layout-target-bundle.mjs android dist
+      - run: bash ./gradlew assembleDebug --no-daemon
+        working-directory: android
+      - name: Check draft APK exists
+        run: |
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -q "ocr/lang/eng.traineddata"
+          unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -q "ocr/lang/hin.traineddata"
+          echo "Android APK contains both OCR models; no production deployment performed."
+      - name: Save draft Android APK for later physical-device acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: banksetu-layout-draft-android-${{ github.event.pull_request.head.sha || github.sha }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

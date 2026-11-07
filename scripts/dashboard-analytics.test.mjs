@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { customerAnalytics, customerEntryMonth } from '../src/core/dashboardAnalytics.ts';
 import { appearanceStorageKey, storedAppearance } from '../src/core/appearance.ts';
+import fs from 'node:fs';
 
 test('growth uses real entry timestamps, excluding account opening dates and undated records', () => {
   const now = new Date('2026-10-18T12:00:00Z');
@@ -26,6 +27,17 @@ test('personal appearance cannot leak between users or tenants', () => {
   assert.equal(storedAppearance(storage,'user-b','tenant-a'),'light');
   assert.equal(storedAppearance(storage,'user-a','tenant-b'),'light');
   assert.equal(storedAppearance(storage,'','tenant-a'),'light');
+});
+
+test('sidebar uses the compact icon-only dynamic theme slider at the bottom',()=>{
+  const dashboard=fs.readFileSync('src/Dashboard.tsx','utf8');
+  const css=fs.readFileSync('src/App.css','utf8');
+  assert.match(dashboard,/banksetu-appearance-toggle/);
+  assert.match(dashboard,/appearance === 'dark' \? 'light' : 'dark'/);
+  assert.doesNotMatch(dashboard,/>\s*Light<|>\s*Dark</);
+  assert.match(css,/banksetu-appearance-toggle\{[^}]*width:72px[^}]*height:30px/);
+  assert.match(css,/banksetu-sidebar \.banksetu-appearance\{[^}]*bottom:0/);
+  assert.match(css,/banksetu-sidebar\{[^}]*padding-bottom:2px!important/);
 });
 
 test('Sheet display dates and local/offline creation dates count in Indian calendar months',()=>{

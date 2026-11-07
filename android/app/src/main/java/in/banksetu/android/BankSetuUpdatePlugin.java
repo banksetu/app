@@ -16,10 +16,16 @@ import java.net.URL;
 
 @CapacitorPlugin(name = "BankSetuUpdate")
 public class BankSetuUpdatePlugin extends Plugin {
+    private static final long MAX_APK_BYTES = 200L * 1024L * 1024L;
+
     @PluginMethod
     public void downloadAndInstall(PluginCall call) {
         String downloadUrl = call.getString("url", "");
-        if (downloadUrl == null || !downloadUrl.startsWith("https://github.com/banksetu/app/releases/download/")) {
+        URL requested;
+        try { requested = new URL(downloadUrl); }
+        catch (Exception error) { call.reject("Invalid Bank Setu update URL."); return; }
+        if (!"https".equalsIgnoreCase(requested.getProtocol()) || !"github.com".equalsIgnoreCase(requested.getHost()) ||
+            !requested.getPath().startsWith("/banksetu/app/releases/download/") || requested.getUserInfo() != null || requested.getQuery() != null || requested.getRef() != null) {
             call.reject("Invalid Bank Setu update URL.");
             return;
         }
@@ -27,8 +33,7 @@ public class BankSetuUpdatePlugin extends Plugin {
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
-                URL url = new URL(downloadUrl);
-                connection = (HttpURLConnection) url.openConnection();
+                connection = (HttpURLConnection) requested.openConnection();
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(30000);
                 connection.setInstanceFollowRedirects(true);
@@ -38,8 +43,10 @@ public class BankSetuUpdatePlugin extends Plugin {
                 if (connection.getResponseCode() < 200 || connection.getResponseCode() >= 300) {
                     throw new IllegalStateException("APK download returned HTTP " + connection.getResponseCode());
                 }
+                if (!"https".equalsIgnoreCase(connection.getURL().getProtocol())) throw new IllegalStateException("APK download left the secure connection.");
 
                 long total = connection.getContentLengthLong();
+                if (total > MAX_APK_BYTES) throw new IllegalStateException("APK download is too large.");
                 long downloaded = 0;
                 File apk = new File(getContext().getCacheDir(), "banksetu-update.apk");
                 try (InputStream input = connection.getInputStream();
@@ -49,6 +56,7 @@ public class BankSetuUpdatePlugin extends Plugin {
                     while ((count = input.read(buffer)) != -1) {
                         output.write(buffer, 0, count);
                         downloaded += count;
+                        if (downloaded > MAX_APK_BYTES) throw new IllegalStateException("APK download is too large.");
                         JSObject progress = new JSObject();
                         progress.put("downloaded", downloaded);
                         progress.put("total", total);
@@ -56,6 +64,12 @@ public class BankSetuUpdatePlugin extends Plugin {
                         notifyListeners("downloadProgress", progress);
                     }
                     output.flush();
+                }
+                try (InputStream verify = new java.io.FileInputStream(apk)) {
+                    if (verify.read() != 'P' || verify.read() != 'K' || verify.read() != 3 || verify.read() != 4) {
+                        apk.delete();
+                        throw new IllegalStateException("Downloaded update is not an APK file.");
+                    }
                 }
 
                 Uri uri = FileProvider.getUriForFile(

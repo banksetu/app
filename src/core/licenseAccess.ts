@@ -2,8 +2,10 @@ import { auth } from "../firebase";
 import { callBankSetuWorker } from "../workerApi";
 import { cachedLicenseReceipt, saveLicenseReceipt, verifyLicenseReceipt, verifyLicenseAuthorization, saveLicenseAuthorization, invalidateLicenseReceipt, type LicenseReceipt } from "./licenseReceipt";
 import { requiresTenantLicense, type LicensePermission } from "./licensePolicy";
+import {observeTrustedLicenseTime,verifyTrustedLicenseTime} from "../platform/licenseClock";
 
 const blockedMessage = "Your Bank Setu license is pending, expired, suspended or revoked. Renew or activate your license to continue.";
+const offlineExpiredMessage = "Offline license verification expired. Please connect your internet to verify the license. Existing records remain accessible.";
 let permission: LicensePermission = {uid:"",tenantId:"",state:"checking",canWrite:false,revision:0,plan:null,expiresAt:null,validUntil:0,daysRemaining:null,warning:blockedMessage};
 let generation=0;
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -17,7 +19,9 @@ function publish(next:LicensePermission) {
   sessionStorage.setItem("bankSetuDemoWorkspace",next.plan==="demo"?(next.canWrite?"active":"expired"):"false");
   listeners.forEach(listener=>listener());
   if(next.canWrite && Number.isFinite(next.validUntil))expiryTimer=setTimeout(()=>{
-    if(permission===next)denyLicense("expired",blockedMessage);
+    if(permission!==next)return;
+    if(navigator.onLine)void refreshLicensePermission(true);
+    else denyLicense("unverified",offlineExpiredMessage);
   },Math.max(0,Math.min(2147483647,next.validUntil-Date.now())));
 }
 export function resetLicensePermission() {
@@ -62,6 +66,7 @@ export async function refreshLicensePermission(online=navigator.onLine):Promise<
         const status=await verifyLicenseAuthorization(result.authorization,uid,tenantId);
         if(!current())return;
         if(status.state!==result.view.state||status.canWrite!==result.view.canWrite)throw Error("License response does not match its signed authorization.");
+        await observeTrustedLicenseTime(uid,status.issuedAt);
         await saveLicenseAuthorization(result.authorization,uid,tenantId);
         if(!current())return;
         await window.bankSetuDesktop?.licenseStatus(result.authorization);
@@ -82,12 +87,13 @@ export async function refreshLicensePermission(online=navigator.onLine):Promise<
     }
     try {
       const claims=await cachedLicenseReceipt(uid,tenantId);
+      await verifyTrustedLicenseTime(uid);
       if(!current())return;
       const saved=JSON.parse(localStorage.getItem(`bankSetuLicenseReceipt:${uid}:${tenantId}`)||"null");
       if(saved?.receipt)await window.bankSetuDesktop?.licenseReceipt(saved.receipt);
       if(current())publish({...permission,...claims,canWrite:true,daysRemaining:claims.expiresAt?Math.max(0,Math.ceil((Date.parse(claims.expiresAt)-Date.now())/86400000)):null,warning:""});
     } catch {
-      if(current())publish({...permission,state:permission.plan==="demo"?"demo_expired":"unverified",canWrite:false,warning:"Connect to verify your license. Existing records and backup remain accessible."});
+      if(current())publish({...permission,state:permission.plan==="demo"?"demo_expired":"unverified",canWrite:false,warning:offlineExpiredMessage});
     }
   })();
   request={key,task};try{await task;}finally{if(request?.task===task)request=undefined;}
@@ -97,7 +103,10 @@ export async function requireLicensedWrite():Promise<void> {
   const uid=auth.currentUser?.uid,tenantId=sessionStorage.getItem("bankSetuTenantId")||"";
   if(!uid||permission.uid!==uid||permission.tenantId!==tenantId)throw Error("Verify your account and license before changing customer data.");
   const epoch=generation;
-  await refreshLicensePermission(navigator.onLine);
+  // A still-valid signed receipt is re-verified locally on every protected
+  // action. The server is contacted at startup, reconnect, explicit license
+  // updates, or when the 24-hour authorization is due for renewal.
+  await refreshLicensePermission(permission.canWrite&&permission.validUntil>Date.now()?false:navigator.onLine);
   if(!permission.canWrite||permission.validUntil<=Date.now())throw Error(blockedMessage);
   if(sessionStorage.getItem("bankSetuConnectionMode")==="demo")throw Error("Reconnect to your verified tenant workspace before changing data.");
   if(generation!==epoch||auth.currentUser?.uid!==uid||permission.tenantId!==tenantId)throw Error("The signed-in workspace changed.");

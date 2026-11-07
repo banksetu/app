@@ -1,5 +1,6 @@
 import { isAndroid, shareAndroidBackup } from "../platform/android/runtime";
 import { notifySystem } from "../platform/systemNotifications";
+import { signalCustomerSync } from "../platform/androidPush";
 import { makeBackup, parseBackup, mergeBackup } from "./backup";
 import { auth } from "../firebase";
 import { requireLicensedWrite } from "./licenseAccess";
@@ -459,6 +460,7 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
   if (uploadQueue.length) actionNotice("progress","Sync in progress","Uploading pending changes to Google Sheet and Drive.");
   const deferredRecords = new Set<string>();
   let unsupportedAfsm=false;
+  let syncedCustomerEvent:{eventId:string;action:string}|undefined;
   for (const op of uploadQueue) {
     if(op.action==="markAfsmSent" && (afsmDeferred()||unsupportedAfsm))continue;
     if (deferredRecords.has(op.recordId)) continue;
@@ -490,8 +492,12 @@ async function runSync(refresh: boolean, signal?:AbortSignal) {
       if (value.deleted) { const deletedRecord=state.records.find(item=>item.recordId===op.recordId); if (deletedRecord) deletedRecord.deleted=true; }
       if (saved) { if (!value.deleted) {saved.rowNumber=Number(value.rowNumber);saved.revision=String(value.revision);}saved.pending=state.operations.some(item=>item.recordId===op.recordId);if (!saved.pending && value.customer) saved.customer={...mergeUploadedPhoto(value.customer,saved.customer,op.customer),pdfDataUrl:saved.customer.pdfDataUrl || value.customer.pdfDataUrl}; }
     });
-    if (value.success) actionNotice("success",op.action === "deleteCustomer" ? "Customer deleted" : "Cloud synced",op.action === "deleteCustomer" ? "Google Sheet row and Drive files confirmed deleted." : "Customer change synced to Google Sheet and Drive.");
+    if (value.success) {
+      actionNotice("success",op.action === "deleteCustomer" ? "Customer deleted" : "Cloud synced",op.action === "deleteCustomer" ? "Google Sheet row and Drive files confirmed deleted." : "Customer change synced to Google Sheet and Drive.");
+      if(!syncedCustomerEvent&&["saveCustomer","updateCustomer","deleteCustomer"].includes(op.action))syncedCustomerEvent={eventId:op.operationId,action:op.action};
+    }
   }
+  if(syncedCustomerEvent)void signalCustomerSync(syncedCustomerEvent.eventId,syncedCustomerEvent.action);
   // At most four 250-row pages per sync; resume the cursor on the next tick.
   const started=Date.now();
   for(let page=0;shouldPull && page<4 && Date.now()-started<20000;page++) {

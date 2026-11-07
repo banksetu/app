@@ -31,6 +31,16 @@ test('real Worker routes send/read photos and audio in both directions, with ide
   assert.equal([...f.store.keys()].filter(key=>key.includes('/messages/')).length,3);
  }finally{f.restore();}
 });
+test('support messages send data-only push to the other side, including a Master device without a tenant',async()=>{
+ const f=fixture();try{
+  f.put('pushDevices/11111111-1111-4111-8111-111111111111',{uid:'master',tenantId:'master:master',token:'M'.repeat(100),scopedData:true,isMaster:true,expiresAt:new Date(Date.now()+86400000).toISOString()});
+  f.put('pushDevices/22222222-2222-4222-8222-222222222222',{uid:'client-a',tenantId:'tenant-a',token:'C'.repeat(100),scopedData:true,isMaster:false,expiresAt:new Date(Date.now()+86400000).toISOString()});
+  const client=await f.call('client-a','/support-message-send',{text:'Client needs help',clientUid:'client-a',operationId:crypto.randomUUID()});assert.equal(client.status,200,await client.clone().text());
+  assert.equal(f.sent.length,1);assert.equal(f.sent[0].data.uid,'master');assert.equal(f.sent[0].data.page,'support');assert.equal(f.sent[0].data.category,'support');assert.equal(f.sent[0].notification,undefined);
+  const master=await f.call('master','/support-message-send',{text:'Support replied',clientUid:'client-a',operationId:crypto.randomUUID()});assert.equal(master.status,200,await master.clone().text());
+  assert.equal(f.sent.length,2);assert.equal(f.sent[1].data.uid,'client-a');assert.equal(f.sent[1].data.tenantId,'tenant-a');
+ }finally{f.restore();}
+});
 test('exact 24-hour expiry denies reads, cron deletes media bytes and keeps message text',async()=>{
  const f=fixture(),clock=Date.now;try{
   const response=await f.call('master','/support-media-send',upload());const saved=await response.json();
@@ -98,20 +108,14 @@ test('video, invalid MIME bytes and oversize uploads are rejected; cleanup failu
  }finally{f.restore();}
 });
 
-test('sender deletion removes all bytes atomically, preserves text and timestamp, and cannot be undone by upload retry',async()=>{
+test('individual media deletion is unavailable to clients and complete chat deletion is Master-only',async()=>{
  const f=fixture();try{
-  for(const [sender,receiver,type]of [['master','client-a','photo'],['client-a','master','audio']]){
-   const body=upload(type),saved=await(await f.call(sender,'/support-media-send',body)).json();
-   const path='supportConversations/client-a/messages/'+saved.messageId,before=f.values(f.store.get(path));
-   assert.equal((await f.call(receiver,'/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,403);
-   assert.equal((await f.call('client-b','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,403);
-   assert.equal((await f.call(sender,'/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,200);
-   assert.equal([...f.store.keys()].some(key=>key.startsWith('supportMedia/'+saved.messageId)),false);
-   const after=f.values(f.store.get(path));assert.equal(after.text,before.text);assert.equal(after.createdAt,before.createdAt);assert(after.attachment.deletedAt);
-   assert.equal((await f.call(receiver,'/support-media-read',{id:saved.messageId})).status,410);
-   assert.equal((await f.call(sender,'/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,200);
-   assert.equal((await f.call(sender,'/support-media-send',body)).status,410);
-  }
+  const first=await(await f.call('client-a','/support-media-send',upload('photo'))).json();
+  await f.call('master','/support-message-send',{clientUid:'client-a',operationId:crypto.randomUUID(),text:'Written reply'});
+  assert.equal((await f.call('client-a','/support-media-delete',{clientUid:'client-a',messageId:first.messageId})).status,404);
+  assert.equal((await f.call('client-a','/support-conversation-delete',{clientUid:'client-a'})).status,403);
+  const deleted=await f.call('master','/support-conversation-delete',{clientUid:'client-a'});assert.equal(deleted.status,200,await deleted.clone().text());
+  assert.equal([...f.store.keys()].some(key=>key.startsWith('supportMedia/')||key.startsWith('supportConversations/client-a')),false);
  }finally{f.restore();}
 });
 test('replies keep references after file expiry/deletion, reject foreign references and preserve original media expiry',async()=>{
@@ -123,19 +127,8 @@ test('replies keep references after file expiry/deletion, reject foreign referen
   const mediaReply=await f.call('master','/support-media-send',{...upload('audio'),replyToMessageId:saved.messageId});assert.equal(mediaReply.status,200);
   assert.equal(f.values(f.store.get('supportMedia/'+saved.messageId)).expiresAt,saved.expiresAt);
   assert.equal((await f.call('client-b','/support-media-reply',{...replyBody,clientUid:'client-b',operationId:crypto.randomUUID()})).status,404);
-  await f.call('client-a','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId});
+  await supportMedia.purgeExpired(f.env,Date.parse(saved.expiresAt));
   assert.equal(f.values(f.store.get('supportConversations/client-a/messages/'+replied.messageId)).replyTo.messageId,saved.messageId);
   assert.equal((await f.call('master','/support-media-reply',{...replyBody,operationId:crypto.randomUUID()})).status,200);
- }finally{f.restore();}
-});
-test('failed or racing manual deletion never reports success or partially deletes a file',async()=>{
- const f=fixture();try{
-  const saved=await(await f.call('master','/support-media-send',upload())).json();
-  f.beforeNextCommit(()=>{throw Error('temporary storage failure');});
-  assert.equal((await f.call('master','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,500);
-  assert(f.store.has('supportMedia/'+saved.messageId));assert(!f.values(f.store.get('supportConversations/client-a/messages/'+saved.messageId)).attachment.deletedAt);
-  f.beforeNextCommit(()=>f.put('tenants/tenant-a',{status:'offboarding',ownerUid:'client-a'}));
-  assert.equal((await f.call('master','/support-media-delete',{clientUid:'client-a',messageId:saved.messageId})).status,409);
-  assert(f.store.has('supportMedia/'+saved.messageId));
  }finally{f.restore();}
 });

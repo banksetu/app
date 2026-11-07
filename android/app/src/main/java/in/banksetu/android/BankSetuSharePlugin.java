@@ -28,6 +28,9 @@ public class BankSetuSharePlugin extends Plugin {
                 call.reject("Customer preview image is too large.");
                 return;
             }
+            byte[] png = new byte[]{(byte)137,80,78,71,13,10,26,10};
+            if (bytes.length < png.length) { call.reject("Customer preview image is invalid."); return; }
+            for (int index=0;index<png.length;index++) if (bytes[index] != png[index]) { call.reject("Customer preview image is invalid."); return; }
             File image = new File(getContext().getCacheDir(), "BankSetu-preview-" + UUID.randomUUID() + ".png");
             try (FileOutputStream output = new FileOutputStream(image)) { output.write(bytes); }
             Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", image);

@@ -15,23 +15,42 @@ function loadTs(path) {
 const {restoreWorkspaceBankSettings}=loadTs("../src/workspaceBankSettings.ts");
 const {bankDocumentMode,templateMatchesBank,bankKey}=loadTs("../src/bankDocumentPolicy.ts");
 test("fresh sessions restore cloud bank fields and logo without a browser cache",()=>{
-  const saved={bankInfo:{bankName:"Client A",passbookBank:"Union Bank of India",branchName:"Branch A",cspCode:"123",operatorName:"Operator",address:"Address"},bankLogo:"data:image/png;base64,AAAA"};
+  const saved={bankInfo:{bankName:"Client A",passbookBank:"Central Bank of India",branchName:"Branch A",branchState:"Assam",branchPhone:"268644",gstin:"18AAACC2498P3Z0",ckyc:"CKYC-001",cspCode:"123",operatorName:"Operator",address:"Address"},bankLogo:"data:image/png;base64,AAAA"};
   const sessionOne=restoreWorkspaceBankSettings(saved);
   const sessionTwo=restoreWorkspaceBankSettings(JSON.parse(JSON.stringify(saved)));
   assert.deepEqual(sessionTwo,sessionOne);
   assert.equal(restoreWorkspaceBankSettings({...saved,passbookBank:""}).bankInfo.passbookBank,"");
   assert.equal(restoreWorkspaceBankSettings({}).bankLogo,"");
   assert.equal(restoreWorkspaceBankSettings({}).bankInfo.passbookBank,"");
+  assert.equal(restoreWorkspaceBankSettings({bankInfo:{passbookBank:"Punjab Bank of India"}}).bankInfo.passbookBank,"Punjab National Bank");
 });
 test("all document types use bank-specific policy, never another bank's sample",()=>{
   for(const type of ["passbook","quickPassbook","accountOpening"]){
     assert.equal(bankDocumentMode(""),"select",type);
     for(const bank of ["Assam Gramin Bank","Assam Gramin Vikas Bank","AGVB"])assert.equal(bankDocumentMode(bank),"builtin",type);
     assert.equal(bankDocumentMode("Union Bank of India"),"builtin",type);
+    assert.equal(bankDocumentMode("Punjab National Bank"),"builtin",type);
+    assert.equal(bankDocumentMode("Punjab Bank of India"),"builtin",type);
+    assert.equal(bankDocumentMode("Central Bank of India"),"builtin",type);
     assert.equal(templateMatchesBank({bankKey:bankKey("Union Bank of India")},"Union Bank of India"),true);
     assert.equal(templateMatchesBank({bankKey:bankKey("State Bank of India")},"Union Bank of India"),false);
     assert.equal(templateMatchesBank({},"Union Bank of India"),false);
   }
+});
+test("Bank Information lists Central Bank and keeps its account-opening sample separate",()=>{
+  const dashboard=fs.readFileSync(new URL("../src/Dashboard.tsx",import.meta.url),"utf8");
+  const formats=fs.readFileSync(new URL("../src/BankFormats.tsx",import.meta.url),"utf8");
+  assert(dashboard.includes('"Central Bank of India"'));
+  for(const field of ['branchState','branchPhone','gstin','ckyc']) assert(dashboard.includes(field),field);
+  assert(formats.includes('Please upload your Account Opening PDF sample.'));
+});
+test("Bank Information lists Punjab National Bank and routes it to the built-in PNB formats",()=>{
+  const dashboard=fs.readFileSync(new URL("../src/Dashboard.tsx",import.meta.url),"utf8");
+  const formats=fs.readFileSync(new URL("../src/BankFormats.tsx",import.meta.url),"utf8");
+  assert(dashboard.includes('"Punjab National Bank"'));
+  assert(!dashboard.includes('"Punjab Bank of India"'));
+  assert(formats.includes('isPnbBank(bankName)'));
+  assert(formats.includes('Punjab National Bank formats are ready'));
 });
 const encode=value=>typeof value==="string"?{stringValue:value}:typeof value==="number"?{integerValue:String(value)}:typeof value==="boolean"?{booleanValue:value}:value===null?{nullValue:null}:{mapValue:{fields:encodeFields(value)}};
 const encodeFields=obj=>Object.fromEntries(Object.entries(obj).map(([key,value])=>[key,encode(value)]));
