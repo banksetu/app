@@ -9,8 +9,9 @@ import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerAnalytics } from "./core/dashboardAnalytics";
+import { currentMonthOpeningCount } from "./core/accountOpeningReport";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -61,6 +62,7 @@ const SelectedBankDocument = lazy(() => import("./SelectedBankDocument"));
 const Customers = lazy(() => import("./Customers"));
 const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
 const AllCustomerData = lazy(() => import("./AllCustomerData"));
+const DashboardAccountOpeningReport = lazy(() => import("./DashboardAccountOpeningReport"));
 const Reports = lazy(() => import("./Reports"));
 
 
@@ -3101,14 +3103,30 @@ function DashboardHome({
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
+  const [openingReportOpen,setOpeningReportOpen]=useState(false);
+  const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
   useEffect(() => {
     const refreshDashboardAfterWorkspaceReady = () => {
+      // Do not display previous tenant's cached account-opening results while
+      // the newly verified workspace is loading its own scoped customer list.
+      setAnalyticsRows(null);
+      setStatsLoading(true);
+      setStatsError("");
+      statsLoadedOnce.current=false;
+      setOpeningReportOpen(false);
+      setStatusPanel(null);
+      setWorkspaceVersion((version) => version + 1);
+    };
+    const refreshDashboardAfterSync = () => {
       setWorkspaceVersion((version) => version + 1);
     };
     window.addEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
-    window.addEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);
-    return () => {window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);window.removeEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);};
+    window.addEventListener("banksetu-sync-change", refreshDashboardAfterSync);
+    return () => {
+      window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+      window.removeEventListener("banksetu-sync-change", refreshDashboardAfterSync);
+    };
   }, []);
 
   useEffect(() => {
@@ -3462,11 +3480,11 @@ function DashboardHome({
 
     [
 
-      "⏸",
+      "📅",
 
-      "Inactive Accounts",
+      "This Month Account Openings",
 
-      dashboardStats.inactiveAccounts,
+      monthOpenings,
 
     ],
 
@@ -3512,7 +3530,7 @@ function DashboardHome({
 
             className="dashboard-stat-card"
             aria-label={`Open ${title}`}
-            onClick={() => index === 0 ? openPage("all-customer-data") : setStatusPanel(index === 1 ? "kyc" : index === 2 ? "passbook" : "inactive")}
+            onClick={() => index === 0 ? openPage("all-customer-data") : index===3 ? setOpeningReportOpen(true) : setStatusPanel(index === 1 ? "kyc" : "passbook")}
 
           style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
@@ -3536,7 +3554,7 @@ function DashboardHome({
 
             <div className="dashboard-stat-value" style={styles.statValue}>
 
-              {statsLoading ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
+              {(statsLoading || (index===3&&analyticsRows===null)) ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
@@ -3552,6 +3570,10 @@ function DashboardHome({
 
       </section>
       {statusPanel && <DashboardStatusPanel type={statusPanel} accountRole={accountRole} onClose={() => setStatusPanel(null)} />}
+      {openingReportOpen&&<Suspense fallback={<p role="status">Opening Account Opening Report…</p>}>
+        <DashboardAccountOpeningReport customers={analyticsRows??[]} loading={statsLoading} error={statsError}
+          onClose={()=>setOpeningReportOpen(false)}/>
+      </Suspense>}
 
       <section className="dashboard-quick-panel" style={styles.panel}>
 
