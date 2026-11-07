@@ -2962,12 +2962,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
 \========================= */
 
-type StatusPanelType = "kyc" | "passbook" | "inactive";
+type StatusPanelType = "kyc" | "passbook";
 type StatusCustomer = Record<string, unknown> & {rowNumber?: number; recordId?: string};
 const statusPanelConfig = {
   kyc: {title:"KYC Pending Customers", field:"status", current:"Pending", next:"Active"},
   passbook: {title:"Passbook Pending Customers", field:"passbookStatus", current:"Pending", next:"Printed"},
-  inactive: {title:"Inactive Account Customers", field:"status", current:"Inactive", next:"Active"},
 } as const;
 
 function DashboardStatusPanel({type, accountRole, onClose}: {type:StatusPanelType;accountRole:string;onClose:()=>void}) {
@@ -3078,8 +3077,6 @@ function DashboardHome({
 
     passbookPending: number;
 
-    inactiveAccounts: number;
-
   };
 
   const [dashboardStats, setDashboardStats] =
@@ -3092,7 +3089,6 @@ function DashboardHome({
 
       passbookPending: 0,
 
-      inactiveAccounts: 0,
 
     });
   const [analyticsRows, setAnalyticsRows] = useState<Record<string, unknown>[] | null>(null);
@@ -3107,7 +3103,7 @@ function DashboardHome({
   const statsLoadedOnce = useRef(false);
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
-  const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
+  const [statusPanel, setStatusPanel] = useState<StatusPanelType | null>(null);
   const [openingReportOpen,setOpeningReportOpen]=useState(false);
   const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
@@ -3167,7 +3163,6 @@ function DashboardHome({
                 totalCustomers: records.length,
                 kycPending: records.filter((customer) => text(field(customer, ["status"])) === "pending").length,
                 passbookPending: records.filter((customer) => ["", "pending"].includes(text(field(customer, ["passbookstatus"])))).length,
-                inactiveAccounts: records.filter((customer) => text(field(customer, ["status"])) === "inactive").length,
               };
               if (!cancelled) {
                 setDashboardStats(localStats);
@@ -3398,7 +3393,6 @@ function DashboardHome({
             totalCustomers: customerIds.size,
             kycPending:active.filter(customer=>status(customer,"status")==="pending").length,
             passbookPending:active.filter(customer=>["","pending"].includes(status(customer,"passbookStatus"))).length,
-            inactiveAccounts:active.filter(customer=>status(customer,"status")==="inactive").length,
 
           });
           statsLoadedOnce.current=true;
@@ -3678,7 +3672,10 @@ function DashboardHome({
 
       </section>
 
-      <DashboardAnalytics rows={analyticsRows} stats={dashboardStats} loading={statsLoading} />
+      <DashboardAnalytics rows={analyticsRows} stats={dashboardStats} monthOpenings={monthOpenings}
+        loading={statsLoading} onKycClick={()=>setStatusPanel("kyc")}
+        onPassbookClick={()=>setStatusPanel("passbook")}
+        onMonthOpeningsClick={()=>setOpeningReportOpen(true)} />
 
     </>
 
@@ -3686,37 +3683,49 @@ function DashboardHome({
 
 }
 
-function DashboardAnalytics({ rows, stats, loading }: { rows: Record<string, unknown>[] | null; stats: { kycPending:number; passbookPending:number; inactiveAccounts:number }; loading:boolean }) {
+function DashboardAnalytics({rows,stats,monthOpenings,loading,onKycClick,onPassbookClick,onMonthOpeningsClick}:{
+  rows:Record<string,unknown>[] | null;
+  stats:{kycPending:number;passbookPending:number};monthOpenings:number;loading:boolean;
+  onKycClick:()=>void;onPassbookClick:()=>void;onMonthOpeningsClick:()=>void;
+}) {
   const analytics = rows === null ? null : customerAnalytics(rows);
   const months = analytics?.months || [];
   const maxEntries = Math.max(1, ...months.map(month => month.entries));
   const maxGrowth = Math.max(1, ...months.map(month => month.growth));
   const statuses = [
-    { title:'KYC Pending', count:stats.kycPending, color:'#38bdf8' },
-    { title:'Passbook Pending', count:stats.passbookPending, color:'#a78bfa' },
-    { title:'Inactive Accounts', count:stats.inactiveAccounts, color:'#fbbf24' },
+    { title:'KYC Pending', count:stats.kycPending, color:'#38bdf8', onClick:onKycClick },
+    { title:'Passbook Pending', count:stats.passbookPending, color:'#a78bfa', onClick:onPassbookClick },
+    { title:'This Month Account Openings', count:monthOpenings, color:'#fbbf24', onClick:onMonthOpeningsClick },
   ];
+  const maxStatus=Math.max(1,...statuses.map(item=>item.count));
   return <section className="dashboard-analytics" aria-label="Customer analytics">
     <h2>Analytics</h2>
     <div className="dashboard-analytics-grid">
       <article className="dashboard-analytics-card"><h3>Customer Growth</h3>
         {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable. No historical totals estimated.</p> : <>
           <p>Currently active customers with recorded entry dates · {analytics.known} known{analytics.undated ? ` · ${analytics.undated} undated excluded` : ''}</p>
-          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.growth}`).join(', ')}>
-            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar growth" style={{height:`${Math.max(2, m.growth / maxGrowth * 100)}%`}} title={`${m.key}: ${m.growth}`} /><small>{m.label}</small></div>)}
+          <div className="dashboard-analytics-bars" role="group" aria-label="Customer growth by month">
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key} tabIndex={0}
+              aria-label={`${m.key}: ${m.growth} total customers`} data-tooltip={`${m.key}: ${m.growth} customers`}><span className="dashboard-analytics-bar growth" style={{height:`${Math.max(2, m.growth / maxGrowth * 100)}%`}} /><small>{m.label}</small></div>)}
           </div><small>Deleted customers and records without entry dates are not included in historical totals.</small>
         </>}
       </article>
       <article className="dashboard-analytics-card"><h3>Monthly Customer Entries</h3>
         {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable.</p> : <>
           <p>This month: {analytics.thisMonth} · Monthly average (12 months): {analytics.monthlyAverage.toFixed(2)}</p>
-          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.entries}`).join(', ')}>
-            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} title={`${m.key}: ${m.entries}`} /><small>{m.label}</small></div>)}
+          <div className="dashboard-analytics-bars" role="group" aria-label="Monthly customer entries">
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key} tabIndex={0}
+              aria-label={`${m.key}: ${m.entries} customer entries`} data-tooltip={`${m.key}: ${m.entries} new customers`}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} /><small>{m.label}</small></div>)}
           </div><small>{analytics.undated} customer(s) without an entry date excluded.</small>
         </>}
       </article>
-      <article className="dashboard-analytics-card"><h3>Customer Status Analytics</h3><p>Current dashboard counts · categories may overlap</p>
-        {statuses.map(item => <div className="dashboard-analytics-status" key={item.title}><span>{item.title}</span><strong>{loading ? '…' : item.count}</strong><div className="dashboard-analytics-track"><span style={{width:`${stats.kycPending + stats.passbookPending + stats.inactiveAccounts ? item.count / Math.max(1, ...statuses.map(s=>s.count)) * 100 : 0}%`,background:item.color}} /></div></div>)}
+      <article className="dashboard-analytics-card"><h3>Customer Status Analytics</h3><p>Current dashboard counts · categories may overlap · click a status to view its list</p>
+        {statuses.map(item => <button type="button" className="dashboard-analytics-status" key={item.title}
+          disabled={loading||rows===null} aria-label={`Open ${item.title}: ${item.count} customers`}
+          onClick={item.onClick}>
+          <span>{item.title}</span><strong>{loading||rows===null ? "…" : item.count}</strong>
+          <span className="dashboard-analytics-track" aria-hidden="true"><span style={{width:`${item.count / maxStatus * 100}%`,background:item.color}} /></span>
+        </button>)}
       </article>
     </div>
   </section>;
