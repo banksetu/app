@@ -28,6 +28,7 @@ import { validatePersistedLayoutDraft } from "./layoutDraftValidation";
 import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import LayoutSetupWizard, {type LayoutSetup} from "./LayoutSetupWizard";
 import PassbookPageSetup from "./PassbookPageSetup";
+import MasterTemplateManager from "./MasterTemplateManager";
 import {defaultPageSetup,pageSetupFor,geometryErrors,presetGeometry,withFoldDirection,type PageSetup,type FoldAxis} from "./layoutPageSetup.ts";
 import {importWordDocx} from "./layoutWordDocumentImport";
 import {importLegacyWordDoc} from "./layoutLegacyWordImport";
@@ -403,7 +404,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       setNotice("Submission blocked: workspace identity changed. Reopen this tenant's editor.");return;
     }
     if (!canSubmit || busy || !bankName.trim()) return;
-    if(!Object.keys(bankValues).length){setNotice("Configure this bank in Bank Information before submitting a Master Admin template.");return;}
+    // Verified server-side Bank Information remains the source of truth. A
+    // missing optional local bankValues snapshot must not block submission.
     if(scanFrame && scanSuggestion){
       setNotice("Review and apply or explicitly skip the source PDF crop before submitting. An A4 scanner sheet is not a physical passbook.");
       return;
@@ -411,20 +413,19 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     const report=auditPassbookTemplate(draft);
     setAudit(report);
     if (report.some(item=>item.severity==="error")) {setNotice("Fix all audit errors before submitting a template for Master approval.");return;}
-    if(!physicalChecked || !labelChecked) {setNotice("Confirm physical dimensions and the preprinted label/PR2 separation before submission.");return;}
     if(draft.sourceArtworkStatus==="needsReview"){
       setNotice("Review unsupported PDF artwork against the original before submitting this shared template.");return;
     }
-    if (!await confirmAction("Submit a sanitized draft (no customer values/photos) to Master Admin for manual review?")) return;
+    if (!await confirmAction("Submit this "+(setup.output==="dotmatrix"?"PR2 Direct Passbook":"Quick Passbook")+" draft for Master Admin review? No customer names, account numbers or photos will be shared. Real printer calibration is required later, before live printing.")) return;
     setBusy(true);
     try {
       const response=await callBankSetuWorker<{success:boolean;id:string}>("/submit-layout-template",{
         template:draft,output:mode==="accountOpening"?"quick":setup.output,
-        slot:mode==="accountOpening"?1:selectedLayoutSlot,autoActivateOnApproval:true,
+        slot:mode==="accountOpening"?1:selectedLayoutSlot,autoActivateOnApproval:false,
         confirmedPhysicalSample:physicalChecked,confirmedPrintedLabels:labelChecked,
         confirmedPrinterCalibration:hardwareChecked
       });
-      setNotice("Generic layout submitted for Master Admin review: "+response.id+". Nothing was published or activated.");
+      setNotice("Submitted for Master review: "+response.id+". Printer setup is required only after approval, before live activation.");
     } catch(error) {
       setNotice("Submission failed: "+(error instanceof Error?error.message:"Review the template's coordinates and labels."));
     } finally { setBusy(false); }
@@ -2747,15 +2748,22 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
  */
 export default function CustomizeLayoutStudio(props:StudioProps) {
   const [setup,setSetup]=useState<LayoutSetup|null>(null);
+  const [masterPanel,setMasterPanel]=useState(()=>["master_owner","admin"].includes(props.accountRole||""));
   const previewOnly=props.previewOnly===true&&codespacesLayoutPreviewAvailable();
+  const masterAccount=!previewOnly&&["master_owner","admin"].includes(props.accountRole||"");
   if(!windowsLayoutEngineAvailable()&&!previewOnly)return <section role="alert" className="ls-windows-only">
     <h2>Windows EXE only</h2>
     <p>Customize Layout and the advanced PDF-to-passbook engine are not available on Android or web. Existing bank/customer data and standard print features are unchanged.</p>
   </section>;
-  if(!setup)return <LayoutSetupWizard currentBank={props.bankName} banks={props.bankOptions??[props.bankName]}
-    accountOpening={props.mode==="accountOpening"} onOpen={setSetup}/>;
+  if(masterAccount&&masterPanel)return <MasterTemplateManager onBack={()=>setMasterPanel(false)}/>;
+  if(!setup)return <div className="ls-master-entry">
+    {masterAccount&&<button type="button" className="ls-master-entry-button"
+      onClick={()=>setMasterPanel(true)}>Open Master Template Management — All Banks</button>}
+    <LayoutSetupWizard currentBank={props.bankName} banks={props.bankOptions??[props.bankName]}
+      accountOpening={props.mode==="accountOpening"} onOpen={setSetup}/>
+  </div>;
   const sameBank=setup.bankName.trim().toLowerCase()===props.bankName.trim().toLowerCase();
   return <CustomizeLayoutStudioCore key={setup.bankName+":"+setup.output+":"+setup.method}
     {...props} previewOnly={previewOnly} bankName={setup.bankName} bankValues={sameBank?props.bankValues:{}} setup={setup}
-    onBackToSetup={()=>setSetup(null)}/>;
+    onBackToSetup={()=>{setSetup(null);if(masterAccount)setMasterPanel(true);}}/>;
 }
