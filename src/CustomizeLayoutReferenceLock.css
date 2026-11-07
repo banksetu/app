@@ -354,3 +354,55 @@ html[data-appearance="dark"] .ls-start-wizard,
  .layout-studio .ls-word-command-family {min-width:100px;padding:4px 6px}
  .layout-studio .ls-word-command-items {max-height:90px}
 }
+
+/* Keyboard-accessible tool finder (Word/Docs-like), queries only local supported commands. */
+.layout-studio > .ls-word-suite {position:relative;z-index:15}
+.layout-studio .ls-ribbon-tool-finder {
+  position:absolute;right:13px;top:3px;z-index:40;
+  display:flex;align-items:center;gap:5px;
+  padding:2px 4px;border-radius:5px;background:#e8f2ff;
+  box-shadow:0 0 0 1px #b2cbe7
+}
+.layout-studio .ls-ribbon-tool-finder label {
+  font-size:10px;font-weight:700;color:#1c4b7b;white-space:nowrap
+}
+.layout-studio .ls-ribbon-tool-finder input[type="search"] {
+  width:154px;max-width:25vw;min-width:90px;padding:6px;
+  border-radius:4px;border:1px solid #9bbad9;
+  font:11px "Segoe UI",Arial,sans-serif;color:#193d65;background:#fff
+}
+.layout-studio .ls-ribbon-tool-finder input[type="search"]:focus-visible {
+  outline:2px solid #237fcf;outline-offset:1px
+}
+.layout-studio .ls-ribbon-tool-results {
+  position:absolute;right:0;top:calc(100% + 4px);width:min(340px,75vw);
+  max-height:min(420px,65vh);overflow:auto;display:grid;gap:0;
+  border:1px solid #9dbbd7;border-radius:7px;background:#fff;color:#142c46;
+  box-shadow:0 12px 28px #11345245
+}
+.layout-studio .ls-ribbon-tool-results-head {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:5px 9px;border-bottom:1px solid #e1eaf4;background:#f0f6ff
+}
+.layout-studio .ls-ribbon-tool-results-head strong {font-size:11px}
+.layout-studio .ls-ribbon-tool-results-head button {min-height:25px;padding:2px 7px}
+.layout-studio .ls-ribbon-tool-results > button {
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  text-align:left;min-height:34px;padding:7px 11px;background:#fff;
+  color:#1d466b;border:0;border-bottom:1px solid #eef3f9;border-radius:0;font-size:11px
+}
+.layout-studio .ls-ribbon-tool-results > button:hover,
+.layout-studio .ls-ribbon-tool-results > button:focus-visible {
+  background:#e9f3ff;outline-color:#2a78c4
+}
+.layout-studio .ls-ribbon-tool-results > button small {
+  text-transform:capitalize;color:#6a8199;font-size:10px
+}
+.layout-studio .ls-ribbon-tool-results > p {padding:8px 11px;font-size:11px}
+@media(max-width:1100px){
+ .layout-studio .ls-ribbon-tool-finder {
+   position:relative;top:auto;right:auto;margin:2px 2px 3px 0;
+   width:fit-content;max-width:98%
+ }
+ .layout-studio .ls-ribbon-tool-finder input[type="search"] {max-width:45vw}
+}
