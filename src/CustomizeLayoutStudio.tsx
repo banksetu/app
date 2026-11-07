@@ -13,6 +13,7 @@ import { splitPreprintedAndDynamic } from "./layoutLayerRepair";
 import {startBlankLayout,alignElementToPage} from "./layoutBlankDocument.ts";
 import {compressedTextStyle,typographyCompression} from "./layoutTypography.ts";
 import {wordTransform,wordNudge,wordGroup,wordGroupIds,type WordAction} from "./layoutWordGeometry.ts";
+import {changeStaticTextCase,copyRibbonObjects,pasteRibbonObjects,type RibbonCase} from "./layoutRibbonEditing.ts";
 import {smartSnap,type SnapGuide} from "./layoutSmartGuides.ts";
 import {findEditableLabels,replaceEditableLabels} from "./layoutWordFindReplace.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
@@ -142,6 +143,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [showGrid, setShowGrid] = useState(false);
   const [showRulers,setShowRulers]=useState(true);
   const [styleClipboard,setStyleClipboard]=useState<Partial<LayoutPart>|null>(null);
+  const [objectClipboard,setObjectClipboard]=useState<LayoutPart[]>([]);
+  const [tableRows,setTableRows]=useState(2);
+  const [tableColumns,setTableColumns]=useState(3);
   const [snapGrid, setSnapGrid] = useState(false);
   const [smartGuidesEnabled,setSmartGuidesEnabled]=useState(false);
   const [activeGuides,setActiveGuides]=useState<SnapGuide[]>([]);
@@ -642,6 +646,79 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     const keys=new Set(liveWordIds);
     modify(current=>({...current,elements:current.elements.filter(p=>!keys.has(p.id))}));
     setSelectedId(null);setWordSelectedIds([]);
+  };
+  /** This clipboard is private to the active draft editor, never the OS clipboard. */
+  const copyWordSelection=()=>{
+    if(!selectedWordParts.length)return;
+    setObjectClipboard(copyRibbonObjects(draft.elements,liveWordIds));
+    setNotice("Copied "+selectedWordParts.length+" layout object(s) in this editor. No real customer preview data was copied.");
+  };
+  const cutWordSelection=()=>{
+    if(!selectedWordParts.length||selectedWordParts.some(p=>p.locked)){
+      setNotice("Locked layout objects cannot be cut.");return;
+    }
+    setObjectClipboard(copyRibbonObjects(draft.elements,liveWordIds));
+    deleteWordSelection();
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setNotice("Cut "+selectedWordParts.length+" object(s) to the private in-editor clipboard. Undo restores them.");
+  };
+  const pasteWordSelection=()=>{
+    try{
+      const result=pasteRibbonObjects(draft.elements,objectClipboard,
+        {widthMm:draft.widthMm,heightMm:draft.heightMm,page:selectedPage},randomId);
+      modify(current=>({...current,elements:result.parts}));
+      const ids=result.inserted.map(p=>p.id);
+      setSelectedId(ids[0]||null);setWordSelectedIds(ids);
+      setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+      setNotice("Pasted "+ids.length+" editable object(s). Check their positions before printing.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Paste could not fit this passbook.");}
+  };
+  const changeTextCase=(style:RibbonCase)=>{
+    const result=changeStaticTextCase(draft.elements,liveWordIds,style);
+    if(!result.changed){setNotice("Select an unlocked static text label before changing letter case.");return;}
+    modify(current=>({...current,elements:result.parts}));
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice("Changed case of "+result.changed+" static text box(es). Dynamic customer fields were unchanged.");
+  };
+  const insertDocumentDecoration=(kind:"header"|"footer"|"watermark"|"border"|"pageNumber")=>{
+    if(draft.elements.length>=300){setNotice("The layout has reached its 300-object limit.");return;}
+    if((kind==="watermark"||kind==="border")&&setup.output==="dotmatrix"){
+      setNotice("Decorative backgrounds are Quick Passbook-only, never Direct PR2.");return;
+    }
+    const margin=pageSetupFor(draft);
+    const x=Math.max(2,margin.marginLeftMm+2);
+    const right=Math.max(2,margin.marginRightMm+2);
+    const availableWidth=Math.max(10,draft.widthMm-x-right);
+    const yTop=Math.max(2,margin.marginTopMm+2);
+    const yBottom=Math.max(2,draft.heightMm-margin.marginBottomMm-10);
+    const label=kind==="header"?"Editable page header":
+      kind==="footer"?"Editable page footer":
+      kind==="pageNumber"?"Page "+selectedPage:
+      kind==="watermark"?"DRAFT":"Page border";
+    const part=addPart(kind==="border"?"rectangle":"text","static",label,"",x,yTop);
+    part.page=selectedPage;part.z=Math.max(0,...draft.elements.map(p=>p.z))+1;
+    part.width=availableWidth;part.height=8;part.quick=true;
+    part.dotMatrix=setup.output==="dotmatrix";
+    if(kind==="footer"||kind==="pageNumber"){
+      part.y=yBottom;part.align=kind==="pageNumber"?"right":"center";
+    }
+    if(kind==="header"){part.align="center";part.bold=true;}
+    if(kind==="watermark"){
+      part.x=Math.max(x,Math.min(draft.widthMm-55,draft.widthMm/2-27));
+      part.y=Math.max(yTop,Math.min(draft.heightMm-16,draft.heightMm/2-8));
+      part.width=Math.min(75,draft.widthMm-part.x);
+      part.height=16;part.size=23;part.bold=true;part.color="#7d9ebc";
+      part.opacity=.25;part.rotation=-30;part.dotMatrix=false;
+    }
+    if(kind==="border"){
+      part.y=yTop;part.height=Math.max(10,draft.heightMm-yTop-margin.marginBottomMm-3);
+      part.background="transparent";part.borderColor="#3869a4";
+      part.borderWidth=.5;part.dotMatrix=false;
+    }
+    modify(current=>({...current,elements:[...current.elements,part]}));
+    setSelectedId(part.id);setWordSelectedIds([part.id]);
+    setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
+    setNotice("Inserted editable "+kind+" in draft. Check bank-specific preprinted paper and printer proof.");
   };
   const moveSelectedTo=(axis:"horizontal"|"vertical",side:"start"|"center"|"end")=>{
     if(!selected)return;
@@ -1595,6 +1672,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </label>
       </div>}
       {wordTab==="home"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Clipboard and paragraph tools"><span className="ls-ribbon-group-label">Clipboard · Paragraph · Editing</span>
+        <button type="button" disabled={!selectedWordParts.length} onClick={copyWordSelection}>Copy</button>
+        <button type="button" disabled={!selectedWordParts.length||selectedWordParts.some(p=>p.locked)} onClick={cutWordSelection}>Cut</button>
+        <button type="button" disabled={!objectClipboard.length} onClick={pasteWordSelection}>Paste</button>
+        <button type="button" disabled={!selectedWordParts.length||selectedWordParts.some(p=>p.locked)} onClick={deleteWordSelection}>Delete</button>
         <button type="button" onClick={undo} disabled={!undoRef.current.length}>Undo</button>
         <button type="button" onClick={redo} disabled={!redoRef.current.length}>Redo</button>
         <button type="button" disabled={!selected} onClick={copySelectedStyle}>Copy Format</button>
@@ -1602,8 +1683,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
-        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>{if(!selected)return;edit({label:selected.label.toLocaleUpperCase()});}}>UPPERCASE</button>
-        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>{if(!selected)return;edit({label:selected.label.toLocaleLowerCase()});}}>lowercase</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("upper")}>UPPERCASE</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("lower")}>lowercase</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("title")}>Title Case</button>
+        <button type="button" disabled={!selected||selected.origin!=="static"||selected.locked} onClick={()=>changeTextCase("sentence")}>Sentence case</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{
           if(!selected)return;
           const newPart={...selected,id:randomId(),x:Math.min(draft.widthMm-selected.width,selected.x+3),
@@ -1633,6 +1716,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>append("field","customer","Address","address")}>Customer Address</button>
         <button type="button" onClick={()=>append("field","bank","IFSC","ifsc")}>Bank IFSC</button>
         <button type="button" onClick={()=>append("field","bank","Branch Address","branchAddress")}>Branch Address</button>
+        <button type="button" onClick={()=>append("field","bank","Bank Name","bankName")}>Bank Name</button>
+        <button type="button" onClick={()=>append("field","bank","Branch Phone","phone")}>Branch Phone</button>
+        <button type="button" onClick={()=>append("field","bank","MICR","micr")}>MICR</button>
+        <button type="button" onClick={()=>append("field","bank","GSTIN","gstin")}>GSTIN</button>
+        <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Customer CIF</button>
+        <button type="button" onClick={()=>append("field","customer","Nominee","nominee")}>Nominee</button>
+        <button type="button" onClick={()=>append("field","customer","Account Opening Date","accountOpeningDate")}>Opening Date</button>
         <button type="button" onClick={()=>{void loadPreviewCustomers();}}>Preview Merge with Customer</button>
         <small>Fields resolve only against the active tenant's customer and bank data.</small>
       </div>}
@@ -1658,6 +1748,12 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>append("line","static","Line")}>Line</button>
         <button type="button" onClick={()=>insertEditableTable(2,3)}>Insert 2×3 Table</button>
         <button type="button" onClick={()=>insertEditableTable(3,4)}>Insert 3×4 Table</button>
+        <label>Rows <input type="number" min={1} max={8} value={tableRows} onChange={e=>setTableRows(within(Number(e.target.value)||1,1,8))}/></label>
+        <label>Columns <input type="number" min={1} max={8} value={tableColumns} onChange={e=>setTableColumns(within(Number(e.target.value)||1,1,8))}/></label>
+        <button type="button" onClick={()=>insertEditableTable(tableRows,tableColumns)}>Insert Custom Table</button>
+        <button type="button" onClick={()=>insertDocumentDecoration("header")}>Header</button>
+        <button type="button" onClick={()=>insertDocumentDecoration("footer")}>Footer</button>
+        <button type="button" onClick={()=>insertDocumentDecoration("pageNumber")}>Page Number</button>
         <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
           onChange={event=>insertWordSymbol(event.target.value)}>
           <option value="">Insert symbol…</option>
@@ -1667,6 +1763,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </div>}
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
+        <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
+        <button type="button" onClick={()=>setZoom(.8)}>Page Fit 80%</button>
+        <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
         <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
         <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
         <button type="button" disabled={!referencePages[selectedPage-1]} aria-pressed={referenceVisible} onClick={()=>setReferenceVisible(v=>!v)}>Original Overlay</button>
@@ -1681,6 +1780,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         </select></label>
       </div>}
       {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors"><span className="ls-ribbon-group-label">Styles · Colors · Borders</span>
+        <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("watermark")}>Watermark (Quick)</button>
+        <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("border")}>Page Border (Quick)</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:14,bold:true,color:"#0b4c93"})}>Heading Style</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:11,bold:false,color:"#132a40"})}>Normal Style</button>
         {selected?<><label>Background <input type="color" value={selected.background==="transparent"?"#ffffff":selected.background} onChange={e=>edit({background:e.target.value})}/></label>
           <button type="button" disabled={selected.background==="transparent"} onClick={()=>edit({background:"transparent"})}>No Fill</button>
           <label>Border width <input type="number" min={0} max={10} step={0.5} value={selected.borderWidth} onChange={e=>{const n=Number(e.target.value);if(Number.isFinite(n))edit({borderWidth:within(n,0,10)});}}/></label>
@@ -1698,6 +1801,10 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(!selected)return;edit({rotation:(selected.rotation+90)%360});}}>Rotate 90°</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1)}>Bring Forward</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1)}>Send Backward</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1000)}>Bring to Front</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1000)}>Send to Back</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({rotation:(selected.rotation+270)%360});}}>Rotate Left 90°</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","center")}>Center on Page</button>
         <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
         <button type="button" disabled={!selectedWordParts.some(part=>part.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
         <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
@@ -1750,6 +1857,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
         <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
         <span>{draft.elements.filter(item=>item.needsReview).length} unreadable/OCR lines to correct</span>
+        <span>{draft.elements.filter(p=>p.kind==="text"&&p.origin==="static").reduce((n,p)=>n+(p.label.trim()?p.label.trim().split(/\\s+/u).length:0),0)} static-label words</span>
       </div>}
     {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
       <strong>Find / Replace static text</strong>
