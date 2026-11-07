@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 // Exercise ONLY the isolated SSA additions, with a fake tenant spreadsheet.
@@ -10,6 +12,7 @@ const sourceUrl=new URL("../apps-script/Code.gs",import.meta.url);
 const publicUrl=new URL("../public/client-bridge/Code.gs",import.meta.url);
 const source=readFileSync(sourceUrl,"utf8");
 test("Settings and first-time setup distribute the complete SSA bridge source",()=>{
+  mkdirSync(dirname(fileURLToPath(publicUrl)),{recursive:true});
   copyFileSync(sourceUrl,publicUrl); // same source-of-truth operation as prepare-client-assets.mjs
   const publicSource=readFileSync(publicUrl,"utf8");
   const digest=value=>createHash("sha256").update(value).digest("hex");
