@@ -5,6 +5,8 @@ import { localSsaCampaignEntries, queueSsaCampaignEntry, refreshSsaCampaignEntri
 import { buildCustomerXlsx, saveCustomerXlsx } from "./exportXlsx";
 import { flushSync } from "react-dom";
 import SsaCampaignReportDialog from "./SsaCampaignReportDialog";
+import SsaCampaignCardDialog from "./SsaCampaignCardDialog";
+import type { SsaCardKind } from "./core/ssaCardDetails";
 import { selectSsaReportEntries, ssaReportCounts, type SsaReportKind, type SsaReportSelection } from "./core/ssaReportSelection";
 import "./SsaCampaign.css";
 
@@ -45,6 +47,7 @@ export default function SsaCampaign(){
   const [preset,setPreset]=useState<Preset>("month"),[from,setFrom]=useState(monthStart),[to,setTo]=useState(today);
   const [filter,setFilter]=useState(""),[page,setPage]=useState(1);
   const [reportKind,setReportKind]=useState<SsaReportKind|null>(null);
+  const [cardKind,setCardKind]=useState<SsaCardKind|null>(null);
   const [printSelection,setPrintSelection]=useState<{rows:SsaCampaignEntry[];description:string}|null>(null);
   const reload=useCallback(async(remote:boolean)=>{
     try {
@@ -219,6 +222,12 @@ export default function SsaCampaign(){
   return <div className="ssa-campaign">
     {reportKind&&<SsaCampaignReportDialog kind={reportKind} entries={entries} hasMore={hasMore}
       onClose={()=>setReportKind(null)} onGenerate={selection=>report(reportKind,selection)} />}
+    {cardKind&&<SsaCampaignCardDialog kind={cardKind} entries={filtered} hasMore={hasMore}
+      onClose={()=>setCardKind(null)}
+      onPdf={async entry=>{await report("pdf",{
+        period:"day",day:entry.entryDate,month:entry.entryDate.slice(0,7),
+        from:entry.entryDate,to:entry.entryDate,audience:"customer",accountNo:entry.accountNo
+      });}} />}
     <header className="ssa-banner">
       <h1><span>◎</span> SSA Campaign</h1>
       <div className="ssa-banner-controls">
@@ -235,10 +244,14 @@ export default function SsaCampaign(){
       </div>
     </header>
     <section className="ssa-kpis" aria-label="SSA Campaign totals">
-      <div className="ssa-kpi blue"><span>▤</span><div><b>Total Entry</b><strong>{count.total}</strong></div></div>
-      <div className="ssa-kpi green"><span>●</span><div><b>Total APY</b><strong>{count.apy}</strong></div></div>
-      <div className="ssa-kpi orange"><span>✚</span><div><b>Total PMJJBY</b><strong>{count.pmjjby}</strong></div></div>
-      <div className="ssa-kpi purple"><span>☂</span><div><b>Total PMSBY</b><strong>{count.pmsby}</strong></div></div>
+      <button type="button" className="ssa-kpi ssa-kpi-action blue" onClick={()=>setCardKind("total")}
+        aria-label={"View Total Entry customer list, "+count.total+" entries"}><span aria-hidden="true">▤</span><div><b>Total Entry</b><strong>{count.total}</strong></div></button>
+      <button type="button" className="ssa-kpi ssa-kpi-action green" onClick={()=>setCardKind("apy")}
+        aria-label={"View Total APY customer list, "+count.apy+" entries"}><span aria-hidden="true">●</span><div><b>Total APY</b><strong>{count.apy}</strong></div></button>
+      <button type="button" className="ssa-kpi ssa-kpi-action orange" onClick={()=>setCardKind("pmjjby")}
+        aria-label={"View Total PMJJBY customer list, "+count.pmjjby+" entries"}><span aria-hidden="true">✚</span><div><b>Total PMJJBY</b><strong>{count.pmjjby}</strong></div></button>
+      <button type="button" className="ssa-kpi ssa-kpi-action purple" onClick={()=>setCardKind("pmsby")}
+        aria-label={"View Total PMSBY customer list, "+count.pmsby+" entries"}><span aria-hidden="true">☂</span><div><b>Total PMSBY</b><strong>{count.pmsby}</strong></div></button>
     </section>
     <div className="ssa-main">
       <section className="ssa-panel ssa-editor" aria-label="Add or update SSA Campaign entry">
