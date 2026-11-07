@@ -18,6 +18,10 @@ test('macOS package is ARM64-only, unsigned, notarization-free and excludes the 
   assert.equal(config.mac.artifactName,'BankSetu-${version}-arm64.${ext}');
   assert.equal(config.extraResources,undefined);
   assert.doesNotMatch(JSON.stringify(config),/BankSetu\.Pr2Bridge\.exe/);
+  assert.ok(config.files.includes('!node_modules/**'));
+  assert.ok(config.files.includes('node_modules/electron-updater/**'));
+  assert.ok(config.files.includes('node_modules/builder-util-runtime/**'));
+  assert.ok(!config.files.some(pattern=>/firebase|tesseract|pdfjs/.test(pattern)));
 });
 
 test('One Click waits for and verifies the macOS DMG before publishing',()=>{
