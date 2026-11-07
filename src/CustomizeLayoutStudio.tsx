@@ -700,17 +700,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if(color!=="transparent"&&!/^#[0-9a-fA-F]{6}$/.test(color)){
       setNotice("Invalid page color.");return;
     }
-    const existing=draft.elements.find(p=>p.fieldKey==="__pageBackground__"&&
+    const existing=draft.elements.find(p=>p.fieldKey==="pageBackground"&&
       p.kind==="rectangle"&&(p.page??1)===selectedPage);
     if(!existing&&color!=="transparent"&&draft.elements.length>=300){
       setNotice("The layout has reached its 300-object limit.");return;
     }
-    const background=addPart("rectangle","static","Quick Passbook background","__pageBackground__",0,0);
+    const background=addPart("rectangle","static","Quick Passbook background","pageBackground",0,0);
     background.width=draft.widthMm;background.height=draft.heightMm;background.page=selectedPage;
     background.background=color;background.color=color;background.borderWidth=0;
     background.z=-999;background.dotMatrix=false;background.quick=true;background.locked=true;
     modify(current=>({...current,elements:[
-      ...current.elements.filter(p=>!(p.fieldKey==="__pageBackground__"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)),
+      ...current.elements.filter(p=>!(p.fieldKey==="pageBackground"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)),
       ...(color==="transparent"?[]:[background])
     ]}));
     setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
@@ -1843,7 +1843,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("watermark")}>Watermark (Quick)</button>
         <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("border")}>Page Border (Quick)</button>
         <label>Page Color (Quick) <select aria-label="Quick Passbook page color" disabled={setup.output==="dotmatrix"}
-          value={draft.elements.find(p=>p.fieldKey==="__pageBackground__"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)?.background||"transparent"}
+          value={draft.elements.find(p=>p.fieldKey==="pageBackground"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)?.background||"transparent"}
           onChange={e=>setQuickPageColor(e.target.value)}>
           <option value="transparent">White / None</option>
           <option value="#fff8e8">Cream</option>
