@@ -728,12 +728,16 @@ function activeRecords(records: CachedRecord[], operations: QueueOperation[]) {
     seen.add(record.recordId);return true;
   });
 }
-export async function getActiveLocalCustomers() {
+export type ActiveLocalCustomer = Customer & {
+  rowNumber:number;recordId:string;
+  photoDataUrl:undefined;pdfDataUrl:undefined;photoPreview:undefined;
+};
+export async function getActiveLocalCustomers():Promise<ActiveLocalCustomer[]> {
   const state=await repository.read(identity());
   return activeRecords(state.records,state.operations).sort((a,b)=>b.rowNumber-a.rowNumber).map(record=>({
     ...record.customer,rowNumber:record.rowNumber,recordId:record.recordId,
     photoDataUrl:undefined,pdfDataUrl:undefined,photoPreview:undefined,
-  }));
+  } as ActiveLocalCustomer));
 }
 // Export reads the same active, tenant-scoped records as the customer list.
 // Photos are included only here; normal list/sync snapshots stay lightweight.

@@ -1,6 +1,7 @@
 // Keep deployment-specific identifiers and Firebase configuration out of the
 // public repository. Set these values in Apps Script > Project Settings >
 // Script properties for the deployment that owns the legacy workspace.
+const BANKSETU_BRIDGE_SOURCE_VERSION = "ssa-v1-20261107";
 function getBankSetuScriptProperty(name) {
   return cleanValue(PropertiesService.getScriptProperties().getProperty(name));
 }
@@ -83,6 +84,8 @@ function doGet(e) {
         syncProtectionVersion: 1,
         afsmVersion: 1,
         photoIndexVersion: 1,
+        bridgeSourceVersion: BANKSETU_BRIDGE_SOURCE_VERSION,
+        ssaCampaignVersion: 1,
         tenantId: getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID"),
         spreadsheetId: getBankSetuScriptProperty("BANKSETU_CLIENT_SPREADSHEET_ID"),
         photoFolderId: getBankSetuScriptProperty("BANKSETU_CLIENT_FOLDER_ID"),

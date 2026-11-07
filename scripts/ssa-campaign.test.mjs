@@ -1,11 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import vm from "node:vm";
 
 // Exercise ONLY the isolated SSA additions, with a fake tenant spreadsheet.
 // Tests must never access production Google Sheets, Drive or Firebase.
 const source=readFileSync(new URL("../apps-script/Code.gs",import.meta.url),"utf8");
+test("Settings and first-time setup distribute the complete SSA bridge source",()=>{
+  const publicSource=readFileSync(new URL("../public/client-bridge/Code.gs",import.meta.url),"utf8");
+  const digest=value=>createHash("sha256").update(value).digest("hex");
+  assert.equal(digest(publicSource),digest(source));
+  assert.match(source,/BANKSETU_BRIDGE_SOURCE_VERSION = "ssa-v1-20261107"/);
+  assert.match(source,/function getSsaCampaignEntries/);
+  assert.match(source,/function syncSsaCampaignEntry/);
+  const client=readFileSync(new URL("../src/core/clientBridge.ts",import.meta.url),"utf8");
+  assert.match(client,/CLIENT_BRIDGE_SOURCE_VERSION="ssa-v1-20261107"/);
+  assert.doesNotMatch(client,/v9-20261014/);
+});
 const start=source.indexOf("/* BANK SETU SSA Campaign:");
 assert.ok(start>0,"SSA helper section missing");
 const code=source.slice(start);

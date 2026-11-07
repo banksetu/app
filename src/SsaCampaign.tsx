@@ -50,8 +50,9 @@ export default function SsaCampaign(){
     }
   },[]);
   useEffect(()=>{let active=true;const onSync=()=>{if(active)void reload(false);};
-    void reload(true);window.addEventListener("banksetu-sync-change",onSync);
-    return()=>{active=false;window.removeEventListener("banksetu-sync-change",onSync);};
+    const timer=window.setTimeout(()=>{if(active)void reload(true);},0);
+    window.addEventListener("banksetu-sync-change",onSync);
+    return()=>{active=false;window.clearTimeout(timer);window.removeEventListener("banksetu-sync-change",onSync);};
   },[reload]);
   const [start,end]=dateRange(preset,from,to);
   const filtered=useMemo(()=>entries.filter(e=>e.entryDate>=start&&e.entryDate<=end&&

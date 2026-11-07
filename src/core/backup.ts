@@ -26,8 +26,8 @@ export function parseBackup(text: string, scope: string): Backup {
     throw new Error("SSA Campaign backup has invalid entry or queue collections.");
   const ssaIds=new Set<string>();
   for(const entry of value.ssaEntries||[]){
-    if(!plain(entry)||!uuid.test(String(entry.entryId||""))||ssaIds.has(entry.entryId)||
-       !uuid.test(String(entry.customerRecordId||""))||typeof entry.accountNo!=="string"||
+    if(!plain(entry)||typeof entry.entryId!=="string"||!uuid.test(entry.entryId)||ssaIds.has(entry.entryId)||
+       typeof entry.customerRecordId!=="string"||!uuid.test(entry.customerRecordId)||typeof entry.accountNo!=="string"||
        typeof entry.customerId!=="string"||typeof entry.period!=="string"||
        !/^\d{4}-(0[1-9]|1[0-2])$/.test(entry.period)||
        !["apy","pmjjby","pmsby"].every(key=>typeof entry[key]==="boolean"))
@@ -36,8 +36,8 @@ export function parseBackup(text: string, scope: string): Backup {
   }
   const ssaOperations=new Set<string>();
   for(const op of value.ssaOperations||[]){
-    if(!plain(op)||op.scope!==scope||!uuid.test(String(op.operationId||""))||
-       ssaOperations.has(op.operationId)||!ssaIds.has(String(op.entryId||""))||
+    if(!plain(op)||op.scope!==scope||typeof op.operationId!=="string"||!uuid.test(op.operationId)||
+       ssaOperations.has(op.operationId)||typeof op.entryId!=="string"||!ssaIds.has(op.entryId)||
        !["create","update"].includes(String(op.mode))||
        !["pending","conflict","failed"].includes(String(op.state))||!plain(op.entry)||
        !Number.isFinite(op.createdAt)||!Number.isFinite(op.baseRevision))
