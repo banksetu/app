@@ -61,7 +61,10 @@ export function matchingOpeningCustomers(customers:OpeningCustomer[],start:strin
 }
 export function currentMonthOpeningCount(customers:OpeningCustomer[],now=new Date()){
   const month=localMonth(now),first=monthStart(month),last=monthEnd(month);
-  return first&&last?matchingOpeningCustomers(customers,first,last).length:0;
+  const today=localTodayKey(now);
+  // A future-dated record is not an account already opened this month.
+  const through=last&&today?today<last?today:last:last;
+  return first&&through?matchingOpeningCustomers(customers,first,through).length:0;
 }
 export const openingCustomerName=(customer:OpeningCustomer)=>String(field(customer,["name","customerName","accountHolderName"])||"—").trim();
 export const openingAccountNo=(customer:OpeningCustomer)=>String(field(customer,["accountNo","accountNumber","accountNo."])||"").trim();
