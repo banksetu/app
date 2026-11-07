@@ -18,6 +18,7 @@ import {changeStaticTextCase,copyRibbonObjects,pasteRibbonObjects,type RibbonCas
 import {smartSnap,type SnapGuide} from "./layoutSmartGuides.ts";
 import {findEditableLabels,replaceEditableLabels} from "./layoutWordFindReplace.ts";
 import {isLayoutLayerPrintable} from "./layoutOutputPolicy.ts";
+import {reviewPassbookLegibility,type LegibilityFinding} from "./layoutRibbonLegibility.ts";
 import {readLocalLayouts,saveLocalLayout} from "./layoutLocalStore.ts";
 import {synchronizeLocalLayoutSlots,publishLocalLayoutSlot} from "./layoutCloudRecovery.ts";
 import {readPrivateLayoutDraft,savePrivateLayoutDraft} from "./layoutPrivateDraftRecovery";
@@ -173,6 +174,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [diffBusy, setDiffBusy] = useState(false);
   const [pr2Proof, setPr2Proof] = useState("");
   const [audit, setAudit] = useState<AuditItem[] | null>(null);
+  const [legibilityFindings,setLegibilityFindings]=useState<LegibilityFinding[]>([]);
   const [physicalChecked, setPhysicalChecked] = useState(false);
   const [labelChecked, setLabelChecked] = useState(false);
   const [splitSecondLine, setSplitSecondLine] = useState("");
@@ -458,7 +460,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       redoRef.current = [];
       return next;
     });
-    setDirty(true);
+    setDirty(true);setLegibilityFindings([]);
   }, []);
   const previewCustomer=previewOpen?previewCustomers.find(item=>item.key===previewCustomerKey)?.data:undefined;
   const loadPreviewCustomers=async()=>{
@@ -790,6 +792,18 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setSelectedPage(next);setSelectedId(null);setWordSelectedIds([]);
     setPhysicalChecked(false);setHardwareChecked(false);
     setNotice("Created blank page "+next+". This is a measured passbook layout page, not automatic Word text reflow.");
+  };
+  const checkLegibility=()=>{
+    const findings=reviewPassbookLegibility(draft.elements,setup.output);
+    setLegibilityFindings(findings);
+    const errors=findings.filter(item=>item.severity==="error").length;
+    const warnings=findings.filter(item=>item.severity==="warning").length;
+    setNotice("Offline legibility check: "+errors+" error(s), "+warnings+
+      " warning(s). These are advisory only; confirm Epson print on physical passbook paper.");
+    if(findings.length){
+      const first=findings[0];setSelectedPage(first.page);
+      setSelectedId(first.id);setWordSelectedIds([first.id]);
+    }
   };
   const findNextUnreviewed=()=>{
     const next=draft.elements.find(part=>part.needsReview);
@@ -2119,9 +2133,18 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
         <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
         <button type="button" disabled={!draft.elements.some(p=>p.needsReview)} onClick={findNextUnreviewed}>Next OCR Correction</button>
+        <button type="button" onClick={checkLegibility}>Accessibility / Legibility Check</button>
         <span>{draft.elements.filter(item=>item.needsReview).length} unreadable/OCR lines to correct</span>
         <span>{draft.elements.filter(p=>p.kind==="text"&&p.origin==="static").reduce((n,p)=>n+(p.label.trim()?p.label.trim().split(/\\s+/u).length:0),0)} static-label words</span>
       </div>}
+    {wordTab==="review"&&legibilityFindings.length>0&&<details className="ls-legibility-panel">
+      <summary>Print legibility findings ({legibilityFindings.length}) — select an object to review</summary>
+      <div>{legibilityFindings.slice(0,25).map((finding,index)=><button type="button" key={finding.id+":"+index}
+        onClick={()=>{setSelectedId(finding.id);setWordSelectedIds([finding.id]);setSelectedPage(finding.page);}}>
+        {finding.severity}: page {finding.page} — {finding.message}
+      </button>)}</div>
+      {legibilityFindings.length>25&&<small>First 25 findings shown. Correct issues and run check again.</small>}
+    </details>}
     {wordTab==="review" && <div className="ls-word-gaps" role="group" aria-label="Find and replace generic labels">
       <strong>Find / Replace static text</strong>
       <label>Find <input type="text" maxLength={200} value={findWord} onChange={e=>setFindWord(e.target.value)} placeholder="Search editable label"/></label>
