@@ -76,7 +76,7 @@ test('floating support position is temporary and returns to its bottom-right hom
 test('valid license retains protected menu access',()=>{
  const html=render('passbook',false);
  assert(html.includes('data-component="SelectedBankDocument"'),'the active paid passbook route must mount when settings are ready');
- for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF Sample'])assert(html.includes(label),label);
+ for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF'])assert(html.includes(label),label);
 });
 test('notice displays the same permission as the route model without an independent server request',()=>{
  const exports={};vm.runInNewContext(noticeSource,{exports,require:path=>path==='react/jsx-runtime'?jsx:{}});
