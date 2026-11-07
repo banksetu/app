@@ -1,4 +1,4 @@
-import {writeFile,mkdir} from "node:fs/promises";
+import {writeFile,mkdir,readFile} from "node:fs/promises";
 import {join} from "node:path";
 
 const fixture = String.raw`import React, {useState} from "react";
@@ -83,6 +83,8 @@ const open=async(theme,mobile=false)=>{
    console.error("URL",page.url());
    console.error("PAGE BODY",String(await page.locator("body").innerText()).slice(0,2600));
    console.error("PAGE HTML",String(await page.content()).slice(0,2800));
+   console.error("VITE OVERLAY",await page.locator("vite-error-overlay").evaluateAll(els=>els.map(el=>el.shadowRoot?.textContent?.slice(0,4000)||"")).catch(()=>[]));
+   console.error("VITE LOG",String(await readFile("/tmp/banksetu-report-vite.log","utf8").catch(()=>"(no log)")).slice(-8000));
    await page.screenshot({path:join(output,"capture-diagnostic-"+theme+(mobile?"-mobile":"-desktop")+".png")});
    throw error;
  }
