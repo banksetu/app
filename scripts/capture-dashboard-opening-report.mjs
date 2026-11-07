@@ -107,7 +107,7 @@ try{
    const page=await open(theme,mobile);
    await snap(page,id+"-report",theme.toUpperCase()+" / "+(mobile?"PHONE":"DESKTOP")+" – Opening Report",
       "Running Account Opening Report. Date filtering, four fields, Copy button. Opening Amount removed.");
-   await page.locator('.dashboard-opening-panel tbody tr').first().click();
+   await page.locator('.dashboard-opening-panel tbody tr').first().locator('td').first().click();
    try{
      await page.locator('.customer-preview-card').waitFor({timeout:9000});
    }catch(error){
