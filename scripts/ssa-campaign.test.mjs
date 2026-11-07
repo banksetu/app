@@ -131,3 +131,6 @@ test("SSA rejects a customer identity from a different tenant",()=>{
   assert.equal(blocked.success,false);assert.equal(blocked.code,"CUSTOMER_MISMATCH");
   assert.equal(x.books.tenantA.getSheetByName("SSA Campaign"),null);
 });
+
+// Report selection, export dialog, A4 printing and historical menu regression.
+import "./ssa-report-dialog.test.mjs";
