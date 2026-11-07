@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {
   normalizedOpeningDate,openingDateKey,monthStart,monthEnd,localMonth,
   matchingOpeningCustomers,currentMonthOpeningCount,
-  openingCustomerName,openingAccountNo,openingStatus,openingAmount
+  openingCustomerName,openingAccountNo,openingStatus
 } from "../src/core/accountOpeningReport.ts";
 
 test("account-opening dates are real account dates, not software-entry timestamps",()=>{
@@ -39,13 +39,11 @@ test("month and exact-date range accept inclusive endpoints and leap year",()=>{
 
 test("customer row shows name, account number, opening date, status and optional real opening amount",()=>{
  const customer={name:"Demo Customer",accountNo:"0000123400",status:"Active",
-    "Account Opening Date":"07/11/2026",initialDeposit:"₹1,200.50"};
+    "Account Opening Date":"07/11/2026"};
  assert.equal(openingCustomerName(customer),"Demo Customer");
  assert.equal(openingAccountNo(customer),"0000123400");
  assert.equal(openingStatus(customer),"Active");
  assert.equal(openingDateKey(customer),"2026-11-07");
- assert.equal(openingAmount(customer),1200.5);
- assert.equal(openingAmount({balance:"50000"}),null,"current balance is not an opening amount");
 });
 
 test("dashboard report reuses the existing full preview with actions, never creates a second preview renderer",()=>{
@@ -90,5 +88,22 @@ test("copy action never opens preview and remains keyboard accessible",()=>{
  assert.match(report,/event\.stopPropagation\(\);void copyAccount\(account\)/);
  assert.match(report,/event\.currentTarget===event\.target&&event\.key==="Enter"/);
  assert.match(report,/onClick=\{\(\)=>openCustomer\(customer\)\}/);
- assert.match(report,/\{amounts\.length>0&&<th>Opening Amount<\/th>\}/);
+ assert.doesNotMatch(report,/Opening Amount|Known Opening Amount|openingAmount|moneyLabel/);
+ const css=readFileSync(new URL("../src/DashboardAccountOpeningReport.css",import.meta.url),"utf8");
+ assert.match(css,/html\[data-appearance="dark"\] \.dashboard-opening-panel/);
+ assert.match(css,/@media\(max-width:680px\)/);
+ assert.match(css,/content:attr\(data-label\)/);
+ assert.match(report,/data-label="Customer Name"/);
+ assert.match(report,/data-label="Account Number"/);
+ assert.match(report,/data-label="Opening Date"/);
+ assert.match(report,/data-label="Active Status"/);
+});
+
+test("All Customer Data popup inherits portal-safe dark mode while printing stays white",()=>{
+ const styles=readFileSync(new URL("../src/App.css",import.meta.url),"utf8");
+ assert.match(styles,/html\[data-appearance="dark"\] :is\(\.dashboard-status-panel,\.customer-preview-card\)/);
+ assert.match(styles,/html\[data-appearance="dark"\] \.customer-preview-heading/);
+ assert.match(styles,/html\[data-appearance="dark"\] \.customer-preview-actions button:first-child/);
+ assert.match(styles,/@media print \{/);
+ assert.match(styles,/color-scheme:light!important/);
 });
