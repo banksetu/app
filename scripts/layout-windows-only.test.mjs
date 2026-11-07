@@ -22,7 +22,7 @@ test("Android/web hide both creation menu and direct page even if a saved page i
  const dashboard=file("src/Dashboard.tsx");
  assert.match(dashboard,/const canCustomizeLayout = windowsLayoutEngineAvailable\(\) && !licenseReadOnly/);
  assert.match(dashboard,/\{canCustomizeLayout && <>/);
- assert.match(dashboard,/\{canCustomizeLayout && bankSettingsReady/);
+ assert.match(dashboard,/\{canCustomizeLayout && (bankSettingsReady || canControlGlobalDashboard)/);
  assert.match(dashboard,/!windowsLayoutEngineAvailable\(\) && \(activePage === "customize-passbook"/);
  assert.match(dashboard,/Return to Dashboard/);
  assert.match(dashboard,/lazy\(\(\) => import\("\.\/CustomizeLayoutStudio"\)\)/);
