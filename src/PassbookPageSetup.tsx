@@ -9,6 +9,25 @@ type Props={
 };
 const unitFactor=(u:Unit)=>u==="mm"?1:u==="cm"?10:25.4;
 const toUnit=(mm:number,u:Unit)=>Number((mm/unitFactor(u)).toFixed(u==="mm"?2:3));
+/** Keep the typed value while editing; commit only valid measurements on blur/Enter. */
+function EditableMeasurement({title,unit,value,min,max,onCommit}:{title:string;unit:Unit;value:number;min:number;max:number;onCommit:(value:number)=>void}){
+  const [draft,setDraft]=useState<string|null>(null);
+  const displayed=draft??String(toUnit(value,unit));
+  const commit=()=>{
+    if(draft===null)return;
+    const parsed=Number(draft.trim());
+    if(draft.trim()!==""&&Number.isFinite(parsed)){
+      const mm=parsed*unitFactor(unit);
+      if(mm>=min&&mm<=max)onCommit(Math.round(mm*1000)/1000);
+    }
+    setDraft(null);
+  };
+  return <label className="ls-page-metric"><span>{title} ({unit})</span>
+    <input type="number" inputMode="decimal" aria-label={title} min={toUnit(min,unit)} max={toUnit(max,unit)}
+      step="any" value={displayed} onChange={e=>setDraft(e.target.value)} onBlur={commit}
+      onKeyDown={e=>{if(e.key==="Enter"){e.currentTarget.blur();}if(e.key==="Escape"){setDraft(null);e.currentTarget.blur();}}}/>
+  </label>;
+}
 export default function PassbookPageSetup({
   page,unit,onUnit,onMeasurement,onPageSetup,onPreset,onOrientation
 }:Props){
@@ -18,12 +37,7 @@ export default function PassbookPageSetup({
   const p=Math.max(0.00001,page.widthMm),h=Math.max(.00001,page.heightMm);
   const axis=cfg.foldAxis;
   const mmNumber=(title:string,value:number,update:(n:number)=>void,min=0,max=500)=>
-    <label className="ls-page-metric" key={title}><span>{title} ({unit})</span>
-      <input type="number" aria-label={title} min={toUnit(min,unit)} max={toUnit(max,unit)}
-        step={unit==="mm"?"0.1":"0.01"} value={toUnit(value,unit)}
-        onChange={event=>{if(event.target.value.trim()==="")return;const n=Number(event.target.value)*unitFactor(unit);
-          if(Number.isFinite(n))update(Math.round(n*1000)/1000);}}/>
-    </label>;
+    <EditableMeasurement key={title} title={title} unit={unit} value={value} min={min} max={max} onCommit={update}/>;
   const foldMax=axis==="vertical"?page.widthMm:page.heightMm;
   const viewedWidth=showFolded&&axis==="vertical"?
     Math.max(page.foldMm,page.widthMm-page.foldMm):page.widthMm;
@@ -66,7 +80,7 @@ export default function PassbookPageSetup({
             {mmNumber("Full open height",page.heightMm,v=>onMeasurement("heightMm",v),50,500)}
           </div>
           <div className="ls-fold-direction-chooser" role="group" aria-label="Fold direction">
-            <strong>Book Fold Direction — किताब कैसे मुड़ेगी?</strong>
+            <strong>Book Fold Direction</strong>
             <div className="ls-fold-direction-options">
               {([
                 ["horizontal","Horizontal Fold","Top + Bottom halves"],
