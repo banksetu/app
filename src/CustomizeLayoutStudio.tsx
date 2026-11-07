@@ -1982,6 +1982,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
         <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(2,0)}>Indent +2 mm</button>
         <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(-2,0)}>Outdent −2 mm</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({bold:!selected.bold})}>Toggle Bold</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({italic:!selected.italic})}>Toggle Italic</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({underline:!selected.underline})}>Toggle Underline</button>
         </div></div>
         <div className="ls-word-command-family" role="group" aria-label="Change Case"><strong>Change Case</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
@@ -2006,6 +2009,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>append("line","static","Line")}>Draw Line</button>
         <button type="button" onClick={()=>append("rectangle","static","Box")}>Draw Rectangle</button>
         <button type="button" onClick={()=>append("ellipse","static","Circle")}>Draw Ellipse</button>
+        <button type="button" onClick={()=>append("text","static","New annotation")}>Draw Text Box</button>
+        <button type="button" onClick={()=>append("line","static","Divider")}>Insert Divider</button>
         <button type="button" onClick={()=>setMappingSource("bank")}>Draw Bank Field Box</button>
         <button type="button" onClick={()=>setMappingSource("customer")}>Draw Customer Field Box</button>
         <small>Drag the field box over the passbook, then choose its data mapping.</small>
@@ -2090,6 +2095,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
         <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
         <button type="button" onClick={()=>setZoom(.8)}>Zoom 80%</button>
+        <button type="button" onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>Zoom −</button>
+        <button type="button" onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>Zoom +</button>
         <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
         <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
         <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
@@ -2149,6 +2156,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1000)}>Send to Back</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({rotation:(selected.rotation+270)%360});}}>Rotate Left 90°</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","center")}>Center on Page</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","left")}>Align Page Left</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","right")}>Align Page Right</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","center")}>Align Page Middle</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","top")}>Align Page Top</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","bottom")}>Align Page Bottom</button>
         <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
         <button type="button" disabled={!selectedWordParts.some(part=>part.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
         <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
