@@ -72,4 +72,12 @@ test("user-friendly ribbon quick tools execute real handlers, keep Direct PR2 pi
  assert.match(source,/disabled=\{busy\|\|setup.output==="dotmatrix"\} onChange=\{event=>\{void importGraphic\(event\);\}\}/);
  assert.match(css,/\.ls-ribbon-quick-tools/);
  assert.match(css,/\.ls-word-tab-icon/);
+ assert.match(source,/className="ls-ribbon-more-tools"/);
+ assert.match(source,/aria-label="Additional easy passbook tools"/);
+ for(const text of ["Account Number","IFSC","Nominee","Rectangle","Line","Oval","Photo Box","Object Format","Ruler","Grid"]){
+   assert.ok(source.includes(" "+text+"<")||source.includes(">"+text+"<"),"missing extra tool: "+text);
+ }
+ assert.match(source,/disabled=\{setup\.output==="dotmatrix"\}/);
+ assert.match(source,/Fold: \{pageSetupFor\(draft\)\.foldAxis==="horizontal"/);
+ assert.match(css,/\.ls-ribbon-more-content/);
 });
