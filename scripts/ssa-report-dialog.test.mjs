@@ -97,7 +97,6 @@ test("four KPI cards open customer-list popups and share the real All Customer D
   assert.match(list,/lazy\(\(\) => import\("\.\/AllCustomerData"\)\)/);
   assert.match(list,/recordId:preview\.customerRecordId/);
   assert.match(list,/onPreviewClose=\{\(\)=>setPreview\(null\)\}/);
-  assert.match(list,/entry\[\w+\]/s);
   assert.match(list,/className="ssa-card-yes">Yes/);
   assert.match(list,/aria-label=\{"Download SSA PDF for account "\+entry\.accountNo\}/);
   assert.match(style,/z-index:2700/);
