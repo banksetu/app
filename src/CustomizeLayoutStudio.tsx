@@ -151,6 +151,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [tableRows,setTableRows]=useState(2);
   const [tableColumns,setTableColumns]=useState(3);
   const [inlineTextEdit,setInlineTextEdit]=useState<{id:string;text:string}|null>(null);
+  const inlineTextCancelRef=useRef(false);
   const [snapGrid, setSnapGrid] = useState(false);
   const [smartGuidesEnabled,setSmartGuidesEnabled]=useState(false);
   const [activeGuides,setActiveGuides]=useState<SnapGuide[]>([]);
@@ -488,9 +489,19 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     }catch(error){setNotice("Customer preview unavailable: "+(error instanceof Error?error.message:"No verified local customer repository"));}
   };
   const finishInlineTextEdit=(cancel=false)=>{
+    if(cancel){
+      inlineTextCancelRef.current=true;
+      setInlineTextEdit(null);
+      return;
+    }
+    if(inlineTextCancelRef.current){
+      inlineTextCancelRef.current=false;
+      setInlineTextEdit(null);
+      return;
+    }
     const pending=inlineTextEdit;
     setInlineTextEdit(null);
-    if(!pending||cancel)return;
+    if(!pending)return;
     const original=draft.elements.find(p=>p.id===pending.id);
     if(!original||original.kind!=="text"||original.origin!=="static"||original.locked)return;
     if(pending.text===original.label)return;
@@ -504,6 +515,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const edit = (change: Partial<LayoutPart>) => {
     if (!selectedId||selected?.locked===true) return;
     modify(current => ({ ...current, elements: current.elements.map(part => part.id === selectedId ? { ...part, ...change } : part) }));
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
   };
   // Page Setup always measures the OPEN book, not scanner A4 size.
   const updatePageGeometry=(patch:Partial<Draft>,description:string)=>{
@@ -557,6 +569,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       "Changed orientation to "+orientation);
   };
   const append = (kind: Kind, origin: Origin, label: string, fieldKey = "") => {
+    if(draft.elements.length>=300){setNotice("300-object safety limit reached. Delete unused boxes before inserting.");return;}
     const axis=pageSetupFor(draft).foldAxis;
     const x=axis==="vertical"&&draft.printStartMm>0?
       Math.min(Math.max(5,draft.widthMm-85),draft.printStartMm+4):14;
@@ -568,6 +581,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     part.page = selectedPage;
     modify(current => ({ ...current, elements: [...current.elements, part] }));
     setSelectedId(part.id);setWordSelectedIds([part.id]);
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
   };
   // Word-like insert commands use the existing editable object model.
   const insertEditableTable=(rows:number,columns:number)=>{
@@ -797,7 +811,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const insertCaptionBelowSelection=()=>{
     if(!selected){setNotice("Choose a picture, shape or field for its caption.");return;}
     if(draft.elements.length>=300){setNotice("This layout is already at its 300-object limit.");return;}
-    const width=Math.max(18,Math.min(selected.width,draft.widthMm-selected.x));
+    const availableWidth=draft.widthMm-selected.x;
+    if(availableWidth<10){setNotice("Not enough room for a caption at the right edge. Move the object left.");return;}
+    const width=Math.max(10,Math.min(selected.width,availableWidth));
     const y=selected.y+selected.height+1;
     if(y+8>draft.heightMm){setNotice("Not enough room below the selected object. Move it upward.");return;}
     const caption=addPart("text","static","Caption: "+selected.label.slice(0,75),"",selected.x,y);
@@ -2550,6 +2566,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
                 event.preventDefault();event.stopPropagation();
                 if(part.kind!=="text"||part.origin!=="static"||part.locked)return;
                 dragEnd();setSelectedId(part.id);setWordSelectedIds([part.id]);
+                inlineTextCancelRef.current=false;
                 setInlineTextEdit({id:part.id,text:part.label});
               }}
               className={"ls-object " + (liveWordIds.includes(part.id) ? "selected " : "") + (part.locked ? "ls-locked " : "") + (part.kind === "line" ? "ls-line " : "") + (part.kind === "photo" ? "ls-photo " : "")}
