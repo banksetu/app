@@ -535,3 +535,34 @@ html[data-appearance="dark"] .ls-start-wizard,
   .layout-studio .ls-ribbon-quick-help {display:none}
   .layout-studio .ls-word-tab-icon {margin-right:2px}
 }
+
+/* Optional More Tools popover keeps the document first and prevents a tall ribbon. */
+.layout-studio .ls-ribbon-more-tools {
+  position:relative;display:inline-flex;align-items:center
+}
+.layout-studio .ls-ribbon-more-tools > summary {
+  display:inline-flex;align-items:center;min-height:30px;
+  padding:4px 8px;cursor:pointer;list-style:none;
+  font-size:10.5px;font-weight:700;background:#fff;color:#234c76;
+  border:1px solid #bed2e8;border-radius:4px
+}
+.layout-studio .ls-ribbon-more-tools > summary::-webkit-details-marker {display:none}
+.layout-studio .ls-ribbon-more-tools[open] > summary {background:#ddecff;border-color:#2e82cf}
+.layout-studio .ls-ribbon-more-content {
+  position:absolute;z-index:70;top:calc(100% + 4px);left:0;
+  display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:5px;
+  width:min(380px,85vw);max-height:56vh;overflow:auto;padding:10px;
+  background:#fff;box-shadow:0 8px 32px #0d2b4d4d;border:1px solid #a9c4df;
+  border-radius:8px
+}
+.layout-studio .ls-ribbon-more-content > button {
+  display:block;width:100%;min-height:32px;text-align:left;
+  white-space:normal;font-size:11px;border-radius:5px
+}
+.layout-studio .ls-ribbon-more-content > button:disabled {opacity:.48}
+@media(max-width:700px) {
+  .layout-studio .ls-ribbon-more-content {
+    position:fixed;left:5vw;right:5vw;top:20vh;width:90vw;
+    max-height:60vh;grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+}
