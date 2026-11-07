@@ -296,7 +296,8 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           if(active&&customerListScope()===intendedScope)
             setError(reason instanceof Error?reason.message:"Full local customer preview unavailable.");
         });
-    }else{
+    }else if(previewCustomer.recordId||Number.isFinite(Number(previewCustomer.rowNumber))&&
+              Number(previewCustomer.rowNumber)>0){
       // Identical authorized detail endpoint and identity check as the
       // existing All Customer Data table's row-click handler.
       void request({action:"getCustomerByRowNumber",
