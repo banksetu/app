@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 jobs:
   unsigned-arm64-dmg:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 25
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
