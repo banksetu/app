@@ -53,6 +53,7 @@ import LicenseNotice from "./LicenseNotice";
 import LicenseReadOnlyCustomers from "./LicenseReadOnlyCustomers";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 const CustomerEntry = lazy(() => import("./CustomerEntry"));
+const SsaCampaign = lazy(() => import("./SsaCampaign"));
 const Settings = lazy(() => import("./Settings"));
 const AdvancedAdmin = lazy(() => import("./AdvancedAdmin"));
 const MasterClients = lazy(() => import("./MasterClients"));
@@ -276,6 +277,7 @@ type PageName =
   | "bank-formats"
 
   | "forms-send-to-branch"
+  | "ssa-campaign"
   | "search"
 
   | "reports"
@@ -1042,15 +1044,17 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <nav style={styles.nav}>
           <NavButton icon="dashboard" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
-{!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
-{!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
-{!licenseReadOnly && <NavButton icon="printer" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
-          <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
-          <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
-{!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
+          <NavButton icon="users-data" label="All Customers" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
+          {!licenseReadOnly && <NavButton icon="user-plus" label="New Customer" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
           {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
+          {!licenseReadOnly && <NavButton icon="chart" label="SSA Campaign" active={activePage === "ssa-campaign"} onClick={() => openPage("ssa-campaign")} />}
+          {!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
+          {!licenseReadOnly && <NavButton icon="printer" label="Passbook Print (PR2)" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
+          {!licenseReadOnly && canCustomizeLayout && <NavButton icon="file-search" label="Auto Passbook Generator" active={activePage === "customize-passbook"} onClick={() => openPage("customize-passbook")} />}
+          <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
+          {!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || userRole === "admin") && <NavButton icon="settings" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
-{!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="cloud-sync" label="Sync & Backup" active={activePage === "sync-backup"} spinning={syncStatus.syncing} onClick={() => openPage("sync-backup")} />}
         </nav>
         <div className="banksetu-appearance" role="group" aria-label="Appearance">
@@ -1541,6 +1545,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
           {activePage === "search" && licenseReadOnly && <LicenseReadOnlyCustomers />}
           {bankSettingsReady && activePage === "search" && !licenseReadOnly && <SelectedBankDocument formatType="accountOpening" bankInfo={{...bankInfo,...bankExtraFields}} bankLogo={bankLogo} />}
+
+          {activePage === "ssa-campaign" && !licenseReadOnly && bankSettingsReady && <SsaCampaign />}
 
           {activePage === "reports" && !licenseReadOnly && (
 
