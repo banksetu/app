@@ -2268,7 +2268,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {catalogOpen && <>
         <p>Existing templates for {bankName || "the selected bank"} can be previewed and copied without recreating the layout. No other tenant's customer records are shared.</p>
         {catalog.length===0 ? <p>No verified shared template is available for this bank. Upload your own passbook PDF or design manually.</p> :
-          <div className="ls-catalog-list">{catalog.filter(item=>item.mode===mode).map(item=><div key={item.id} className="ls-catalog-card">
+          <div className="ls-catalog-list">{catalog.filter(item=>item.mode===mode&&(mode!=="passbook"||item.requestedOutput===setup.output)).map(item=><div key={item.id} className="ls-catalog-card">
             <div className="ls-catalog-card-thumbnail" role="img" aria-label="Generic approved passbook thumbnail, no customer data">
               {item.elements.slice(0,14).map(part=><span key={part.id} style={{left:(part.x/item.widthMm*100)+"%",top:(part.y/item.heightMm*100)+"%",width:Math.max(2,part.width/item.widthMm*100)+"%"}}>
                 {part.origin==="customer"?"••••":part.origin==="bank"?"[Bank]":part.kind==="text"||part.kind==="field"?part.label.slice(0,20):part.kind==="photo"?"▣":part.kind==="line"?"━":"▢"}
@@ -2649,7 +2649,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <div className="ls-overlap-tools">
             <strong>Overlapped / merged line repair</strong>
             <p>If original preprinted label and dot-matrix output overlap, name both separately. The current selected line becomes layer one.</p>
-            {field("Second layer description (generic label only)", <input value={splitSecondLine} onChange={event=>setSplitSecondLine(event.target.value)} placeholder="Account Number / खाता संख्या" />)}
+            {field("Second layer description (generic label only)", <input value={splitSecondLine} onChange={event=>setSplitSecondLine(event.target.value)} placeholder="Account Number / Customer ID" />)}
             {field("Second layer data source", <select value={splitSecondSource} onChange={event=>setSplitSecondSource(event.target.value as "customer"|"bank")}>
               <option value="customer">Current customer data</option><option value="bank">Selected bank information</option>
             </select>)}
