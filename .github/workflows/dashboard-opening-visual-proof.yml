@@ -41,7 +41,48 @@ jobs:
           exit 1
       - name: Capture actual Light/Dark + Mobile/Desktop UI
         run: node scripts/capture-dashboard-opening-report.mjs
-      - name: Save screenshot ZIP for Hindi PDF
+      - name: Build downloadable standalone screenshot PDF
+        run: |
+          python -m pip install --quiet Pillow
+          python - <<'PY'
+          from PIL import Image,ImageOps
+          from pathlib import Path
+          folder=Path("dashboard-opening-real-screens")
+          filenames=[
+            "light-desktop-report.png",
+            "light-desktop-month-range.png",
+            "light-desktop-date-range.png",
+            "light-desktop-preview.png",
+            "light-desktop-preview-actions.png",
+            "dark-desktop-report.png",
+            "dark-desktop-preview.png",
+            "dark-desktop-preview-actions.png",
+            "light-mobile-report.png",
+            "light-mobile-preview.png",
+            "light-mobile-preview-actions.png",
+            "dark-mobile-report.png",
+            "dark-mobile-preview.png",
+            "dark-mobile-preview-actions.png",
+          ]
+          pages=[]
+          for name in filenames:
+              path=folder/name
+              if not path.is_file():
+                  raise FileNotFoundError(f"Required actual-screen capture missing: {path}")
+              with Image.open(path) as image:
+                  screenshot=image.convert("RGB")
+                  canvas=Image.new("RGB",(1654,2339),"white")
+                  screenshot.thumbnail((1554,2150),Image.Resampling.LANCZOS)
+                  x=(1654-screenshot.width)//2
+                  y=(2339-screenshot.height)//2
+                  canvas.paste(screenshot,(x,y))
+                  pages.append(canvas)
+          target=folder/"BANK_SETU_Account_Opening_Real_Screens.pdf"
+          pages[0].save(target,"PDF",resolution=150,
+                        save_all=True,append_images=pages[1:],optimize=True)
+          print(f"Created {len(pages)} page PDF: {target} ({target.stat().st_size} bytes)")
+          PY
+      - name: Upload screenshot PDF and source images
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
