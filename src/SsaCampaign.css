@@ -15,6 +15,11 @@
 .ssa-kpi{min-width:0;min-height:100px;border-radius:16px;border:1px solid;display:flex;align-items:center;gap:16px;padding:18px 20px;box-shadow:0 4px 14px #1a43700c}
 .ssa-kpi>span{flex:0 0 62px;height:62px;display:grid;place-items:center;background:#ffffffc9;border-radius:50%;font-size:31px;font-weight:900}
 .ssa-kpi div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ssa-kpi-action{width:100%;font:inherit;text-align:left;cursor:pointer;appearance:none}
+.ssa-kpi-action:hover{filter:brightness(.97);box-shadow:0 6px 18px #163e7430}
+.ssa-kpi-action:focus-visible{outline:3px solid #0869df;outline-offset:2px}
+.ssa-kpi-action:active{transform:translateY(1px)}
+
 .ssa-kpi b{font-size:15px;font-weight:800;white-space:nowrap}
 .ssa-kpi strong{font-size:35px;line-height:1.08}
 .ssa-kpi.blue{background:linear-gradient(140deg,#e4f4ff,#caeafb);border-color:#69baff}
