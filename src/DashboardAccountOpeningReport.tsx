@@ -3,7 +3,7 @@ import {createPortal} from "react-dom";
 import {customerListScope} from "./customerListCache";
 import {
   localTodayKey,localMonth,monthStart,monthEnd,matchingOpeningCustomers,
-  openingDateKey,openingCustomerName,openingAccountNo,openingStatus,openingAmount,
+  openingDateKey,openingCustomerName,openingAccountNo,openingStatus,
   type OpeningCustomer
 } from "./core/accountOpeningReport";
 import "./DashboardAccountOpeningReport.css";
@@ -17,7 +17,6 @@ const formatDate=(key:string)=>{
     .toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric",timeZone:"UTC"}):key;
 };
 const numberLabel=(n:number)=>new Intl.NumberFormat("en-IN").format(n);
-const moneyLabel=(n:number)=>new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:2}).format(n);
 export default function DashboardAccountOpeningReport({customers,onClose,loading=false,error=""}:{
   customers:OpeningCustomer[];onClose:()=>void;loading?:boolean;error?:string
 }){
@@ -49,8 +48,6 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
       .some(text=>text.toLocaleLowerCase().includes(query))):matches;
   },[matches,search]);
   const shown=queried.slice(0,pageSize);
-  const amounts=matches.map(openingAmount).filter((value):value is number=>value!==null);
-  const totalAmount=amounts.reduce((sum,amount)=>sum+amount,0);
   useEffect(()=>{setPageSize(100);},[mode,month,fromMonth,toMonth,startDate,endDate,search]);
 
   useEffect(()=>{
@@ -81,7 +78,7 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
     setPreviewCustomer(row);
   };
   return createPortal(<>
-    <div className="dashboard-opening-overlay" onClick={onClose}>
+    <div className="dashboard-opening-overlay" data-theme-source="bank-setu-appearance" onClick={onClose}>
       <section className="dashboard-opening-panel" role="dialog" aria-modal="true"
         aria-label="Account Opening Report" onClick={event=>event.stopPropagation()}>
         <header className="dashboard-opening-header">
@@ -120,11 +117,10 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
         <div className="dashboard-opening-overview">
           <div><small>Accounts Opened</small><strong>{loading?"…":numberLabel(matches.length)}</strong></div>
           <div><small>Selected Period</small><strong>{!invalid&&start&&end?formatDate(start)+" – "+formatDate(end):"Choose dates"}</strong></div>
-          {amounts.length>0&&<div><small>Known Opening Amount ({amounts.length})</small><strong>{moneyLabel(totalAmount)}</strong></div>}
         </div>
         <div className="dashboard-opening-table-scroll">
           <table>
-            <thead><tr><th>Customer Name</th><th>Account Number</th><th>Account Opening Date</th><th>Active Status</th>{amounts.length>0&&<th>Opening Amount</th>}</tr></thead>
+            <thead><tr><th>Customer Name</th><th>Account Number</th><th>Account Opening Date</th><th>Active Status</th></tr></thead>
             <tbody>
               {shown.map((customer,index)=>{
                 const account=openingAccountNo(customer),date=openingDateKey(customer);
@@ -134,13 +130,12 @@ export default function DashboardAccountOpeningReport({customers,onClose,loading
                   title="Click to open the same All Customer Data preview"
                   onClick={()=>openCustomer(customer)}
                   onKeyDown={event=>{if(event.currentTarget===event.target&&event.key==="Enter"){event.preventDefault();openCustomer(customer);}}}>
-                  <td><strong>{openingCustomerName(customer)}</strong></td>
-                  <td className="dashboard-opening-number"><span>{account||"—"}</span>
+                  <td data-label="Customer Name"><strong>{openingCustomerName(customer)}</strong></td>
+                  <td data-label="Account Number" className="dashboard-opening-number"><span>{account||"—"}</span>
                     {account&&<button type="button" aria-label={"Copy account number "+account}
                       onClick={event=>{event.stopPropagation();void copyAccount(account);}}>Copy</button>}</td>
-                  <td>{date?formatDate(date):"—"}</td>
-                  <td><span className={"dashboard-opening-status "+(status.toLowerCase()==="active"?"is-active":status.toLowerCase()==="inactive"?"is-inactive":"")}>{status}</span></td>
-                  {amounts.length>0&&<td>{openingAmount(customer)!==null?moneyLabel(openingAmount(customer)!):"—"}</td>}
+                  <td data-label="Opening Date">{date?formatDate(date):"—"}</td>
+                  <td data-label="Active Status"><span className={"dashboard-opening-status "+(status.toLowerCase()==="active"?"is-active":status.toLowerCase()==="inactive"?"is-inactive":"")}>{status}</span></td>
                 </tr>;
               })}
             </tbody>
