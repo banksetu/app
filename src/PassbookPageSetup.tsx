@@ -1,4 +1,4 @@
-import {useState,type CSSProperties} from "react";
+import {useEffect,useState,type CSSProperties} from "react";
 import {PAPER_PRESETS,pageMeasurements,pageSetupFor,type MeasuredPage,type PageSetup} from "./layoutPageSetup.ts";
 type Unit="mm"|"cm"|"in";
 type Props={
@@ -9,6 +9,43 @@ type Props={
 };
 const unitFactor=(u:Unit)=>u==="mm"?1:u==="cm"?10:25.4;
 const toUnit=(mm:number,u:Unit)=>Number((mm/unitFactor(u)).toFixed(u==="mm"?2:3));
+/** Keep an incomplete measurement visible until Enter/blur: controlled numeric inputs
+ * previously rejected empty strings, so Backspace could not replace a value.
+ * This editor commits millimetre-normalized values only after validation. */
+function EditableMetric({title,unit,value,min,max,onCommit}:{
+  title:string;unit:Unit;value:number;min:number;max:number;onCommit:(mm:number)=>void
+}){
+  const [raw,setRaw]=useState(()=>String(toUnit(value,unit)));
+  const [focused,setFocused]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{if(!focused)setRaw(String(toUnit(value,unit)));},[value,unit,focused]);
+  const commit=()=>{
+    const entered=raw.trim().replace(",",".");
+    const number=entered===""?NaN:Number(entered);
+    const mm=number*unitFactor(unit);
+    if(!Number.isFinite(mm)||mm<min-0.0001||mm>max+0.0001){
+      setError("Enter a value from "+toUnit(min,unit)+" to "+toUnit(max,unit)+" "+unit+".");
+      setRaw(String(toUnit(value,unit)));setFocused(false);
+      return;
+    }
+    setError("");setFocused(false);
+    onCommit(Math.round(mm*1000)/1000);
+  };
+  return <label className="ls-page-metric">
+    <span>{title} ({unit})</span>
+    <input type="text" inputMode="decimal" autoComplete="off" spellCheck={false}
+      aria-label={title} aria-invalid={!!error} value={raw}
+      title={"Select all, Backspace, or type a new measurement in "+unit}
+      onFocus={event=>{setFocused(true);setError("");event.currentTarget.select();}}
+      onChange={event=>{setRaw(event.target.value);setError("");}}
+      onBlur={commit}
+      onKeyDown={event=>{
+        if(event.key==="Enter"){event.preventDefault();event.currentTarget.blur();}
+        if(event.key==="Escape"){event.preventDefault();setRaw(String(toUnit(value,unit)));event.currentTarget.blur();}
+      }}/>
+    {error&&<small role="alert">{error}</small>}
+  </label>;
+}
 export default function PassbookPageSetup({
   page,unit,onUnit,onMeasurement,onPageSetup,onPreset,onOrientation
 }:Props){
@@ -18,12 +55,7 @@ export default function PassbookPageSetup({
   const p=Math.max(0.00001,page.widthMm),h=Math.max(.00001,page.heightMm);
   const axis=cfg.foldAxis;
   const mmNumber=(title:string,value:number,update:(n:number)=>void,min=0,max=500)=>
-    <label className="ls-page-metric" key={title}><span>{title} ({unit})</span>
-      <input type="number" aria-label={title} min={toUnit(min,unit)} max={toUnit(max,unit)}
-        step={unit==="mm"?"0.1":"0.01"} value={toUnit(value,unit)}
-        onChange={event=>{if(event.target.value.trim()==="")return;const n=Number(event.target.value)*unitFactor(unit);
-          if(Number.isFinite(n))update(Math.round(n*1000)/1000);}}/>
-    </label>;
+    <EditableMetric key={title} title={title} unit={unit} value={value} min={min} max={max} onCommit={update}/>;
   const foldMax=axis==="vertical"?page.widthMm:page.heightMm;
   const viewedWidth=showFolded&&axis==="vertical"?
     Math.max(page.foldMm,page.widthMm-page.foldMm):page.widthMm;
@@ -66,7 +98,7 @@ export default function PassbookPageSetup({
             {mmNumber("Full open height",page.heightMm,v=>onMeasurement("heightMm",v),50,500)}
           </div>
           <div className="ls-fold-direction-chooser" role="group" aria-label="Fold direction">
-            <strong>Book Fold Direction — किताब कैसे मुड़ेगी?</strong>
+            <strong>Book Fold Direction</strong>
             <div className="ls-fold-direction-options">
               {([
                 ["horizontal","Horizontal Fold","Top + Bottom halves"],
