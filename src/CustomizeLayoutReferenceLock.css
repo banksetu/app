@@ -452,3 +452,86 @@ html[data-appearance="dark"] .ls-start-wizard,
   border:1px solid #e8dcc1;background:#fff;border-radius:4px;color:#604b2f
 }
 .layout-studio .ls-legibility-panel button:hover {background:#fff0ca}
+
+/* Reference-friendly, one-click Quick Tools: recognizable icons and actual handlers. */
+.layout-studio .ls-word-tab-icon {
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;margin-right:4px;font-size:13px;font-weight:800;color:#2e6198
+}
+.layout-studio .ls-ribbon-quick-tools {
+  position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:5px;
+  padding:6px 8px;background:#f0f6ff;border:1px solid #c7d7e9;
+  border-top:0;color:#1f4f7d;min-height:39px
+}
+.layout-studio .ls-ribbon-quick-label {font-size:10px;font-weight:800;white-space:nowrap;margin-right:3px}
+.layout-studio .ls-ribbon-quick-tools button,
+.layout-studio .ls-ribbon-quick-tools .ls-file-action {
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+  font-size:10.5px;min-height:30px;padding:4px 8px;
+  border:1px solid #bed2e8;border-radius:4px;background:#fff;color:#234c76;
+  box-shadow:0 1px 1px #27425c12;cursor:pointer
+}
+.layout-studio .ls-ribbon-quick-tools button:hover:not(:disabled),
+.layout-studio .ls-ribbon-quick-tools .ls-file-action:hover {
+  background:#e3f0ff;border-color:#80afe0
+}
+.layout-studio .ls-ribbon-quick-tools button:focus-visible,
+.layout-studio .ls-ribbon-quick-tools .ls-file-action:focus-within {
+  outline:2px solid #247dcc;outline-offset:1px
+}
+.layout-studio .ls-ribbon-quick-tools button:disabled {opacity:.5;cursor:not-allowed}
+.layout-studio .ls-ribbon-quick-tools button > span,
+.layout-studio .ls-ribbon-quick-tools .ls-file-action > span {
+  display:grid;place-items:center;width:20px;height:20px;
+  background:#e9f3ff;color:#15528a;border-radius:3px;font-size:14px;font-weight:900
+}
+.layout-studio .ls-ribbon-quick-help {font-size:10px;color:#4c6b8d}
+.layout-studio .ls-layout-fold-shortcut {
+  display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#244e7b
+}
+.layout-studio .ls-layout-fold-shortcut select {
+  max-width:220px;min-height:30px;padding:4px;background:#fff;color:#1b466d;
+  border:1px solid #b0c9e2;border-radius:4px
+}
+/* Open passbook size and BOOK FOLD direction occupy the same visual group.
+   The line is an original CSS drawing, not a screenshot or protected asset. */
+.ls-page-setup .ls-fold-direction-chooser {
+  display:grid;gap:8px;padding:10px;border:1px solid #acc9e8;
+  border-radius:8px;background:#eef5ff
+}
+.ls-page-setup .ls-fold-direction-chooser>strong {font-size:13px;color:#174c82}
+.ls-page-setup .ls-fold-direction-chooser>small {font-size:10.5px;color:#4b6682}
+.ls-page-setup .ls-fold-direction-options {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.ls-page-setup .ls-fold-direction-choice {
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  min-height:91px;padding:10px 5px!important;border:1px solid #c0d3e6!important;
+  border-radius:7px;background:#fff;color:#1d4265;cursor:pointer
+}
+.ls-page-setup .ls-fold-direction-choice:hover {background:#f0f8ff}
+.ls-page-setup .ls-fold-direction-choice[aria-pressed="true"] {
+  background:#ddecff;border:2px solid #1268bc!important;
+  box-shadow:0 0 0 1px #1268bc22;color:#0b4e93
+}
+.ls-page-setup .ls-fold-direction-label {display:grid;gap:3px;text-align:center;line-height:1.2}
+.ls-page-setup .ls-fold-direction-label strong {font-size:11px}
+.ls-page-setup .ls-fold-direction-label small {font-size:9.5px;color:#58728d}
+.ls-page-setup .ls-fold-direction-icon {
+  display:block;position:relative;width:38px;height:30px;
+  background:#fff;border:2px solid #376c9d;border-radius:3px;flex:0 0 auto
+}
+.ls-page-setup .ls-fold-direction-line {position:absolute;pointer-events:none}
+.ls-page-setup .ls-fold-direction-icon-horizontal .ls-fold-direction-line {
+  left:0;right:0;top:50%;border-top:2px dashed #d88821
+}
+.ls-page-setup .ls-fold-direction-icon-vertical .ls-fold-direction-line {
+  top:0;bottom:0;left:50%;border-left:2px dashed #d88821
+}
+.ls-page-setup .ls-fold-direction-icon-none {background:linear-gradient(135deg,#fff,#f4f9ff)}
+.ls-page-setup .ls-fold-direction-icon-none .ls-fold-direction-line {display:none}
+@media(max-width:700px) {
+  .ls-page-setup .ls-fold-direction-options {grid-template-columns:1fr}
+  .ls-page-setup .ls-fold-direction-choice {flex-direction:row;justify-content:flex-start;min-height:62px;gap:12px;padding:7px 9px!important}
+  .ls-page-setup .ls-fold-direction-label {text-align:left}
+  .layout-studio .ls-ribbon-quick-help {display:none}
+  .layout-studio .ls-word-tab-icon {margin-right:2px}
+}
