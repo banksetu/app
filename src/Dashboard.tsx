@@ -9,6 +9,7 @@ import SupportCenter, { useSupportUnread } from "./SupportCenter";
 import FloatingSupportButton from "./FloatingSupportButton";
 import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabled } from "./core/localData";
 import { customerAnalytics } from "./core/dashboardAnalytics";
+import { currentMonthOpeningCount } from "./core/accountOpeningReport";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -61,6 +62,7 @@ const SelectedBankDocument = lazy(() => import("./SelectedBankDocument"));
 const Customers = lazy(() => import("./Customers"));
 const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
 const AllCustomerData = lazy(() => import("./AllCustomerData"));
+const DashboardAccountOpeningReport = lazy(() => import("./DashboardAccountOpeningReport"));
 const Reports = lazy(() => import("./Reports"));
 
 
@@ -3101,6 +3103,7 @@ function DashboardHome({
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
+  const [openingReportOpen,setOpeningReportOpen]=useState(false);
 
   useEffect(() => {
     const refreshDashboardAfterWorkspaceReady = () => {
@@ -3462,11 +3465,11 @@ function DashboardHome({
 
     [
 
-      "⏸",
+      "📅",
 
-      "Inactive Accounts",
+      "This Month Account Openings",
 
-      dashboardStats.inactiveAccounts,
+      analyticsRows?currentMonthOpeningCount(analyticsRows):0,
 
     ],
 
@@ -3512,7 +3515,7 @@ function DashboardHome({
 
             className="dashboard-stat-card"
             aria-label={`Open ${title}`}
-            onClick={() => index === 0 ? openPage("all-customer-data") : setStatusPanel(index === 1 ? "kyc" : index === 2 ? "passbook" : "inactive")}
+            onClick={() => index === 0 ? openPage("all-customer-data") : index===3 ? setOpeningReportOpen(true) : setStatusPanel(index === 1 ? "kyc" : "passbook")}
 
           style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
@@ -3552,6 +3555,10 @@ function DashboardHome({
 
       </section>
       {statusPanel && <DashboardStatusPanel type={statusPanel} accountRole={accountRole} onClose={() => setStatusPanel(null)} />}
+      {openingReportOpen&&<Suspense fallback={<p role="status">Opening Account Opening Report…</p>}>
+        <DashboardAccountOpeningReport customers={analyticsRows??[]} loading={statsLoading} error={statsError}
+          onClose={()=>setOpeningReportOpen(false)}/>
+      </Suspense>}
 
       <section className="dashboard-quick-panel" style={styles.panel}>
 
