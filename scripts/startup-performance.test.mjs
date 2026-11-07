@@ -81,3 +81,51 @@ test("All Customer Data preloads locally, keeps its popup visible and shares eve
   assert.match(list,/card:\"#0b1424\"/);
   assert.match(list,/card:\"#fff2f5\"/);
 });
+
+test("unified loader uses the original BANK SETU logo for first HTML paint, session recovery, login and lazy app fallback", () => {
+  const app=read("src/App.tsx");
+  const html=read("index.html");
+  const loader=read("src/LoginTransition.tsx");
+  const css=read("src/LoginTransition.css");
+  const appCss=read("src/App.css");
+  assert.match(html,/banksetu-bootstrap-loader/);
+  assert.match(html,/<img src="\/banksetu-logo\.png"/);
+  assert.match(html,/banksetu-bootstrap-progress/);
+  assert.match(html,/banksetu-bootstrap-ring/);
+  assert.match(loader,/<img src="\/banksetu-logo\.png"/);
+  assert.match(loader,/object-fit|decoding="async"/);
+  assert.match(loader,/phase\?:"login"\|"startup"/);
+  assert.match(loader,/Verifying your account and license securely/);
+  assert.match(loader,/authentication|Authentication/);
+  assert.match(app,/function SecureLoadingScreen\(\)/);
+  assert.match(app,/return <LoginTransition phase="startup"\/>/);
+  assert.match(app,/return <LoginTransition phase="login"\/>/);
+  assert.equal((app.match(/<SecureLoadingScreen\/>/g)||[]).length,4);
+  assert.doesNotMatch(app,/AppLoading|app-loader|banksetu-icon\.png|Loading Bank Setu/);
+  assert.doesNotMatch(appCss,/\.app-loader|\.loader-logo|\.loader-bank|\.loader-setu/);
+  assert.match(css,/object-fit:contain/);
+  assert.match(css,/\.premium-login-transition \.premium-progress-track i/);
+  assert.match(css,/animation:bs-login-progress 1\.25s ease-in-out infinite/);
+  assert.match(css,/prefers-reduced-motion:reduce/);
+});
+
+test("loading presentation imposes no minimum 3-second wait and leaves security/session logic unchanged", () => {
+  const app=read("src/App.tsx");
+  const transition=read("src/LoginTransition.tsx");
+  const boot=read("index.html");
+  assert.match(app,/const OFFLINE_STARTUP_FALLBACK_MS = 1200/);
+  assert.match(app,/const OFFLINE_SESSION_READ_TIMEOUT_MS = 1400/);
+  assert.match(app,/await refreshLicensePermission\(online\)/);
+  assert.match(app,/await signInWithEmailAndPassword\(auth,email\.trim\(\),password\)/);
+  assert.doesNotMatch(transition,/setTimeout|setInterval|await new Promise/);
+  assert.doesNotMatch(boot,/setTimeout|setInterval/);
+  assert.match(boot,/without artificial delay/);
+});
+
+test("Android OS splash matches the branded loader before native WebView can animate", () => {
+  const xml=read("android/app/src/main/res/values/styles.xml");
+  assert.match(xml,/name="windowSplashScreenBackground">#06142b/);
+  assert.match(xml,/name="windowSplashScreenAnimatedIcon">@mipmap\/ic_launcher/);
+  assert.match(xml,/name="postSplashScreenTheme">@style\/AppTheme.NoActionBar/);
+  assert.doesNotMatch(xml,/@drawable\/splash/);
+});
