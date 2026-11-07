@@ -120,7 +120,7 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
       .workspace-template-document .workspace-template-controls {display:none!important}
     }`}</style>
     {directPrinting&&<Suspense fallback={<p>Connecting existing PR2 Bridge…</p>}><CustomPr2PrinterDialog
-      bankName={bankName} customPdfBase64={directPdfBase64} requirePhysicalConfirmation
+      bankName={bankName} layoutId={template.id} customPdfBase64={directPdfBase64} requirePhysicalConfirmation
       onClose={()=>{setDirectPrinting(false);setDirectPdfBase64("");}}
       onComplete={(result)=>{if(result.completed){setDirectPrinting(false);setDirectPdfBase64("");onPr2Complete?.();}}} /></Suspense>}
     <div className="passbook-page workspace-bridge-page"><div className="passbook-shell workspace-bridge-shell">
