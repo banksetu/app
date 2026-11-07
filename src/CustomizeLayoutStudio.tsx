@@ -1057,7 +1057,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     }catch(error){setNotice("Cannot change slot: "+(error instanceof Error?error.message:"Local database unavailable"));}
   };
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({...draft,requestedOutput:setup.output,requestedSlot:selectedLayoutSlot}, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -1075,6 +1075,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     try{
       const parsed:unknown=JSON.parse(await file.text());
       if(!validDraft(parsed,mode,bankName))throw Error("Wrong bank, document type or invalid layout backup.");
+      const backup=parsed as Draft&{requestedOutput?:string;requestedSlot?:number};
+      if(backup.requestedOutput&&backup.requestedOutput!==setup.output)
+        throw Error("This backup was designed for "+backup.requestedOutput+". Open the matching Quick or PR2 designer to restore it.");
       if(!await confirmAction("Restore this same-bank layout backup? Current unsaved edits will be replaced; no approved template is changed."))return;
       const restored=structuredClone(parsed as Draft);
       modify(()=>restored);
