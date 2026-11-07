@@ -566,3 +566,35 @@ html[data-appearance="dark"] .ls-start-wizard,
     max-height:60vh;grid-template-columns:repeat(2,minmax(0,1fr))
   }
 }
+
+/* Compact Word workspace — overrides legacy dashboard cards without touching geometry. */
+@media (min-width: 1021px) {
+  .layout-studio {grid-template-columns:148px minmax(0,1fr);}
+  .layout-studio .ls-sidebar-brand {padding:8px 9px 11px;}
+  .layout-studio .ls-sidebar-brand strong {font-size:13px;}
+  .layout-studio .ls-sidebar-brand small {font-size:9px;}
+  .layout-studio .ls-workflow-nav button {padding:6px 7px;gap:5px;min-height:35px;}
+  .layout-studio .ls-workflow-nav strong {font-size:10px;line-height:1.25;}
+  .layout-studio .ls-workflow-nav small {display:none;}
+  .layout-studio .ls-workflow-number {width:18px;flex-basis:18px;font-size:13px;}
+  .layout-studio .ls-workspace {grid-template-columns:minmax(0,1fr) minmax(190px,218px);}
+  .layout-studio .ls-canvas-wrap {min-height:620px;max-height:calc(100vh - 175px);padding:22px 9px;}
+  .layout-studio .ls-properties {min-height:620px;}
+}
+.layout-studio .ls-word-suite .ls-word-tab-content {border:0;border-bottom:1px solid #dbe4ef;box-shadow:none;background:#fff;gap:4px;padding:6px 8px;min-height:52px;}
+.layout-studio .ls-word-suite .ls-word-tab-content > button,
+.layout-studio .ls-word-suite .ls-word-tab-content > label,
+.layout-studio .ls-word-suite .ls-word-command-family,
+.layout-studio .ls-word-suite .ls-word-command-items button {
+  box-shadow:none!important;border-radius:2px!important;
+}
+.layout-studio .ls-word-suite .ls-word-tab-content > button:hover,
+.layout-studio .ls-word-suite .ls-word-command-items button:hover {background:#e9f2ff;}
+.layout-studio .ls-notice {border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;padding:5px 12px!important;margin:0!important;font-size:12px;}
+.layout-studio .ls-workflow-context {border:0!important;box-shadow:none!important;background:transparent!important;padding:5px 12px!important;font-size:11px;}
+.layout-studio .ls-designer-status .ls-zoom-controls input[type="range"] {width:110px;accent-color:#1264b7;}
+.layout-studio .ls-designer-status .ls-zoom-controls {gap:5px;}
+.layout-studio .ls-extra-tools .ls-tool-card {box-shadow:none;border-radius:2px;}
+@media (max-width:1020px) {
+  .layout-studio .ls-designer-status .ls-zoom-controls input[type="range"] {width:80px;}
+}
