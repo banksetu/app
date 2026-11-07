@@ -281,18 +281,36 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
     const intendedScope=customerListScope();
     setSelected(previewCustomer);
     setError("");setCopyMessage("");
-    // Same detail fetch and identity check used by All Customer Data row click.
-    void request({action:"getCustomerByRowNumber",
-      rowNumber:previewCustomer.rowNumber,recordId:previewCustomer.recordId})
-      .then(result=>{
-        if(active&&customerListScope()===intendedScope&&result.success&&
-           identity(previewCustomer)===identity(result.customer||{}))
-          setSelected({...previewCustomer,...result.customer});
-      })
-      .catch(reason=>{
-        if(active&&customerListScope()===intendedScope)
-          setError(reason instanceof Error?reason.message:"Full customer preview unavailable.");
-      });
+    // Use only the current workspace's existing local repository when offline.
+    // Do not make a second customer/preview engine or force an authenticated
+    // network fetch that cannot succeed in local-first mode.
+    if(localModeEnabled()){
+      void getActiveLocalCustomers()
+        .then(customers=>{
+          if(!active||customerListScope()!==intendedScope)return;
+          const verified=customers.find(customer=>identity(customer)===identity(previewCustomer));
+          if(verified)setSelected({...previewCustomer,...verified});
+          else setError("This customer is no longer available in this workspace.");
+        })
+        .catch(reason=>{
+          if(active&&customerListScope()===intendedScope)
+            setError(reason instanceof Error?reason.message:"Full local customer preview unavailable.");
+        });
+    }else{
+      // Identical authorized detail endpoint and identity check as the
+      // existing All Customer Data table's row-click handler.
+      void request({action:"getCustomerByRowNumber",
+        rowNumber:previewCustomer.rowNumber,recordId:previewCustomer.recordId})
+        .then(result=>{
+          if(active&&customerListScope()===intendedScope&&result.success&&
+             identity(previewCustomer)===identity(result.customer||{}))
+            setSelected({...previewCustomer,...result.customer});
+        })
+        .catch(reason=>{
+          if(active&&customerListScope()===intendedScope)
+            setError(reason instanceof Error?reason.message:"Full customer preview unavailable.");
+        });
+    }
     return()=>{active=false;};
   },[previewCustomer]);
 
