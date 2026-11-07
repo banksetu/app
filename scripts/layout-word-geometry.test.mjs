@@ -59,7 +59,7 @@ test("Line spacing persists through sanitization without customer values",()=>{
 test("Word layout toolbar and both output modes use retained spacing",()=>{
  const read=p=>readFileSync(new URL("../"+p,import.meta.url),"utf8");
  const studio=read("src/CustomizeLayoutStudio.tsx");
- for(const s of ["Align selected","Distribute","Equal width","Equal height","Baseline","Group","Ungroup","Lock","Line spacing","Select all page objects"])
+ for(const s of ["Align selected","Distribute","Equal width","Equal height","Baseline","Group","Ungroup","Lock","Line spacing","Select Page Objects"])
   assert.ok(studio.includes(s),s);
  assert.match(read("src/WorkspaceTemplateDocument.tsx"),/lineHeight:part.lineHeight\?\?1.18/);
  assert.match(read("src/layoutProofPdf.ts"),/lineHeightFactor:part.lineHeight\?\?1.18/);
