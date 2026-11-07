@@ -756,6 +756,29 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setPhysicalChecked(false);setLabelChecked(false);setHardwareChecked(false);
     setNotice("Inserted editable "+kind+" in draft. Check bank-specific preprinted paper and printer proof.");
   };
+  const nudgeRibbonSelection=(dx:number,dy:number)=>{
+    if(!liveWordIds.length)return;
+    try{
+      const next=wordNudge(draft.elements,liveWordIds,{widthMm:draft.widthMm,heightMm:draft.heightMm},dx,dy);
+      modify(current=>({...current,elements:next}));
+      setPhysicalChecked(false);setHardwareChecked(false);
+      setNotice("Moved selected object(s) by measured millimetres. Review printer alignment.");
+    }catch(error){setNotice(error instanceof Error?error.message:"Indent movement exceeded physical paper.");}
+  };
+  const addDraftPage=()=>{
+    const next=(draft.pageCount||1)+1;
+    if(next>10){setNotice("This layout supports up to 10 editable pages.");return;}
+    modify(current=>({...current,pageCount:next}));
+    setSelectedPage(next);setSelectedId(null);setWordSelectedIds([]);
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice("Created blank page "+next+". This is a measured passbook layout page, not automatic Word text reflow.");
+  };
+  const findNextUnreviewed=()=>{
+    const next=draft.elements.find(part=>part.needsReview);
+    if(!next){setNotice("No unreadable OCR lines are flagged in this draft.");return;}
+    setSelectedPage(next.page||1);setSelectedId(next.id);setWordSelectedIds([next.id]);
+    setNotice("Review the selected OCR line and mark its original-paper layer before approval.");
+  };
   const moveSelectedTo=(axis:"horizontal"|"vertical",side:"start"|"center"|"end")=>{
     if(!selected)return;
     try{
@@ -1723,6 +1746,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <div className="ls-word-command-family" role="group" aria-label="Lists"><strong>Lists</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("• ")}>Bullets</button>
         <button type="button" disabled={!selected||selected.origin!=="static"} onClick={()=>prefixSelectedText("1. ")}>Numbered</button>
+        <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(2,0)}>Indent +2 mm</button>
+        <button type="button" disabled={!liveWordIds.length} onClick={()=>nudgeRibbonSelection(-2,0)}>Outdent −2 mm</button>
         </div></div>
         <div className="ls-word-command-family" role="group" aria-label="Change Case"><strong>Change Case</strong><div className="ls-word-command-items">
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{edit({font:"Arial",size:11,bold:false,italic:false,underline:false,align:"left",color:"#132a40",letterSpacing:0,fontCompression:100,lineHeight:1.18});}}>Clear Text Format</button>
@@ -1739,6 +1764,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           modify(current=>({...current,elements:[...current.elements,newPart]}));
           setSelectedId(newPart.id);setWordSelectedIds([newPart.id]);
         }}>Duplicate Object</button>
+        <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage&&isLayoutLayerPrintable(p,preview,bankName)).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select All</button>
+        <button type="button" onClick={()=>setWordTab("review")}>Find / Replace</button>
         </div></div>
       </div>}
       {wordTab==="draw"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Draw objects and field boxes"><span className="ls-ribbon-group-label">Drawing · Field Boxes</span>
@@ -1811,6 +1838,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>insertDocumentDecoration("header")}>Header</button>
         <button type="button" onClick={()=>insertDocumentDecoration("footer")}>Footer</button>
         <button type="button" onClick={()=>insertDocumentDecoration("pageNumber")}>Page Number</button>
+        <button type="button" disabled={(draft.pageCount||1)>=10} onClick={addDraftPage}>New Page</button>
+        <button type="button" onClick={()=>append("text","static",new Date().toLocaleDateString("en-GB"))}>Date (static)</button>
+        <button type="button" onClick={()=>append("text","static",new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}))}>Time (static)</button>
         </div></div>
         <div className="ls-word-command-family" role="group" aria-label="Symbols"><strong>Symbols</strong><div className="ls-word-command-items">
         <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
@@ -1927,6 +1957,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors and "+result.filter(x=>x.severity==="warning").length+" warnings. Review before approval.");}}>Run Layout Audit</button>
         <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
         <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
+        <button type="button" disabled={!draft.elements.some(p=>p.needsReview)} onClick={findNextUnreviewed}>Next OCR Correction</button>
         <span>{draft.elements.filter(item=>item.needsReview).length} unreadable/OCR lines to correct</span>
         <span>{draft.elements.filter(p=>p.kind==="text"&&p.origin==="static").reduce((n,p)=>n+(p.label.trim()?p.label.trim().split(/\\s+/u).length:0),0)} static-label words</span>
       </div>}
