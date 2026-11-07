@@ -91,6 +91,50 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
     } catch(reason) {if(epoch===searchEpoch.current)setError(reason instanceof Error ? reason.message : "Search failed.");}
     finally {if(epoch===searchEpoch.current)setBusy(false);}
   };
+  const downloadRawLayout=async()=>{
+    if(!windowsLayoutEngineAvailable())return;
+    setError("");
+    try{
+      const bankName=(bankInfo.passbookBank||"").trim();
+      if(!bankName)throw Error("Choose your configured bank before exporting a layout.");
+      const {readLocalLayouts,currentLayoutScope}=await import("./layoutLocalStore.ts");
+      const {validatePersistedLayoutDraft}=await import("./layoutDraftValidation.ts");
+      const scope=currentLayoutScope().scope;
+      const slots=await readLocalLayouts(bankName,layoutMode);
+      const slotId="layout-"+(activeSlot+(layoutOutput==="dotmatrix"?3:0));
+      const local=slots.find(item=>item.slotId===slotId)?.draft;
+      let raw:Record<string,unknown>|null=null;
+      if(validatePersistedLayoutDraft(local,layoutMode,bankName)){
+        raw=structuredClone(local) as Record<string,unknown>;
+      }else if(activeLayout&&templateCanRender(activeLayout,bankName,layoutMode)){
+        raw={
+          version:1,mode:layoutMode,bankName,
+          pageCount:activeLayout.pageCount??1,
+          widthMm:activeLayout.widthMm,heightMm:activeLayout.heightMm,
+          foldMm:activeLayout.foldMm,printStartMm:activeLayout.printStartMm,
+          pageSetup:activeLayout.pageSetup,
+          elements:activeLayout.elements.map(element=>({...element,value:""}))
+        };
+      }
+      if(!raw||!validatePersistedLayoutDraft(raw,layoutMode,bankName))
+        throw Error("This slot has no compatible saved editable template. Save the layout in Designer first.");
+      // Never put resolved customer names, account numbers or customer photos into a shared backup.
+      if(Array.isArray(raw.elements))raw.elements=raw.elements.map(part=>{
+        const element=part as Record<string,unknown>;
+        return ["customer","bank","dotmatrix"].includes(String(element.origin||""))
+          ? {...element,value:"",imageData:undefined}:element;
+      });
+      if(currentLayoutScope().scope!==scope)
+        throw Error("The signed-in workspace changed. Export cancelled.");
+      const filename=(bankName.toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,48)||"bank")+
+        "-"+layoutOutput+"-layout-"+activeSlot+".json";
+      const blob=new Blob([JSON.stringify(raw,null,2)],{type:"application/json"});
+      if(blob.size>750*1024)throw Error("Editable layout is larger than the 750 KB restore limit.");
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement("a");link.href=url;link.download=filename;link.click();
+      window.setTimeout(()=>URL.revokeObjectURL(url),500);
+    }catch(reason){setError(reason instanceof Error?reason.message:"Unable to download editable layout.");}
+  };
   const search=(event:FormEvent)=>{event.preventDefault();if(query.trim())void load();};
   const completedPr2=async()=>{
     if(!customerRow){setError("The printer acknowledged printing, but this customer has no verified row number. Passbook status was NOT changed. Do not print again solely to update status.");return;}
@@ -104,13 +148,17 @@ export default function CustomBankDocument({ formatType, bankInfo, bankLogo }: {
   return <section className="custom-bank-document" data-print-root="active" data-print-profile={formatType === "quickPassbook" ? "safe" : "exact"} style={{padding:24,background:"#f5f6fa",borderRadius:14,color:"#34344c"}}>
     <h1>{bankInfo.passbookBank} · {title}</h1>
     <p>This document uses your workspace's selected bank sample and customer records.</p>
-    {windowsLayoutEngineAvailable()&&layoutMode==="passbook"&&<label style={{display:"inline-flex",alignItems:"center",gap:9,marginBottom:12}}>
-      {layoutOutput==="dotmatrix"?"PR2 Passbook Print Layout":"Quick Passbook Layout"}
-      <select value={activeSlot} aria-label="Approved passbook layout slot" onChange={event=>setActiveSlot(Number(event.target.value))}
-        style={{minHeight:36,borderRadius:7,padding:"6px 10px"}}>
-        {[1,2,3].map(n=><option key={n} value={n}>Layout {n}</option>)}
-      </select>
-    </label>}
+    {windowsLayoutEngineAvailable()&&layoutMode==="passbook"&&<div className="banksetu-layout-slot-actions" style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:12}}>
+      <label style={{display:"inline-flex",alignItems:"center",gap:9}}>
+        {layoutOutput==="dotmatrix"?"PR2 Passbook Print Layout":"Quick Passbook Layout"}
+        <select value={activeSlot} aria-label="Approved passbook layout slot" onChange={event=>setActiveSlot(Number(event.target.value))}
+          style={{minHeight:36,borderRadius:7,padding:"6px 10px"}}>
+          {[1,2,3].map(n=><option key={n} value={n}>Layout {n}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={()=>{void downloadRawLayout();}}>Download Raw Layout (.json)</button>
+      <small>Reopen it using Designer → File → Restore Editable Backup.</small>
+    </div>}
     {clientSearch ? <form className="client-document-search" onSubmit={search}>
       <label htmlFor="client-document-query">UNIVERSAL CUSTOMER SEARCH</label>
       <div><input id="client-document-query" placeholder="Account No. / Customer ID / Aadhaar / Mobile / AOF No. / Name" value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off" />
