@@ -48,3 +48,6 @@ test('Sheet display dates and local/offline creation dates count in Indian calen
  const result=customerAnalytics([{createdAt:'19/10/2026 14:30:00'},{createdAt:'2026-10-31T20:00:00Z'},{accountOpeningDate:'2026-10-19'}],now);
  assert.equal(result.known,2);assert.equal(result.undated,1);assert.equal(result.thisMonth,1);assert.equal(result.monthlyAverage,2/12);
 });
+
+// Account-opening card and All Customer Data preview regression coverage.
+import "./dashboard-account-openings.test.mjs";
