@@ -68,6 +68,22 @@ export function pageMeasurements(paper:MeasuredPage){
     contentHeightMm:Math.max(0,paper.heightMm-s.marginTopMm-s.marginBottomMm),
   };
 }
+/** Switch the BOOK FOLD direction, not page portrait/landscape.
+ * Existing text X/Y positions are left intact. The data-start gap remains
+ * relative to the new fold where possible; printing still requires calibration.
+ */
+export function withFoldDirection(paper:MeasuredPage,foldAxis:FoldAxis):MeasuredPage{
+  if(!["horizontal","vertical","none"].includes(foldAxis))
+    throw new Error("Unsupported passbook fold direction.");
+  const old=pageSetupFor(paper),pageSetup={...old,foldAxis};
+  if(foldAxis===old.foldAxis)return {...paper,pageSetup};
+  if(foldAxis==="none")return {...paper,foldMm:0,printStartMm:0,pageSetup};
+  const limit=foldAxis==="vertical"?paper.widthMm:paper.heightMm;
+  const foldMm=Math.round(limit*500)/1000;
+  const oldGap=old.foldAxis==="none"?12:Math.max(0,paper.printStartMm-paper.foldMm);
+  const printStartMm=Math.min(limit,Math.round((foldMm+oldGap)*1000)/1000);
+  return {...paper,foldMm,printStartMm,pageSetup};
+}
 export function presetGeometry(presetId:string):MeasuredPage|undefined{
   const preset=PAPER_PRESETS.find(p=>p.id===presetId);
   if(!preset)return;
