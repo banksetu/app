@@ -98,8 +98,8 @@ test("unified loader uses the original BANK SETU logo for first HTML paint, sess
   assert.match(loader,/Verifying your account and license securely/);
   assert.match(loader,/authentication|Authentication/);
   assert.match(app,/function SecureLoadingScreen\(\)/);
-  assert.match(app,/return <LoginTransition phase="startup"\/>/);
-  assert.match(app,/return <LoginTransition phase="login"\/>/);
+  assert.match(app,/return <LoginTransition phase="startup"\s*\/>/);
+  assert.match(app,/return <LoginTransition phase="login"\s*\/>/);
   assert.equal((app.match(/<SecureLoadingScreen\/>/g)||[]).length,4);
   assert.doesNotMatch(app,/AppLoading|app-loader|banksetu-icon\.png|Loading Bank Setu/);
   assert.doesNotMatch(appCss,/\.app-loader|\.loader-logo|\.loader-bank|\.loader-setu/);
