@@ -167,9 +167,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [scanCornerPercents,setScanCornerPercents]=useState<PerspectiveQuad|null>(null);
   const [scanHasImportedObjects,setScanHasImportedObjects]=useState(false);
   const [referencePages, setReferencePages] = useState<string[]>([]);
-  const [referenceOpacity] = useState(0.4);
+  const [referenceOpacity,setReferenceOpacity] = useState(0.4);
   const [referenceVisible, setReferenceVisible] = useState(false);
-  const [, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
+  const [visualDiff, setVisualDiff] = useState<{meanDifferencePercent:number;strongMismatchPercent:number;pixels:number}|null>(null);
   const [diffBusy, setDiffBusy] = useState(false);
   const [pr2Proof, setPr2Proof] = useState("");
   const [audit, setAudit] = useState<AuditItem[] | null>(null);
@@ -2005,6 +2005,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <div className="ls-word-command-family" role="group" aria-label="Text"><strong>Text</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>append("text","static","New text")}>+ Text Box</button>
         <button type="button" onClick={()=>append("text","preprinted","Printed Label")}>+ Label</button>
+        <button type="button" onClick={()=>append("text","static","Branch Manager")}>Branch Manager</button>
+        <button type="button" onClick={()=>append("text","static","Instructions")}>Instructions</button>
         </div></div>
         <div className="ls-word-command-family" role="group" aria-label="Pictures"><strong>Pictures</strong><div className="ls-word-command-items">
         <label className="ls-file-action">◩ Picture<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}} /></label>
@@ -2042,6 +2044,13 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
         <button type="button" onClick={fitPaperWidth}>Fit Paper Width</button>
         <button type="button" onClick={()=>setZoom(.8)}>Zoom 80%</button>
+        <label>Page <select aria-label="Selected editable page" value={selectedPage}
+          onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);setWordSelectedIds([]);}}>
+          {Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}
+        </select></label>
+        <label>Original Opacity <input type="range" min={0.1} max={0.9} step={0.1}
+          aria-label="Original reference opacity" value={referenceOpacity}
+          onChange={event=>setReferenceOpacity(Number(event.target.value))}/></label>
         <button type="button" onClick={()=>setZoom(v=>Math.max(.5,Math.round((v-.1)*10)/10))}>Zoom −</button>
         <button type="button" onClick={()=>setZoom(v=>Math.min(4,Math.round((v+.1)*10)/10))}>Zoom +</button>
         <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
@@ -2158,6 +2167,9 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <span className="ls-ribbon-group-label">Review · OCR · Proof</span>
         <button type="button" onClick={()=>{const result=auditPassbookTemplate(draft);setAudit(result);setNotice("Draft audit: "+result.filter(x=>x.severity==="error").length+" errors and "+result.filter(x=>x.severity==="warning").length+" warnings. Review before approval.");}}>Run Layout Audit</button>
         <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
+        {visualDiff&&<small title="Pixel comparison only — not physical printer certification">
+          Difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%
+        </small>
         <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
         <button type="button" disabled={!draft.elements.some(p=>p.needsReview)} onClick={findNextUnreviewed}>Next OCR Correction</button>
         <button type="button" onClick={checkLegibility}>Accessibility / Legibility Check</button>
