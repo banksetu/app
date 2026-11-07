@@ -140,7 +140,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
   const [easyMode,setEasyMode]=useState(false);
   const [simplePaperOpen,setSimplePaperOpen]=useState(false);
   const [pageSetupOpen,setPageSetupOpen]=useState(false);
-  const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help">("home");
+  const [wordTab,setWordTab]=useState<"file"|"home"|"insert"|"draw"|"design"|"layout"|"references"|"mailings"|"review"|"view"|"help"|"format">("home");
   const [ribbonSearch,setRibbonSearch]=useState("");
   const [ribbonSearchOpen,setRibbonSearchOpen]=useState(false);
   const ribbonSearchRef=useRef<HTMLInputElement|null>(null);
@@ -782,6 +782,33 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     if(!next){setNotice("No unreadable OCR lines are flagged in this draft.");return;}
     setSelectedPage(next.page||1);setSelectedId(next.id);setWordSelectedIds([next.id]);
     setNotice("Review the selected OCR line and mark its original-paper layer before approval.");
+  };
+  const changeObjectMeasure=(key:"x"|"y"|"width"|"height",next:number)=>{
+    if(!selected||selected.locked||!Number.isFinite(next))return;
+    const maximum=key==="x"?draft.widthMm-selected.width:
+      key==="y"?draft.heightMm-selected.height:
+      key==="width"?draft.widthMm-selected.x:draft.heightMm-selected.y;
+    const minimum=key==="width"||key==="height"?1:0;
+    if(maximum<minimum){setNotice("Object is outside this measured passbook page.");return;}
+    const value=round(within(next,minimum,maximum));
+    edit({[key]:value});
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+  };
+  const insertCaptionBelowSelection=()=>{
+    if(!selected){setNotice("Choose a picture, shape or field for its caption.");return;}
+    if(draft.elements.length>=300){setNotice("This layout is already at its 300-object limit.");return;}
+    const width=Math.max(18,Math.min(selected.width,draft.widthMm-selected.x));
+    const y=selected.y+selected.height+1;
+    if(y+8>draft.heightMm){setNotice("Not enough room below the selected object. Move it upward.");return;}
+    const caption=addPart("text","static","Caption: "+selected.label.slice(0,75),"",selected.x,y);
+    caption.width=width;caption.height=8;caption.size=9;caption.italic=true;
+    caption.page=selectedPage;caption.quick=true;
+    caption.dotMatrix=setup.output==="dotmatrix";
+    caption.z=Math.max(0,...draft.elements.map(p=>p.z))+1;
+    modify(current=>({...current,elements:[...current.elements,caption]}));
+    setSelectedId(caption.id);setWordSelectedIds([caption.id]);
+    setPhysicalChecked(false);setHardwareChecked(false);
+    setNotice("Inserted editable caption box. For Direct PR2, verify this text is not preprinted.");
   };
   const moveSelectedTo=(axis:"horizontal"|"vertical",side:"start"|"center"|"end")=>{
     if(!selected)return;
@@ -1762,6 +1789,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
             {tab[0].toUpperCase()+tab.slice(1)}
           </button>)}
+        {selected&&<button type="button" className="ls-contextual-tab" aria-pressed={wordTab==="format"}
+          onClick={()=>setWordTab("format")}>Object Format</button>}
       </nav>
       <div className="ls-ribbon-tool-finder">
         <label htmlFor="ls-ribbon-command-search">⌕ Find a tool</label>
@@ -1791,6 +1820,42 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           {findRibbonCommands(ribbonSearch,8).length===0&&<p>No working tool matches this search.</p>}
         </div>}
       </div>
+      {wordTab==="format"&&<div className="ls-word-tab-content ls-object-format-ribbon"
+        role="toolbar" aria-label="Format selected layout object">
+        {selected?<><div className="ls-word-command-family" role="group" aria-label="Position">
+          <strong>Position (mm)</strong><div className="ls-word-command-items">
+          {(["x","y"] as const).map(k=><label key={k}>{k.toUpperCase()} <input type="number"
+            min={0} max={k==="x"?draft.widthMm-selected.width:draft.heightMm-selected.height}
+            step={.1} value={selected[k]} disabled={selected.locked}
+            onChange={e=>changeObjectMeasure(k,Number(e.target.value))}/></label>)}
+          </div></div>
+          <div className="ls-word-command-family" role="group" aria-label="Size">
+          <strong>Size (mm)</strong><div className="ls-word-command-items">
+          {(["width","height"] as const).map(k=><label key={k}>{k==="width"?"W":"H"} <input type="number"
+            min={1} max={k==="width"?draft.widthMm-selected.x:draft.heightMm-selected.y}
+            step={.1} value={selected[k]} disabled={selected.locked}
+            onChange={e=>changeObjectMeasure(k,Number(e.target.value))}/></label>)}
+          </div></div>
+          <div className="ls-word-command-family" role="group" aria-label="Arrange">
+            <strong>Arrange</strong><div className="ls-word-command-items">
+            <button type="button" disabled={selected.locked} onClick={()=>moveZ(1000)}>Front</button>
+            <button type="button" disabled={selected.locked} onClick={()=>moveZ(-1000)}>Back</button>
+            <button type="button" disabled={selected.locked}
+              onClick={()=>edit({rotation:(selected.rotation+90)%360})}>Rotate 90°</button>
+            <button type="button" onClick={()=>lockWordSelection(!selected.locked)}>
+              {selected.locked?"Unlock":"Lock"}</button>
+            </div></div>
+          <div className="ls-word-command-family" role="group" aria-label="Appearance">
+            <strong>Appearance</strong><div className="ls-word-command-items">
+            <label>Color <input type="color" value={selected.color} disabled={selected.locked}
+              onChange={e=>edit({color:e.target.value})}/></label>
+            <label>Border <input type="color" value={selected.borderColor} disabled={selected.locked}
+              onChange={e=>edit({borderColor:e.target.value})}/></label>
+            <label>Opacity <input aria-label="Object opacity" type="range" min={0.1} max={1}
+              step={0.1} disabled={selected.locked} value={selected.opacity}
+              onChange={e=>edit({opacity:Number(e.target.value)})}/></label>
+            </div></div></>:<span>Select a document object to open its format tools.</span>}
+      </div>}
       {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
         <button type="button" disabled={busy} onClick={()=>{void startFromBlank();}}>▤ New Blank</button>
         <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>▣ Save Draft</button>
@@ -1858,6 +1923,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {wordTab==="references"&&<div className="ls-word-tab-content" role="toolbar" aria-label="References and printed notes"><span className="ls-ribbon-group-label">References · Notes</span>
         <button type="button" onClick={()=>append("text","static","Reference / note:")}>Insert Editable Note</button>
         <button type="button" onClick={()=>append("text","static","Terms and conditions")}>Insert Terms</button>
+        <button type="button" disabled={!selected} onClick={insertCaptionBelowSelection}>Insert Caption Box</button>
         <button type="button" onClick={()=>append("field","bank","Bank IFSC","ifsc")}>Reference Bank IFSC</button>
         <button type="button" onClick={()=>append("field","customer","Customer CIF","customerId")}>Reference Customer CIF</button>
         <small>Word bibliographies, citations and academic indexes are not part of a direct passbook print template.</small>
