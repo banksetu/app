@@ -19,7 +19,7 @@ test("Both customization pages use a lazy loaded editor", () => {
   assert.match(dashboard, /lazy\(\(\) => import\("\.\/CustomizeLayoutStudio"\)\)/);
   assert.match(dashboard, /"customize-passbook"/);
   assert.match(dashboard, /"customize-account-opening"/);
-  assert.match(dashboard, /canCustomizeLayout && bankSettingsReady/);
+  assert.match(dashboard, /canCustomizeLayout && (bankSettingsReady || canControlGlobalDashboard)/);
 });
 
 test("Editor drafts remain isolated from live PR2 and backend mutations", () => {
