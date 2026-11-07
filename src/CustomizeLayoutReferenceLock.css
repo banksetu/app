@@ -434,3 +434,21 @@ html[data-appearance="dark"] .ls-start-wizard,
 .layout-studio .ls-object-format-ribbon .ls-word-command-items input[type="range"]{
   width:82px
 }
+
+/* Offline Review: advisory, navigable contrast/font/field/OCR warnings. */
+.layout-studio .ls-legibility-panel {
+  border:1px solid #d5ad69;background:#fffdf6;
+  margin:4px 10px;padding:5px 8px;border-radius:5px
+}
+.layout-studio .ls-legibility-panel summary {
+  cursor:pointer;font-size:11px;font-weight:700;color:#745125
+}
+.layout-studio .ls-legibility-panel > div {
+  display:grid;gap:3px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  max-height:170px;overflow:auto;padding:5px 0
+}
+.layout-studio .ls-legibility-panel button {
+  text-align:left;font-size:10px;min-height:28px;padding:5px 8px;
+  border:1px solid #e8dcc1;background:#fff;border-radius:4px;color:#604b2f
+}
+.layout-studio .ls-legibility-panel button:hover {background:#fff0ca}
