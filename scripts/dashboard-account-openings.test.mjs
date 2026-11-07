@@ -67,3 +67,26 @@ test("dashboard report reuses the existing full preview with actions, never crea
  assert.match(customers,/className="customer-preview-overlay"/);
  assert.match(customers,/getCustomerByRowNumber/);
 });
+
+test("offline report uses the existing scoped local repository and never leaks old tenant rows",()=>{
+ const preview=readFileSync(new URL("../src/AllCustomerData.tsx",import.meta.url),"utf8");
+ const dashboard=readFileSync(new URL("../src/Dashboard.tsx",import.meta.url),"utf8");
+ const report=readFileSync(new URL("../src/DashboardAccountOpeningReport.tsx",import.meta.url),"utf8");
+ assert.match(preview,/if\(localModeEnabled\(\)\)/);
+ assert.match(preview,/getActiveLocalCustomers\(\)/);
+ assert.match(preview,/customerListScope\(\)!==intendedScope/);
+ assert.match(preview,/identity\(customer\)===identity\(previewCustomer\)/);
+ assert.match(dashboard,/setAnalyticsRows\(null\)/);
+ assert.match(dashboard,/setOpeningReportOpen\(false\)/);
+ assert.match(dashboard,/window\.addEventListener\("banksetu-workspace-change"/);
+ assert.match(report,/window\.addEventListener\("banksetu-workspace-change"/);
+ assert.match(report,/previewCustomer=\{previewCustomer\}/);
+});
+
+test("copy action never opens preview and remains keyboard accessible",()=>{
+ const report=readFileSync(new URL("../src/DashboardAccountOpeningReport.tsx",import.meta.url),"utf8");
+ assert.match(report,/event\.stopPropagation\(\);void copyAccount\(account\)/);
+ assert.match(report,/event\.currentTarget===event\.target&&event\.key==="Enter"/);
+ assert.match(report,/onClick=\{\(\)=>openCustomer\(customer\)\}/);
+ assert.match(report,/\{amounts\.length>0&&<th>Opening Amount<\/th>\}/);
+});
