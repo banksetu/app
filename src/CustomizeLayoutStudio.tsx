@@ -2156,11 +2156,11 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1000)}>Send to Back</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(selected)edit({rotation:(selected.rotation+270)%360});}}>Rotate Left 90°</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","center")}>Center on Page</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","left")}>Align Page Left</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","right")}>Align Page Right</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","start")}>Align Page Left</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("horizontal","end")}>Align Page Right</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","center")}>Align Page Middle</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","top")}>Align Page Top</button>
-        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","bottom")}>Align Page Bottom</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","start")}>Align Page Top</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>moveSelectedTo("vertical","end")}>Align Page Bottom</button>
         <button type="button" disabled={selectedWordParts.length<2} onClick={groupWordSelection}>Group</button>
         <button type="button" disabled={!selectedWordParts.some(part=>part.groupId)} onClick={ungroupWordSelection}>Ungroup</button>
         <span>{draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm</span>
