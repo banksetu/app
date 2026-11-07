@@ -1,0 +1,28 @@
+.dashboard-opening-overlay{position:fixed;inset:0;z-index:2100;background:#101d36b5;display:flex;align-items:flex-start;justify-content:center;padding:max(14px,env(safe-area-inset-top,0px)) 12px max(14px,env(safe-area-inset-bottom,0px));overflow:auto}
+.dashboard-opening-panel{background:var(--app-dark-surface,#fff);color:var(--app-dark-text,#20324a);border:1px solid #9db6d2;border-radius:13px;width:min(1120px,100%);min-width:0;box-shadow:0 20px 55px #0a17304a;padding:17px}
+.dashboard-opening-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid #c5d5e6;padding-bottom:8px}
+.dashboard-opening-header h2{font-size:21px;margin:0;color:inherit}.dashboard-opening-header p{font-size:12px;margin:5px 0;color:inherit;opacity:.76}
+.dashboard-opening-header>button{flex:none;font-size:25px;border:0;background:transparent;color:inherit;cursor:pointer}
+.dashboard-opening-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:9px;margin:13px 0}
+.dashboard-opening-filters label{font-size:11px;font-weight:600;display:grid;gap:4px;min-width:145px}
+.dashboard-opening-filters input{font:inherit;font-size:13px;color:#172c46;background:#fff;border:1px solid #adbed5;border-radius:5px;padding:8px;max-width:100%;min-height:37px;box-sizing:border-box}
+.dashboard-opening-tabs{display:flex;flex-wrap:wrap;gap:4px;align-self:flex-end}
+.dashboard-opening-tabs button{border:1px solid #b8cadc;border-radius:5px;background:transparent;color:inherit;min-height:37px;padding:7px 10px;cursor:pointer}
+.dashboard-opening-tabs button[aria-pressed=true]{background:#164f90;color:#fff}
+.dashboard-opening-filters .dashboard-opening-search{flex:1;min-width:160px}
+.dashboard-opening-overview{display:flex;gap:20px;flex-wrap:wrap;background:var(--app-dark-surface,#f4f7fc);border-block:1px solid #d0ddeb;padding:12px 6px;margin-bottom:10px}
+.dashboard-opening-overview>div{display:grid;gap:2px;min-width:125px}.dashboard-opening-overview small{font-size:11px;opacity:.75}.dashboard-opening-overview strong{font-size:17px}
+.dashboard-opening-table-scroll{overflow:auto;max-height:min(55vh,510px)}
+.dashboard-opening-panel table{border-collapse:collapse;min-width:610px;width:100%;font-size:13px}
+.dashboard-opening-panel th,.dashboard-opening-panel td{text-align:left;padding:10px;border-bottom:1px solid #d8e2ec;vertical-align:middle}
+.dashboard-opening-panel th{position:sticky;top:0;background:#eaf1fb;color:#214d78;z-index:1;font-size:12px}
+.dashboard-opening-panel tbody tr{cursor:pointer;outline-offset:-2px}.dashboard-opening-panel tbody tr:hover,.dashboard-opening-panel tbody tr:focus{background:#eaf3ff;outline:2px solid #4e88c7}
+.dashboard-opening-number{display:flex;gap:9px;align-items:center;justify-content:space-between;white-space:nowrap}
+.dashboard-opening-number button{font-size:11px;cursor:pointer;padding:5px 9px;border:1px solid #93b5da;background:#fff;color:#21527f;border-radius:5px}
+.dashboard-opening-status{display:inline-block;padding:4px 7px;border-radius:6px;background:#eaf1fa;color:#43546a;font-size:11px;font-weight:650}
+.dashboard-opening-status.is-active{background:#d9f5e6;color:#0b6c3d}.dashboard-opening-status.is-inactive{background:#fff1dd;color:#915c12}
+.dashboard-opening-empty,.dashboard-opening-error,.dashboard-opening-message{font-size:12px;margin:9px 1px;padding:4px}
+.dashboard-opening-error{color:#ba2a39}.dashboard-opening-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:12px;padding-top:11px;font-size:11px}
+.dashboard-opening-footer span{margin-right:auto}.dashboard-opening-footer button{background:#18548e;color:#fff;border:0;border-radius:6px;padding:8px 13px;cursor:pointer}
+.dashboard-opening-preview-loading{position:fixed;top:50%;left:50%;z-index:3100;background:#fff;padding:18px;border-radius:8px}
+@media(max-width:680px){.dashboard-opening-overlay{padding:4px}.dashboard-opening-panel{padding:10px;border-radius:9px}.dashboard-opening-header h2{font-size:17px}.dashboard-opening-filters label{min-width:100px;flex:1}.dashboard-opening-tabs{width:100%}.dashboard-opening-tabs button{flex:1;font-size:11px}.dashboard-opening-table-scroll{max-height:53vh}.dashboard-opening-overview strong{font-size:14px}}
