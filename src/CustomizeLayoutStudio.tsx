@@ -695,6 +695,27 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     setPhysicalChecked(false);setHardwareChecked(false);
     setNotice("Changed case of "+result.changed+" static text box(es). Dynamic customer fields were unchanged.");
   };
+  const setQuickPageColor=(color:string)=>{
+    if(setup.output==="dotmatrix"){setNotice("Direct PR2 cannot include any page background graphic.");return;}
+    if(color!=="transparent"&&!/^#[0-9a-fA-F]{6}$/.test(color)){
+      setNotice("Invalid page color.");return;
+    }
+    const existing=draft.elements.find(p=>p.fieldKey==="__pageBackground__"&&
+      p.kind==="rectangle"&&(p.page??1)===selectedPage);
+    if(!existing&&color!=="transparent"&&draft.elements.length>=300){
+      setNotice("The layout has reached its 300-object limit.");return;
+    }
+    const background=addPart("rectangle","static","Quick Passbook background","__pageBackground__",0,0);
+    background.width=draft.widthMm;background.height=draft.heightMm;background.page=selectedPage;
+    background.background=color;background.color=color;background.borderWidth=0;
+    background.z=-999;background.dotMatrix=false;background.quick=true;background.locked=true;
+    modify(current=>({...current,elements:[
+      ...current.elements.filter(p=>!(p.fieldKey==="__pageBackground__"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)),
+      ...(color==="transparent"?[]:[background])
+    ]}));
+    setPhysicalChecked(false);setHardwareChecked(false);setLabelChecked(false);
+    setNotice(color==="transparent"?"Removed Quick Passbook page fill.":"Applied Quick-only page fill. Direct PR2 remains text-only.");
+  };
   const insertDocumentDecoration=(kind:"header"|"footer"|"watermark"|"border"|"pageNumber")=>{
     if(draft.elements.length>=300){setNotice("The layout has reached its 300-object limit.");return;}
     if((kind==="watermark"||kind==="border")&&setup.output==="dotmatrix"){
@@ -1821,6 +1842,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {wordTab==="design"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Design colors"><span className="ls-ribbon-group-label">Styles · Colors · Borders</span>
         <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("watermark")}>Watermark (Quick)</button>
         <button type="button" disabled={setup.output==="dotmatrix"} onClick={()=>insertDocumentDecoration("border")}>Page Border (Quick)</button>
+        <label>Page Color (Quick) <select aria-label="Quick Passbook page color" disabled={setup.output==="dotmatrix"}
+          value={draft.elements.find(p=>p.fieldKey==="__pageBackground__"&&p.kind==="rectangle"&&(p.page??1)===selectedPage)?.background||"transparent"}
+          onChange={e=>setQuickPageColor(e.target.value)}>
+          <option value="transparent">White / None</option>
+          <option value="#fff8e8">Cream</option>
+          <option value="#eaf3ff">Light Blue</option>
+          <option value="#f2faef">Light Green</option>
+          <option value="#f3f3f3">Light Gray</option>
+        </select></label>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:12,bold:true,color:"#284a71"})}>Subheading Style</button>
+        <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:9,bold:false,italic:true,color:"#526579"})}>Caption Style</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:14,bold:true,color:"#0b4c93"})}>Heading Style</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>edit({font:"Arial",size:11,bold:false,color:"#132a40"})}>Normal Style</button>
         {selected?<><label>Background <input type="color" value={selected.background==="transparent"?"#ffffff":selected.background} onChange={e=>edit({background:e.target.value})}/></label>
