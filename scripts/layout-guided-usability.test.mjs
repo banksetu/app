@@ -10,7 +10,10 @@ test("first-time designer uses bank/method/mode wizard without a duplicate wizar
  assert.match(ui,/LayoutSetupWizard/);
  assert.doesNotMatch(ui,/className="ls-easy-guide"/);
  assert.match(ui,/onBackToSetup/);
- assert.match(ui,/setEasyMode/);
+ assert.doesNotMatch(ui,/setEasyMode|ls-simple-flow/);
+ assert.match(ui,/Save &amp; Submit to Master/);
+ assert.match(ui,/fitPaperWidth/);
+ assert.match(ui,/MasterTemplateManager/);
  assert.match(ui,/setWorkspaceView\("library"\)/);
  assert.match(ui,/auditPassbookTemplate\(draft\)/);
 });
