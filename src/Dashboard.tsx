@@ -1437,6 +1437,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
                   {customizeMenuOpen && <div id="banksetu-customize-layout-submenu" role="group" aria-label="Customize Layout" style={{margin:"0 3px 8px 10px",paddingLeft:7,borderLeft:"2px solid #2c7778"}}>
                     <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-passbook"); }}>Customize Passbook</button>
                     <button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}} onClick={() => { setCustomizeMenuOpen(false); openPage("customize-account-opening"); }}>Customize Account Opening Form</button>
+                    {canControlGlobalDashboard&&<button type="button" style={{...styles.adminMenuItem,fontSize:12,padding:"9px 10px"}}
+                      onClick={() => {setCustomizeMenuOpen(false);openPage("customize-passbook");}}>
+                      Master Template Management — All Banks
+                    </button>}
                   </div>}
                 </>}
                 {["master_owner","admin","client_admin","client_user"].includes(accountRole) && <button
@@ -1485,8 +1489,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
               <p>This advanced PDF-to-passbook editor and its custom print engine are disabled on Android and web. Your existing customers, normal bank passbook printing and account-opening options are unchanged.</p>
               <button type="button" onClick={()=>openPage("dashboard")}>Return to Dashboard</button>
             </section>}
-          {canCustomizeLayout && bankSettingsReady && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} bankValues={{...bankInfo,...bankExtraFields}} accountRole={accountRole} bankOptions={PASSBOOK_BANK_OPTIONS} /></Suspense>}
-          {!bankSettingsReady && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
+          {canCustomizeLayout && (bankSettingsReady || canControlGlobalDashboard) && (activePage === "customize-passbook" || activePage === "customize-account-opening") && <Suspense fallback={<p role="status">Opening Layout Studio…</p>}><CustomizeLayoutStudio key={activePage + ":" + (bankInfo.passbookBank || bankInfo.bankName)} mode={activePage === "customize-passbook" ? "passbook" : "accountOpening"} bankName={bankInfo.passbookBank || bankInfo.bankName} bankValues={{...bankInfo,...bankExtraFields}} accountRole={accountRole} bankOptions={PASSBOOK_BANK_OPTIONS} /></Suspense>}
+          {!bankSettingsReady && !canControlGlobalDashboard && <p role="status" style={{color:"var(--app-dark-text, #414158)",padding:16,background:"var(--app-dark-surface, white)",borderRadius:10}}>{bankSettingsError || "Loading saved bank settings from Firebase…"}{bankSettingsError && <button type="button" onClick={()=>setBankSettingsRetry(n=>n+1)} style={{marginLeft:12}}>Retry</button>}</p>}
 
           {activePage === "dashboard" && licenseReadOnly && !demoExpired && <LicenseReadOnlyCustomers />}
           {activePage === "dashboard" && !licenseReadOnly && (

@@ -120,28 +120,9 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
       .workspace-template-document .workspace-template-controls {display:none!important}
     }`}</style>
     {directPrinting&&<Suspense fallback={<p>Connecting existing PR2 Bridge…</p>}><CustomPr2PrinterDialog
-      bankName={bankName} customPdfBase64={directPdfBase64} requirePhysicalConfirmation
+      bankName={bankName} layoutId={template.id} customPdfBase64={directPdfBase64} requirePhysicalConfirmation
       onClose={()=>{setDirectPrinting(false);setDirectPdfBase64("");}}
       onComplete={(result)=>{if(result.completed){setDirectPrinting(false);setDirectPdfBase64("");onPr2Complete?.();}}} /></Suspense>}
-    <div className="workspace-template-controls">
-      <p><strong>Approved Custom Template</strong> · {bankName} · {output==="quick"?"Quick Passbook":"Dot Matrix Data Only"}</p>
-      <p>Preview uses this client's customer and Bank Information fields. Confirm the paper and printer settings before printing.</p>
-      <button type="button" onClick={()=>{void print();}} disabled={printing||directPreparing||directPrinting}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
-      {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting||directPreparing}
-          onClick={()=>{void startCustomPr2();}}>{directPreparing?"Preparing custom data-only raster…":"Olivetti Mode Print — Custom Layout"}</button>}
-      <details className="workspace-template-temporary"><summary>Temporary Edit — this print only</summary>
-        <p>These changes affect the active preview and print job only. The Master Template and customer data are never modified.</p>
-        <div className="workspace-template-temporary-grid">
-          {template.elements.filter(item=>["customer","bank","dotmatrix"].includes(item.origin)).map(item=><label key={item.id}>
-            <span>{item.label} · {item.fieldKey||"Unmapped"}</span>
-            <input value={temporaryValues[item.id]??boundLayoutValue(item,customer,bankInfo)} maxLength={500}
-              onChange={event=>setTemporaryValues(current=>({...current,[item.id]:event.target.value}))}/>
-          </label>)}
-        </div>
-        <button type="button" onClick={()=>setTemporaryValues({})}>Reset Temporary Edits</button>
-      </details>
-      {message&&<p role="status">{message}</p>}
-    </div>
     <div className="passbook-page workspace-bridge-page"><div className="passbook-shell workspace-bridge-shell">
     <div className="workspace-template-pages">
       {Array.from({length:pages},(_,index)=>index+1).map(page=><div key={page} className="workspace-template-page" style={{width:width+"mm",height:height+"mm"}}>
@@ -169,5 +150,24 @@ export default function WorkspaceTemplateDocument({template,bankName,customer,ba
           })}
       </div>)}
     </div></div></div>
+    <div className="workspace-template-controls">
+      <p><strong>Print & Temporary Edit</strong> · {bankName} · {output==="quick"?"Quick Passbook":"PR2 Direct Passbook"}</p>
+      <p>Preview uses this client's customer and Bank Information fields. Confirm the paper and printer settings before printing.</p>
+      <button type="button" onClick={()=>{void print();}} disabled={printing||directPreparing||directPrinting}>{printing?"Opening Printer…":"Print Verified Layout"}</button>
+      {output==="dotmatrix" && windowsPr2() && <button type="button" disabled={printing||directPrinting||directPreparing}
+          onClick={()=>{void startCustomPr2();}}>{directPreparing?"Preparing custom data-only raster…":"Olivetti Mode Print — Custom Layout"}</button>}
+      <details className="workspace-template-temporary"><summary>Temporary Edit — this print only</summary>
+        <p>These changes affect the active preview and print job only. The Master Template and customer data are never modified.</p>
+        <div className="workspace-template-temporary-grid">
+          {template.elements.filter(item=>["customer","bank","dotmatrix"].includes(item.origin)).map(item=><label key={item.id}>
+            <span>{item.label} · {item.fieldKey||"Unmapped"}</span>
+            <input value={temporaryValues[item.id]??boundLayoutValue(item,customer,bankInfo)} maxLength={500}
+              onChange={event=>setTemporaryValues(current=>({...current,[item.id]:event.target.value}))}/>
+          </label>)}
+        </div>
+        <button type="button" onClick={()=>setTemporaryValues({})}>Reset Temporary Edits</button>
+      </details>
+      {message&&<p role="status">{message}</p>}
+    </div>
   </section>;
 }

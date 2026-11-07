@@ -1,5 +1,5 @@
 .workspace-template-document{background:var(--app-panel,#f2f6f9);color:var(--app-text,#183046);padding:12px;border-radius:12px;max-width:100%;min-width:0;}
-.workspace-template-controls{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:10px 12px;border:1px solid var(--app-dark-border,#c6d6de);background:var(--app-surface,#fff);border-radius:9px;margin-bottom:14px;}
+.workspace-template-controls{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:10px 12px;border:1px solid var(--app-dark-border,#c6d6de);background:var(--app-surface,#fff);border-radius:7px;margin:16px auto 0;}
 .workspace-template-controls p{margin:0;font-size:12px;flex:1 1 240px;color:inherit;}
 .workspace-template-controls button{background:#087c80;color:white;border:0;border-radius:9px;min-height:38px;padding:8px 12px;cursor:pointer;font-weight:700}
 .workspace-template-controls button:disabled{opacity:.5;cursor:not-allowed}
@@ -20,3 +20,11 @@ html[data-appearance="dark"] .custom-bank-document:has(.workspace-template-docum
 .workspace-template-temporary-grid span{font-size:11px;overflow-wrap:anywhere}
 .workspace-template-temporary-grid input{font:inherit;border-radius:6px;border:1px solid #93a8b8;padding:8px;background:white;color:#172334;min-width:0}
 @media print{.workspace-template-temporary{display:none!important}}
+
+/* A client chooses the approved layout above customer search; edit/print actions
+   deliberately remain BELOW the passbook proof, with no duplicate top print bar. */
+.workspace-template-document .workspace-template-controls {max-width:1100px;justify-content:flex-start}
+.workspace-template-document .workspace-template-temporary {order:3;background:transparent}
+.workspace-template-document .workspace-template-controls > p:first-child {flex:1 1 100%;font-weight:600}
+.workspace-template-document .workspace-template-controls > p:nth-child(2) {flex:1 1 100%;font-weight:400;color:var(--app-muted,#5b6c7c)}
+@media print {.workspace-template-document .workspace-template-controls{display:none!important}}

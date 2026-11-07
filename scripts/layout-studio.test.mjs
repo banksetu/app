@@ -19,7 +19,7 @@ test("Both customization pages use a lazy loaded editor", () => {
   assert.match(dashboard, /lazy\(\(\) => import\("\.\/CustomizeLayoutStudio"\)\)/);
   assert.match(dashboard, /"customize-passbook"/);
   assert.match(dashboard, /"customize-account-opening"/);
-  assert.match(dashboard, /canCustomizeLayout && bankSettingsReady/);
+  assert.match(dashboard, /canCustomizeLayout && (bankSettingsReady || canControlGlobalDashboard)/);
 });
 
 test("Editor drafts remain isolated from live PR2 and backend mutations", () => {
@@ -32,7 +32,7 @@ test("Editor drafts remain isolated from live PR2 and backend mutations", () => 
 });
 
 test("Basic editor features and dark/light variants are present", () => {
-  for (const label of ["Upload PDF", "Customer Field", "Bank Information", "Photo Box", "Branch Manager", "Default / Preview value", "Text alignment", "Text color", "Background color", "Rotation (°)", "Dot Matrix output", "Preprinted on paper", "Undo", "Redo"]) {
+  for (const label of ["Open PDF Sample", "Customer Field", "Bank Information", "Photo Box", "Default / Preview value", "Text alignment", "Text color", "Background color", "Rotation (°)", "Dot Matrix output", "Preprinted on paper", "Undo", "Redo"]) {
     assert.ok(editor.includes(label), "Missing control: " + label);
   }
   assert.match(css, /data-appearance="dark"/);

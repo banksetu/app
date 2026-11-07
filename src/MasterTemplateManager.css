@@ -1,0 +1,27 @@
+.master-template-manager{font-family:"Segoe UI",Arial,sans-serif;max-width:100%;padding:16px;color:var(--app-text,#183046);background:var(--app-panel,#f6f9fc)}
+.master-template-manager>header{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.master-template-manager>header strong{font-size:22px}.master-template-manager>header p{font-size:12px;margin:4px 0;color:var(--app-muted,#52677c)}
+.master-template-header-actions{display:flex;gap:8px;flex-wrap:wrap}
+.master-template-manager button{font:600 12px "Segoe UI",Arial,sans-serif;padding:7px 11px;border:1px solid #a9bdd2;background:#fff;border-radius:4px;color:#15466f;cursor:pointer}
+.master-template-manager button:disabled{opacity:.5;cursor:not-allowed}
+.master-template-manager button:hover:not(:disabled){background:#e7f3ff}
+.master-template-manager>nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid #b7cee4;margin:0 0 11px}
+.master-template-manager>nav button{border-radius:4px 4px 0 0;border:0;background:transparent}
+.master-template-manager>nav button[aria-pressed="true"]{background:#fff;box-shadow:inset 0 -3px #1264b7}
+.master-template-filter label{display:grid;gap:5px;max-width:440px;font-size:12px}
+.master-template-filter input{border:1px solid #a7bfd9;border-radius:4px;padding:9px;background:#fff;color:#142b44}
+.master-template-message{padding:5px 0;margin:10px 0;font-size:12px;color:var(--app-muted,#52677c)}
+.master-template-table-wrap{overflow-x:auto;max-width:100%}
+.master-template-manager table{width:100%;border-collapse:collapse;background:#fff;font-size:12px}
+.master-template-manager th,.master-template-manager td{text-align:left;border-bottom:1px solid #dce6f0;padding:10px 8px;vertical-align:top;min-width:110px}
+.master-template-manager th{background:#eef5fd;color:#2b5277;font-size:11px}
+.master-template-manager td small{display:block;margin-top:3px;color:#62778b;font-size:10px;overflow-wrap:anywhere}
+.master-template-manager .master-template-actions{display:flex;gap:4px;flex-wrap:wrap;min-width:210px}
+.master-template-manager button.master-template-delete{color:#9d2626;border-color:#e5c5c5}
+.master-template-manager .master-template-load{margin:14px 0}
+.master-template-preview{border-top:1px solid #c7d8e9;padding:14px 0}
+.master-template-preview>div:first-child{display:flex;align-items:center;gap:20px;justify-content:space-between}
+.master-template-preview p{font-size:11px}
+.master-template-paper{position:relative;background:white;color:#162637;border:1px solid #adc2d7;box-shadow:0 3px 12px #0b1d3024;overflow:hidden}
+.master-template-paper span{display:block}
+@media(max-width:720px){.master-template-manager{padding:8px}.master-template-manager>header strong{font-size:17px}.master-template-manager td{min-width:130px}}

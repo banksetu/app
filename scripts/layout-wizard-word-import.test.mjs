@@ -40,7 +40,7 @@ test("wizard, dynamic mapping, local save, approval and release safety remain se
   const wiz=readFileSync(new URL("../src/LayoutSetupWizard.tsx",import.meta.url),"utf8");
   const ui=readFileSync(new URL("../src/CustomizeLayoutStudio.tsx",import.meta.url),"utf8");
   for(const label of ["Please Select Your Bank","Upload PDF Sample","Upload Word DOC/DOCX","Create New Layout","Quick Passbook","Passbook Print (PR2)","Continue Editing"])assert.ok(wiz.includes(label),label);
-  for(const label of ["importWordDocx","Draw Customer Data Box","Draw Bank Data Box","Preview with Customer Data","Restore Layout Backup","publishLocalLayoutSlot","submitForReview","selectApprovedTemplate"])assert.ok(ui.includes(label),label);
+  for(const label of ["importWordDocx","Draw Customer Field Box","Draw Bank Field Box","Preview with Customer Data","Restore Editable Backup","publishLocalLayoutSlot","submitForReview","selectApprovedTemplate"])assert.ok(ui.includes(label),label);
   assert.match(ui,/windowsLayoutEngineAvailable/);
 });
 

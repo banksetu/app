@@ -70,7 +70,8 @@ test("Master approval auto-applies a separately calibrated target Quick/PR2 slot
  assert.match(text,/Master approval cannot auto-activate a different bank/);
  assert.match(text,/The submitting workspace changed bank/);
  const studio=file("src/CustomizeLayoutStudio.tsx");
- assert.match(studio,/autoActivateOnApproval:true/);
+ assert.match(studio,/autoActivateOnApproval:false/); // Submission is review-only; live activation stays calibration-gated.
+ assert.match(studio,/saveAndSubmit/);
  assert.match(studio,/confirmedPrinterCalibration:hardwareChecked/);
  assert.match(studio,/requestedOutput/);
 });

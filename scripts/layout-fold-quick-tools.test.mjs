@@ -60,24 +60,18 @@ test("fold direction is selectable NEXT TO open-book width & height, and on Layo
  assert.match(css,/\.ls-fold-direction-icon-horizontal/);
 });
 
-test("user-friendly ribbon quick tools execute real handlers, keep Direct PR2 pictures disabled",()=>{
- assert.match(source,/className="ls-ribbon-quick-tools"/);
- for(const label of ["Text Box","Table","Customer Name","Bank Field","Picture","Book Size & Fold","Preview PDF","Save Draft"]){
-  assert.ok(source.includes(" "+label+"<")||source.includes("> "+label+"<"),label);
- }
+test("streamlined Word ribbon keeps real actions without duplicated Quick Tools cards",()=>{
+ assert.doesNotMatch(source,/className="ls-ribbon-quick-tools"/);
+ assert.doesNotMatch(source,/className="ls-extra-tools"/);
+ for(const tab of ['wordTab==="file"','wordTab==="insert"','wordTab==="layout"','wordTab==="mailings"','wordTab==="view"'])
+  assert.ok(source.includes(tab),tab);
  for(const handler of ['append("text","static"','insertEditableTable(2,3)','append("field","customer"',
   'append("field","bank"','setPageSetupOpen(true)','void proofPdf()','void save()']){
   assert.ok(source.includes(handler),handler);
  }
- assert.match(source,/disabled=\{busy\|\|setup.output==="dotmatrix"\} onChange=\{event=>\{void importGraphic\(event\);\}\}/);
- assert.match(css,/\.ls-ribbon-quick-tools/);
- assert.match(css,/\.ls-word-tab-icon/);
- assert.match(source,/className="ls-ribbon-more-tools"/);
- assert.match(source,/aria-label="Additional easy passbook tools"/);
- for(const text of ["Account Number","IFSC","Nominee","Rectangle","Line","Oval","Photo Box","Object Format","Ruler","Grid"]){
-   assert.ok(source.includes(" "+text+"<")||source.includes(">"+text+"<"),"missing extra tool: "+text);
- }
+ assert.match(source,/Save &amp; Submit to Master/);
  assert.match(source,/disabled=\{setup\.output==="dotmatrix"\}/);
  assert.match(source,/Fold: \{pageSetupFor\(draft\)\.foldAxis==="horizontal"/);
- assert.match(css,/\.ls-ribbon-more-content/);
+ assert.match(css,/\.ls-word-command-family/);
+ assert.match(css,/\.ls-word-tab-icon/);
 });

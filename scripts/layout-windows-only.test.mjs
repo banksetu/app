@@ -22,7 +22,7 @@ test("Android/web hide both creation menu and direct page even if a saved page i
  const dashboard=file("src/Dashboard.tsx");
  assert.match(dashboard,/const canCustomizeLayout = windowsLayoutEngineAvailable\(\) && !licenseReadOnly/);
  assert.match(dashboard,/\{canCustomizeLayout && <>/);
- assert.match(dashboard,/\{canCustomizeLayout && bankSettingsReady/);
+ assert.match(dashboard,/\{canCustomizeLayout && (bankSettingsReady || canControlGlobalDashboard)/);
  assert.match(dashboard,/!windowsLayoutEngineAvailable\(\) && \(activePage === "customize-passbook"/);
  assert.match(dashboard,/Return to Dashboard/);
  assert.match(dashboard,/lazy\(\(\) => import\("\.\/CustomizeLayoutStudio"\)\)/);
@@ -54,8 +54,8 @@ test("normal approved bank printing, Android customer flows and existing PR2 bri
 test("Windows studio contains guided Design and Approval spaces while preserving physical paper and editing",()=>{
  const studio=file("src/CustomizeLayoutStudio.tsx");
  const css=file("src/CustomizeLayoutStudio.css");
- for(const label of ["Layout Designer","Shared Bank Layouts","मास्टर स्वीकृति","Windows EXE",
-     "New Blank Layout (Word-style)","Export Physical Calibration Ruler",
+ for(const label of ["Editor","Templates","Approvals","Windows EXE",
+     "New Blank","Export Calibration PDF",
      "Save Draft","Run Layout Audit","ls-workflow-nav"]){
    assert.ok(studio.includes(label),label);
  }
@@ -67,9 +67,9 @@ test("Windows studio contains guided Design and Approval spaces while preserving
  assert.match(css,/data-appearance="dark"/);
  assert.match(studio,/draft\.widthMm\*PX_PER_MM/,"physical paper width remains measured, not replaced by screen-based responsive scaling");
  const referenceCss=file("src/CustomizeLayoutReferenceLock.css");
- assert.match(referenceCss,/grid-template-columns:192px minmax\(0,1fr\)/);
+ assert.match(referenceCss,/grid-template-columns:132px minmax\(0,1fr\)/);
  assert.match(referenceCss,/\.ls-field-panel-list/);
- assert.match(studio,/aria-label="Passbook Designer sidebar"/);
+ assert.match(studio,/aria-label="Passbook Designer navigation"/);
  assert.match(studio,/aria-label="Editor status and zoom"/);
  assert.match(studio,/Map selected|Mapped /);
  assert.match(studio,/Make My Own Copy/);
