@@ -67,9 +67,9 @@ test("Windows studio contains guided Design and Approval spaces while preserving
  assert.match(css,/data-appearance="dark"/);
  assert.match(studio,/draft\.widthMm\*PX_PER_MM/,"physical paper width remains measured, not replaced by screen-based responsive scaling");
  const referenceCss=file("src/CustomizeLayoutReferenceLock.css");
- assert.match(referenceCss,/grid-template-columns:192px minmax\(0,1fr\)/);
+ assert.match(referenceCss,/grid-template-columns:132px minmax\(0,1fr\)/);
  assert.match(referenceCss,/\.ls-field-panel-list/);
- assert.match(studio,/aria-label="Passbook Designer sidebar"/);
+ assert.match(studio,/aria-label="Passbook Designer navigation"/);
  assert.match(studio,/aria-label="Editor status and zoom"/);
  assert.match(studio,/Map selected|Mapped /);
  assert.match(studio,/Make My Own Copy/);
