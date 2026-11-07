@@ -3539,7 +3539,7 @@ function DashboardHome({
 
             <div className="dashboard-stat-value" style={styles.statValue}>
 
-              {statsLoading ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
+              {(statsLoading || (index===3&&analyticsRows===null)) ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
