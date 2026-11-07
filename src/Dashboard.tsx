@@ -3107,11 +3107,25 @@ function DashboardHome({
 
   useEffect(() => {
     const refreshDashboardAfterWorkspaceReady = () => {
+      // Do not display previous tenant's cached account-opening results while
+      // the newly verified workspace is loading its own scoped customer list.
+      setAnalyticsRows(null);
+      setStatsLoading(true);
+      setStatsError("");
+      statsLoadedOnce.current=false;
+      setOpeningReportOpen(false);
+      setStatusPanel(null);
+      setWorkspaceVersion((version) => version + 1);
+    };
+    const refreshDashboardAfterSync = () => {
       setWorkspaceVersion((version) => version + 1);
     };
     window.addEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
-    window.addEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);
-    return () => {window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);window.removeEventListener("banksetu-sync-change", refreshDashboardAfterWorkspaceReady);};
+    window.addEventListener("banksetu-sync-change", refreshDashboardAfterSync);
+    return () => {
+      window.removeEventListener("banksetu-workspace-change", refreshDashboardAfterWorkspaceReady);
+      window.removeEventListener("banksetu-sync-change", refreshDashboardAfterSync);
+    };
   }, []);
 
   useEffect(() => {
