@@ -1,0 +1,47 @@
+.ssa-card-overlay,.ssa-card-overlay *{box-sizing:border-box}
+.ssa-card-overlay{position:fixed;inset:0;z-index:2700;display:flex;align-items:flex-start;justify-content:center;background:rgba(6,19,44,.70);padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px));overflow:auto}
+.ssa-card-dialog{width:min(1060px,100%);margin:auto 0;border:1px solid #c1d2e8;border-radius:17px;background:#fff;color:#142e54;box-shadow:0 24px 80px rgba(3,17,40,.45);font:13px/1.45 Inter,Arial,sans-serif;max-height:calc(100dvh - 24px);min-width:0;display:flex;flex-direction:column}
+.ssa-card-heading{padding:17px 22px;display:flex;gap:15px;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #d6e3f3}
+.ssa-card-heading h2{margin:0 0 4px;font-size:21px;color:inherit}
+.ssa-card-heading p{margin:0;color:#576b84;font-size:12px}
+.ssa-card-heading>button{border:0;color:inherit;background:transparent;font-size:29px;cursor:pointer;padding:0 5px}
+.ssa-card-heading button:disabled,.ssa-card-pdf:disabled{opacity:.55;cursor:not-allowed}
+.ssa-card-summary{display:flex;gap:18px;align-items:end;justify-content:space-between;flex-wrap:wrap;padding:13px 22px;background:#edf5ff}
+.ssa-card-summary>div{display:grid;gap:2px}
+.ssa-card-summary small{font-weight:750;color:#52708f}
+.ssa-card-summary strong{font-size:27px;color:#1263c9}
+.ssa-card-summary label{display:grid;gap:5px;font-weight:700;min-width:min(310px,100%)}
+.ssa-card-summary input{color:#193a61;background:#fff;border:1px solid #afc5e2;border-radius:9px;padding:10px;min-width:0;font:inherit}
+.ssa-card-table-wrap{overflow:auto;min-height:0}
+.ssa-card-table-wrap table{border-collapse:collapse;width:100%;font-size:13px}
+.ssa-card-table-wrap thead{position:sticky;top:0;z-index:1}
+.ssa-card-table-wrap th{background:#183965;color:#fff;text-align:left;padding:12px 13px;white-space:nowrap}
+.ssa-card-table-wrap td{padding:11px 13px;border-bottom:1px solid #e0e9f3;vertical-align:middle;overflow-wrap:anywhere}
+.ssa-card-table-wrap tr:nth-child(even) td{background:#f6f9fe}
+.ssa-card-customer-link{border:0;background:none;padding:4px 0;text-align:left;color:#005cc8;text-decoration:underline;cursor:pointer;font:inherit;font-weight:700;overflow-wrap:anywhere}
+.ssa-card-customer-link:focus-visible{outline:2px solid #126fee;outline-offset:3px}
+.ssa-card-account{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ssa-card-yes{color:#177240;font-weight:850}
+.ssa-card-pdf{padding:7px 12px;border:1px solid #e5a3b0;background:#ffeef2;color:#9b153e;font-weight:800;border-radius:8px;cursor:pointer}
+.ssa-card-empty{text-align:center;padding:24px!important;color:#667c92}
+.ssa-card-warning{background:#fff3d8;color:#87501a;border:1px solid #e8bc74;border-radius:9px;padding:8px 11px;margin:10px 22px;font-weight:650}
+.ssa-card-footer{border-top:1px solid #d8e3f0;padding:13px 22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ssa-card-footer span{margin-right:auto;color:#435c79}
+.ssa-card-footer button{background:#fff;color:#1c467d;border:1px solid #c1d4eb;border-radius:8px;padding:8px 13px;cursor:pointer;font:inherit;font-weight:750}
+.ssa-card-preview-wait{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:3100;background:#fff;color:#142e54;padding:12px 18px;border-radius:9px;box-shadow:0 5px 20px #0004}
+html[data-appearance="dark"] .ssa-card-dialog{background:#182942;color:#ecf4ff;border-color:#486285}
+html[data-appearance="dark"] .ssa-card-heading,html[data-appearance="dark"] .ssa-card-footer{border-color:#45607d}
+html[data-appearance="dark"] .ssa-card-heading p,html[data-appearance="dark"] .ssa-card-footer span{color:#c0d0e7}
+html[data-appearance="dark"] .ssa-card-summary{background:#213b5b}
+html[data-appearance="dark"] .ssa-card-summary strong{color:#81c6ff}
+html[data-appearance="dark"] .ssa-card-summary small{color:#c3d7f1}
+html[data-appearance="dark"] .ssa-card-summary input{background:#0e223c;color:#f5f9ff;border-color:#5e81a6}
+html[data-appearance="dark"] .ssa-card-table-wrap th{background:#0b1e35}
+html[data-appearance="dark"] .ssa-card-table-wrap td{border-color:#36506e}
+html[data-appearance="dark"] .ssa-card-table-wrap tr:nth-child(even) td{background:#223752}
+html[data-appearance="dark"] .ssa-card-customer-link{color:#91ccff}
+html[data-appearance="dark"] .ssa-card-yes{color:#7ce9a6}
+html[data-appearance="dark"] .ssa-card-footer button{background:#284667;color:#fff;border-color:#577ba6}
+html[data-appearance="dark"] .ssa-card-empty{color:#bed0e8}
+@media(max-width:760px){.ssa-card-overlay{padding:6px}.ssa-card-dialog{max-height:calc(100dvh - 12px);border-radius:10px}.ssa-card-heading,.ssa-card-summary,.ssa-card-footer{padding:12px}.ssa-card-heading h2{font-size:18px}.ssa-card-table-wrap{overflow-x:auto}.ssa-card-table-wrap th,.ssa-card-table-wrap td{padding:9px;white-space:nowrap}.ssa-card-summary label{width:100%}.ssa-card-summary{align-items:stretch}}
+@media print{.ssa-card-overlay,.ssa-card-preview-wait{display:none!important}}
