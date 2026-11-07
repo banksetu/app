@@ -24,6 +24,7 @@ import {
 import { auth, db } from "./firebase";
 import ClientGoogleSetup from "./ClientGoogleSetup";
 import { getTenantApiUrl, removeTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantSettingsWriteMetadata } from "./tenantApi";
+import { CLIENT_BRIDGE_DOWNLOAD_URL } from "./core/clientBridge";
 declare const __APP_VERSION__: string;
 
 const CURRENT_APP_VERSION = __APP_VERSION__;
@@ -987,7 +988,7 @@ function ConnectionSettings({ allowConnectionSettings = false, isMasterOwner = f
 
         {isMasterOwner && <p style={styles.securityText}>
           Master Apps Script के existing project में updated code लगाकर उसी Web App deployment का नया version प्रकाशित करें।{" "}
-          <a href="/client-bridge/Code.gs?revision=v9-20261014" download="BankSetu-Master-Code.gs" style={{ color: "var(--app-dark-text, #8de3c8)", fontWeight: 700 }}>Download updated Master Code.gs</a>
+          <a href={CLIENT_BRIDGE_DOWNLOAD_URL} download="BankSetu-Master-Code.gs" style={{ color: "var(--app-dark-text, #8de3c8)", fontWeight: 700 }}>Download updated Master Code.gs</a>
         </p>}
 
         {savedUrl && !unlocked && (

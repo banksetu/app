@@ -49,6 +49,11 @@ on:
       - cloudflare/layoutTemplates.js
       - scripts/layout-*.test.mjs
       - scripts/license-ui.test.mjs
+      - scripts/ssa-campaign.test.mjs
+      - src/SsaCampaign.tsx
+      - src/SsaCampaign.css
+      - src/core/ssaCampaign.ts
+      - apps-script/Code.gs
       - cloudflare/worker.js
       - cloudflare/worker.test.js
       - scripts/layout-studio.test.mjs
@@ -73,6 +78,7 @@ jobs:
       - run: node --test scripts/layout-*.test.mjs
       - run: npm run test:worker
       - run: npm run test:local
+      - run: node --test scripts/ssa-campaign.test.mjs
       - run: npm run test:bridge
       - run: npm run test:pr2
       - run: node --test scripts/bank-pdf.test.mjs scripts/passbook-info-layout.test.mjs scripts/union-passbook.test.mjs desktop/print-preview.test.cjs
