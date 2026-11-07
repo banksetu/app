@@ -3946,7 +3946,8 @@ function syncSsaCampaignEntry(request, authUser) {
     // Read the identity from the same tenant's authoritative Sheet1. Do not
     // allow a client to create a campaign record for another tenant's customer.
     const customers=getSheet(authUser);
-    const match=customers.getRange(2,2,Math.max(0,customers.getLastRow()-1),1)
+    if(customers.getLastRow()<2)return jsonResponse({success:false,code:"CUSTOMER_NOT_FOUND",message:"No customer is synced to Sheet1 yet."});
+    const match=customers.getRange(2,2,customers.getLastRow()-1,1)
       .createTextFinder(accountNo).matchEntireCell(true).findNext();
     if(!match)return jsonResponse({success:false,code:"CUSTOMER_NOT_FOUND",message:"Customer is not yet synced to Sheet1. Retry after customer sync completes."});
     const customerRow=customers.getRange(match.getRow(),1,1,27).getDisplayValues()[0];
