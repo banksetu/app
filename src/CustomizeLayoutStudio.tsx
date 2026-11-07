@@ -2172,7 +2172,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" disabled={!referencePages[selectedPage-1]||diffBusy} onClick={()=>{void compareOriginal();}}>{diffBusy?"Comparing…":"Compare Original"}</button>
         {visualDiff&&<small title="Pixel comparison only — not physical printer certification">
           Difference {visualDiff.meanDifferencePercent}% · Strong mismatch {visualDiff.strongMismatchPercent}%
-        </small>
+        </small>}
         <button type="button" disabled={busy||mode!=="passbook"} onClick={()=>{void verifyPr2Raster();}}>PR2 Text Proof</button>
         <button type="button" disabled={!draft.elements.some(p=>p.needsReview)} onClick={findNextUnreviewed}>Next OCR Correction</button>
         <button type="button" onClick={checkLegibility}>Accessibility / Legibility Check</button>
