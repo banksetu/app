@@ -11,7 +11,7 @@ import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabl
 import { customerAnalytics } from "./core/dashboardAnalytics";
 import { currentMonthOpeningCount } from "./core/accountOpeningReport";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -3104,6 +3104,7 @@ function DashboardHome({
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
   const [openingReportOpen,setOpeningReportOpen]=useState(false);
+  const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
   useEffect(() => {
     const refreshDashboardAfterWorkspaceReady = () => {
@@ -3483,7 +3484,7 @@ function DashboardHome({
 
       "This Month Account Openings",
 
-      analyticsRows?currentMonthOpeningCount(analyticsRows):0,
+      monthOpenings,
 
     ],
 
