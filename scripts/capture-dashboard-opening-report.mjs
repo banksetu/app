@@ -120,7 +120,10 @@ try{
      throw error;
    }
    await snap(page,id+"-preview",theme.toUpperCase()+" / "+(mobile?"PHONE":"DESKTOP")+" – Customer Preview",
-      "Same All Customer Data preview component, showing Share, Print, Close. Synthetic details.");
+      "Same All Customer Data preview component, synthetic details.");
+   await page.locator('.customer-preview-actions').scrollIntoViewIfNeeded();
+   await snap(page,id+"-preview-actions",theme.toUpperCase()+" / "+(mobile?"PHONE":"DESKTOP")+" – Share / Print / Close",
+      "Bottom of the original All Customer Data preview, showing actual action buttons.");
    await page.getByRole('button',{name:'Close preview'}).click();
    if(theme==="light"&&!mobile){
     await page.getByRole("button",{name:"Month Range"}).click();
