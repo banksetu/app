@@ -317,3 +317,40 @@ html[data-appearance="dark"] .ls-start-wizard,
 .layout-studio .ls-word-suite .ls-word-tab-content label > input[type="number"] {
   width:46px;min-width:42px;max-width:68px;margin-left:4px
 }
+
+/* Office-style ribbon command groups: discoverable labels, small icon/button rows.
+   These are real actions wired to the existing draft, not decorative fake tools. */
+.layout-studio .ls-word-tab-content:has(> .ls-word-command-family) {
+  flex-wrap:nowrap;align-items:stretch;gap:0;padding:6px 7px;
+  min-height:105px;overflow-x:auto;overflow-y:hidden
+}
+.layout-studio .ls-word-tab-content:has(> .ls-word-command-family) > .ls-ribbon-group-label {display:none}
+.layout-studio .ls-word-command-family {
+  flex:0 0 auto;min-width:102px;max-width:360px;
+  display:flex;flex-direction:column;align-items:stretch;
+  padding:4px 9px 1px;border-right:1px solid #b9cde4;
+  background:linear-gradient(#ffffff,#f7fbff)
+}
+.layout-studio .ls-word-command-family > strong {
+  order:2;margin-top:auto;padding-top:5px;
+  font-size:10px;font-weight:650;text-align:center;color:#5f7289;
+  line-height:1.2
+}
+.layout-studio .ls-word-command-items {
+  order:1;display:flex;align-items:center;align-content:center;
+  flex-wrap:wrap;gap:3px;max-height:75px;min-height:59px;overflow-y:auto;
+  scrollbar-width:thin
+}
+.layout-studio .ls-word-command-items > button,
+.layout-studio .ls-word-command-items > label {
+  flex:0 0 auto;max-width:165px;min-height:26px!important;
+  padding:4px 6px!important;white-space:nowrap;font-size:10px!important
+}
+.layout-studio .ls-word-command-items button:hover:not(:disabled) {
+  background:#e3f0fe;border-color:#6aa2d9
+}
+.layout-studio .ls-word-command-family:focus-within {background:#f3f8ff}
+@media(max-width:810px){
+ .layout-studio .ls-word-command-family {min-width:100px;padding:4px 6px}
+ .layout-studio .ls-word-command-items {max-height:90px}
+}
