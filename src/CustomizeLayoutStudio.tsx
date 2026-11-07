@@ -1568,8 +1568,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
     </nav>
     <details className="ls-tool-card ls-word-suite" open>
-      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Font, paragraph, spacing, Find & Replace, group, align and arrange</small></span><span aria-hidden="true">⌄</span></summary>
-      <p className="ls-tool-note">Select a text object to format it. Select multiple objects for precise arrangement. These are the supported Word-style tools, not full Microsoft Word.</p>
+      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>Document Editing Tools</strong><small>Free built-in ribbon · Text, layout, shapes, fields and preview</small></span><span aria-hidden="true">⌄</span></summary>
+      <p className="ls-tool-note">Free built-in BANK SETU editing tools — no Microsoft account, Microsoft 365 subscription or Word installation required. Select a text object to format it; unsupported Office-only commands are not offered.</p>
       <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
         {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
           <button key={tab} type="button" aria-pressed={wordTab===tab} onClick={()=>setWordTab(tab)}>
