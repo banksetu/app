@@ -26,3 +26,119 @@
 .dashboard-opening-footer span{margin-right:auto}.dashboard-opening-footer button{background:#18548e;color:#fff;border:0;border-radius:6px;padding:8px 13px;cursor:pointer}
 .dashboard-opening-preview-loading{position:fixed;top:50%;left:50%;z-index:3100;background:#fff;padding:18px;border-radius:8px}
 @media(max-width:680px){.dashboard-opening-overlay{padding:4px}.dashboard-opening-panel{padding:10px;border-radius:9px}.dashboard-opening-header h2{font-size:17px}.dashboard-opening-filters label{min-width:100px;flex:1}.dashboard-opening-tabs{width:100%}.dashboard-opening-tabs button{flex:1;font-size:11px}.dashboard-opening-table-scroll{max-height:53vh}.dashboard-opening-overview strong{font-size:14px}}
+
+/* Account-opening report is mounted in a body-level portal. Theme must be
+   selected from the html appearance state, not an app-shell ancestor. */
+.dashboard-opening-overlay{box-sizing:border-box}
+.dashboard-opening-panel{color-scheme:light;overflow:hidden}
+.dashboard-opening-panel table,.dashboard-opening-panel button,.dashboard-opening-panel input{font-family:inherit}
+.dashboard-opening-panel button:focus-visible,.dashboard-opening-panel input:focus-visible,
+.dashboard-opening-panel tbody tr:focus-visible{outline:3px solid #2984d7;outline-offset:2px}
+.dashboard-opening-panel .dashboard-opening-number button{min-height:35px;min-width:52px}
+.dashboard-opening-panel .dashboard-opening-footer button{min-height:40px}
+.dashboard-opening-preview-loading{box-shadow:0 12px 35px #06162955}
+html[data-appearance="dark"] .dashboard-opening-overlay{background:#030a19d9}
+html[data-appearance="dark"] .dashboard-opening-panel{
+  color-scheme:dark;background:#142238;color:#f5f8ff;
+  border:1px solid #435979;box-shadow:0 24px 70px #020918b8
+}
+html[data-appearance="dark"] .dashboard-opening-header{border-color:#354761}
+html[data-appearance="dark"] .dashboard-opening-header h2,
+html[data-appearance="dark"] .dashboard-opening-filters label,
+html[data-appearance="dark"] .dashboard-opening-overview strong,
+html[data-appearance="dark"] .dashboard-opening-panel td,
+html[data-appearance="dark"] .dashboard-opening-panel .dashboard-opening-number span{
+  color:#f3f7ff
+}
+html[data-appearance="dark"] .dashboard-opening-header p,
+html[data-appearance="dark"] .dashboard-opening-overview small,
+html[data-appearance="dark"] .dashboard-opening-footer span{color:#c0d0e5;opacity:1}
+html[data-appearance="dark"] .dashboard-opening-panel input{
+  background:#0d192c;color:#f6f9ff;border:1px solid #627a9c;
+}
+html[data-appearance="dark"] .dashboard-opening-panel input::placeholder{color:#a9bdd7}
+html[data-appearance="dark"] .dashboard-opening-tabs button{
+  background:#1c304b;border-color:#536d8e;color:#f1f5ff
+}
+html[data-appearance="dark"] .dashboard-opening-tabs button[aria-pressed="true"]{
+  background:#2563aa;border-color:#7eb6f0;color:#fff
+}
+html[data-appearance="dark"] .dashboard-opening-overview{
+  background:#182b45;border-color:#3a4d68
+}
+html[data-appearance="dark"] .dashboard-opening-panel th{
+  background:#213853;color:#e6f2ff;border-color:#405672
+}
+html[data-appearance="dark"] .dashboard-opening-panel td{border-color:#334966}
+html[data-appearance="dark"] .dashboard-opening-panel tbody tr:hover,
+html[data-appearance="dark"] .dashboard-opening-panel tbody tr:focus{
+  background:#233c59;outline-color:#75b4f2
+}
+html[data-appearance="dark"] .dashboard-opening-number button{
+  background:#1c4267;color:#f1f8ff;border-color:#7299bf
+}
+html[data-appearance="dark"] .dashboard-opening-number button:hover{background:#285982}
+html[data-appearance="dark"] .dashboard-opening-status{
+  background:#2e425c;color:#f1f5ff
+}
+html[data-appearance="dark"] .dashboard-opening-status.is-active{
+  background:#173f32;color:#a6f3ce;border:1px solid #2e8062
+}
+html[data-appearance="dark"] .dashboard-opening-status.is-inactive{
+  background:#45341a;color:#ffdea1;border:1px solid #886a35
+}
+html[data-appearance="dark"] .dashboard-opening-error{color:#ffadb7}
+html[data-appearance="dark"] .dashboard-opening-message{color:#a4dcff}
+html[data-appearance="dark"] .dashboard-opening-footer button{
+  background:#2563a7;border:1px solid #6194cc;color:#fff
+}
+html[data-appearance="dark"] .dashboard-opening-preview-loading{
+  color:#f4f9ff;background:#1b304c;border:1px solid #536a88
+}
+@media(max-width:680px){
+ .dashboard-opening-overlay{padding:max(3px,env(safe-area-inset-top,0px)) 3px max(3px,env(safe-area-inset-bottom,0px))}
+ .dashboard-opening-panel{padding:10px 10px 12px;width:100%;border-radius:10px}
+ .dashboard-opening-panel .dashboard-opening-header{gap:6px}
+ .dashboard-opening-panel .dashboard-opening-header>button{min-width:42px;min-height:42px}
+ .dashboard-opening-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .dashboard-opening-tabs,.dashboard-opening-search{grid-column:1/-1}
+ .dashboard-opening-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}
+ .dashboard-opening-tabs button{padding:6px 4px;min-height:42px;font-size:11px}
+ .dashboard-opening-filters label{min-width:0}
+ .dashboard-opening-filters input{min-width:0;width:100%;min-height:42px}
+ .dashboard-opening-overview{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:9px}
+ .dashboard-opening-overview>div{min-width:0}
+ .dashboard-opening-overview strong{font-size:14px;overflow-wrap:anywhere}
+ .dashboard-opening-table-scroll{overflow-y:auto;overflow-x:hidden;max-height:58dvh}
+ .dashboard-opening-panel table,.dashboard-opening-panel tbody{display:block;min-width:0;width:100%}
+ .dashboard-opening-panel thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+ .dashboard-opening-panel tbody tr{
+   display:grid;grid-template-columns:minmax(0,1fr);
+   gap:0;margin:7px 0;padding:5px 10px;border:1px solid #c9d8e9;
+   border-radius:9px;background:#f7faff;overflow:hidden
+ }
+ .dashboard-opening-panel tbody td{
+   display:flex;align-items:center;justify-content:space-between;
+   gap:12px;min-width:0;padding:7px 2px;
+   border-bottom:1px solid #dde8f2;overflow-wrap:anywhere
+ }
+ .dashboard-opening-panel tbody td:last-child{border-bottom:0}
+ .dashboard-opening-panel tbody td::before{
+   content:attr(data-label);flex:0 0 37%;font-size:11px;
+   font-weight:700;color:#566c83
+ }
+ .dashboard-opening-panel tbody td strong{min-width:0;text-align:right}
+ .dashboard-opening-panel .dashboard-opening-number{white-space:normal;min-width:0;justify-content:space-between}
+ .dashboard-opening-number>span{min-width:0;text-align:right;overflow-wrap:anywhere;word-break:break-all}
+ .dashboard-opening-number button{flex:none}
+ .dashboard-opening-footer{align-items:center}
+ .dashboard-opening-footer span{flex:1 1 100%;line-height:1.5}
+ html[data-appearance="dark"] .dashboard-opening-panel tbody tr{
+   background:#1a304b;border-color:#415b79
+ }
+ html[data-appearance="dark"] .dashboard-opening-panel tbody td{border-color:#354c68}
+ html[data-appearance="dark"] .dashboard-opening-panel tbody td::before{color:#b9cee5}
+}
+@media(prefers-reduced-motion:reduce){
+ .dashboard-opening-panel *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
