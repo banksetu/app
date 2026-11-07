@@ -156,6 +156,12 @@ function doPost(e) {
       });
     }
 
+    if (action === "getSsaCampaignEntries" || action === "syncSsaCampaignEntry") {
+      const bound = requireAuthorizedUser(idToken, false, action);
+      if (action === "getSsaCampaignEntries") return getSsaCampaignEntries(request, bound);
+      return syncSsaCampaignEntry(request, bound);
+    }
+
     if (["getPhotoPresence", "syncCustomerOperation", "getSyncProtection", "getCustomerChanges", "publishLocalReset", "getCustomerPage", "getAllCustomers", "getCustomerByRowNumber", "markPassbookPrinted"].includes(action) || (action === "searchCustomer" && (getBankSetuScriptProperty("BANKSETU_CLIENT_TENANT_ID") || request.masterLocalSync === true))) {
       const authUser = requireAuthorizedUser(idToken, false, action);
       if (action === "getPhotoPresence") return getPhotoPresence(request,authUser);
@@ -472,7 +478,7 @@ function requireAuthorizedUser(
   if (tenantId && [
     "saveCustomer", "updateCustomer", "deleteCustomer", "markPassbookDelivered",
     "markPassbookPrinted", "uploadBankFormatSample", "getBankFormatPreview", "publishLocalReset",
-    "syncCustomerOperation"
+    "syncCustomerOperation", "syncSsaCampaignEntry"
   ].indexOf(action) !== -1) {
     const license = getFirestoreTenantLicense(tenantId, idToken);
     if (!license || license.tenantId !== tenantId || !licenseAllowsWrite(license)) {
@@ -3863,4 +3869,110 @@ function getIncrementalPhotoIndex(request,authUser) {
 function photoMetadataFromRow(row) {
  const encoded=row.slice(27).find(value=>typeof value==="string"&&value.indexOf("PHOTO:")===0);
  return encoded?JSON.parse(encoded.slice(6)):{};
+}
+
+
+/* BANK SETU SSA Campaign: an independent tab in each verified tenant's existing
+   spreadsheet. Never changes Sheet1, customer sync metadata or customer outbox. */
+const SSA_CAMPAIGN_TAB = "SSA Campaign";
+const SSA_CAMPAIGN_HEADERS = [
+  "ENTRY ID","PERIOD","ENTRY DATE","CUSTOMER RECORD ID","CUSTOMER ID",
+  "ACCOUNT NO","CUSTOMER NAME","APY","PMJJBY","PMSBY","CREATED AT",
+  "UPDATED AT","UPDATED BY","REVISION","LAST OPERATION ID"
+];
+function ssaCampaignTab(authUser, create) {
+  const book = SpreadsheetApp.openById(authUser.spreadsheetId);
+  let tab = book.getSheetByName(SSA_CAMPAIGN_TAB);
+  if (!tab && create) {
+    tab = book.insertSheet(SSA_CAMPAIGN_TAB);
+    tab.getRange(1,1,1,SSA_CAMPAIGN_HEADERS.length).setValues([SSA_CAMPAIGN_HEADERS]);
+    tab.setFrozenRows(1);
+  }
+  if (tab) {
+    const existing=tab.getRange(1,1,1,SSA_CAMPAIGN_HEADERS.length).getDisplayValues()[0];
+    if (existing.some(Boolean) && SSA_CAMPAIGN_HEADERS.some((name,i)=>existing[i]!==name))
+      throw new Error("SSA Campaign tab has unexpected columns; no entries were changed.");
+    if (!existing.some(Boolean) && create)
+      tab.getRange(1,1,1,SSA_CAMPAIGN_HEADERS.length).setValues([SSA_CAMPAIGN_HEADERS]);
+  }
+  return tab;
+}
+function ssaCampaignEntry(row) {
+  return {
+    entryId:String(row[0]||""),period:String(row[1]||""),entryDate:String(row[2]||""),
+    customerRecordId:String(row[3]||""),customerId:String(row[4]||""),
+    accountNo:String(row[5]||""),name:String(row[6]||""),
+    apy:row[7]==="YES",pmjjby:row[8]==="YES",pmsby:row[9]==="YES",
+    createdAt:String(row[10]||""),updatedAt:String(row[11]||""),
+    updatedBy:String(row[12]||""),revision:Number(row[13])||0,
+    operationId:String(row[14]||"")
+  };
+}
+function ssaVerifyConnection(request, authUser) {
+  if (!authUser.connectionId || request.connectionId !== authUser.connectionId)
+    return jsonResponse({success:false,code:"CONNECTION_CHANGED",message:"Workspace connection changed. SSA entries remain queued on the original device."});
+  return null;
+}
+function getSsaCampaignEntries(request, authUser) {
+  const denied=ssaVerifyConnection(request,authUser);
+  if(denied)return denied;
+  const tab=ssaCampaignTab(authUser,false);
+  if (!tab || tab.getLastRow()<2)return jsonResponse({success:true,entries:[],sheetName:SSA_CAMPAIGN_TAB});
+  // Client may request a bounded history; never truncate the sheet itself.
+  const last=tab.getLastRow(),limit=Math.min(5000,Math.max(1,Number(request.limit)||2000));
+  const start=Math.max(2,last-limit+1),count=last-start+1;
+  const entries=tab.getRange(start,1,count,SSA_CAMPAIGN_HEADERS.length)
+    .getDisplayValues().map(ssaCampaignEntry).filter(e=>e.entryId);
+  return jsonResponse({success:true,entries,sheetName:SSA_CAMPAIGN_TAB,hasMore:start>2});
+}
+function syncSsaCampaignEntry(request, authUser) {
+  const denied=ssaVerifyConnection(request,authUser);
+  if(denied)return denied;
+  const op=request.operation||{},entry=op.entry||{};
+  const uuid=/^[a-f0-9-]{36}$/i;
+  if(!uuid.test(String(op.operationId||""))||!uuid.test(String(entry.entryId||"")))
+    return jsonResponse({success:false,code:"INVALID_INPUT",message:"SSA entry and operation identity must be valid."});
+  const period=String(entry.period||""),date=String(entry.entryDate||"");
+  const customerId=cleanValue(entry.customerId),accountNo=cleanValue(entry.accountNo);
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)||!new RegExp("^"+period+"-\\d{2}$").test(date)||
+     !customerId||!accountNo||!uuid.test(String(entry.customerRecordId||""))||
+     [entry.apy,entry.pmjjby,entry.pmsby].some(v=>typeof v!=="boolean"))
+    return jsonResponse({success:false,code:"INVALID_INPUT",message:"Select a synced customer, a valid date and APY / PMJJBY / PMSBY values."});
+  if(!["create","update"].includes(String(op.mode||"")))
+    return jsonResponse({success:false,code:"INVALID_INPUT",message:"Choose Save New or Update Existing."});
+  const lock=LockService.getScriptLock();
+  if(!acquireSyncLock(lock))return syncBusyResponse();
+  try {
+    // Read the identity from the same tenant's authoritative Sheet1. Do not
+    // allow a client to create a campaign record for another tenant's customer.
+    const customers=getSheet(authUser);
+    const match=customers.getRange(2,2,Math.max(0,customers.getLastRow()-1),1)
+      .createTextFinder(accountNo).matchEntireCell(true).findNext();
+    if(!match)return jsonResponse({success:false,code:"CUSTOMER_NOT_FOUND",message:"Customer is not yet synced to Sheet1. Retry after customer sync completes."});
+    const customerRow=customers.getRange(match.getRow(),1,1,27).getDisplayValues()[0];
+    if(customerRow[0]!==customerId || (customerRow[24] && customerRow[24]!==String(entry.customerRecordId)) || customerRow[26]==="true")
+      return jsonResponse({success:false,code:"CUSTOMER_MISMATCH",message:"Customer identity changed. Reload the customer before saving."});
+    const name=String(customerRow[2]||"");
+    const tab=ssaCampaignTab(authUser,true);
+    const values=tab.getLastRow()>1?
+      tab.getRange(2,1,tab.getLastRow()-1,SSA_CAMPAIGN_HEADERS.length).getDisplayValues():[];
+    const index=values.findIndex(row=>row[0]===entry.entryId);
+    const current=index>=0?values[index]:null;
+    if(current && current[14]===op.operationId)
+      return jsonResponse({success:true,replayed:true,entry:ssaCampaignEntry(current)});
+    if(op.mode==="create" && current)return jsonResponse({success:false,code:"DUPLICATE",message:"SSA entry already exists. Select Update.",entry:ssaCampaignEntry(current)});
+    if(op.mode==="update" && !current)return jsonResponse({success:false,code:"NOT_FOUND",message:"SSA entry was removed from Google. Reload before updating."});
+    if(current && String(Number(current[13])||0)!==String(Number(op.baseRevision)||0))
+      return jsonResponse({success:false,code:"CONFLICT",message:"Entry changed on another device. Reload the latest entry before updating.",entry:ssaCampaignEntry(current)});
+    const duplicate=values.find(row=>row[0]!==entry.entryId&&row[1]===period&&row[5]===accountNo);
+    if(duplicate)return jsonResponse({success:false,code:"DUPLICATE",message:"This customer already has an SSA entry for the selected month. Select Update.",entry:ssaCampaignEntry(duplicate)});
+    const now=new Date().toISOString(),createdAt=current?current[10]:now,revision=current?(Number(current[13])||0)+1:1;
+    const row=[String(entry.entryId),period,date,String(entry.customerRecordId),customerId,
+      accountNo,name,entry.apy?"YES":"NO",entry.pmjjby?"YES":"NO",entry.pmsby?"YES":"NO",
+      createdAt,now,String(authUser.email||authUser.uid),revision,String(op.operationId)];
+    if(current)tab.getRange(index+2,1,1,SSA_CAMPAIGN_HEADERS.length).setValues([row]);
+    else tab.appendRow(row);
+    SpreadsheetApp.flush();
+    return jsonResponse({success:true,entry:ssaCampaignEntry(row),sheetName:SSA_CAMPAIGN_TAB});
+  } finally {lock.releaseLock();}
 }
