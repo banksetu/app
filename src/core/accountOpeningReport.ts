@@ -69,10 +69,3 @@ export function currentMonthOpeningCount(customers:OpeningCustomer[],now=new Dat
 export const openingCustomerName=(customer:OpeningCustomer)=>String(field(customer,["name","customerName","accountHolderName"])||"—").trim();
 export const openingAccountNo=(customer:OpeningCustomer)=>String(field(customer,["accountNo","accountNumber","accountNo."])||"").trim();
 export const openingStatus=(customer:OpeningCustomer)=>String(field(customer,["status","accountStatus"])||"Not specified").trim();
-export function openingAmount(customer:OpeningCustomer):number|null{
-  const original=field(customer,["openingAmount","initialDeposit","accountOpeningAmount","openAmount"]);
-  if(typeof original==="number")return Number.isFinite(original)&&original>=0?original:null;
-  const cleaned=String(original??"").trim().replace(/[₹,\s]/g,"");
-  if(!/^(?:\d+)(?:\.\d{1,2})?$/.test(cleaned))return null;
-  const number=Number(cleaned);return Number.isFinite(number)?number:null;
-}
