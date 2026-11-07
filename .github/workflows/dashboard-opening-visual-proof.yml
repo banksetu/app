@@ -32,7 +32,7 @@ jobs:
         run: node scripts/capture-dashboard-opening-report.mjs --prepare
       - name: Start Vite (no live Firebase/customer data)
         run: |
-          CODESPACE_NAME=banksetu-dashboard-proof npm run dev > /tmp/banksetu-report-vite.log 2>&1 &
+          npx vite --config vite.dashboard-proof.config.mjs > /tmp/banksetu-report-vite.log 2>&1 &
           for i in $(seq 1 40); do
             if curl --fail --silent http://127.0.0.1:5173/dashboard-opening-proof.html >/dev/null; then exit 0; fi
             sleep 2
