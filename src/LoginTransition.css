@@ -1,4 +1,43 @@
-.premium-login-transition .premium-portal-ring-one{animation-duration:2.7s;animation-iteration-count:1;}
-.premium-login-transition .premium-portal-ring-two{animation-duration:2.7s;animation-iteration-count:1;}
-.premium-login-transition .premium-portal-ring-three{animation-duration:2.7s;animation-iteration-count:1;}
-.premium-login-transition .premium-progress-track i{animation-duration:2.7s;animation-iteration-count:1;animation-fill-mode:forwards;}
+/* Shared secure loader: startup, session recovery and sign-in.
+   Rendering ends when real authentication/workspace state finishes, not on a timer. */
+.premium-login-transition{min-height:100dvh;padding:24px 16px;box-sizing:border-box}
+.premium-login-transition .premium-transition-portal{
+  width:clamp(196px,29vmin,244px);
+  height:clamp(196px,29vmin,244px);
+  flex-shrink:0;
+}
+.premium-login-transition .premium-transition-portal>img{
+  width:clamp(116px,18vmin,152px);
+  height:clamp(116px,18vmin,152px);
+  max-width:68%;
+  max-height:68%;
+  object-fit:contain;
+  object-position:center;
+  border:0;
+  background:transparent;
+  display:block;
+  filter:drop-shadow(0 12px 23px rgba(34,211,238,.28));
+}
+.premium-login-transition .premium-portal-ring-one{animation:bs-login-orbit 3s linear infinite}
+.premium-login-transition .premium-portal-ring-two{animation:bs-login-orbit-reverse 2.45s linear infinite}
+.premium-login-transition .premium-portal-ring-three{animation:bs-login-orbit 1.95s linear infinite}
+.premium-login-transition .premium-progress-track{width:min(270px,76vw)}
+.premium-login-transition .premium-progress-track i{
+  animation:bs-login-progress 1.25s ease-in-out infinite;
+  animation-fill-mode:none;
+}
+.premium-login-transition .premium-transition-copy{max-width:min(420px,90vw)}
+.premium-login-transition .premium-transition-copy span{max-width:100%;text-wrap:balance}
+@media(max-width:500px){
+  .premium-login-transition .premium-transition-portal{width:200px;height:200px}
+  .premium-login-transition .premium-transition-portal>img{width:132px;height:132px;max-width:68%;max-height:68%}
+  .premium-login-transition .premium-transition-copy strong{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){
+  .premium-login-transition,.premium-login-transition *,
+  .premium-login-transition *::before,.premium-login-transition *::after{
+    animation:none!important;
+    transition:none!important;
+  }
+  .premium-login-transition .premium-progress-track i{width:100%;transform:none;opacity:.7}
+}
