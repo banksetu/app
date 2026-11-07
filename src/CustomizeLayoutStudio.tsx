@@ -1645,7 +1645,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
     </nav>
     <details className="ls-tool-card ls-word-suite" open>
-      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>Document Editing Tools</strong><small>Free built-in ribbon · Text, layout, shapes, fields and preview</small></span><span aria-hidden="true">⌄</span></summary>
+      <summary><span className="ls-tool-icon" aria-hidden="true">W</span><span><strong>MS Word-style Tools</strong><small>Free BANK SETU ribbon · Text, layout, shapes, fields and preview</small></span><span aria-hidden="true">⌄</span></summary>
       <p className="ls-tool-note">Free built-in BANK SETU editing tools — no Microsoft account, Microsoft 365 subscription or Word installation required. Select a text object to format it; unsupported Office-only commands are not offered.</p>
       <nav className="ls-word-tabs" aria-label="Word-style editing tabs">
         {(["file","home","insert","draw","design","layout","references","mailings","review","view","help"] as const).map(tab=>
