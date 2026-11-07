@@ -39,3 +39,28 @@ Do not change customer data, sync, licensing, approved bank layouts, tenant isol
 
 ## Design PDF interpretation
 The PDF delivered in chat is a **vector UI concept and current draft feature walkthrough**, not a screenshot taken from a running Windows app. It intentionally distinguishes implemented subset from planned work.
+
+## 2026-11-07 — Book-size fold selector and easy, working client tools
+
+**Why this was changed:** In earlier draft code, the Horizontal / Vertical fold selector existed but was inside a second, less obvious *Fold / Book Spine* section below paper dimensions. Clients need it beside the width and height, so they can choose the correct physical passbook before placing text.
+
+### Page Setup — full-open size + fold direction
+
+- *Paper / Passbook Size* includes **Full open width**, **Full open height**, and 3 large visual choices: **Horizontal Fold (top/bottom)**, **Vertical Fold (left/right)**, **No Fold (flat/A4)**. These are folding geometry, not portrait/landscape orientation.
+- The **Layout ribbon** also exposes **Book Fold** as a direct dropdown. Fold direction is shown in the persistent bottom editor status.
+- Orange dashed line = physical book fold. Green dashed line = data-print start. The open/folded diagram updates to reflect selected axis.
+- Changing axis preserves the *measured full-open size* and the previous *gap after fold* where possible. For example, 190 × 175 mm with 87.5 mm horizontal fold and 100 mm data start becomes 95 mm vertical fold and 107.5 mm data start: the offset stays **12.5 mm**.
+- Existing X/Y-positioned labels are **not automatically moved**. Physical calibration flags are cleared, so alignment requires proof on the actual bank paper and Epson/PR2 after choosing an axis.
+- Existing saved layouts and backwards-compatible fold metadata remain supported. No new print engine or data store is introduced.
+
+### Familiar, compact top ribbon
+
+- **Easy Tools:** Text Box, Table, Customer Name, Bank Field, Picture (Quick only), Book Size & Fold, Preview PDF, Save Draft. Every control invokes an existing draft editor action.
+- **More Tools** opens an on-demand palette: Account Number, IFSC, Nominee, Rectangle, Line, Oval, Photo Box (Quick only), Object Format, Ruler and Grid.
+- Existing Home / Insert / Design / Layout / References / Mailings / Review / View tabs, tool search and contextual Object Format remain available.
+- Buttons have plain-language labels and hover tips, not decorative commands.
+- No client data is copied into shared bank templates; Direct PR2 stays text-only. Nothing is automatically activated or published.
+
+### Acceptance still needed
+
+The latest CI suite includes regression tests for both fold axes, flat mode, open-book measurement preservation, and the ribbon tool wiring. GitHub build checks do not replace Windows screenshots or a real Epson passbook print. **Draft PR #100 only**, no main merge or production deploy.
