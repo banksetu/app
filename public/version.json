@@ -1,31 +1,31 @@
 {
-  "latestVersion": "1.0.142",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.142/BankSetu-Setup-1.0.142-x64.exe",
+  "latestVersion": "1.0.143",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.143/BankSetu-Setup-1.0.143-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.142",
-  "releaseTag": "v1.0.142",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.142",
-  "releaseDate": "2026-11-06",
-  "windowsVersion": "1.0.142",
-  "androidBuild": 1000142,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.142/BankSetu-Setup-1.0.142-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.142/BankSetu-Android-1000142.apk",
+  "version": "1.0.143",
+  "releaseTag": "v1.0.143",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.143",
+  "releaseDate": "2026-11-07",
+  "windowsVersion": "1.0.143",
+  "androidBuild": 1000143,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.143/BankSetu-Setup-1.0.143-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.143/BankSetu-Android-1000143.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.142",
-      "releaseDate": "2026-11-06",
+      "version": "1.0.143",
+      "releaseDate": "2026-11-07",
       "categories": {
         "Improvements": [
-          "Merge safe MS Office layout engine RC (99)."
+          "Merge PR 100: Bank Setu passbook designer."
         ]
       }
     },
     "android": {
-      "version": "1.0.142",
-      "releaseDate": "2026-11-06",
+      "version": "1.0.143",
+      "releaseDate": "2026-11-07",
       "categories": {
         "Improvements": [
-          "Merge safe MS Office layout engine RC (99)."
+          "Merge PR 100: Bank Setu passbook designer."
         ]
       }
     }
