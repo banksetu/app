@@ -1876,6 +1876,14 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           <input type="file" accept="image/png,image/jpeg,image/webp"
             disabled={busy||setup.output==="dotmatrix"} onChange={event=>{void importGraphic(event);}}/>
         </label>
+        <label className="ls-file-action" title="Insert punctuation or a special character into an unlocked static text box, or create a new text box.">
+          Ω Symbols
+          <select aria-label="Insert quick symbol" value="" onChange={event=>insertWordSymbol(event.target.value)}>
+            <option value="">Choose…</option>
+            {[".",",",";",":","@","#","₹","%","&","*","+","-","/","_","=","(",")","[","]","?","!","•","।","॥","°","✓","©","®","™"].map(symbol=>
+              <option key={symbol} value={symbol}>{symbol}</option>)}
+          </select>
+        </label>
         <button type="button" title="Choose full-open book width, height, fold orientation and print start."
           onClick={()=>{setWordTab("layout");setPageSetupOpen(true);}}><span aria-hidden="true">▱</span> Book Size & Fold</button>
         <button type="button" title="Generate a draft proof PDF; never triggers direct PR2 printer."
@@ -2049,6 +2057,17 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         management and native Word DOCX roundtrip are not part of this banking layout engine.</small>
       </div>}
       {wordTab==="insert"&&<div className="ls-word-tab-content" role="toolbar" aria-label="Insert layout objects"><span className="ls-ribbon-group-label">Text · Tables · Illustrations · Fields · Symbols</span>
+        <div className="ls-word-command-family" role="group" aria-label="Symbols and punctuation"><strong>Symbols &amp; Punctuation</strong><div className="ls-word-command-items">
+          {[".",",",";",":","@","#","₹","%","&","?","!","•"].map(symbol=>
+            <button key={symbol} type="button" title={"Insert "+symbol} aria-label={"Insert symbol "+symbol}
+              onClick={()=>insertWordSymbol(symbol)}>{symbol}</button>)}
+          <label>More Symbols <select aria-label="Insert punctuation or special character" value=""
+            onChange={event=>insertWordSymbol(event.target.value)}>
+            <option value="">Choose symbol…</option>
+            {[".",",",";",":","@","#","₹","%","&","*","+","-","/","_","=","(",")","[","]","{","}","?","!","•","°","§","¶","№","✓","☑","©","®","™","—","–","×","÷","±","€","£","$","→","←","≥","≤","।","॥","“","”","‘","’"].map(symbol=><option key={symbol} value={symbol}>{symbol}</option>)}
+          </select></label>
+          <small>Choose editable static text to append; otherwise a new symbol text box is added.</small>
+        </div></div>
         <div className="ls-word-command-family" role="group" aria-label="Text"><strong>Text</strong><div className="ls-word-command-items">
         <button type="button" onClick={()=>append("text","static","New text")}>+ Text Box</button>
         <button type="button" onClick={()=>append("text","preprinted","Printed Label")}>+ Label</button>
@@ -2082,14 +2101,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" onClick={()=>append("text","static",new Date().toLocaleDateString("en-GB"))}>Date (static)</button>
         <button type="button" onClick={()=>append("text","static",new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}))}>Time (static)</button>
         </div></div>
-        <div className="ls-word-command-family" role="group" aria-label="Symbols"><strong>Symbols</strong><div className="ls-word-command-items">
-        <label>Special Characters <select aria-label="Insert punctuation or special character" value=""
-          onChange={event=>insertWordSymbol(event.target.value)}>
-          <option value="">Insert symbol…</option>
-          {[".",";",":","•","₹","%","/","(",")","-","—","&","@","§","¶","№","✓","☑","₹"].map((symbol,index)=>
-            <option key={symbol+index} value={symbol}>{symbol}</option>)}
-        </select></label>
-        </div></div>
+
       </div>}
       {wordTab==="view"&&<div className="ls-word-tab-content" role="toolbar" aria-label="View controls"><span className="ls-ribbon-group-label">Show · Zoom · Preview</span>
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
