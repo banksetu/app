@@ -1,0 +1,123 @@
+name: Actions storage cleanup
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Audit first, or permanently clean old Actions data
+        type: choice
+        options: [audit, clean]
+        default: audit
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: actions-storage-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CLEANUP_MODE: ${{ inputs.mode }}
+    steps:
+      - name: Preserve drafts 100 and 58 and clean historical Actions data
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {appendFileSync} from 'node:fs';
+          const repo = process.env.GITHUB_REPOSITORY;
+          if (repo !== 'banksetu/app') throw new Error('Unexpected repository');
+          const currentId = Number(process.env.GITHUB_RUN_ID);
+          const clean = process.env.CLEANUP_MODE === 'clean';
+          const start = Date.now();
+          const headers = {Authorization: 'Bearer ' + process.env.GH_TOKEN, Accept:'application/vnd.github+json', 'X-GitHub-Api-Version':'2022-11-28'};
+          const pause = ms => new Promise(r=>setTimeout(r,ms));
+          async function api(path, method='GET') {
+            for (let attempt=0;attempt<5;attempt++) {
+              const r = await fetch('https://api.github.com/repos/'+repo+path,{method,headers,signal:AbortSignal.timeout(30000)});
+              if (method==='DELETE' && r.status===404) return null;
+              if ((r.status===429 || r.status===403) && (r.headers.get('retry-after') || r.headers.get('x-ratelimit-remaining')==='0')) {
+                const delay = r.headers.get('retry-after') ? Number(r.headers.get('retry-after'))*1000 : Math.max(1000,Number(r.headers.get('x-ratelimit-reset'))*1000-Date.now()+1000);
+                if (delay>120000) throw new Error('Rate limit exceeds safe wait');
+                await pause(delay);
+                continue;
+              }
+              if (!r.ok) throw new Error(method+' '+path+' failed: '+r.status+' '+(await r.text()).slice(0,500));
+              return r.status===204 ? null : r.json();
+            }
+            throw new Error('Rate limit retries exhausted');
+          }
+          async function all(path,key) {
+            const result=[];
+            for(let page=1;;page++) {
+              const data=await api(path+(path.includes('?')?'&':'?')+'per_page=100&page='+page);
+              const items=data[key];
+              if(!Array.isArray(items)) throw new Error('Unexpected API response');
+              result.push(...items);
+              if(items.length<100) break;
+            }
+            return result;
+          }
+          const runs = await all('/actions/runs','workflow_runs');
+          const artifacts = await all('/actions/artifacts','artifacts');
+          const caches = await all('/actions/caches','actions_caches');
+          const protectedBranches = ['codex/passbook-wizard-word-draft-20261106','codex/pr2-local-test-20261021'];
+          const keep=new Set([currentId]);
+          for(const branch of protectedBranches) {
+            const branchRuns=runs.filter(r=>r.head_branch===branch && r.status==='completed').sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at));
+            if(branchRuns[0]) keep.add(branchRuns[0].id);
+            const successful=branchRuns.find(r=>r.conclusion==='success');
+            if(successful) keep.add(successful.id);
+          }
+          const remove = runs.filter(r=>r.status==='completed' && !keep.has(r.id) && Date.parse(r.created_at)<start);
+          const removeIds=new Set(remove.map(r=>r.id));
+          const removedArtifacts=artifacts.filter(a=>removeIds.has(a.workflow_run?.id));
+          const artifactBytes=removedArtifacts.reduce((n,a)=>n+a.size_in_bytes,0);
+          const cacheBytes=caches.reduce((n,c)=>n+c.size_in_bytes,0);
+          const summary = [
+            '# Actions cleanup '+(clean?'execution':'audit'),
+            '',
+            'Draft PRs #100 and #58, all source branches, commits, tags and published release assets are preserved.',
+            'Newest completed run and newest successful run on each protected draft branch are preserved.',
+            'Queued/in-progress runs are excluded.',
+            '',
+            '| Item | Count | Bytes |',
+            '| --- | ---: | ---: |',
+            '| Completed historical runs to delete | '+remove.length+' | — |',
+            '| Artifacts attached to those runs | '+removedArtifacts.length+' | '+artifactBytes+' |',
+            '| Rebuildable caches to delete | '+caches.length+' | '+cacheBytes+' |',
+            '',
+            'Preserved run IDs: '+[...keep].join(', '),
+            ''
+          ].join('\n');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary);
+          console.log(summary);
+          if(!clean) {
+            console.log('AUDIT ONLY: nothing deleted.');
+          } else {
+            let deletedRuns=0,deletedCaches=0;
+            for(const run of remove) {
+              await api('/actions/runs/'+run.id,'DELETE');
+              deletedRuns++;
+              if(deletedRuns%25===0) console.log('Deleted historical runs: '+deletedRuns+'/'+remove.length);
+              await pause(450);
+            }
+            for(const cache of caches) {
+              await api('/actions/caches/'+cache.id,'DELETE');
+              deletedCaches++;
+              await pause(450);
+            }
+            const afterRuns=await all('/actions/runs','workflow_runs');
+            const afterArtifacts=await all('/actions/artifacts','artifacts');
+            const afterCaches=await all('/actions/caches','actions_caches');
+            const remainingTargets=afterRuns.filter(r=>removeIds.has(r.id));
+            const remainingArtifacts=afterArtifacts.filter(a=>removeIds.has(a.workflow_run?.id));
+            const oldCacheIds=new Set(caches.map(c=>c.id));
+            const remainingCaches=afterCaches.filter(c=>oldCacheIds.has(c.id));
+            const result='Deleted runs: '+deletedRuns+'; deleted caches: '+deletedCaches+'; selected artifact bytes removed: '+artifactBytes+'; selected cache bytes removed: '+cacheBytes+'; target runs left: '+remainingTargets.length+'; target artifacts left: '+remainingArtifacts.length+'; target caches left: '+remainingCaches.length;
+            console.log(result);
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY,'\n## Verified result\n'+result+'\n');
+            if(remainingTargets.length || remainingArtifacts.length || remainingCaches.length) throw new Error('Cleanup verification incomplete');
+          }
+          NODE
