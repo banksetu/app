@@ -45,7 +45,7 @@ function render(page,blocked){
 test('read-only dashboard removes protected menus and blocks already selected routes in the same render',()=>{
  for(const page of ['customer-entry','quick-passbook','passbook','search','bank-formats']){
   const html=render(page,true);
-  for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF Sample'])assert(!html.includes(label),label);
+  for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF'])assert(!html.includes(label),label);
   assert(!html.includes('data-component="CustomerEntry"'));assert(!html.includes('data-component="SelectedBankDocument"'));assert(!html.includes('data-component="BankFormats"'));
   for(const label of ['Dashboard','All Customer Data','Customers','Settings','Sync &amp; Backup'])assert(html.includes(label),label);
   assert(html.includes('suspended'));
