@@ -1769,7 +1769,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         PDF/Word conversion, page settings, editable objects and proof export use the real draft editor.
       </p>}
       <div className="ls-header-utilities">
-      <div className="ls-header-main-actions"><button type="button" className="ls-primary" disabled={savingLayout||busy} onClick={()=>{void save();}} title="Save this draft">▣ Save Draft{dirty ? " *" : ""}</button><button type="button" onClick={()=>{setWorkspaceView("design");if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}} title="Preview customer values without saving them">◉ {previewOpen?"Hide Preview":"Preview"}</button>{canSubmit&&<button type="button" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}} title="Submit for Master review">✓ Send to Master</button>}</div>
+      <div className="ls-header-main-actions"><button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}} title="Open File to save, restore or submit">File</button><button type="button" onClick={()=>{setWorkspaceView("design");if(previewOpen)setPreviewOpen(false);else void loadPreviewCustomers();}} title="Preview customer values">◉ {previewOpen?"Hide Preview":"Preview"}</button></div>
       <details className="ls-header-extra">
         <summary>More tools & exports <span aria-hidden="true">⌄</span></summary>
         <div className="ls-header-extra-actions">
@@ -1789,31 +1789,31 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <span className="ls-workflow-number">⌂</span><span><strong>Layout Designer</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");void startFromBlank();}}>
-        <span className="ls-workflow-number">＋</span><span><strong>नया डिजाइन बनाएँ</strong></span>
+        <span className="ls-workflow-number">＋</span><span><strong>New Design</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
-        <span className="ls-workflow-number">▤</span><span><strong>ड्राफ्ट / मेरे डिजाइन</strong></span>
+        <span className="ls-workflow-number">▤</span><span><strong>My Drafts</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);}}>
         <span className="ls-workflow-number">◎</span><span><strong>Shared Bank Layouts</strong><small>Approved same-bank templates</small></span>
       </button>
       <button type="button" disabled={!canReview} title={canReview?"Review pending bank layouts":"Only Master Admin can approve shared layouts"} onClick={()=>{setWorkspaceView("library");setCatalogOpen(true);void refreshCatalog(true);}}>
-        <span className="ls-workflow-number">✓</span><span><strong>मास्टर स्वीकृति</strong></span>
+        <span className="ls-workflow-number">✓</span><span><strong>Template Management</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setShowLayers(v=>!v);}}>
-        <span className="ls-workflow-number">▦</span><span><strong>Layout मैनेज / Layers</strong></span>
+        <span className="ls-workflow-number">▦</span><span><strong>Layers</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("layout");setPageSetupOpen(true);}}>
         <span className="ls-workflow-number">▱</span><span><strong>Page Size / Margins</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("file");}}>
-        <span className="ls-workflow-number">⇩</span><span><strong>बैकअप / रिकवर</strong></span>
+        <span className="ls-workflow-number">⇩</span><span><strong>Backup / Restore</strong></span>
       </button>
       <button type="button" onClick={onBackToSetup}>
-        <span className="ls-workflow-number">⚙</span><span><strong>बैंक चयन / सेटिंग</strong></span>
+        <span className="ls-workflow-number">⚙</span><span><strong>Bank Settings</strong></span>
       </button>
       <button type="button" onClick={()=>{setWorkspaceView("design");setWordTab("help");}}>
-        <span className="ls-workflow-number">?</span><span><strong>सहायता</strong></span>
+        <span className="ls-workflow-number">?</span><span><strong>Help</strong></span>
       </button>
       <div className="ls-sidebar-foot">Draft PR #100 · No production changes</div>
     </nav>
@@ -1957,6 +1957,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       {wordTab==="file"&&<div className="ls-word-tab-content ls-file-backstage" role="toolbar" aria-label="File and backup"><span className="ls-ribbon-group-label">File · New / Open / Save / Export</span>
         <button type="button" disabled={busy} onClick={()=>{void startFromBlank();}}>▤ New Blank</button>
         <button type="button" disabled={savingLayout||busy} onClick={()=>{void save();}}>▣ Save Draft</button>
+        {canSubmit&&<button type="button" className="ls-primary" disabled={savingLayout||busy} onClick={()=>{void saveAndSubmit();}}>✓ Save & Submit to Master</button>}
         <button type="button" disabled={busy} onClick={()=>{void proofPdf();}}>◉ Preview / Proof PDF</button>
         <button type="button" onClick={exportJson}>Download Editable Backup</button>
         <label className="ls-file-action">Restore Editable Backup
@@ -2107,8 +2108,8 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
         <button type="button" aria-pressed={showLayers} onClick={()=>setShowLayers(v=>!v)}>Layers</button>
         <button type="button" onClick={()=>setZoom(1)}>Actual Size 100%</button>
         <button type="button" onClick={()=>setZoom(.8)}>Zoom 80%</button>
-        <button type="button" onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>Zoom −</button>
-        <button type="button" onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>Zoom +</button>
+        <button type="button" onClick={()=>setZoom(v=>Math.max(.5,Math.round((v-.1)*10)/10))}>Zoom −</button>
+        <button type="button" onClick={()=>setZoom(v=>Math.min(4,Math.round((v+.1)*10)/10))}>Zoom +</button>
         <button type="button" onClick={()=>{const ids=draft.elements.filter(p=>(p.page||1)===selectedPage).map(p=>p.id);setWordSelectedIds(ids);setSelectedId(ids[0]||null);}}>Select Page Objects</button>
         <button type="button" aria-pressed={smartGuidesEnabled} onClick={()=>setSmartGuidesEnabled(v=>!v)}>Smart Guides</button>
         <button type="button" aria-pressed={snapGrid} onClick={()=>{setSnapGrid(v=>!v);setShowGrid(true);}}>Snap</button>
@@ -2149,8 +2150,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </div>}
       {wordTab==="layout"&&<div className="ls-word-tab-content ls-word-layout-commands" role="toolbar" aria-label="Page layout tools">
         <button type="button" onClick={()=>setPageSetupOpen(true)}>▤ Margins</button>
-        <button type="button" onClick={()=>setPageSetupOpen(true)}>▣ Orientation</button>
-        <button type="button" onClick={()=>setPageSetupOpen(true)}>▱ Size</button>
+
         <label className="ls-layout-fold-shortcut">Book Fold
           <select aria-label="Quick choose book fold direction" value={pageSetupFor(draft).foldAxis}
             onChange={e=>chooseFoldDirection(e.target.value as FoldAxis)}>
@@ -2159,8 +2159,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
             <option value="none">No Fold (Flat)</option>
           </select>
         </label>
-        <button type="button" onClick={()=>setPageSetupOpen(true)}>↕ Fold / Print Start</button>
-        <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup…</button>
+        <button type="button" onClick={()=>setPageSetupOpen(true)}>Page Setup: Size / Fold / Print Start / Margins…</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>{if(!selected)return;edit({rotation:(selected.rotation+90)%360});}}>Rotate 90°</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(1)}>Bring Forward</button>
         <button type="button" disabled={!selected||selected.locked} onClick={()=>moveZ(-1)}>Send Backward</button>
@@ -2366,7 +2365,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </select></label>}
       <small role="status">{autosaveStatus}</small>
     </div>
-    <div className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</div>
+    <p className="ls-notice" role="status">{busy ? "Processing PDF… " : ""}{notice}</p>
     {(graphicWarnings.length>0||draft.sourceArtworkStatus==="needsReview") && <div className="ls-audit" role="group" aria-label="Original PDF graphics review">
       <strong>Source PDF artwork requires review — {graphicWarnings.length} warning(s)</strong>
       <p>Scanned page art, gradients, fonts and clipping cannot be silently treated as editable vectors. Check the in-memory original overlay. No uploaded customer image is shared.</p>
@@ -2856,7 +2855,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <span>{dirty?"Unsaved changes":"Draft saved"} · {setup.output==="dotmatrix"?"PR2 text-only":"Quick Passbook"}</span>
       <button type="button" aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>Ruler</button>
       <button type="button" aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>Grid</button>
-      <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=0.6} onClick={()=>setZoom(v=>Math.max(.6,Math.round((v-.1)*10)/10))}>−</button><strong>{Math.round(zoom*100)}%</strong><button type="button" aria-label="Zoom in" disabled={zoom>=2} onClick={()=>setZoom(v=>Math.min(2,Math.round((v+.1)*10)/10))}>＋</button></span>
+      <span className="ls-zoom-controls"><button type="button" aria-label="Zoom out" disabled={zoom<=0.5} onClick={()=>setZoom(v=>Math.max(.5,Math.round((v-.1)*10)/10))}>−</button><input aria-label="Editor zoom" type="range" min={0.5} max={4} step={0.1} value={zoom} onChange={event=>setZoom(Number(event.target.value))}/><strong>{Math.round(zoom*100)}%</strong><button type="button" aria-label="Zoom in" disabled={zoom>=4} onClick={()=>setZoom(v=>Math.min(4,Math.round((v+.1)*10)/10))}>＋</button><button type="button" onClick={()=>setZoom(1)}>100%</button></span>
     </div>
     <details className="ls-extra-tools" aria-label="More document actions">
       <summary>Additional tools and import shortcuts · Keep the editor visible above</summary>
@@ -2894,7 +2893,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
     <section className="ls-tool-card ls-page-card" aria-label="Page setup">
       <div className="ls-tool-heading"><span className="ls-tool-icon" aria-hidden="true">04</span><div><strong>Page & Preview</strong><small>Measurements, zoom, preview and alignment settings</small></div></div>
     <div className="ls-settings">
-      <button type="button" onClick={()=>setWordTab("layout")}>Page Setup: Size / Fold / Margins</button>
+
       <label>Page <select value={selectedPage} onChange={event=>{setSelectedPage(Number(event.target.value));setSelectedId(null);}}>{Array.from({length:Math.max(1,draft.pageCount||1)},(_,index)=><option key={index} value={index+1}>Page {index+1}</option>)}</select></label>
       <button type="button" onClick={()=>modify(current=>({...current,pageCount:Math.min(10,(current.pageCount||1)+1)}))} disabled={(draft.pageCount||1)>=10}>+ Page</button>
       <span>Full open book {draft.widthMm} × {draft.heightMm} mm · Fold {draft.foldMm} mm · Start {draft.printStartMm} mm</span>
@@ -2905,7 +2904,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       <label><input type="checkbox" checked={showRulers} onChange={e=>setShowRulers(e.target.checked)}/> Rulers</label><label><input type="checkbox" checked={showGrid} onChange={e=>setShowGrid(e.target.checked)}/> 5 mm grid</label>
       <label><input type="checkbox" checked={snapGrid} onChange={e=>{setSnapGrid(e.target.checked);if(e.target.checked)setShowGrid(true);}}/> Snap</label>
       <label><input type="checkbox" checked={smartGuidesEnabled} onChange={e=>{setSmartGuidesEnabled(e.target.checked);setActiveGuides([]);}}/> Smart alignment guides</label>
-      <label>Zoom <select value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={0.6}>60%</option><option value={0.8}>80%</option><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
+
       <label>Preview <select value={preview} onChange={event => setPreview(event.target.value as "quick" | "dotmatrix")}><option value="quick">Quick (full artwork)</option><option value="dotmatrix">Dot Matrix (print only)</option></select></label>
     </div>
     </section>
