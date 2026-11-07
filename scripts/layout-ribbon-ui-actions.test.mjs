@@ -23,5 +23,9 @@ test("private object clipboard cannot leak across customer preview, Microsoft AP
 test("new decorative graphics respect Quick-only and PR2 separation",()=>{
   assert.match(editor,/if\(\(kind==="watermark"\|\|kind==="border"\)&&setup\.output==="dotmatrix"\)/);
   assert.match(editor,/part\.dotMatrix=false/);
+  assert.match(editor,/fieldKey==="pageBackground"/);
+  assert.doesNotMatch(editor,/__pageBackground__/);
+  assert.match(editor,/if\(setup\.output==="dotmatrix"\)/);
+  assert.match(editor,/part\.quick=true/);
   assert.match(editor,/setPhysicalChecked\(false\);setLabelChecked\(false\);setHardwareChecked\(false\)/);
 });
