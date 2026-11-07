@@ -1882,6 +1882,32 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
           disabled={busy} onClick={()=>{void proofPdf();}}><span aria-hidden="true">◉</span> Preview PDF</button>
         <button type="button" title="Save this private editable draft, without activating live printing."
           disabled={savingLayout||busy} onClick={()=>{void save();}}><span aria-hidden="true">▣</span> Save Draft</button>
+        <details className="ls-ribbon-more-tools">
+          <summary title="More real passbook design tools">＋ More Tools</summary>
+          <div className="ls-ribbon-more-content" role="group" aria-label="Additional easy passbook tools">
+            <button type="button" title="Add the current customer's account number placeholder"
+              onClick={()=>{setWordTab("mailings");append("field","customer","Account Number","accountNumber");}}>◇ Account Number</button>
+            <button type="button" title="Add IFSC from active Bank Information"
+              onClick={()=>{setWordTab("mailings");append("field","bank","IFSC","ifsc");}}>◇ IFSC</button>
+            <button type="button" title="Add customer's nominee field"
+              onClick={()=>{setWordTab("mailings");append("field","customer","Nominee","nominee");}}>◇ Nominee</button>
+            <button type="button" title="Add a rectangle shape"
+              onClick={()=>{setWordTab("draw");append("rectangle","static","Rectangle");}}>▢ Rectangle</button>
+            <button type="button" title="Add a line"
+              onClick={()=>{setWordTab("draw");append("line","static","Line");}}>─ Line</button>
+            <button type="button" title="Add a circle or oval shape"
+              onClick={()=>{setWordTab("draw");append("ellipse","static","Circle");}}>◯ Oval</button>
+            <button type="button" title="Add a customer photo placeholder for Quick Passbook only"
+              disabled={setup.output==="dotmatrix"}
+              onClick={()=>{setWordTab("insert");append("photo","static","Photo Box");}}>▣ Photo Box</button>
+            <button type="button" title="Select text or a shape and edit precise width/height/X/Y"
+              disabled={!selected} onClick={()=>setWordTab("format")}>▣ Object Format</button>
+            <button type="button" title="Show the ruler along the paper edges"
+              aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>▥ Ruler</button>
+            <button type="button" title="Show alignment grid on page"
+              aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>▦ Grid</button>
+          </div>
+        </details>
         <span className="ls-ribbon-quick-help">Tip: choose a tool → click or drag on the page → edit on the right.</span>
       </div>
       {wordTab==="format"&&<div className="ls-word-tab-content ls-object-format-ribbon"
@@ -2802,7 +2828,7 @@ function CustomizeLayoutStudioCore({ mode, bankName, bankValues = {}, accountRol
       </section>
     </div>}
     <div className="ls-designer-status" aria-label="Editor status and zoom">
-      <span>Page {selectedPage}/{Math.max(1,draft.pageCount||1)} · {draft.widthMm} × {draft.heightMm} mm</span>
+      <span>Page {selectedPage}/{Math.max(1,draft.pageCount||1)} · {draft.widthMm} × {draft.heightMm} mm · Fold: {pageSetupFor(draft).foldAxis==="horizontal"?"Horizontal":pageSetupFor(draft).foldAxis==="vertical"?"Vertical":"No Fold"}</span>
       <span>{dirty?"Unsaved changes":"Draft saved"} · {setup.output==="dotmatrix"?"PR2 text-only":"Quick Passbook"}</span>
       <button type="button" aria-pressed={showRulers} onClick={()=>setShowRulers(v=>!v)}>Ruler</button>
       <button type="button" aria-pressed={showGrid} onClick={()=>setShowGrid(v=>!v)}>Grid</button>
