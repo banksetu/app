@@ -38,7 +38,7 @@ test("master can browse all bank templates and delete through authorized Worker 
  for(const word of ["Pending Approval","Approved","Rejected","Deleted","originTenantId","submittedBy","Raw JSON"])
   assert.ok(manager.includes(word),word);
  assert.match(manager,/\/delete-layout-template/);
- assert.match(worker,/if\(route === "\/delete-layout-template"\)/);
+ assert.match(worker,/if\s*\(route === "\/delete-layout-template"\)/);
  assert.match(worker,/if\(!isMasterActor\(actor\)\)/);
  const routings=worker.split('"\/delete-layout-template"').length-1;
  assert.equal(routings,3,"Delete route must be registered and handled exactly once");
