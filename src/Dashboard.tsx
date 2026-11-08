@@ -15,6 +15,7 @@ import { DEFAULT_GLASS_SETTINGS, glassDarkSurface, glassScope, glassStorageKey, 
 import { readGlassWallpaper, saveGlassWallpaper } from "./core/glassBackgroundStore";
 import "./GlassTheme.css";
 import "./GlassCoverage.css";
+import "./GlassVisualPolish.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
