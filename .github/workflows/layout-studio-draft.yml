@@ -87,6 +87,23 @@ jobs:
       - run: node --test scripts/ocr-offline-integration.test.mjs
       - run: npx vite build --mode web --outDir web-app-dist
       - run: node scripts/check-layout-target-bundle.mjs web web-app-dist
+      # Only PR #105: verify the Glass CSS in a real browser without loading
+      # production customer data or changing any release workflow.
+      - name: Install Chromium for Glass draft audit
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        run: npx playwright install --with-deps chromium
+      - name: Glass coverage mobile, tablet and desktop Chromium smoke
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        run: node scripts/glass-coverage.browser.mjs
+      - name: Save synthetic Glass QA evidence (no customer data)
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: banksetu-glass-synthetic-audit-${{ github.event.pull_request.head.sha }}
+          path: test-evidence/glass-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
 
   windows-installer-smoke:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 100
