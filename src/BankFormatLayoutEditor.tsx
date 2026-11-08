@@ -88,8 +88,8 @@ export default function BankFormatLayoutEditor({
   const previewWidth = Math.min(900, Math.max(320, 600 * aspect)) * zoom;
   const previewHeight = previewWidth / aspect;
 
-  return <ModalPortal><div style={overlay} role="dialog" aria-modal="true" aria-label="Bank format field mapping">
-    <section style={dialog}>
+  return <ModalPortal><div className="banksetu-glass-mapping-overlay" style={overlay} role="dialog" aria-modal="true" aria-label="Bank format field mapping">
+    <section className="banksetu-glass-mapping-dialog" style={dialog}>
       <header style={header}><div><h2 style={{ margin: 0 }}>{mode === "extraction" ? "PDF से डेटा पढ़ने के sections चुनें" : "फॉर्म में print की जगह चुनें"}</h2><p style={help}>{mode === "extraction" ? "Field चुनें, फिर उसकी value के चारों ओर box खींचें। Label और पास के columns को box में न लें। छोटे sections के लिए Zoom बढ़ाएँ। Account Opening में पहचाने labels से नया text template बनेगा।" : "Field चुनकर उसकी print position पर क्लिक करें।"}</p></div><button type="button" style={quiet} onClick={onClose}>Close</button></header>
       {onModeChange && <div style={toolbar}><button type="button" style={quiet} disabled={mode==="extraction"} onClick={async ()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||await confirmAction("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("extraction");}}>1. डेटा कहाँ से पढ़ें</button><button type="button" style={quiet} disabled={mode==="print"} onClick={async ()=>{if(JSON.stringify(fieldMap)===JSON.stringify(initialMap)||await confirmAction("Unsaved mapping changes will be lost. Switch mode?"))onModeChange("print");}}>2. कहाँ print करें</button><span>Switch करने से पहले Save करें।</span></div>}
       <div style={toolbar}>
@@ -116,7 +116,7 @@ export default function BankFormatLayoutEditor({
           setFieldMap((current) => current.map((row, i) => i === index ? { ...row, x, y } : row));
         }} onClick={(event) => { event.stopPropagation(); setSelectedField(item.field); }} style={{ ...placed, left: `${item.x}%`, top: `${item.y}%`, width: `${item.width}%`, height:mode === "extraction" ? `${item.height || 2}%` : undefined, pointerEvents:mode === "extraction" ? "none" : "auto", fontSize: `${Math.max(10, item.fontSize)}px` }}>{BANK_PRINT_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</button>)}
       </div> : <p style={help}>Preparing the sample preview…</p>}</div>
-      <div style={mapList}>{fieldMap.map((item, index) => <div key={`${item.page || 1}-${item.field}`} style={mapRow}>
+      <div style={mapList}>{fieldMap.map((item, index) => <div className="banksetu-glass-mapping-row" key={`${item.page || 1}-${item.field}`} style={mapRow}>
         <strong>Page {item.page || 1}: {BANK_PRINT_FIELD_OPTIONS.find(([key]) => key === item.field)?.[1] || item.field}</strong>
         <label>Width % <input type="number" min={1} max={100} value={item.width} onChange={(event) => setFieldMap((current) => current.map((row, i) => i === index ? { ...row, width: Number(event.target.value) } : row))} /></label>
         {(mode === "extraction" || item.field === "customerPhoto") && <label>Height % <input type="number" min={0.2} max={100-item.y} step={0.1} value={item.height || 2} onChange={event=>setFieldMap(current=>current.map((row,i)=>i===index?{...row,height:Number(event.target.value)}:row))} /></label>}
