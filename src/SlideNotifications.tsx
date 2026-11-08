@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useSyncStatus } from "./core/useSyncStatus";
+import { shouldDismissNotificationSwipe } from "./core/notificationSwipe";
 
 type Kind = "success" | "error" | "progress" | "warning";
 type Notice = { id: number; type: Kind; title: string; message: string };
@@ -8,9 +9,6 @@ let nextId = 0;
 
 // A notification can be dragged right by mouse, pen or touch. Left/up gestures
 // never dismiss it, and the explicit close button remains available.
-export function shouldDismissNotificationSwipe(dx:number,dy:number,width:number){
-  return dx>=Math.max(76,Math.min(126,width*.27)) && Math.abs(dx)>Math.abs(dy)*1.35;
-}
 function SwipeNotice({item,onDismiss}:{item:Notice;onDismiss:(id:number)=>void}){
   const pointer=useRef<{id:number;x:number;y:number}|null>(null);
   const [dx,setDx]=useState(0);
