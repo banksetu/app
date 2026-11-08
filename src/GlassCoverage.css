@@ -337,6 +337,67 @@
     .license-banner,.support-hero,.banksetu-glass-inline-dialog
   ) {text-shadow:0 1px 2px rgba(4,15,35,.16)}
 
+  /* Micro-controls detected in the component-by-component coverage audit. */
+  html[data-appearance="glass"] :is(
+    .ssa-search,.ssa-report-buttons,.ssa-save-buttons,.ssa-schemes,
+    .ssa-customer,.ssa-entry-meta,.ssa-chips,.ssa-help,
+    .passbook-search-card,.customer-photo-review,.banksetu-notices,
+    .admin-user-stats,.support-message-actions,.update-progress,
+    .dashboard-opening-number,.ssa-card-pdf,.ssa-check
+  ) {
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.27)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-search,.ssa-customer,.ssa-chips,.passbook-search-card,
+    .admin-user-stats,.update-progress
+  ) {
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:12px;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-save,.ssa-update,.ssa-edit-btn,.ssa-card-pdf,.ssa-search button,
+    .ssa-report-buttons button,.banksetu-floating-support,
+    .support-message-actions button,.update-actions button
+  ) {
+    border:1px solid var(--glass-line)!important;
+    border-radius:11px!important;
+    backdrop-filter:blur(8px) saturate(1.12);
+    -webkit-backdrop-filter:blur(8px) saturate(1.12);
+    box-shadow:inset 0 1px rgba(255,255,255,.33),0 5px 11px rgba(4,15,35,.14)!important;
+    transition:transform var(--glass-motion),filter var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] .ssa-save {
+    color:#fff!important;
+    background:linear-gradient(135deg,rgba(6,142,95,.88),rgba(28,175,121,.56))!important;
+  }
+  html[data-appearance="glass"] :is(.ssa-update,.ssa-edit-btn,.ssa-search button) {
+    color:#fff!important;
+    background:linear-gradient(135deg,rgba(15,101,205,.80),rgba(60,142,234,.47))!important;
+  }
+  html[data-appearance="glass"] .ssa-card-pdf {
+    color:#fff!important;
+    background:linear-gradient(130deg,rgba(157,38,73,.82),rgba(231,107,125,.49))!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-save,.ssa-update,.ssa-edit-btn,.ssa-card-pdf,.ssa-search button,
+    .ssa-report-buttons button,.banksetu-floating-support,
+    .support-message-actions button,.update-actions button
+  ):not(:disabled):hover {
+    transform:translate3d(0,-2px,0);
+    filter:brightness(1.11);
+    box-shadow:0 0 var(--glass-glow) rgba(144,207,255,.58)!important;
+  }
+  html[data-appearance="glass"] :is(.ssa-check,.banksetu-support-badge) {
+    border-radius:9px;
+    transition:filter var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] .ssa-check:hover {
+    box-shadow:0 0 var(--glass-glow) rgba(120,212,174,.45)!important;
+  }
+
   /* Word-like editor chrome: glass controls but never the print paper canvas. */
   html[data-appearance="glass"] .layout-studio {
     color:var(--glass-text)!important;
