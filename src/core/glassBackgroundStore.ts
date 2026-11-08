@@ -9,7 +9,7 @@ function openDatabase():Promise<IDBDatabase>{
     request.onerror=()=>reject(request.error||new Error("Could not open local image storage."));
   });
 }
-async function transaction<T>(key:string,mode:IDBTransactionMode,action:(store:IDBObjectStore)=>IDBRequest<T>):Promise<T>{
+async function transaction<T>(mode:IDBTransactionMode,action:(store:IDBObjectStore)=>IDBRequest<T>):Promise<T>{
   const db=await openDatabase();
   try{return await new Promise<T>((resolve,reject)=>{
     const tx=db.transaction(STORE,mode);
@@ -21,9 +21,9 @@ async function transaction<T>(key:string,mode:IDBTransactionMode,action:(store:I
     tx.onabort=()=>reject(tx.error||new Error("Wallpaper storage was interrupted."));
   });}finally{db.close();}
 }
-export function readGlassWallpaper(key:string){return transaction<Blob|undefined>(key,"readonly",store=>store.get(key));}
-export function saveGlassWallpaper(key:string,blob:Blob){return transaction<IDBValidKey>(key,"readwrite",store=>store.put(blob,key));}
-export function deleteGlassWallpaper(key:string){return transaction<undefined>(key,"readwrite",store=>store.delete(key));}
+export function readGlassWallpaper(key:string){return transaction<Blob|undefined>("readonly",store=>store.get(key));}
+export function saveGlassWallpaper(key:string,blob:Blob){return transaction<IDBValidKey>("readwrite",store=>store.put(blob,key));}
+export function deleteGlassWallpaper(key:string){return transaction<undefined>("readwrite",store=>store.delete(key));}
 /** Uploads are rasterized, resized and encoded to JPEG; no SVG, script, or remote URL is allowed. */
 export async function prepareGlassWallpaper(file:File):Promise<{blob:Blob;luminance:number}>{
   if(!["image/jpeg","image/png","image/webp"].includes(file.type))throw new Error("Choose a JPG, PNG or WebP image.");
