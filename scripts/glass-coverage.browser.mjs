@@ -112,7 +112,7 @@ try{
     await page.locator("#portal-fixtures").evaluate(el=>el.style.display="none");
     await page.screenshot({path:"test-evidence/glass-dashboard-"+width+".png",fullPage:false});
     await page.emulateMedia({reducedMotion:"reduce"});
-    const reduced=await page.locator(".dashboard-stat-card").evaluate(el=>getComputedStyle(el).animationDuration);
+    const reduced=await page.locator(".dashboard-stat-card").first().evaluate(el=>getComputedStyle(el).animationDuration);
     assert(reduced.includes("1e-05")||reduced.includes("0.00001")||reduced.includes("0s")||reduced.includes("0.01ms"),"Reduced motion ignored: "+reduced);
     await page.close();
     console.log("PASS Glass CSS Chromium "+width+"px: 11 popup surfaces, inputs, cards, mapping, paper, motion");
