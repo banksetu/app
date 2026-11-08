@@ -17,6 +17,7 @@ on:
       - apps-script/Code.gs
       - desktop/**
       - electron-builder.mac.json
+      - scripts/prepare-windows-electron.mjs
       - scripts/macos-release.test.mjs
       - scripts/prepare-macos-icon.sh
       - scripts/license-ui.test.mjs
@@ -25,6 +26,7 @@ on:
       - scripts/central-bank-passbook.test.mjs
       - .github/workflows/publish-app-release.yml
       - .github/workflows/macos-arm64-release.yml
+      - .github/workflows/windows-signed-release.yml
 permissions:
   contents: read
 concurrency:
