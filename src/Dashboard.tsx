@@ -3195,7 +3195,7 @@ function DashboardHome({
   const [openingReportOpen,setOpeningReportOpen]=useState(false);
   const [kpiPrivacyHidden,setKpiPrivacyHidden]=useState(()=>{
     if(!privacyStorageKey)return false;
-    try{return localStorage.getItem(privacyStorageKey)==="hidden";
+    try{return localStorage.getItem(privacyStorageKey)==="hidden";}
     catch{return false;}
   });
   useEffect(()=>{
