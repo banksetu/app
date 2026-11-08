@@ -8,7 +8,7 @@ export type GlassSettings={
 };
 export const DEFAULT_GLASS_SETTINGS:GlassSettings={
   design:"liquid",tone:"auto",background:"default",transparency:70,blur:40,
-  intensity:65,glow:35,shadow:45,animationSpeed:55,motionDelay:45,imageLuminance:0.4
+  intensity:70,glow:43,shadow:52,animationSpeed:55,motionDelay:55,imageLuminance:0.4
 };
 export function glassScope(uid:string,tenantId:string){
   return uid&&tenantId?encodeURIComponent(uid)+":"+encodeURIComponent(tenantId):"";
@@ -80,6 +80,7 @@ export function glassVariables(settings:GlassSettings,customBackgroundUrl?:strin
     "--glass-glow":Math.round(s.glow*.22)+"px",
     "--glass-shadow":Math.round(9+s.shadow*.33)+"px",
     "--glass-motion":transitionMs+"ms",
-    "--glass-stagger":Math.round(s.motionDelay*1.2)+"ms",
+    "--glass-entry-motion":Math.round(430+(100-s.animationSpeed)*2.4)+"ms",
+    "--glass-stagger":Math.round(130+s.motionDelay*1.05)+"ms",
   };
 }
