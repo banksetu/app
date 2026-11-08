@@ -22,6 +22,7 @@ import { registerAndroidPush, unregisterAndroidPush } from "./platform/androidPu
 import { setTenantApiUrl, setTenantWorkspaceReady } from "./tenantApi";
 import LoginExperience from "./LoginExperience";
 import LoginTransition from "./LoginTransition";
+import {finishStartupSplash,startupSplashVisible} from "./core/startupSplash";
 
 import "./App.css";
 
@@ -32,7 +33,15 @@ const SoftwareUpdateNotice = lazy(() => import("./SoftwareUpdateNotice"));
 
 // The sign-in and app-reopen paths share one animated brand loader.
 function SecureLoadingScreen() {
-  return <LoginTransition phase="startup" />;
+  // index.html already presents the same loader on cold start.
+  // Never mount a second copy that restarts the orbit/progress animation.
+  return startupSplashVisible() ? null : <LoginTransition phase="startup" />;
+}
+
+/** A committed real destination finishes the first (persistent) loader. */
+function StartupReadySignal() {
+  useEffect(()=>{finishStartupSplash();},[]);
+  return null;
 }
 
 type BankSetuRole = "admin" | "user";
@@ -511,7 +520,7 @@ function App() {
 
   const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
   if (publicPath === "about" || publicPath === "privacy-policy" || publicPath === "terms") {
-    return <Suspense fallback={<SecureLoadingScreen/>}><PublicPages /></Suspense>;
+    return <Suspense fallback={<SecureLoadingScreen/>}><StartupReadySignal/><PublicPages /></Suspense>;
   }
 
   if (checkingSession) {
@@ -519,7 +528,7 @@ function App() {
   }
 
   if (!isLoggedIn && showLicenseWelcome && licenseWelcome && (pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey))) {
-    return <Suspense fallback={<SecureLoadingScreen/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
+    return <Suspense fallback={<SecureLoadingScreen/>}><StartupReadySignal/><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
   }
 
   if (loginSuccess) {
@@ -530,6 +539,7 @@ function App() {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
         <Suspense fallback={<SecureLoadingScreen/>}>
+          <StartupReadySignal/>
           <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
           <SoftwareUpdateNotice />
         </Suspense>
@@ -537,7 +547,7 @@ function App() {
     );
   }
 
-  return <LoginExperience
+  return <><StartupReadySignal/><LoginExperience
     email={email}
     password={password}
     showPassword={showPassword}
@@ -552,7 +562,7 @@ function App() {
     onForgotPassword={handleForgotPassword}
     onSubmit={handleLogin}
     onPricing={() => {setPricingRequested(true);setShowLicenseWelcome(true);}}
-  />;
+  /></>;
 }
 
 export default App;
