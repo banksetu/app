@@ -97,6 +97,6 @@ export function glassVariables(settings:GlassSettings,customBackgroundUrl?:strin
     // Faster slider => shorter reveal AND shorter stagger, not only hover speed.
     "--glass-entry-motion":Math.round((430+(100-s.animationSpeed)*2.4)*.5)+"ms",
     "--glass-stagger":Math.round((130+s.motionDelay*1.05)*.5*(1.55-s.animationSpeed*.011))+"ms",
-    "--glass-menu-motion":Math.round(160+(100-s.animationSpeed)*2.4)+"ms",
+    "--glass-menu-motion":Math.round(320+(100-s.animationSpeed)*3)+"ms",
   };
 }
