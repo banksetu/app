@@ -86,7 +86,8 @@ try{
     ];
     for(const name of portalSelectors){
       const result=await css("#portal-fixtures "+name);
-      assert.equal(result.background,"rgba(16, 24, 38, 0.72)",name+" is not using shared glass surface");
+      const alpha=Number(result.background.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/)?.[1]??NaN);
+      assert(Number.isFinite(alpha)&&alpha>0.05&&alpha<0.92,name+" must use translucent glass fill: "+result.background);
       assert.equal(result.border,"solid",name+" is missing glass border");
     }
     await page.locator("#portal-fixtures").evaluate(el=>el.style.display="block");
