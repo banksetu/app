@@ -5,6 +5,8 @@ on:
     paths:
       - src/Dashboard.tsx
       - src/MobileGlassMotionPolish.css
+      - src/MobileGlassViewportFinish.css
+      - scripts/mobile-glass-viewport*.mjs
       - src/GlassAppearancePanel.tsx
       - scripts/mobile-glass-motion*.mjs
       - src/platform/layoutEngineGate.ts
@@ -122,6 +124,12 @@ jobs:
       - name: Mobile Glass dialog, scroll, controls Chromium QA
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
         run: node scripts/mobile-glass-motion.browser.mjs
+      - name: Responsive saved wallpaper and full-width analytics source checks
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
+        run: node --test scripts/mobile-glass-viewport.test.mjs
+      - name: Browser resize preview and 7-viewport responsive Glass QA
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
+        run: node scripts/mobile-glass-viewport.browser.mjs
       - name: Save synthetic Glass QA evidence (no customer data)
         if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -135,6 +143,7 @@ jobs:
             test-evidence/glass-form-popup-*.png
             test-evidence/mobile-liquid-glass-*.png
             test-evidence/mobile-glass-motion-*.png
+            test-evidence/mobile-responsive-finish-*.png
           if-no-files-found: ignore
           retention-days: 7
 
