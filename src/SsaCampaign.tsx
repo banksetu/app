@@ -9,6 +9,7 @@ import SsaCampaignCardDialog from "./SsaCampaignCardDialog";
 import type { SsaCardKind } from "./core/ssaCardDetails";
 import { selectSsaReportEntries, ssaReportCounts, type SsaReportKind, type SsaReportSelection } from "./core/ssaReportSelection";
 import "./SsaCampaign.css";
+import "./SsaAppearance.css";
 
 type CustomerRef={recordId:string;enrolId:string;accountNo:string;name:string;contact:string};
 type Preset="month"|"today"|"week"|"year"|"all"|"custom";
