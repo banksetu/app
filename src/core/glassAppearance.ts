@@ -47,7 +47,8 @@ export function saveGlassSettings(storage:Pick<Storage,"setItem">,uid:string,ten
 }
 export function glassDarkSurface(s:GlassSettings):boolean{
   if(s.tone==="white")return false;
-  if(s.tone==="black"||s.tone==="transparent")return true;
+  if(s.tone==="black")return true;
+  // Transparent surfaces still choose readable light/dark text from the wallpaper.
   if(s.background==="default"||s.background==="nature")return false;
   if(s.background==="office"||s.background==="dark")return true;
   return s.imageLuminance<0.55;
