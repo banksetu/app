@@ -4361,7 +4361,7 @@ function CustomerEntry({ bankName = "" }: { bankName?: string }) {
 
 
 
-        <div style={styles.toolCard}>
+        <div className="customer-tool-card" style={styles.toolCard}>
 
           <p style={styles.cardLabel}>
 
