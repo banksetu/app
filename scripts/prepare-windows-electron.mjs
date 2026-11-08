@@ -45,10 +45,7 @@ const zip = await download(version, {
 const dist = resolve('node_modules/electron/dist');
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
-execFileSync('powershell.exe', [
-  '-NoProfile', '-NonInteractive', '-Command',
-  'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force', zip, dist
-], { stdio: 'inherit' });
+execFileSync('tar.exe', ['-xf', zip, '-C', dist], { stdio: 'inherit' });
 if (!existsSync(resolve(dist, 'electron.exe'))) throw new Error('Verified Electron archive did not contain electron.exe.');
 await writeFile(resolve('node_modules/electron/path.txt'), 'electron.exe\n');
 console.log(`Prepared Electron v${version} win32-x64 from a mirror using the official SHA-256 checksum.`);
