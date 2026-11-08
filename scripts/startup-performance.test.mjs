@@ -138,3 +138,6 @@ import "./glass-coverage.test.mjs";
 
 // Theme regressions for SSA Campaign, Client Admin and uploaded bank header.
 import "./ssa-theme.test.mjs";
+
+// Full feature-menu theme plus input/gesture regression audit.
+import "./theme-deep.test.mjs";
