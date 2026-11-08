@@ -129,3 +129,6 @@ test("Android OS splash matches the branded loader before native WebView can ani
   assert.match(xml,/name="postSplashScreenTheme">@style\/AppTheme.NoActionBar/);
   assert.doesNotMatch(xml,/@drawable\/splash/);
 });
+
+// Validate the optional Glass appearance mode in the existing local CI suite.
+import "./glass-mode.test.mjs";
