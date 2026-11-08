@@ -35,6 +35,8 @@ function render(page,blocked){
   if(path==='./core/localData')return {localModeEnabled:()=>false};
   if(path==='./platform/layoutEngineGate')return {windowsLayoutEngineAvailable:()=>false};
   if(path==='./core/appearance')return {storedAppearance:()=> 'light',appearanceStorageKey:()=> 'test'};
+  if(path==='./core/glassAppearance')return {DEFAULT_GLASS_SETTINGS:{design:'liquid',tone:'auto',background:'default'},storedGlassSettings:()=>({design:'liquid',tone:'auto',background:'default'}),glassVariables:()=>({}),glassDarkSurface:()=>true,glassScope:()=>'',glassStorageKey:()=>'',saveGlassSettings:()=>undefined};
+  if(path==='./core/glassBackgroundStore')return {readGlassWallpaper:async()=>undefined,saveGlassWallpaper:async()=>undefined};
   if(path.endsWith('.png'))return {__esModule:true,default:'logo.png'};
   if(path==='./tenantApi')return {tenantStorageKey:key=>key,getTenantApiUrl:()=>''};
   return {__esModule:true,default:component(path.slice(2)),getAuth:()=>({currentUser:{uid:'user-a'}})};
