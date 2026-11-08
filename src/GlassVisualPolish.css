@@ -1,0 +1,219 @@
+/* BANK SETU — Glass visual acceptance: bank header, Admin client cards, depth,
+   and clearly staged UI entry. Only Glass mode; Light/Dark stay unchanged.
+   Real printer paper and image pixels are NEVER filtered or transformed. */
+@media screen {
+  html[data-appearance="glass"] .banksetu-app-shell .persistent-bank-header {
+    position:relative;isolation:isolate;overflow:hidden;
+    background:linear-gradient(112deg,rgba(255,255,255,.14),rgba(255,255,255,.025) 52%,rgba(138,203,255,.10)),
+      var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:15px!important;
+    box-shadow:inset 1px 2px rgba(255,255,255,.64),
+      inset -1px -1px rgba(139,175,244,.28),0 12px 28px rgba(4,13,32,.32),
+      0 0 var(--glass-glow) rgba(128,202,255,.18)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.26)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.26)!important;
+    transition:box-shadow var(--glass-motion) ease,border-color var(--glass-motion) ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .persistent-bank-header::before {
+    content:"";pointer-events:none;position:absolute;inset:0 0 auto;height:48%;
+    background:linear-gradient(165deg,rgba(255,255,255,.17),transparent 77%);
+    border-radius:inherit;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .persistent-bank-header:hover {
+    box-shadow:inset 1px 2px rgba(255,255,255,.78),
+      0 18px 32px rgba(3,12,28,.34),0 0 var(--glass-glow) rgba(139,211,255,.28)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-logo-zone,
+  html[data-appearance="glass"] .banksetu-app-shell .bank-info-strip {
+    position:relative;z-index:1;
+    background:transparent!important;
+    color:var(--glass-text)!important;
+    border-color:transparent!important;
+    box-shadow:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-logo-zone img {
+    display:block;background:transparent!important;
+    object-fit:contain!important;
+    /* Never alter the bank's original uploaded logo colors or geometry. */
+    filter:none!important;
+    max-width:100%;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-info-strip :is(h2,p,span,small,strong) {
+    color:var(--glass-text)!important;
+    text-shadow:0 1px 2px rgba(0,0,0,.17);
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-info-strip :is(p,span,small) {
+    color:var(--glass-muted)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(.bank-info-edit-pencil,.logo-edit-pencil) {
+    border:1px solid var(--glass-line)!important;
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.3),0 4px 14px rgba(8,18,42,.18)!important;
+    backdrop-filter:blur(9px)!important;
+    transition:transform var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(.bank-info-edit-pencil,.logo-edit-pencil):hover {
+    transform:translateY(-2px)!important;
+    box-shadow:0 0 var(--glass-glow) rgba(124,207,255,.5)!important;
+  }
+  /* Settings > client administration: old fixed #fff !important values masked glass. */
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-users-panel,.admin-users-toolbar,.admin-users-list,.admin-users-header,
+    .admin-user-group-heading,.admin-client-workspace,.admin-client-children,
+    .admin-client-workspace-header,.admin-user-card,.admin-owner-summary,
+    .admin-user-stats>div,.admin-client-seat-count,.admin-user-meta>span
+  ) {
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-users-panel,.admin-client-workspace,.admin-client-children,
+    .admin-user-card,.admin-owner-summary,.admin-user-stats>div
+  ) {
+    background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:15px;
+    box-shadow:inset 1px 2px rgba(255,255,255,.35),inset -1px -1px rgba(142,188,249,.14),
+      0 12px 25px rgba(5,16,35,.23)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.22)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.22)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-user-meta>span,.admin-client-seat-count,.admin-users-toolbar button,
+    .admin-user-actions button
+  ) {
+    color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:11px;
+    box-shadow:inset 0 1px rgba(255,255,255,.38),
+      0 5px 13px rgba(6,17,38,.15)!important;
+    backdrop-filter:blur(9px)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-user-card,.admin-client-workspace,.admin-user-actions button
+  ) {
+    transition:transform var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-user-card,.admin-client-workspace
+  ):hover {
+    transform:translateY(-2px);
+    box-shadow:inset 1px 2px rgba(255,255,255,.48),
+      0 16px 32px rgba(5,16,38,.32),0 0 var(--glass-glow) rgba(125,190,255,.17)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-users-header h2,.admin-client-workspace-header h3,.admin-user-info strong,
+    .admin-client-children-heading strong,.admin-owner-summary h3
+  ) {color:var(--glass-text)!important}
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-user-info span,.admin-user-info small,.admin-client-empty,
+    .admin-client-children-heading span,.admin-owner-summary p,.admin-users-header p,
+    .admin-owner-label,.admin-client-workspace-header div>span
+  ) {color:var(--glass-muted)!important}
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-users-toolbar input {
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-user-status.status-approved {
+    background:rgba(11,128,93,.32)!important;color:#a8f6d2!important;border:1px solid rgba(134,238,196,.45)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-user-status.status-blocked {
+    background:rgba(158,56,80,.34)!important;color:#ffc3d0!important;border:1px solid rgba(253,160,177,.42)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-user-status.status-pending {
+    background:rgba(137,95,24,.32)!important;color:#ffe09a!important;border:1px solid rgba(247,207,117,.43)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-user-actions :is(.delete,.deny) {
+    background:rgba(137,50,72,.28)!important;color:#ffd0d7!important;border-color:rgba(247,146,163,.44)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-user-actions .block {
+    background:rgba(132,93,24,.24)!important;color:#ffe3a6!important;border-color:rgba(242,204,131,.4)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-user-actions :is(.approve,.unblock) {
+    background:rgba(21,116,86,.24)!important;color:#aef5da!important;border-color:rgba(133,228,193,.4)!important;
+  }
+  /* True liquid depth on main dashboard: edge specular + broad lower shade. */
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-stat-card,.dashboard-quick-card,.dashboard-analytics-card,
+    .dashboard-quick-panel,.ssa-kpi,.ssa-panel,.settings-page .admin-client-workspace,
+    .settings-page .admin-user-card
+  ) {
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 1px 2px rgba(255,255,255,.66),inset -2px -2px rgba(139,168,237,.24),
+      0 14px 32px rgba(3,12,30,.32),0 0 var(--glass-glow) rgba(124,194,255,.18)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-stat-card,.dashboard-quick-card,.dashboard-analytics-card,
+    .ssa-kpi,.settings-page .admin-user-card
+  ):not(:disabled):hover {
+    box-shadow:inset 1px 2px rgba(255,255,255,.72),inset -2px -2px rgba(143,175,255,.33),
+      0 20px 40px rgba(2,12,30,.38),0 0 var(--glass-glow) rgba(139,208,255,.48)!important;
+  }
+  /* Main dashboard: visibly paced appearance; no delay to auth/network/data. */
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-top-bar {
+    animation:glass-section-arrive var(--glass-entry-motion,570ms) cubic-bezier(.17,.82,.17,1) 60ms both!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid>.dashboard-stat-card {
+    animation:glass-section-arrive var(--glass-entry-motion,570ms) cubic-bezier(.17,.82,.17,1) both!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid>.dashboard-stat-card:nth-child(1){animation-delay:180ms!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid>.dashboard-stat-card:nth-child(2){animation-delay:calc(180ms + var(--glass-stagger))!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid>.dashboard-stat-card:nth-child(3){animation-delay:calc(180ms + var(--glass-stagger)*2)!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid>.dashboard-stat-card:nth-child(4){animation-delay:calc(180ms + var(--glass-stagger)*3)!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-panel{
+    animation:glass-section-arrive var(--glass-entry-motion,570ms) cubic-bezier(.17,.82,.17,1) 760ms both!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid>.dashboard-quick-card {
+    animation:glass-section-arrive var(--glass-entry-motion,570ms) cubic-bezier(.17,.82,.17,1) both!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid>.dashboard-quick-card:nth-child(1){animation-delay:800ms!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid>.dashboard-quick-card:nth-child(2){animation-delay:calc(800ms + var(--glass-stagger))!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid>.dashboard-quick-card:nth-child(3){animation-delay:calc(800ms + var(--glass-stagger)*2)!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid>.dashboard-quick-card:nth-child(4){animation-delay:calc(800ms + var(--glass-stagger)*3)!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid>.dashboard-analytics-card {
+    animation:glass-section-arrive var(--glass-entry-motion,570ms) cubic-bezier(.17,.82,.17,1) both!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid>.dashboard-analytics-card:nth-child(1){animation-delay:1060ms!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid>.dashboard-analytics-card:nth-child(2){animation-delay:calc(1060ms + var(--glass-stagger))!important}
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid>.dashboard-analytics-card:nth-child(3){animation-delay:calc(1060ms + var(--glass-stagger)*2)!important}
+}
+@media screen and (max-width:760px) {
+  html[data-appearance="glass"] .banksetu-app-shell .persistent-bank-header {
+    min-width:0!important;width:100%!important;padding:6px 9px!important;
+    border-radius:13px!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-logo-zone img {
+    max-width:min(210px,100%)!important;object-position:center!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-info-strip {
+    min-width:0!important;overflow-wrap:anywhere;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .bank-info-strip>div {
+    font-size:9px!important;line-height:1.35!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid>.dashboard-quick-card:nth-child(n),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid>.dashboard-analytics-card:nth-child(n) {
+    animation-delay:calc(390ms + var(--glass-stagger))!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid>.dashboard-stat-card:nth-child(n) {
+    animation-duration:450ms!important;
+  }
+}
+@media screen and (hover:none) {
+  html[data-appearance="glass"] .banksetu-app-shell .persistent-bank-header:hover {
+    transform:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(.admin-user-card,.admin-client-workspace):hover {
+    transform:none!important;
+  }
+}
+@media screen and (prefers-reduced-motion:reduce) {
+  html[data-appearance="glass"] .banksetu-main-workspace :is(
+    .dashboard-top-bar,.dashboard-stat-card,.dashboard-quick-card,.dashboard-quick-panel,
+    .dashboard-analytics-card
+  ) {animation:none!important;transition:none!important}
+}
