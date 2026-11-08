@@ -330,9 +330,12 @@
   ):hover{transform:none!important}
 }
 @media screen and (prefers-reduced-motion:reduce) {
-  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
-    .customer-tool-card,.customer-photo-card,.customer-form-card
-  )::after {opacity:0!important;transition:none!important}
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  )::after,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card::after {
+    opacity:0!important;transition:none!important;animation:none!important
+  }
   html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
     .customer-field>input,.customer-field>select,.customer-field>textarea,
     .customer-tool-card button
