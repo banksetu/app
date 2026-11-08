@@ -45,9 +45,10 @@ test("AOF PDF search and Support private chat get separate Dark and Glass treatm
 });
 test("Glass Appearance sliders preview immediately; closing restores state and save commits",()=>{
   const d=read("src/Dashboard.tsx"),panel=read("src/GlassAppearancePanel.tsx"),vars=read("src/core/glassAppearance.ts");
-  assert.match(d,/onPreview=\{setGlassSettings\}/);
+  assert.match(d,/onPreview=\{previewGlassPreferences\}/);
+  assert.match(d,/root\.style\.getPropertyValue\(key\)!==value/);
   assert.match(d,/if\(!saved&&glassPreviewOriginal\)setGlassSettings\(glassPreviewOriginal\)/);
-  assert.match(panel,/useEffect\(\(\)=>\{onPreview\(draft\);\},\[draft,onPreview\]\)/);
+  assert.match(panel,/useEffect\(\(\)=>\{onPreview\(draft,previewUrl\|\|existingCustomUrl\);\},\[draft,onPreview,previewUrl,existingCustomUrl\]\)/);
   assert.match(panel,/await onSave\(draft,uploaded,remember\);onClose\(true\)/);
   assert.match(panel,/type="range"/);
   for(const v of ["--glass-fill","--glass-fill-strong","--glass-line","--glass-blur","--glass-glow","--glass-highlight","--glass-shadow","--glass-motion","--glass-entry-motion","--glass-stagger"]){
