@@ -249,7 +249,7 @@
 
 /* Appearance Editor: stop nested full-width wallpaper blur and prevent
  * typography / slider controls from being obscured by glass pseudo-layers. */
-@media screen and (max-width:740px){
+@media screen and (max-width:900px){
   html[data-appearance="glass"] .glass-appearance-overlay{
     background:rgba(4,12,26,.6)!important;
     backdrop-filter:none!important;
