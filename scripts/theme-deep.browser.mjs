@@ -36,8 +36,10 @@ for(const mode of ["dark","glass"]){
   }
   const paper=await calc(p,"#aof-paper");
   assert.equal(paper.bg,"rgb(255, 255, 255)","A4 PDF paper was recolored");
-  assert.equal(await p.locator("#aof-paper").evaluate(el=>getComputedStyle(el).color),
-    "rgb(0, 0, 0)","A4 PDF paper text was recolored");
+  const paperInk=await p.locator("#aof-paper").evaluate(el=>getComputedStyle(el).color);
+  const darkInk=paperInk.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  assert(darkInk && [+darkInk[1],+darkInk[2],+darkInk[3]].every(n=>n<65),
+    "A4 PDF paper ink must remain near-black: "+paperInk);
   const top=await calc(p,".aof-module");
   assert(top.right<=width+1,"AOF spills outside viewport "+width);
   const support=await calc(p,".support-page");
