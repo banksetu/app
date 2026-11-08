@@ -37,7 +37,14 @@ export async function prepareGlassWallpaper(file:File):Promise<{blob:Blob;lumina
     const context=canvas.getContext("2d",{willReadFrequently:true});
     if(!context)throw new Error("This device cannot process the background image.");
     context.drawImage(bitmap,0,0,canvas.width,canvas.height);
-    const samples=context.getImageData(0,0,Math.min(canvas.width,64),Math.min(canvas.height,64)).data;
+    // Measure a downsample of the WHOLE wallpaper, not only its top-left corner.
+    // A dark/bright corner must not incorrectly choose white/black UI text.
+    const sample=document.createElement("canvas");
+    sample.width=32;sample.height=32;
+    const sampleContext=sample.getContext("2d",{willReadFrequently:true});
+    if(!sampleContext)throw new Error("Background contrast analysis is unavailable.");
+    sampleContext.drawImage(canvas,0,0,canvas.width,canvas.height,0,0,32,32);
+    const samples=sampleContext.getImageData(0,0,32,32).data;
     let sum=0;
     for(let n=0;n<samples.length;n+=4)sum+=(.2126*samples[n]+.7152*samples[n+1]+.0722*samples[n+2])/255;
     const luminance=samples.length?sum/(samples.length/4):.5;
