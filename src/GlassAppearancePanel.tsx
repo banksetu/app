@@ -37,6 +37,13 @@ export default function GlassAppearancePanel({
   const [draft,setDraft]=useState<GlassSettings>({...initial});
   // Sliders and design/background selectors update the actual glass workspace live.
   // Parent restores the opening snapshot if the dialog closes without saving.
+  // Keep background components stationary while editing on Android/WebView.
+  // Live previews still update; only decorative transitions are suspended.
+  useEffect(()=>{
+    const root=document.documentElement;
+    root.dataset.glassEditing="true";
+    return()=>{delete root.dataset.glassEditing;};
+  },[]);
   useEffect(()=>{onPreview(draft);},[draft,onPreview]);
   const [previewUrl,setPreviewUrl]=useState("");
   const [uploaded,setUploaded]=useState<Blob|undefined>(undefined);
