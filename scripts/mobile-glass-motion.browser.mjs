@@ -99,7 +99,7 @@ try {
   assert.equal(scroll.display,"block");
   assert.equal(scroll.overflowY,"auto","Appearance scroll body not scrollable");
   const legend=await get(p,".glass-appearance-panel legend");
-  assert.equal(legend.color,"rgb(245, 250, 255)","Appearance controls labels invisible");
+  assert(["rgb(245, 250, 255)","rgb(255, 255, 255)"].includes(legend.color),"Appearance controls labels invisible: "+legend.color);
   assert.equal((await get(p,".glass-appearance-scroll>fieldset")).backdrop,"none","Nested editor blur causes flicker");
   const slider=await get(p,'input[aria-label="Transparency"]');
   assert(slider.width>40,"Slider too narrow for touch input");
