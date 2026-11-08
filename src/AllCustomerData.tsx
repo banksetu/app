@@ -25,11 +25,12 @@ const visibleFields = (customer: Customer) => Object.entries(customer).filter(([
 
 /* A failed/expired photo URL should never render a broken-image icon.
  * Both All Customer Data and Monthly Opening Report share this preview. */
-function PreviewCustomerPhoto({src}:{src:string}){
-  const [failed,setFailed]=useState(false);
-  if(!src||failed)return <div className="customer-preview-photo-placeholder"
-    aria-label={failed?"Customer photograph unavailable":"No customer photograph"}>●</div>;
-  return <img src={src} alt="Customer photograph" onError={()=>setFailed(true)}/>;
+function PreviewCustomerPhoto({sources}:{sources:string[]}){
+  const [sourceIndex,setSourceIndex]=useState(0);
+  const src=sources[sourceIndex];
+  if(!src)return <div className="customer-preview-photo-placeholder"
+    aria-label={sources.length?"Customer photograph unavailable":"No customer photograph"}>●</div>;
+  return <img src={src} alt="Customer photograph" onError={()=>setSourceIndex(index=>index+1)}/>;
 }
 
 async function request(body: Record<string, unknown>) {
@@ -412,8 +413,9 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           {error&&<p role="alert" style={{color:"#ba2455"}}>{error}</p>}
           {copyMessage&&<p role="status">{copyMessage}</p>}
           <div className="customer-preview-identity">
-            <PreviewCustomerPhoto key={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)}
-              src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)}/>
+            <PreviewCustomerPhoto
+              key={[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(value).join("|")}
+              sources={[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(value).filter(Boolean)}/>
             <div className="customer-preview-account">
               <div className="customer-preview-name">{value(selected.name) || "Customer"}</div>
               {value(selected.accountType || selected.acType || selected.accountCategory) && <span className="customer-preview-type">{value(selected.accountType || selected.acType || selected.accountCategory)}</span>}
