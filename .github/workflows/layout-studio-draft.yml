@@ -87,28 +87,34 @@ jobs:
       - run: node --test scripts/ocr-offline-integration.test.mjs
       - run: npx vite build --mode web --outDir web-app-dist
       - run: node scripts/check-layout-target-bundle.mjs web web-app-dist
-      # Only PR #105: verify the Glass CSS in a real browser without loading
+      # Draft Glass/Responsive PRs: verify styling in Chromium without loading
       # production customer data or changing any release workflow.
       - name: Install Chromium for Glass draft audit
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         run: npx playwright install --with-deps chromium
       - name: Glass coverage mobile, tablet and desktop Chromium smoke
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         run: node scripts/glass-coverage.browser.mjs
       - name: SSA Dark/Glass + Bank Logo Header + Client Cards responsive Chromium QA
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         run: node scripts/ssa-theme.browser.mjs
       - name: Deep AOF search and Support Private Chat Dark/Glass responsiveness
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         run: node scripts/theme-deep.browser.mjs
       - name: Prismatic 3D luminance, single bank header, KPI privacy and popup browser QA
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         run: node scripts/glass-luminance.browser.mjs
       - name: Customer Form labels and AOF/SSA/Customer Preview popup Glass browser QA
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         run: node scripts/glass-form-popup.browser.mjs
+      - name: Mobile Liquid Glass source safety and responsive markup tests
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
+        run: node --test scripts/mobile-liquid-glass.test.mjs
+      - name: Mobile responsive Liquid Glass Chromium QA (320 to 768 px)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
+        run: node scripts/mobile-liquid-glass.browser.mjs
       - name: Save synthetic Glass QA evidence (no customer data)
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: banksetu-glass-synthetic-audit-${{ github.event.pull_request.head.sha }}
@@ -118,6 +124,7 @@ jobs:
             test-evidence/deep-*.png
             test-evidence/luminance-*.png
             test-evidence/glass-form-popup-*.png
+            test-evidence/mobile-liquid-glass-*.png
           if-no-files-found: ignore
           retention-days: 7
 
