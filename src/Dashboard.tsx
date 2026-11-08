@@ -20,7 +20,8 @@ import "./ThemeDeepCoverage.css";
 import "./GlassLuminance.css";
 import "./GlassFormPopupPolish.css";
 import "./MobileLiquidGlassFix.css";
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import "./MobileGlassMotionPolish.css";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -317,6 +318,21 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [glassPreviewOriginal,setGlassPreviewOriginal]=useState<GlassSettings|null>(null);
   const [glassWallpaperUrl,setGlassWallpaperUrl]=useState("");
   const [glassScopeRevision,setGlassScopeRevision]=useState(0);
+  // Live Glass preview is paint-only: never re-render customer data, sync,
+  // charts, or the entire Dashboard on each mobile slider input.
+  // The saved glassSettings React state changes only on Save/Reset-close.
+  const previewGlassPreferences=useCallback((draft:GlassSettings)=>{
+    const root=document.documentElement;
+    if(root.dataset.appearance!=="glass")return;
+    for(const [key,value] of Object.entries(glassVariables(draft))){
+      if(root.style.getPropertyValue(key)!==value)root.style.setProperty(key,value);
+    }
+    const dark=String(glassDarkSurface(draft));
+    if(root.dataset.glassDark!==dark)root.dataset.glassDark=dark;
+    if(root.dataset.glassDesign!==draft.design)root.dataset.glassDesign=draft.design;
+    const app=document.querySelector(".banksetu-app-shell");
+    if(app&&app.getAttribute("data-glass-design")!==draft.design)app.setAttribute("data-glass-design",draft.design);
+  },[]);
   useLayoutEffect(()=>{
     const root=document.documentElement;
     root.dataset.appearance=appearance;
@@ -1991,7 +2007,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       {glassDialogOpen&&appearance==="glass"&&<Suspense fallback={null}>
         <GlassAppearancePanel initial={glassPreviewOriginal||glassSettings} existingCustomUrl={glassWallpaperUrl}
-          onPreview={setGlassSettings}
+          onPreview={previewGlassPreferences}
           onClose={(saved=false)=>{if(!saved&&glassPreviewOriginal)setGlassSettings(glassPreviewOriginal);setGlassPreviewOriginal(null);setGlassDialogOpen(false);}}
           onSave={saveGlassPreferences}/>
       </Suspense>}
