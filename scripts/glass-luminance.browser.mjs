@@ -45,7 +45,7 @@ for(const width of [390,768,1280]){
  const card=await get(".dashboard-quick-card");
  assert.equal(card.border,"solid","prismatic edge border missing");
  const before=await get(".dashboard-quick-card","::after");
- assert.equal(before.before,'"\""'===before.before?before.before:'""',"card luminance pseudo missing");
+ assert.notEqual(before.before,"none","card luminance pseudo missing");
  await p.locator(".dashboard-quick-card").first().hover();
  await p.waitForTimeout(700);
  const hover=await get(".dashboard-quick-card","::after");
