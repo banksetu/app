@@ -22,6 +22,7 @@ import "./GlassFormPopupPolish.css";
 import "./MobileDashboardContainment.css";
 import "./MenuPageTransition.css";
 import "./DashboardSmokeReveal.css";
+import "./CompactGlassControls.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -3634,11 +3635,12 @@ function DashboardHome({
       <div className="dashboard-kpi-controls">
         <span className="dashboard-kpi-privacy-status" role="status" aria-live="polite">{kpiPrivacyHidden?"Dashboard figures hidden":"Dashboard figures visible"}</span>
         <button type="button" className="dashboard-kpi-privacy-toggle"
-          onClick={toggleKpiPrivacy} aria-pressed={kpiPrivacyHidden}
-          aria-label={kpiPrivacyHidden?"Show dashboard card figures":"Hide dashboard card figures"}
-          title={kpiPrivacyHidden?"Show figures":"Hide figures"}>
-          <span aria-hidden="true">{kpiPrivacyHidden?"◌":"◉"}</span>
-          <span className="dashboard-kpi-privacy-label">{kpiPrivacyHidden?"Show":"Hide"}</span>
+          role="switch" aria-checked={!kpiPrivacyHidden}
+          data-show={!kpiPrivacyHidden}
+          onClick={toggleKpiPrivacy}
+          aria-label="Show dashboard card numbers"
+          title={kpiPrivacyHidden?"Numbers hidden · switch right to show":"Numbers visible · switch left to hide"}>
+          <span className="dashboard-kpi-privacy-knob" aria-hidden="true"/>
         </button>
       </div>
       <section className={`dashboard-stats-grid${kpiPrivacyHidden?" stats-obscured":""}`} style={styles.statsGrid}>
@@ -3668,7 +3670,7 @@ function DashboardHome({
 
               <span className="dashboard-stat-badge" style={styles.statBadge}>
 
-                {statsLoading ? "SYNC" : "LIVE"}
+                {kpiPrivacyHidden ? "HIDE" : statsLoading ? "SYNC" : "LIVE"}
 
               </span>
 
