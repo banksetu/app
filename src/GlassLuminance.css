@@ -170,3 +170,81 @@
     .paper,.print-area,.passbook-print-area,.bank-format-print-document,.customer-pdf-page
   )::after {content:none!important}
 }
+
+
+/* Follow-through on local review: no stark white subcards and no nested bank header. */
+@media screen {
+  html[data-appearance="glass"][data-glass-design] :is(
+    .dashboard-stat-card,.dashboard-analytics-card,.ssa-kpi,
+    .banksetu-sidebar,.customer-preview-card,.dashboard-status-panel
+  ){border-color:var(--glass-line)!important}
+  html[data-appearance="glass"] .banksetu-app-shell .passbook-page :is(
+    .passbook-heading p,.passbook-search-label
+  ){color:var(--glass-muted)!important}
+  html[data-appearance="glass"] .banksetu-app-shell .passbook-page :is(
+    .passbook-search-card,.passbook-empty,.passbook-message
+  ){
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;border-radius:15px!important;
+    box-shadow:inset 0 1px rgba(99,214,238,.23),0 8px 19px rgba(4,18,42,.13)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.1)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.1)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .passbook-page :is(
+    .passbook-search-input,.passbook-search-row
+  ){
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .passbook-page .passbook-empty{
+    min-height:60px;display:flex;align-items:center;justify-content:center;text-align:center;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customers-page :is(
+    .customer-search-card,.search-label,.search-row,.customer-search-results
+  ){
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data:not(.customer-preview-card) {
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;border-radius:14px;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .passbook-page .search-button,.customers-page .search-button,
+    .aof-module .search-row button,.all-customer-data button
+  ):not(:disabled){
+    background:var(--glass-fill-strong)!important;border:1px solid var(--glass-line)!important;
+    color:var(--glass-text)!important;box-shadow:inset 0 1px rgba(112,217,240,.28),
+      0 4px 13px rgba(5,17,40,.21)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .match-modal,.customer-preview-card,.dashboard-opening-panel,
+    .ssa-export-dialog,.ssa-card-dialog,.license-modal,.license-drawer,
+    .print-alignment-choice,.customer-delete-dialog,.sync-dialog-panel,
+    .banksetu-glass-inline-dialog,.banksetu-glass-mapping-dialog
+  ) :is(.match-card,.match-select-button,.pdf-mode,.pdf-detail,.pdf-results,
+    .ssa-export-group,.ssa-export-preview,.dashboard-opening-filters,
+    input:not([type="checkbox"]):not([type="radio"]),select,textarea,
+    button:not(.banksetu-mapping-field-marker)){
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .match-modal,.customer-preview-card,.dashboard-opening-panel,
+    .ssa-export-dialog,.ssa-card-dialog,.license-modal,.license-drawer,
+    .print-alignment-choice,.customer-delete-dialog,.sync-dialog-panel,
+    .banksetu-glass-inline-dialog,.banksetu-glass-mapping-dialog
+  ) :is(.match-card,.pdf-mode,.pdf-detail,.pdf-results,.ssa-export-group,
+    .ssa-export-preview,.dashboard-opening-filters){
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    box-shadow:inset 1px 1px rgba(110,215,248,.22),0 6px 16px rgba(3,13,35,.13)!important;
+    backdrop-filter:blur(min(14px,var(--glass-blur)))!important;
+  }
+  html[data-appearance="glass"] :is(
+    .match-modal,.customer-preview-card,.dashboard-opening-panel,.ssa-export-dialog,
+    .ssa-card-dialog,.license-modal,.license-drawer,.print-alignment-choice,
+    .customer-delete-dialog,.sync-dialog-panel,.banksetu-glass-inline-dialog
+  ) :is(button:not(.banksetu-mapping-field-marker),[role="button"]):not(:disabled):hover{
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 0 1px rgba(139,222,244,.34),0 0 var(--glass-rim-glow) rgba(121,197,248,.25)!important;
+  }
+}
