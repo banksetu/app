@@ -1,0 +1,231 @@
+/*
+ * BANK SETU final narrow-window/mobile glass response.
+ * Screen-only, shared by resizable desktop Chrome, Android Chrome/WebView.
+ * Corrects three actual CSS collisions: wallpaper, tall bank header and
+ * analytics last-child spanning only half of a forced two-column grid.
+ * Customer data / print / PDF / native sync are not modified.
+ */
+@media screen and (max-width:900px) {
+  /* The selected wallpaper is the single background source. The previous
+     App.css fallback had a white ui-bg while the filtered shell wallpaper
+     was disabled on mobile. Paint the very same --glass-wallpaper on BOTH
+     document and body so resizing cannot expose that fallback between layers. */
+  html[data-appearance="glass"] {
+    background-color:#0e1527!important;
+    background-image:var(--glass-wallpaper,linear-gradient(125deg,#0e1527,#2d394c,#101624))!important;
+    background-position:center top!important;
+    background-size:cover!important;
+    background-repeat:no-repeat!important;
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] body {
+    background-color:#0e1527!important;
+    background-image:var(--glass-wallpaper,linear-gradient(125deg,#0e1527,#2d394c,#101624))!important;
+    background-position:center top!important;
+    background-size:cover!important;
+    background-repeat:no-repeat!important;
+    background-attachment:scroll!important;
+    color:var(--glass-text)!important;
+    min-height:100dvh;
+  }
+  html[data-appearance="glass"][data-glass-dark="false"],
+  html[data-appearance="glass"][data-glass-dark="false"] body {
+    background-color:#e0e8f4!important;
+  }
+  html[data-appearance="glass"][data-glass-dark="true"],
+  html[data-appearance="glass"][data-glass-dark="true"] body{
+    color-scheme:dark!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-app-shell,.banksetu-main-workspace){
+    background:transparent!important;
+    background-image:none!important;
+    background-color:transparent!important;
+    isolation:auto!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell::before,
+  html[data-appearance="glass"] .banksetu-app-shell::after{
+    content:none!important;
+    display:none!important;
+  }
+  /* The desktop layout uses a two-column analytics grid and spans the final
+     analytics card. On narrow windows all three must use the FULL width.
+     Earlier MobileLiquidGlassFix forced a conflicting 2-column !important. */
+  .banksetu-app-shell .dashboard-analytics-grid,
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-grid{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr)!important;
+    column-gap:0!important;
+    row-gap:13px!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+  }
+  .banksetu-app-shell .dashboard-analytics-grid>.dashboard-analytics-card,
+  .banksetu-app-shell .dashboard-analytics-grid>.dashboard-analytics-card:last-child {
+    grid-column:1/-1!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    margin-left:0!important;
+    margin-right:0!important;
+  }
+  .banksetu-app-shell .dashboard-analytics,
+  .banksetu-app-shell .dashboard-analytics-bars{
+    min-width:0!important;
+    max-width:100%!important;
+  }
+
+  /* Compact actions in row 1, centered original bank logo & information in
+     row 2. Sync + Admin *side by side*, never a 100px high stack. This avoids
+     the giant blank area above the logo while retaining actual buttons. */
+  .banksetu-app-shell .dashboard-top-bar{
+    display:grid!important;
+    grid-template-columns:44px minmax(0,1fr)!important;
+    grid-template-rows:minmax(42px,auto) auto!important;
+    gap:4px 6px!important;
+    align-items:start!important;
+    padding:8px 9px 12px!important;
+    min-height:0!important;
+    height:auto!important;
+    box-sizing:border-box!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.mobile-menu-button{
+    grid-column:1!important;grid-row:1!important;
+    justify-self:start!important;
+    align-self:start!important;
+    min-height:42px!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.admin-wrapper{
+    grid-column:2!important;grid-row:1!important;
+    display:flex!important;
+    flex-direction:row!important;
+    flex-wrap:nowrap!important;
+    align-items:center!important;
+    justify-content:flex-end!important;
+    justify-self:end!important;
+    align-self:start!important;
+    width:max-content!important;
+    max-width:100%!important;
+    min-width:0!important;
+    height:auto!important;
+    padding:0!important;
+    gap:7px!important;
+    border-left:none!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.admin-wrapper :is(
+    .dashboard-sync-button,.admin-trigger
+  ){
+    flex:0 0 42px!important;
+    width:42px!important;
+    min-width:42px!important;
+    height:42px!important;
+    min-height:42px!important;
+    max-height:42px!important;
+    padding:2px!important;
+    margin:0!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.persistent-bank-header{
+    grid-column:1/-1!important;
+    grid-row:2!important;
+    align-self:start!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:2px!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    height:auto!important;
+    min-height:0!important;
+    margin:0!important;
+    padding:1px 2px 2px!important;
+    text-align:center!important;
+    overflow:visible!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-logo-zone{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    height:auto!important;
+    min-height:0!important;
+    max-height:none!important;
+    margin:0!important;
+    padding:0!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-logo-zone img{
+    display:block!important;
+    width:auto!important;
+    height:auto!important;
+    max-width:min(100%,290px)!important;
+    max-height:62px!important;
+    object-fit:contain!important;
+    object-position:center center!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-info-strip{
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    min-height:0!important;
+    height:auto!important;
+    margin:0!important;
+    padding:0 4px!important;
+    text-align:center!important;
+    color:var(--glass-text,inherit)!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-info-strip :is(
+    h2,p,span,small,.bank-info-details
+  ){
+    max-width:100%!important;
+    color:var(--glass-text,inherit)!important;
+    overflow-wrap:anywhere!important;
+    text-align:center!important;
+  }
+
+  /* Only animate a button press and fixed-element transitions, never
+     scroll-position or entire chart/card layers on Android. */
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-card{
+    transform:none!important;
+    filter:none!important;
+    will-change:auto!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    animation:none!important;
+    background:var(--glass-fill-strong)!important;
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(157,221,250,.23),
+      0 7px 16px rgba(3,17,37,.17)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-card:active{
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 0 1px rgba(144,231,254,.42),
+      0 0 var(--glass-rim-glow) rgba(111,198,249,.24)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-analytics-card,.dashboard-quick-panel,.dashboard-stat-card,
+    .dashboard-quick-card
+  ){
+    backface-visibility:visible!important;
+    contain:none!important;
+    will-change:auto!important;
+  }
+}
+@media screen and (max-width:430px){
+  .banksetu-app-shell .dashboard-top-bar{
+    grid-template-columns:42px minmax(0,1fr)!important;
+    padding:7px 7px 10px!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-logo-zone img{
+    max-height:54px!important;
+  }
+}
+@media screen and (prefers-reduced-motion:reduce){
+  .banksetu-app-shell .dashboard-analytics-grid>*{
+    animation:none!important;
+    transition:none!important;
+  }
+}
