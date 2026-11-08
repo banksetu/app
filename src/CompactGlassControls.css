@@ -130,3 +130,18 @@
     transition:none!important;
   }
 }
+
+/* Keep the HIDE status visibly readable while the icon, numbers and titles
+   retain the existing private-glance obscuring effect. */
+@media screen {
+  .banksetu-app-shell .dashboard-stats-grid.stats-obscured .dashboard-stat-card > .dashboard-stat-top {
+    filter:none!important;opacity:1!important;transform:none!important;
+  }
+  .banksetu-app-shell .dashboard-stats-grid.stats-obscured .dashboard-stat-card .dashboard-stat-icon {
+    filter:blur(12px)!important;opacity:.035!important;
+  }
+  .banksetu-app-shell .dashboard-stats-grid.stats-obscured .dashboard-stat-card .dashboard-stat-badge {
+    filter:none!important;opacity:1!important;transform:none!important;
+    visibility:visible!important;
+  }
+}
