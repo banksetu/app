@@ -280,7 +280,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
     setSelected(customer); setError("");
     try {
       const result = await request({action:"getCustomerByRowNumber",rowNumber:customer.rowNumber,recordId:customer.recordId});
-      if (result.success && identity(customer) === identity(result.customer || {})) setSelected({...customer,...result.customer});
+      if (result.success && identity(customer) === identity(result.customer || {})) setSelected({...customer,...result.customer,photoPreview:result.customer?.photoPreview || customer.photoPreview,photoDataUrl:result.customer?.photoDataUrl || customer.photoDataUrl,photoUrl:result.customer?.photoUrl || customer.photoUrl});
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Full customer preview unavailable."); }
   };
 
