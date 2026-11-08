@@ -1,33 +1,40 @@
 {
-  "latestVersion": "1.0.144",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.144/BankSetu-Setup-1.0.144-x64.exe",
+  "latestVersion": "1.0.145",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-Setup-1.0.145-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.144",
-  "releaseTag": "v1.0.144",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.144",
-  "releaseDate": "2026-11-07",
-  "windowsVersion": "1.0.144",
-  "androidBuild": 1000144,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.144/BankSetu-Setup-1.0.144-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.144/BankSetu-Android-1000144.apk",
+  "version": "1.0.145",
+  "releaseTag": "v1.0.145",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.145",
+  "releaseDate": "2026-11-08",
+  "windowsVersion": "1.0.145",
+  "androidBuild": 1000145,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-Setup-1.0.145-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-Android-1000145.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.144",
-      "releaseDate": "2026-11-07",
+      "version": "1.0.145",
+      "releaseDate": "2026-11-08",
       "categories": {
         "Improvements": [
-          "release: integrate draft work from PRs 101-104."
+          "Merge PR 106: add unsigned ARM64 DMG to One Click release.",
+          "Merge PR 105: complete consolidated draft work.",
+          "Sync published v1.0.144 release into main.",
+          "Merge Client Spark and passbook designer PR 100 into main."
         ]
       }
     },
     "android": {
-      "version": "1.0.144",
-      "releaseDate": "2026-11-07",
+      "version": "1.0.145",
+      "releaseDate": "2026-11-08",
       "categories": {
         "Improvements": [
-          "release: integrate draft work from PRs 101-104."
+          "Merge PR 105: complete consolidated draft work.",
+          "Sync published v1.0.144 release into main.",
+          "Merge Client Spark and passbook designer PR 100 into main."
         ]
       }
     }
-  }
+  },
+  "macVersion": "1.0.145",
+  "macDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-1.0.145-arm64.dmg"
 }
