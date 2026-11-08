@@ -53,7 +53,7 @@ const sheets=[
   "src/SsaCampaign.css","src/SsaCampaignCardDialog.css","src/SsaCampaignReportDialog.css",
   "src/DashboardAccountOpeningReport.css","src/Pr2PrinterDialog.css",
   "src/CustomizeLayoutStudio.css","src/CustomizeLayoutReferenceLock.css",
-  "src/GlassTheme.css","src/GlassCoverage.css"
+  "src/GlassTheme.css","src/GlassCoverage.css","src/GlassStudioCoverage.css"
 ];
 try{
   for(const width of [360,390,768,1280]){
