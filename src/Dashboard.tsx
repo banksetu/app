@@ -14,6 +14,7 @@ import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/
 import { DEFAULT_GLASS_SETTINGS, glassDarkSurface, glassScope, glassStorageKey, glassVariables, saveGlassSettings, storedGlassSettings, type GlassSettings } from "./core/glassAppearance";
 import { readGlassWallpaper, saveGlassWallpaper } from "./core/glassBackgroundStore";
 import "./GlassTheme.css";
+import "./GlassCoverage.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -1632,7 +1633,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div
 
-          style={styles.modalOverlay}
+          className="banksetu-glass-modal-overlay" style={styles.modalOverlay}
 
           onMouseDown={(event) => {
 
@@ -1646,7 +1647,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         >
 
-          <div style={styles.bankInfoModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.bankInfoModal}>
 
             <div style={styles.modalHeader}>
 
@@ -1987,7 +1988,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div
 
-          style={styles.modalOverlay}
+          className="banksetu-glass-modal-overlay" style={styles.modalOverlay}
 
           onMouseDown={(event) => {
 
@@ -2001,7 +2002,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         >
 
-          <div style={styles.themeModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.themeModal}>
 
             <div style={styles.modalHeader}>
 
@@ -2142,8 +2143,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {menuThemeModalOpen && canControlGlobalDashboard && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
+          <div className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
             <div style={styles.modalHeader}>
               <div>
                 <p style={styles.passwordEyebrow}>APPEARANCE</p>
@@ -2166,8 +2167,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) {setClientCreateOpen(false);setClientInquiryPrefill(null);} }}>
-          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) {setClientCreateOpen(false);setClientInquiryPrefill(null);} }}>
+          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>Create Client Admin</h2>
               <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => {setClientCreateOpen(false);setClientInquiryPrefill(null);}}>×</button>
@@ -2178,8 +2179,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {advancedAdminOpen && !licenseReadOnly && userRole === "admin" && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
+          <div className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2206,7 +2207,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div
 
-          style={styles.modalOverlay}
+          className="banksetu-glass-modal-overlay" style={styles.modalOverlay}
 
           onMouseDown={(event) => {
 
@@ -2226,7 +2227,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         >
 
-          <div style={styles.passwordModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.passwordModal}>
 
             <div style={styles.modalHeader}>
 
@@ -2438,9 +2439,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       {systemStatusOpen && (
 
-        <div style={styles.modalOverlay}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay}>
 
-          <div style={styles.statusModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.statusModal}>
 
             <div style={styles.modalHeader}>
 
