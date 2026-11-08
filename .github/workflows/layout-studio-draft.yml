@@ -101,6 +101,9 @@ jobs:
       - name: Deep AOF search and Support Private Chat Dark/Glass responsiveness
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
         run: node scripts/theme-deep.browser.mjs
+      - name: Prismatic 3D luminance, single bank header, KPI privacy and popup browser QA
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 105
+        run: node scripts/glass-luminance.browser.mjs
       - name: Save synthetic Glass QA evidence (no customer data)
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 105
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -110,6 +113,7 @@ jobs:
             test-evidence/glass-*.png
             test-evidence/ssa-*.png
             test-evidence/deep-*.png
+            test-evidence/luminance-*.png
           if-no-files-found: ignore
           retention-days: 7
 
