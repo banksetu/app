@@ -1,0 +1,395 @@
+/*
+ * BANK SETU: mobile compositing/readability follow-up.
+ * This intentionally changes only screen UI (no print/PDF, data, auth or sync).
+ */
+
+/* Three-position theme track: one consistent moving thumb in every mode. */
+@media screen {
+  .banksetu-appearance-track {
+    --theme-tab-ease:cubic-bezier(.22,1.25,.32,1);
+    overflow:visible;
+  }
+  .banksetu-appearance-track .banksetu-appearance-thumb {
+    transition:transform 440ms var(--theme-tab-ease),
+      background-color 250ms ease,box-shadow 300ms ease!important;
+    will-change:transform;
+  }
+  .banksetu-appearance-track button[aria-pressed="true"] {
+    animation:banksetu-theme-tab-ack 390ms cubic-bezier(.23,.8,.25,1) both;
+  }
+  .banksetu-appearance-track button {
+    transition:color 280ms ease,opacity 280ms ease!important;
+    touch-action:manipulation;
+  }
+  @keyframes banksetu-theme-tab-ack {
+    0%{opacity:.65;scale:.86}
+    58%{opacity:1;scale:1.14}
+    100%{opacity:1;scale:1}
+  }
+  .banksetu-sidebar .banksetu-nav-item.active .banksetu-nav-icon {
+    animation:banksetu-theme-tab-ack 350ms cubic-bezier(.2,.8,.2,1) both!important;
+  }
+}
+
+/* Avoid a full-viewport filtered :before glass wallpaper being clipped/rebuilt
+ * against scrolling/transformed dashboard ancestors on Android WebView. */
+@media screen and (max-width:900px) {
+  html[data-appearance="glass"] body {
+    background-image:var(--glass-wallpaper)!important;
+    background-size:cover!important;
+    background-repeat:no-repeat!important;
+    background-position:center top!important;
+    background-attachment:scroll!important;
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell {
+    isolation:auto!important;
+    background:transparent!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell::before,
+  html[data-appearance="glass"] .banksetu-app-shell::after {
+    content:none!important;
+    display:none!important;
+    background:none!important;
+    filter:none!important;
+  }
+  /* Keep the actual mobile document scrolling, not a stack of filtered
+     overflow wrappers or animated GPU layers that repaint on touch scroll. */
+  html[data-appearance="glass"] :is(
+    .banksetu-main-workspace,.banksetu-main-workspace>div,
+    .dashboard-analytics,.dashboard-analytics-grid,.dashboard-quick-panel,
+    .dashboard-stats-grid,.dashboard-analytics-card,.dashboard-quick-grid,
+    .settings-page,.sync-center,.admin-users-panel,.all-customer-data
+  ) {
+    animation:none!important;
+    transform:none!important;
+    will-change:auto!important;
+    filter:none!important;
+    contain:none!important;
+  }
+  /* Dynamic section arrival animation should not replay midway through an
+     Android scroll or leave a half-painted ghost rectangle. */
+  html[data-appearance="glass"] .banksetu-main-workspace :is(
+    .dashboard-top-bar,.dashboard-stats-grid>.dashboard-stat-card,
+    .dashboard-quick-grid>.dashboard-quick-card,
+    .dashboard-analytics-grid>.dashboard-analytics-card,
+    .dashboard-quick-panel,.dashboard-analytics-grid
+  ) {
+    animation:none!important;
+    animation-delay:0ms!important;
+    opacity:1!important;
+    transform:none!important;
+    will-change:auto!important;
+  }
+  /* Nested blur is especially expensive on mobile. Keep the translucent
+     glass fill, prismatic border and soft depth, but blur only a few windows. */
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-stat-card,.dashboard-quick-card,.dashboard-analytics-card,
+    .dashboard-quick-panel,.dashboard-status-row,
+    .settings-page .admin-user-card,.settings-page .admin-client-workspace,
+    .settings-page .admin-users-panel,.settings-page .admin-user-stats>div,
+    .sync-card,.sync-card-grid>div,.sync-summary,.sync-health,.sync-protection,
+    .sync-storage-details,.reports-panel,.support-home-grid>button
+  ){
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 1px 1px rgba(149,222,255,.22),
+      inset -1px -1px rgba(152,125,231,.10),
+      0 7px 16px rgba(3,16,38,.16)!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    transition:border-color 240ms ease,box-shadow 250ms ease,
+      background-color 250ms ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-top-bar,.dashboard-status-panel
+  ){
+    backdrop-filter:blur(5px) saturate(1.04)!important;
+    -webkit-backdrop-filter:blur(5px) saturate(1.04)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-quick-card,.dashboard-analytics-card,.sync-card,
+    .settings-page .admin-user-card,.settings-page .admin-client-workspace
+  )::after{
+    mix-blend-mode:normal!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-stat-card,.dashboard-quick-card,.dashboard-analytics-card
+  ):active{
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 1px 1px rgba(153,237,255,.36),
+      0 0 var(--glass-rim-glow) rgba(125,199,246,.32)!important;
+    transform:scale(.992)!important;
+    transition:transform 140ms ease,box-shadow 210ms ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-bars {
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-status {
+    color:var(--glass-text)!important;
+    background:var(--glass-fill)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-status :is(span,strong,small) {
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .dashboard-analytics-track {
+    background:rgba(145,197,228,.24)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+
+  /* Brand text must never be cropped to just the left edge of an uploaded logo.
+     Menu and action buttons live in the first row; bank logo/info owns row 2. */
+  .banksetu-app-shell .dashboard-top-bar {
+    display:grid!important;
+    grid-template-columns:44px minmax(0,1fr) 48px!important;
+    grid-template-rows:auto auto!important;
+    align-items:start!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.mobile-menu-button {
+    grid-column:1!important;grid-row:1!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.admin-wrapper{
+    grid-column:3!important;grid-row:1!important;
+    width:100%!important;
+    display:flex!important;flex-direction:column!important;
+    gap:8px!important;align-items:stretch!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar>.persistent-bank-header{
+    grid-column:1/-1!important;grid-row:2!important;
+    width:100%!important;max-width:100%!important;min-width:0!important;
+    padding:8px 4px!important;
+    overflow:visible!important;
+    display:flex!important;flex-direction:column!important;
+    align-items:center!important;justify-content:center!important;
+    text-align:center!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-logo-zone{
+    width:100%!important;max-width:100%!important;min-width:0!important;
+    justify-content:center!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-logo-zone img{
+    width:auto!important;max-width:min(100%,310px)!important;
+    height:auto!important;max-height:80px!important;
+    margin-inline:auto!important;
+    object-position:center center!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-info-strip{
+    max-width:100%!important;width:100%!important;
+    text-align:center!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-info-strip :is(h2,p,span,small){
+    overflow-wrap:anywhere!important;
+    word-break:normal!important;
+    color:inherit;
+  }
+
+  /* Admin/Settings toolbar had #fff !important from legacy UI V9. */
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .settings-admin-hero,.admin-users-panel,.admin-users-toolbar,
+    .admin-users-list,.admin-users-header,.admin-client-workspace,
+    .admin-user-card,.admin-client-children,.admin-owner-summary
+  ){
+    background:var(--glass-fill-strong)!important;
+    border-color:var(--glass-line)!important;
+    color:var(--glass-text)!important;
+    box-shadow:inset 0 1px rgba(146,227,251,.25),0 7px 16px rgba(5,18,35,.13)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-users-toolbar :is(input,button){
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    color:var(--glass-text)!important;
+    box-shadow:inset 0 1px rgba(131,222,250,.28)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-users-toolbar input::placeholder{
+    color:var(--glass-muted)!important;opacity:1!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-users-toolbar,.admin-client-workspace,.admin-user-card
+  ) :is(h2,h3,h4,strong,span,small,p,label){
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-users-header p,.admin-client-children-heading span,.admin-user-info small
+  ){color:var(--glass-muted)!important;}
+
+  /* Sync & Backup: remove the giant milky white hero/protection surfaces.
+     Keep live sync, backups, status and numerical values untouched. */
+  html[data-appearance="glass"] .banksetu-app-shell .sync-center :is(
+    .sync-header,.sync-body,.sync-protection,.sync-storage-details,
+    .sync-health,.sync-summary,.sync-card-grid>div,.sync-card,
+    .sync-maintenance
+  ){
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(145,225,249,.24),
+      0 8px 20px rgba(5,16,36,.15)!important;
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .sync-center :is(
+    h1,h2,h3,h4,p,span,small,strong,summary,li
+  ):not(.sync-summary em){
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .sync-center :is(
+    .sync-header p,.sync-card-copy p,.sync-protection p,.sync-storage-details p
+  ){color:var(--glass-muted)!important;}
+  html[data-appearance="glass"] .banksetu-app-shell .sync-center :is(
+    button,.sync-header-actions a,.sync-health button,.sync-card>button
+  ):not(:disabled){
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(137,234,252,.25)!important;
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+}
+
+/* Appearance Editor: stop nested full-width wallpaper blur and prevent
+ * typography / slider controls from being obscured by glass pseudo-layers. */
+@media screen and (max-width:740px){
+  html[data-appearance="glass"] .glass-appearance-overlay{
+    background:rgba(4,12,26,.6)!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    overflow:hidden!important;
+    padding:6px!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel{
+    width:100%!important;max-width:100%!important;
+    height:calc(100dvh - 12px)!important;
+    max-height:calc(100dvh - 12px)!important;
+    background:linear-gradient(140deg,rgba(16,31,52,.90),rgba(38,43,66,.93))!important;
+    background-image:linear-gradient(140deg,rgba(16,31,52,.90),rgba(38,43,66,.93))!important;
+    color:#f8fbff!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:18px!important;
+    box-shadow:inset 1px 1px rgba(155,228,254,.26),
+      0 16px 36px rgba(3,10,26,.35)!important;
+    backdrop-filter:blur(4px)!important;-webkit-backdrop-filter:blur(4px)!important;
+    isolation:isolate;
+    transition:none!important;
+    transform:none!important;
+    overscroll-behavior:contain;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel::before{
+    /* Different from the global luminous edge :before: do not cover content. */
+    pointer-events:none!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-header,
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-actions{
+    flex:none!important;
+    background:rgba(10,21,40,.77)!important;
+    color:#f8fbff!important;
+    border-color:rgba(163,213,250,.24)!important;
+    z-index:2!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-scroll{
+    display:block!important;visibility:visible!important;opacity:1!important;
+    min-height:0!important;flex:1 1 auto!important;
+    overflow-y:auto!important;overflow-x:hidden!important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    position:relative;z-index:1;
+    background:transparent!important;
+    filter:none!important;transform:none!important;
+    scroll-behavior:auto;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-scroll>fieldset{
+    display:block!important;visibility:visible!important;opacity:1!important;
+    position:relative;transform:none!important;animation:none!important;
+    background:rgba(27,45,66,.80)!important;
+    border:1px solid rgba(128,195,234,.40)!important;
+    box-shadow:inset 0 1px rgba(137,227,254,.25)!important;
+    border-radius:14px!important;
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    margin-bottom:12px!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel :is(
+    h2,h3,legend,label,p,strong,small,output,span
+  ){
+    color:#f5faff!important;
+    opacity:1!important;
+    visibility:visible!important;
+    -webkit-text-fill-color:currentColor!important;
+    text-shadow:none!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel :is(
+    .glass-appearance-header p,.glass-slider-line small,
+    .glass-appearance-panel fieldset>small,.glass-live-note
+  ){color:#d0e3f4!important;}
+  html[data-appearance="glass"] .glass-appearance-panel .glass-design-choices,
+  html[data-appearance="glass"] .glass-appearance-panel .glass-background-choices{
+    min-width:0!important;max-width:100%!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-design-preview,
+  html[data-appearance="glass"] .glass-appearance-panel .glass-background-tile>button{
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    box-shadow:inset 0 1px rgba(181,233,253,.31),0 3px 11px rgba(2,10,30,.22)!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-slider-line{
+    display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) 41px!important;
+    width:100%!important;max-width:100%!important;min-width:0!important;
+    gap:7px!important;
+    background:transparent!important;
+    border-color:rgba(149,201,231,.26)!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel input[type="range"]{
+    display:block!important;visibility:visible!important;
+    width:100%!important;min-width:0!important;
+    height:28px!important;min-height:28px!important;
+    opacity:1!important;touch-action:pan-x!important;
+    accent-color:#ad94ff!important;cursor:ew-resize!important;
+    pointer-events:auto!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel :is(
+    .glass-tone-choices button,.glass-design-tile,.glass-background-tile>button,
+    .glass-appearance-actions>button
+  ){
+    color:#f8fbff!important;
+    -webkit-text-fill-color:currentColor!important;
+    position:relative;z-index:1;pointer-events:auto;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-actions {
+    flex-wrap:wrap!important;gap:8px!important;
+    padding:10px!important;
+    padding-bottom:max(10px,env(safe-area-inset-bottom,0px))!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-actions>button{
+    min-width:0;flex:1 1 120px!important;min-height:44px!important;
+    box-shadow:inset 0 1px rgba(145,218,250,.25)!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-actions>.glass-save{
+    background:linear-gradient(115deg,#6d55d9,#825ce7)!important;
+    border-color:#aa9bff!important;
+    box-shadow:0 4px 14px rgba(96,70,205,.27)!important;
+  }
+}
+
+@media screen and (max-width:430px){
+  .banksetu-app-shell .dashboard-top-bar{
+    grid-template-columns:42px minmax(0,1fr) 45px!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-slider-line{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) 37px!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-slider-line strong{
+    font-size:11px!important;line-height:1.3!important;
+  }
+  html[data-appearance="glass"] .glass-appearance-panel .glass-appearance-header h2{
+    font-size:17px!important;
+  }
+}
+
+@media screen and (prefers-reduced-motion:reduce){
+  .banksetu-appearance-track .banksetu-appearance-thumb,
+  .banksetu-appearance-track button,
+  .banksetu-sidebar .banksetu-nav-item.active .banksetu-nav-icon{
+    animation:none!important;transition:none!important;will-change:auto!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .dashboard-stat-card,.dashboard-quick-card,.dashboard-analytics-card
+  ){animation:none!important;transition:none!important}
+}
