@@ -174,7 +174,13 @@ if(primaryInstance)app.whenReady().then(async()=>{
   ipcMain.handle('update:install',async event=>{trusted(event);if(!app.isPackaged||process.platform==='darwin')return testUpdater.install();assertUpdateFeed();store.backup();if(!downloaded)await autoUpdater.downloadUpdate();if(!downloaded)throw new Error('Update download was not verified.');store.backup();autoUpdater.quitAndInstall(false,true);});
   openMain=async(page)=>{
     if(window&&!window.isDestroyed()){window.show();window.focus();if(page)window.webContents.send('system-notification:open',page);return;}
-  window=new BrowserWindow({width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  window=new BrowserWindow({show:false,backgroundColor:'#07162e',width:1280,height:850,minWidth:360,minHeight:600,title:'Bank Setu',icon:path.join(root,'icon-512.png'),webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  // Keep the native window hidden until the branded HTML first paints.
+  // This avoids the white/black window flash before the persistent loader.
+  const launchingWindow=window;
+  launchingWindow.once('ready-to-show',()=>{
+    if(!launchingWindow.isDestroyed())launchingWindow.show();
+  });
   printPreview.attach(window);
   // Customer print previews use document.write() into an about:blank window.
   // Allow only that local preview; it has no preload or database IPC privileges.
@@ -205,6 +211,8 @@ if(primaryInstance)app.whenReady().then(async()=>{
     cameraAllowed(contents,permission,requestingOrigin||contents.getURL()));
     window.on('closed',()=>{window=null;});
     await window.loadURL(ORIGIN+'/index.html');
+    // Some graphics drivers do not emit ready-to-show; do not strand the app.
+    if(!launchingWindow.isDestroyed()&&!launchingWindow.isVisible())launchingWindow.show();
     // Offline network printers can make enumeration take seconds. The list is
     // not needed to display the dashboard, so refresh it after first paint.
     setImmediate(()=>void appMenu.refreshPrinters());
