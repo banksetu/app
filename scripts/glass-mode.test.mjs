@@ -51,7 +51,7 @@ test("every page reuses a three-position track; Glass editor only in Admin Menu 
   assert.match(dash,/saveGlassPreferences/);
   assert.match(dash,/banksetu-workspace-change/);
   assert.match(app,/banksetu-appearance-track\[data-mode="glass"\]/);
-  for(const label of ["Classic Glass","3D Glass","Liquid Glass","White Glass","Black Glass","Full Transparent","Appearance & Background","Save Current Setting"]){
+  for(const label of ["Classic Glass","3D Glass","Liquid Glass","White Glass","Black Glass","Full Transparent","Appearance &amp; Background","Save Current Setting"]){
     assert.ok(panel.includes(label),label);
   }
   for(const slider of ["transparency","blur","intensity","glow","shadow","animationSpeed","motionDelay"]){
