@@ -69,15 +69,3 @@
       0 0 var(--glass-glow) rgba(95,210,248,calc(var(--glass-glow-opacity,.43) * .25))!important;
   }
 }
-/* Never apply liquid styling to real printable bank documents or print
- * alignment paper: they must retain their approved physical appearance. */
-@media print {
-  html[data-appearance="glass"] :is(
-    .paper,.print-area,.passbook-print-area,.bank-format-print-document,
-    .central-bank-document,.customer-pdf-page,.workspace-template-page
-  ) {
-    box-shadow:none!important;
-    backdrop-filter:none!important;
-    -webkit-backdrop-filter:none!important;
-  }
-}
