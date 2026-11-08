@@ -79,11 +79,11 @@ html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,
   transform:translateY(-2px);
 }
 html[data-appearance="glass"] :is(.banksetu-main-workspace,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card) :is(button,[role="button"]):active{transform:scale(.985)}
-html[data-appearance="glass"] :is(.dashboard-top-bar,.banksetu-main-workspace,.banksetu-admin-menu,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(h1,h2,h3,h4,h5,h6,legend,label,strong,td,th,p,small){
+html[data-appearance="glass"] :is(.dashboard-top-bar,.banksetu-main-workspace,.banksetu-admin-menu,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(h1,h2,h3,h4,h5,h6,legend,label,strong,td,th,p,small):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *){
   color:var(--glass-text)!important;
 }
 html[data-appearance="glass"] :is(.dashboard-top-bar,.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(input,textarea)::placeholder{color:var(--glass-muted)!important}
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(table,thead,tbody,tr,td,th){border-color:var(--glass-line)!important}
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(table,thead,tbody,tr,td,th):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *){border-color:var(--glass-line)!important}
 html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(thead,th){
   background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;backdrop-filter:blur(12px)
 }
