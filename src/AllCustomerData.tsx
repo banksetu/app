@@ -374,21 +374,21 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
       style={{width:"100%",boxSizing:"border-box",padding:12,borderRadius:10,border:"1px solid #d7d7df",marginBottom:16}} />
     {error && <p role="alert" style={{color:"var(--app-dark-text, #ad2144)"}}>{error}</p>}
     {copyMessage && <p role="status">{copyMessage}</p>}
-    <div style={{maxHeight:"min(68vh, 690px)",overflow:"auto"}} onScroll={event => {
+    <div className="all-customer-table-scroll" style={{maxHeight:"min(68vh, 690px)",overflow:"auto"}} onScroll={event => {
       const node=event.currentTarget;
       if (!query.trim() && more && !loading && node.scrollTop + node.clientHeight >= node.scrollHeight - 200) void loadPage();
     }}>
-      <table style={{borderCollapse:"collapse",width:"100%",minWidth:680,textAlign:"left"}}>
+      <table className="all-customer-table" style={{borderCollapse:"collapse",width:"100%",minWidth:680,textAlign:"left"}}>
         <thead><tr>{["Customer ID","Name","Account Number","Mobile Number","Aadhaar Number","Account Opening Date"].map(label =>
           <th key={label} style={{position:"sticky",top:0,background:"var(--app-dark-surface, #f9e8ee)",padding:10}}>{label}</th>)}</tr></thead>
         <tbody>{rows.map((customer,index) => <tr className={index<25?"all-customer-row-enter":undefined} key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
           onKeyDown={event => { if (event.key === "Enter") void open(customer); }}
           style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee",...(index<25?{"--customer-row-index":index}:{})} as CSSProperties}>
-          <td style={{padding:9}}>{value(customer.enrolId)}</td><td style={{padding:9}}>{value(customer.name)}</td>
-          <td style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
+          <td data-label="Customer ID" style={{padding:9}}>{value(customer.enrolId)}</td><td data-label="Name" style={{padding:9}}>{value(customer.name)}</td>
+          <td data-label="Account Number" style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
             onClick={async event => {event.stopPropagation();try{if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(String(customer.accountNo ?? "")); else await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
-          <td style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td style={{padding:9}}>{value(customer.uidaiNo || customer.aadhaarNo || customer.aadharNo)}</td>
-          <td style={{padding:9}}>{value(customer.accountOpeningDate)}</td>
+          <td data-label="Mobile Number" style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td data-label="Aadhaar Number" style={{padding:9}}>{value(customer.uidaiNo || customer.aadhaarNo || customer.aadharNo)}</td>
+          <td data-label="Account Opening Date" style={{padding:9}}>{value(customer.accountOpeningDate)}</td>
         </tr>)}</tbody>
       </table>
       {!rows.length && !loading && <p>No matching customers.</p>}
