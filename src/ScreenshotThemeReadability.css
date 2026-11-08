@@ -193,3 +193,41 @@
  /* UI overrides must never affect PDF/Passbook output. */
  .all-customer-data tbody tr,.all-customer-data tbody td{background:unset!important}
 }
+
+/* Dark-mode PDF/SSA dialog options previously kept opaque light cards. */
+@media screen {
+  html[data-appearance="dark"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) :is(
+    .pdf-mode,.pdf-detail,.pdf-results,.ssa-export-group,
+    .ssa-export-preview,.ssa-export-matches,.ssa-card-summary
+  ){
+    background:#20334d!important;color:#eef5ff!important;
+    border:1px solid #4d6785!important;
+  }
+  html[data-appearance="dark"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) :is(
+    h2,h3,p,small,strong,label,.pdf-mode span,.pdf-detail span
+  ){color:#f0f6ff!important;}
+  html[data-appearance="dark"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) label:has(input:checked){
+    background:#2c4666!important;border-color:#83b8e4!important;
+    color:#ffffff!important;
+  }
+  html[data-appearance="glass"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) :is(
+    .pdf-results,.pdf-detail,.ssa-export-preview
+  ) :is(p,small,span,strong){
+    color:var(--glass-text)!important;
+    opacity:1!important;
+  }
+  html[data-appearance="dark"] :is(
+    .print-alignment-saved,.print-alignment-info,.print-alignment-help,
+    .print-alignment-control-row
+  ){
+    background:#263c56!important;color:#f3f8ff!important;
+    border:1px solid #506f90!important;
+  }
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice
+  ) :is(.print-alignment-saved,.print-alignment-info,.print-alignment-help,
+    .print-alignment-control-row) :is(p,small,strong,span,label){
+    color:var(--glass-text)!important;
+    opacity:1!important;
+  }
+}
