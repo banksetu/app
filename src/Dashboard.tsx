@@ -321,10 +321,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   // Live Glass preview is paint-only: never re-render customer data, sync,
   // charts, or the entire Dashboard on each mobile slider input.
   // The saved glassSettings React state changes only on Save/Reset-close.
-  const previewGlassPreferences=useCallback((draft:GlassSettings)=>{
+  const previewGlassPreferences=useCallback((draft:GlassSettings,previewWallpaperUrl?:string)=>{
     const root=document.documentElement;
     if(root.dataset.appearance!=="glass")return;
-    for(const [key,value] of Object.entries(glassVariables(draft))){
+    for(const [key,value] of Object.entries(glassVariables(draft,previewWallpaperUrl||glassWallpaperUrl))){
       if(root.style.getPropertyValue(key)!==value)root.style.setProperty(key,value);
     }
     const dark=String(glassDarkSurface(draft));
@@ -332,7 +332,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
     if(root.dataset.glassDesign!==draft.design)root.dataset.glassDesign=draft.design;
     const app=document.querySelector(".banksetu-app-shell");
     if(app&&app.getAttribute("data-glass-design")!==draft.design)app.setAttribute("data-glass-design",draft.design);
-  },[]);
+  },[glassWallpaperUrl]);
   useLayoutEffect(()=>{
     const root=document.documentElement;
     root.dataset.appearance=appearance;
