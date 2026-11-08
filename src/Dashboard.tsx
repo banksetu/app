@@ -1576,6 +1576,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
               openPage={openPage}
               bankSettingsReady={bankSettingsReady}
               accountRole={accountRole}
+              privacyStorageKey={(()=>{
+                const {uid,tenantId}=appearanceIdentity();
+                return uid&&tenantId?"bankSetuKpiPrivacy:"+glassScope(uid,tenantId):"";
+              })()}
 
             />
 
@@ -3142,12 +3146,14 @@ function DashboardHome({
   openPage,
   bankSettingsReady,
   accountRole,
+  privacyStorageKey,
 
 }: {
 
   openPage: (page: PageName) => void;
   bankSettingsReady: boolean;
   accountRole: string;
+  privacyStorageKey:string;
 
 }) {
 
@@ -3188,25 +3194,22 @@ function DashboardHome({
   const [statusPanel, setStatusPanel] = useState<StatusPanelType | null>(null);
   const [openingReportOpen,setOpeningReportOpen]=useState(false);
   const [kpiPrivacyHidden,setKpiPrivacyHidden]=useState(()=>{
-    const {uid,tenantId}=appearanceIdentity();
-    if(!uid||!tenantId)return false;
-    try{return localStorage.getItem("bankSetuKpiPrivacy:"+glassScope(uid,tenantId))==="hidden";}
+    if(!privacyStorageKey)return false;
+    try{return localStorage.getItem(privacyStorageKey)==="hidden";
     catch{return false;}
   });
   useEffect(()=>{
     const refresh=()=>{
-      const {uid,tenantId}=appearanceIdentity();
-      try{setKpiPrivacyHidden(Boolean(uid&&tenantId&&localStorage.getItem("bankSetuKpiPrivacy:"+glassScope(uid,tenantId))==="hidden"));}
+      try{setKpiPrivacyHidden(Boolean(privacyStorageKey&&localStorage.getItem(privacyStorageKey)==="hidden"));}
       catch{setKpiPrivacyHidden(false);}
     };
     window.addEventListener("banksetu-workspace-change",refresh);
     return()=>window.removeEventListener("banksetu-workspace-change",refresh);
-  },[]);
+  },[privacyStorageKey]);
   const toggleKpiPrivacy=()=>{
     const next=!kpiPrivacyHidden;
     setKpiPrivacyHidden(next);
-    const {uid,tenantId}=appearanceIdentity();
-    if(uid&&tenantId)try{localStorage.setItem("bankSetuKpiPrivacy:"+glassScope(uid,tenantId),next?"hidden":"visible");}catch{ /* Privacy toggle works even if device storage is unavailable. */ }
+    if(privacyStorageKey)try{localStorage.setItem(privacyStorageKey,next?"hidden":"visible");}catch{ /* Privacy toggle works even if device storage is unavailable. */ }
   };
   const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
