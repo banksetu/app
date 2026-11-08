@@ -139,7 +139,7 @@
     .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
     .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
     .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
-  ) :is(button,[role="button"]):not(:disabled):hover {
+  ) :is(button,[role="button"]):not(:disabled):not(.banksetu-mapping-field-marker):hover {
     transform:translateY(-2px);
     box-shadow:0 0 var(--glass-glow) rgba(151,199,255,.52);
     filter:brightness(1.1);
@@ -150,7 +150,7 @@
     .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
     .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
     .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
-  ) :is(button,[role="button"]):not(:disabled):active { transform:scale(.985) }
+  ) :is(button,[role="button"]):not(:disabled):not(.banksetu-mapping-field-marker):active { transform:scale(.985) }
 
   /* Portal heading, labels, descriptions and tables; keep warning colors meaningful. */
   html[data-appearance="glass"] :is(
@@ -384,6 +384,18 @@
     border-color:var(--glass-line)!important;
   }
 
+  /* Mapping field markers are measurement objects, not floating action buttons.
+     Hover must NEVER shift a field's calibrated X/Y coordinates. */
+  html[data-appearance="glass"] .banksetu-mapping-canvas,
+  html[data-appearance="glass"] .banksetu-mapping-field-marker {
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    animation:none!important;filter:none!important;
+    transition:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-mapping-field-marker:hover {
+    transform:translate(-2px,-2px)!important;
+  }
+
   /* Keyboard access and responsive popups for all glassed controls. */
   html[data-appearance="glass"] :is(
     button,a,input,select,textarea,[role="button"],[tabindex]
@@ -452,7 +464,7 @@
     .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
     .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
     .app-message-dialog,.banksetu-support-popup,.layout-studio
-  ) :is(button,[role="button"]):not(:disabled):hover { transform:none!important;filter:none!important }
+  ) :is(button,[role="button"]):not(:disabled):not(.banksetu-mapping-field-marker):hover { transform:none!important;filter:none!important }
 }
 @media(prefers-reduced-motion:reduce) {
   html[data-appearance="glass"] *,
