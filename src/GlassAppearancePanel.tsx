@@ -27,13 +27,17 @@ const sliders:{key:keyof GlassSettings;label:string;info:string}[]=[
   {key:"motionDelay",label:"Motion Delay",info:"Slight stagger when sections appear"}
 ];
 export default function GlassAppearancePanel({
-  initial,existingCustomUrl,onSave,onClose
+  initial,existingCustomUrl,onSave,onPreview,onClose
 }:{
   initial:GlassSettings;existingCustomUrl?:string;
   onSave:(settings:GlassSettings,wallpaper?:Blob,remember?:boolean)=>Promise<void>;
-  onClose:()=>void;
+  onPreview:(settings:GlassSettings)=>void;
+  onClose:(saved?:boolean)=>void;
 }){
   const [draft,setDraft]=useState<GlassSettings>({...initial});
+  // Sliders and design/background selectors update the actual glass workspace live.
+  // Parent restores the opening snapshot if the dialog closes without saving.
+  useEffect(()=>{onPreview(draft);},[draft,onPreview]);
   const [previewUrl,setPreviewUrl]=useState("");
   const [uploaded,setUploaded]=useState<Blob|undefined>(undefined);
   const [remember,setRemember]=useState(true);
@@ -60,7 +64,7 @@ export default function GlassAppearancePanel({
     if(draft.background==="custom"&&!uploaded&&!existingCustomUrl){
       setError("Upload a background image before saving Custom.");return;
     }
-    try{setSaving(true);setError("");await onSave(draft,uploaded,remember);onClose();}
+    try{setSaving(true);setError("");await onSave(draft,uploaded,remember);onClose(true);}
     catch(cause){setError(cause instanceof Error?cause.message:"The appearance setting could not be saved.");}
     finally{setSaving(false);}
   };
@@ -103,11 +107,12 @@ export default function GlassAppearancePanel({
           </div>
         </fieldset>
         <fieldset><legend>Glass &amp; Animation Controls</legend>
+          <p className="glass-live-note" role="status">Live preview: move any slider to update the workspace immediately. Save to keep it on this device.</p>
           <div className="glass-sliders">{sliders.map(item=><label key={item.key} className="glass-slider-line">
             <span><strong>{item.label}</strong><small>{item.info}</small></span>
-            <input type="range" min="0" max="100" value={draft[item.key] as number}
+            <input id={"glass-setting-"+item.key} type="range" min="0" max="100" value={draft[item.key] as number}
               aria-label={item.label} onChange={e=>set({[item.key]:Number(e.target.value)})}/>
-            <output>{draft[item.key]}%</output>
+            <output htmlFor={"glass-setting-"+item.key}>{draft[item.key]}%</output>
           </label>)}</div>
         </fieldset>
         {error&&<p className="glass-appearance-error" role="alert">{error}</p>}
