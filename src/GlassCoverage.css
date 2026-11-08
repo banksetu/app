@@ -398,40 +398,6 @@
     box-shadow:0 0 var(--glass-glow) rgba(120,212,174,.45)!important;
   }
 
-  /* Word-like editor chrome: glass controls but never the print paper canvas. */
-  html[data-appearance="glass"] .layout-studio {
-    color:var(--glass-text)!important;
-    background:transparent!important;
-  }
-  html[data-appearance="glass"] .layout-studio :is(
-    .ls-header,.ls-workflow-nav,.ls-sidebar-foot,.ls-sidebar-brand,.ls-header-extra,
-    .ls-header-utilities,.ls-status-tags,.ls-word-suite,.ls-word-tabs,
-    .ls-word-tab-content,.ls-object-format-ribbon,.ls-ribbon,
-    .ls-format-ribbon,.ls-ribbon-quick-tools,.ls-ribbon-more-content,
-    .ls-file-backstage,.ls-workflow-context,.ls-panel,.ls-catalog-panel,
-    .ls-tool-card,.ls-catalog-card,.ls-inference-panel,.ls-legibility-panel,
-    .ls-page-setup-dialog,.ls-page-setup,.ls-page-settings-controls,
-    .ls-start-wizard,.ls-wizard-page,.ls-simple-flow,.ls-simple-step-row,
-    .ls-map-overlay,.ls-notice,.ls-ribbon-tool-results,.ls-contextual-tab
-  ) {
-    background:var(--glass-fill)!important;
-    color:var(--glass-text)!important;
-    border:1px solid var(--glass-line)!important;
-    border-radius:12px;
-    box-shadow:inset 0 1px rgba(255,255,255,.3),0 5px 14px rgba(4,15,34,.14)!important;
-  }
-  html[data-appearance="glass"] .layout-studio :is(
-    button,select,input:not([type="checkbox"]):not([type="radio"]),textarea
-  ):not(.ls-page-sheet *):not(.ls-page-card *):not(.ls-catalog-mini-paper *) {
-    color:var(--glass-text)!important;
-    border-color:var(--glass-line)!important;
-    transition:transform var(--glass-motion),box-shadow var(--glass-motion)!important;
-  }
-  html[data-appearance="glass"] .layout-studio :is(
-    .ls-word-tabs button,.ls-tool-card,.ls-catalog-card,.ls-word-buttons button,
-    .ls-simple-step-row,.ls-ribbon-quick-tools button
-  ):hover { transform:translateY(-2px);box-shadow:0 0 var(--glass-glow) rgba(124,187,255,.55)!important }
-
   /* Mapping editor has inline-only styles and is rendered in its own body portal. */
   html[data-appearance="glass"] .banksetu-glass-mapping-dialog :is(
     input:not([type=checkbox]):not([type=radio]),select,textarea
