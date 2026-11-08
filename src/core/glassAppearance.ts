@@ -57,6 +57,8 @@ export function glassVariables(settings:GlassSettings,customBackgroundUrl?:strin
   const s=sanitizeGlassSettings(settings);
   const dark=glassDarkSurface(s),opacity=s.tone==="transparent"?Math.max(.035,(100-s.transparency)/100*.42):Math.max(.12,(100-s.transparency)/100*.74);
   const fill=dark?"rgba(17,24,38,"+Math.min(.84,opacity+.16).toFixed(3)+")":"rgba(255,255,255,"+Math.min(.9,opacity+.15).toFixed(3)+")";
+  const strongAlpha=Math.min(.9,opacity+(dark?.28:.36)).toFixed(3);
+  const edgeAlpha=(.17+s.intensity*.0046).toFixed(3);
   const custom=customBackgroundUrl&&s.background==="custom"?'url("'+customBackgroundUrl.replace(/["\\]/g,"")+'")':null;
   const backgrounds:Record<Exclude<GlassBackground,"custom">,string>={
     default:"radial-gradient(ellipse at 75% 10%,#f2d9de 0%,transparent 55%),linear-gradient(135deg,#dfe9fb,#aabed9 50%,#d4b5c8)",
@@ -70,10 +72,10 @@ export function glassVariables(settings:GlassSettings,customBackgroundUrl?:strin
     "--glass-wallpaper":background,
     "--glass-wallpaper-blur":Math.round(s.blur*.28)+"px",
     "--glass-fill":fill,
-    "--glass-fill-strong":dark?"rgba(16,24,38,.72)":"rgba(255,255,255,.76)",
+    "--glass-fill-strong":dark?"rgba(16,24,38,"+strongAlpha+")":"rgba(255,255,255,"+strongAlpha+")",
     "--glass-text":dark?"#f8fbff":"#13233b",
     "--glass-muted":dark?"#d6e1ef":"#35465b",
-    "--glass-line":dark?"rgba(255,255,255,.34)":"rgba(255,255,255,.88)",
+    "--glass-line":dark?"rgba(255,255,255,"+edgeAlpha+")":"rgba(255,255,255,"+Math.min(.92,.36+s.intensity*.0054).toFixed(3)+")",
     "--glass-accent":dark?"#a6dfff":"#135b9f",
     "--glass-blur":blurPx+"px",
     "--glass-highlight":(0.05+s.intensity*.0022).toFixed(3),
