@@ -1,4 +1,4 @@
-import {useEffect,useState} from "react";
+import {useEffect,useState,type CSSProperties} from "react";
 import {createPortal} from "react-dom";
 import {DEFAULT_GLASS_SETTINGS,glassVariables,type GlassBackground,type GlassDesign,type GlassSettings,type GlassTone} from "./core/glassAppearance";
 import {prepareGlassWallpaper} from "./core/glassBackgroundStore";
@@ -67,7 +67,7 @@ export default function GlassAppearancePanel({
   return createPortal(<div className="glass-appearance-overlay" role="presentation"
     onMouseDown={e=>{if(e.target===e.currentTarget&&!saving)onClose();}}>
     <section className="glass-appearance-panel" role="dialog" aria-modal="true" aria-labelledby="glass-appearance-heading"
-      data-design={draft.design} style={glassVariables(draft,previewUrl||existingCustomUrl)}>
+      data-design={draft.design} style={glassVariables(draft,previewUrl||existingCustomUrl) as CSSProperties}>
       <header className="glass-appearance-header">
         <span className="glass-appearance-header-icon" aria-hidden="true">◉</span>
         <div><h2 id="glass-appearance-heading">Appearance &amp; Background <span>Glass Mode</span></h2>
