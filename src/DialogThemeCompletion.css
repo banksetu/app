@@ -1,0 +1,240 @@
+/*
+ * PR #108: Dark / Glass coverage for the existing dialogs and notices.
+ * Styling only; never change Create Client, data/sync rules or printable paper.
+ * Scope Admin and Status with explicit classes to exclude Create Client.
+ */
+@media screen {
+  /* Existing-workspace/Code.gs message shown when local sync is unavailable. */
+  html[data-appearance="dark"] .banksetu-app-shell .sync-workspace-notice {
+    background:#17263b!important;color:#f2f7ff!important;
+    border:1px solid #485d7b!important;box-shadow:0 12px 28px #020c1b66!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .sync-workspace-notice :is(h2,p) {
+    color:#f2f7ff!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .sync-workspace-notice a {
+    color:#b3e0ff!important;border-color:#6688b2!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .sync-workspace-notice {
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px #ffffff3a,0 12px var(--glass-shadow) #06172c42!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.15)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.15)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .sync-workspace-notice :is(h2,p) {
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .sync-workspace-notice a {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;border-radius:10px!important;
+  }
+
+  /* System Status: inline #071c26 modal and #0a2834 rows are overridden. */
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-system-status-dialog {
+    background:#142238!important;color:#f2f7ff!important;
+    border:1px solid #475f7d!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-system-status-dialog .banksetu-system-status-row {
+    background:#20334c!important;color:#f2f7ff!important;
+    border:1px solid #415a79!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-system-status-dialog,
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-system-status-dialog .banksetu-system-status-row {
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px #ffffff3c,0 7px var(--glass-shadow) #05152a33!important;
+    backdrop-filter:blur(min(10px,var(--glass-blur))) saturate(1.1)!important;
+    -webkit-backdrop-filter:blur(min(10px,var(--glass-blur))) saturate(1.1)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-system-status-dialog :is(h2,p,span,strong),
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-system-status-dialog :is(h2,p,span,strong) {
+    color:inherit!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-system-status-dialog button {
+    color:#f2f7ff!important;background:#263a54!important;border:1px solid #536987!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-system-status-dialog button {
+    color:var(--glass-text)!important;background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+
+  /* Advanced Admin: inline styles on security cards, settings, badges,
+     labels and fields do not inherit theme without these scoped overrides. */
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-advanced-admin-dialog {
+    background:#111c30!important;color:#f2f7ff!important;border-color:#405675!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(
+    section, .advanced-actions, [class*="card"], [class*="Card"]
+  ) {border-color:#405675!important}
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(
+    section, .advanced-actions, [style*="background"]
+  ):not(button):not(input):not(textarea):not(select) {
+    background:#1c2c43!important;color:#f2f7ff!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(
+    h1,h2,h3,p,span,small,strong,label,legend
+  ){color:#eef5ff!important}
+  html[data-appearance="dark"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(input,textarea,select) {
+    background:#243750!important;color:#f7faff!important;border:1px solid #617692!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-advanced-admin-dialog {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(
+    section,[style*="background"]
+  ):not(button):not(input):not(textarea):not(select) {
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 0 1px #ffffff34,0 6px var(--glass-shadow) #08162829!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(
+    h1,h2,h3,p,span,small,strong,label,legend
+  ){color:var(--glass-text)!important}
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(input,textarea,select) {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-advanced-admin-dialog :is(
+    button:not(:disabled),.advanced-actions button:not(:disabled)
+  ){
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px #ffffff35,0 0 var(--glass-glow) #76c8ec22!important;
+  }
+  /* Preserve action meanings (danger/verification) by not resetting their
+     inline foreground and gradient colors. */
+
+  /* Common body-level popups and print-alignment settings: no global
+     form/print-payload overrides and no Create Client styling. */
+  html[data-appearance="dark"] :is(
+    .dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,
+    .ssa-export-dialog,.print-alignment-window,.print-alignment-choice,
+    .pr2-dialog,.pdf-dialog,.customer-preview-card,.match-modal,
+    .sync-dialog-panel,.app-message-dialog
+  ){
+    background:#18283e!important;color:#f1f7ff!important;
+    border:1px solid #485e7b!important;
+  }
+  html[data-appearance="dark"] :is(
+    .print-alignment-left,.print-alignment-settings,.print-alignment-panel,
+    .print-alignment-controls,.print-alignment-actions,
+    .print-alignment-columns,.print-alignment-choice-actions,
+    .ssa-card-summary,.dashboard-status-list>div
+  ){
+    background:#223650!important;color:#f2f7ff!important;
+    border-color:#506987!important;
+  }
+  html[data-appearance="dark"] :is(
+    .print-alignment-window,.print-alignment-choice,.pr2-dialog,
+    .dashboard-status-panel,.ssa-card-dialog,.sync-dialog-panel,.app-message-dialog
+  ) :is(h1,h2,h3,h4,label,p,span,small,strong,summary) {
+    color:inherit!important;
+  }
+  html[data-appearance="dark"] :is(
+    .print-alignment-window,.print-alignment-choice,.pr2-dialog,
+    .dashboard-status-panel,.ssa-card-dialog,.sync-dialog-panel,.app-message-dialog
+  ) :is(input,select,textarea) {
+    background:#273b55!important;color:#f7faff!important;
+    border:1px solid #607995!important;
+  }
+
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice,.pr2-dialog,
+    .dashboard-status-panel,.ssa-card-dialog,.ssa-export-dialog,.sync-dialog-panel,
+    .pdf-dialog,.app-message-dialog,.customer-preview-card,.match-modal
+  ) {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.16)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.16)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .print-alignment-left,.print-alignment-settings,.print-alignment-panel,
+    .print-alignment-controls,.print-alignment-actions,
+    .print-alignment-columns,.print-alignment-choice-actions,
+    .ssa-card-summary,.dashboard-status-list>div
+  ) {
+    color:var(--glass-text)!important;background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;border-radius:12px!important;
+    box-shadow:inset 0 1px #ffffff33,0 5px var(--glass-shadow) #05142922!important;
+  }
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice,.pr2-dialog,
+    .dashboard-status-panel,.ssa-card-dialog,.sync-dialog-panel,.app-message-dialog
+  ) :is(h1,h2,h3,h4,label,p,span,small,strong,summary) {
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice,.pr2-dialog,
+    .dashboard-status-panel,.ssa-card-dialog,.sync-dialog-panel,.app-message-dialog
+  ) :is(input,select,textarea) {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice,.pr2-dialog
+  ) :is(button:not(:disabled),[role="button"]) {
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 0 1px #ffffff34,0 0 var(--glass-glow) #72c7ef29!important;
+  }
+  /* Real page/sheet preview must retain original print colors and geometry. */
+  html[data-appearance="glass"] :is(
+    .paper,.paper *,.print-area,.print-area *,.passbook-print-area,
+    .passbook-print-area *,.bank-format-print-document,.bank-format-print-document *,
+    .central-bank-document,.central-bank-document *
+  ) {backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+}
+@media screen and (max-width:680px) {
+  .dashboard-opening-overlay {
+    box-sizing:border-box!important;
+    width:100%!important;max-width:100%!important;
+    padding:6px max(4px,env(safe-area-inset-right,0px))
+      6px max(4px,env(safe-area-inset-left,0px))!important;
+    overflow-x:hidden!important;overflow-y:auto!important;
+  }
+  .dashboard-opening-panel {
+    box-sizing:border-box!important;width:100%!important;
+    min-width:0!important;max-width:100%!important;
+    max-height:calc(100dvh - 12px)!important;
+    overflow-x:hidden!important;overflow-y:auto!important;
+    border-radius:13px!important;
+  }
+  .dashboard-opening-panel :is(
+    .dashboard-opening-header,.dashboard-opening-filters,.dashboard-opening-tabs,
+    .dashboard-opening-search,.dashboard-opening-overview,.dashboard-opening-table-scroll,
+    .dashboard-opening-footer
+  ) {min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+  .dashboard-opening-panel :is(.dashboard-opening-header h2,.dashboard-opening-overview strong) {
+    overflow-wrap:anywhere!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-table-scroll {
+    overflow-y:auto!important;overflow-x:hidden!important;
+    max-height:min(48dvh,460px)!important;
+  }
+  .dashboard-opening-panel tbody tr {min-width:0!important;max-width:100%!important}
+  .dashboard-opening-panel tbody td {min-width:0!important;overflow-wrap:anywhere!important}
+  .dashboard-opening-panel tbody td::before {flex:0 0 38%!important}
+  html[data-appearance="glass"] .dashboard-opening-panel {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel tbody tr {
+    background:var(--glass-fill)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="dark"] .dashboard-opening-panel tbody tr {
+    background:#1a3049!important;border-color:#435a77!important;
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice,.dashboard-status-panel,
+    .ssa-card-dialog,.sync-dialog-panel
+  ) {animation:none!important}
+}
+@media print {
+  /* Browser/OS print paper is never converted into Glass or Dark. */
+  .dashboard-opening-overlay,.print-alignment-overlay,.print-alignment-choice-overlay {display:none!important}
+}
