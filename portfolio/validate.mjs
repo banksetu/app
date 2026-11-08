@@ -14,4 +14,8 @@ for (const platform of ['windowsDownloadUrl', 'androidDownloadUrl']) {
   const url = new URL(manifest[platform]);
   if (url.origin !== 'https://github.com' || !url.pathname.startsWith(`/banksetu/app/releases/download/v${manifest.latestVersion}/`)) throw Error(`Invalid ${platform}`);
 }
+if (manifest.macDownloadUrl) {
+  const mac = new URL(manifest.macDownloadUrl);
+  if (mac.origin !== 'https://github.com' || mac.pathname !== `/banksetu/app/releases/download/v${manifest.latestVersion}/BankSetu-${manifest.latestVersion}-arm64.dmg`) throw Error('Invalid macDownloadUrl');
+}
 console.log(`Portfolio content valid; release ${manifest.latestVersion}`);

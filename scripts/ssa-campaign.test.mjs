@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { copyFileSync, readFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 // Exercise ONLY the isolated SSA additions, with a fake tenant spreadsheet.

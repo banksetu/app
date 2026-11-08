@@ -1,0 +1,87 @@
+name: Build unsigned macOS ARM64 release
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/macos-arm64-release.yml
+      - .github/workflows/publish-app-release.yml
+      - electron-builder.mac.json
+      - package.json
+      - desktop/main.cjs
+      - desktop/testUpdater.cjs
+      - desktop/testUpdater.test.cjs
+      - scripts/macos-release.test.mjs
+      - scripts/prepare-macos-icon.sh
+      - scripts/release.mjs
+      - scripts/verify-public-release.mjs
+  workflow_call:
+    inputs:
+      release_ref:
+        required: false
+        type: string
+      staged_release:
+        description: Draft GitHub release for the ARM64 DMG
+        required: false
+        type: string
+  workflow_dispatch:
+jobs:
+  unsigned-arm64-dmg:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.release_ref || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:desktop-syntax
+      - run: node --test scripts/macos-release.test.mjs desktop/store.test.cjs desktop/testUpdater.test.cjs desktop/print-preview.test.cjs desktop/app-protocol.test.cjs
+      - run: npm run test:local && npm run test:bridge && npm run check:schema
+      - run: npm run build
+        env:
+          VITE_BANKSETU_WORKER_URL: https://banksetu-client-api.banksetu2026.workers.dev
+      - name: Build Bank Setu macOS icon
+        run: bash scripts/prepare-macos-icon.sh
+      - name: Package unsigned ARM64 DMG
+        run: npx electron-builder --mac dmg --arm64 --publish never --config electron-builder.mac.json
+      - name: Verify ARM64-only application and DMG contents
+        run: |
+          set -euo pipefail
+          DMG=(desktop-release-macos/BankSetu-*-arm64.dmg)
+          test "${#DMG[@]}" -eq 1
+          MOUNT="$RUNNER_TEMP/banksetu-dmg"
+          mkdir -p "$MOUNT"
+          hdiutil attach "${DMG[0]}" -readonly -nobrowse -mountpoint "$MOUNT"
+          trap 'hdiutil detach "$MOUNT"' EXIT
+          APP="$MOUNT/Bank Setu.app"
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = in.banksetu.desktop
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$(node -p "require('./package.json').version")"
+          file "$APP/Contents/MacOS/Bank Setu" | grep -q 'arm64'
+          ! file "$APP/Contents/MacOS/Bank Setu" | grep -q 'x86_64'
+          test ! -e "$APP/Contents/Resources/pr2/BankSetu.Pr2Bridge.exe"
+          hdiutil detach "$MOUNT"
+          trap - EXIT
+          shasum -a 256 "${DMG[0]}" > desktop-release-macos/SHA256SUMS-macOS.txt
+      - name: Stage ARM64 DMG on the draft GitHub release
+        if: inputs.staged_release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGED_RELEASE: ${{ inputs.staged_release }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$STAGED_RELEASE" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          gh release upload "$STAGED_RELEASE" desktop-release-macos/*.dmg desktop-release-macos/SHA256SUMS-macOS.txt --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: inputs.staged_release == ''
+        with:
+          name: BankSetu-macOS-ARM64-UNSIGNED
+          path: |
+            desktop-release-macos/*.dmg
+            desktop-release-macos/SHA256SUMS-macOS.txt
+          if-no-files-found: error

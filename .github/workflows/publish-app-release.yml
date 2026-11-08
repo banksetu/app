@@ -16,11 +16,15 @@ on:
       - src/core/photoState.ts
       - apps-script/Code.gs
       - desktop/**
+      - electron-builder.mac.json
+      - scripts/macos-release.test.mjs
+      - scripts/prepare-macos-icon.sh
       - scripts/license-ui.test.mjs
       - scripts/support-rules.test.mjs
       - scripts/pnb-passbook.test.mjs
       - scripts/central-bank-passbook.test.mjs
       - .github/workflows/publish-app-release.yml
+      - .github/workflows/macos-arm64-release.yml
 permissions:
   contents: read
 concurrency:
@@ -121,8 +125,17 @@ jobs:
       release_ref: ${{ needs.version.outputs.sha }}
       staged_release: v${{ needs.version.outputs.name }}
     secrets: inherit
+  macos:
+    needs: version
+    permissions:
+      contents: write
+    uses: ./.github/workflows/macos-arm64-release.yml
+    with:
+      release_ref: ${{ needs.version.outputs.sha }}
+      staged_release: v${{ needs.version.outputs.name }}
+    secrets: inherit
   publish:
-    needs: [version, android, windows]
+    needs: [version, android, windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -144,7 +157,8 @@ jobs:
           const release = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/release.json', 'utf8'));
           const windows = 'BankSetu-Setup-' + process.env.VERSION + '-x64.exe';
           const android = 'BankSetu-Android-' + process.env.ANDROID_BUILD + '.apk';
-          const required = [windows, windows + '.blockmap', android, 'latest.yml', 'SHA256SUMS.txt'];
+          const macos = 'BankSetu-' + process.env.VERSION + '-arm64.dmg';
+          const required = [windows, windows + '.blockmap', android, macos, 'latest.yml', 'SHA256SUMS.txt', 'SHA256SUMS-macOS.txt'];
           if (!release.isDraft || release.targetCommitish !== process.env.RELEASE_SHA ||
               !required.every(name => release.assets.some(asset => asset.name === name && asset.state === 'uploaded' && asset.size > 0))) {
             throw Error('Draft release target or staged assets are incomplete');
@@ -182,7 +196,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const manifest = JSON.parse(readFileSync('portfolio-dist/version.json', 'utf8'));
-          for (const key of ['windowsDownloadUrl', 'androidDownloadUrl']) {
+          for (const key of ['windowsDownloadUrl', 'androidDownloadUrl', 'macDownloadUrl']) {
             const response = await fetch(manifest[key], { method: 'HEAD', signal: AbortSignal.timeout(30000) });
             if (!response.ok) throw Error(key + ' returned HTTP ' + response.status + ' without GitHub sign-in');
           }
