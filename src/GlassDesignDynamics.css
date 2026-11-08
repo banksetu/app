@@ -101,3 +101,34 @@
  .dashboard-top-bar,.dashboard-stat-card,.dashboard-quick-panel,
  .dashboard-quick-card,.dashboard-analytics-card,.sync-card){transition:none!important;}
 }
+
+/* Preview sits in the existing body-level Appearance dialog; its keyed dots
+   visibly replay whenever either motion slider changes. */
+@media screen {
+  .glass-appearance-panel .glass-motion-live-preview {
+    margin-top:12px;padding:10px 12px;border-radius:12px;
+    border:1px solid var(--glass-line,rgba(120,190,230,.4));
+    background:var(--glass-fill-strong,rgba(35,55,80,.45));
+    color:var(--glass-text,#f8fbff);font-size:11px;
+  }
+  .glass-appearance-panel .glass-motion-preview-dots {
+    display:flex;align-items:center;gap:9px;margin-top:10px;
+    min-height:20px;
+  }
+  .glass-appearance-panel .glass-motion-preview-dots i {
+    display:block;width:13px;height:13px;border-radius:50%;
+    background:var(--glass-accent,#7bd7ff);
+    box-shadow:0 0 var(--glass-glow,10px) var(--glass-line,rgba(95,202,244,.4));
+    animation:banksetu-preview-stagger var(--glass-entry-motion,270ms) ease-out both;
+  }
+  .glass-motion-preview-dots i:nth-child(2){animation-delay:var(--glass-stagger,70ms)}
+  .glass-motion-preview-dots i:nth-child(3){animation-delay:calc(var(--glass-stagger,70ms)*2)}
+  .glass-motion-preview-dots i:nth-child(4){animation-delay:calc(var(--glass-stagger,70ms)*3)}
+  @keyframes banksetu-preview-stagger {
+    from {opacity:0;transform:translateY(8px) scale(.55)}
+    to {opacity:1;transform:none}
+  }
+}
+@media(prefers-reduced-motion:reduce){
+ .glass-appearance-panel .glass-motion-preview-dots i{animation:none!important}
+}
