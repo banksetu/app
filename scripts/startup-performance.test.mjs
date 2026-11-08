@@ -135,3 +135,6 @@ import "./glass-mode.test.mjs";
 
 // Deep Glass audit: page surface, portals, tiny actions and paper exclusion.
 import "./glass-coverage.test.mjs";
+
+// Theme regressions for SSA Campaign, Client Admin and uploaded bank header.
+import "./ssa-theme.test.mjs";
