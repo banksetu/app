@@ -114,6 +114,12 @@ export default function GlassAppearancePanel({
               aria-label={item.label} onChange={e=>set({[item.key]:Number(e.target.value)})}/>
             <output htmlFor={"glass-setting-"+item.key}>{draft[item.key]}%</output>
           </label>)}</div>
+          <div className="glass-motion-live-preview" aria-label="Live animation and stagger preview">
+            <span>Motion Delay preview · changes replay immediately</span>
+            <div key={draft.animationSpeed+":"+draft.motionDelay} className="glass-motion-preview-dots" aria-hidden="true">
+              <i/><i/><i/><i/>
+            </div>
+          </div>
         </fieldset>
         {error&&<p className="glass-appearance-error" role="alert">{error}</p>}
       </div>
