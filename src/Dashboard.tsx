@@ -20,6 +20,7 @@ import "./ThemeDeepCoverage.css";
 import "./GlassLuminance.css";
 import "./GlassFormPopupPolish.css";
 import "./MobileDashboardContainment.css";
+import "./MenuPageTransition.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -380,6 +381,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
+  const [menuTransitionSequence, setMenuTransitionSequence] = useState(0);
   const [activePage, setActivePage] =
 
     useState<PageName>("dashboard");
@@ -979,6 +981,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
     }
+    if (page !== activePage) setMenuTransitionSequence(sequence => sequence + 1);
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -1550,7 +1553,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
         {/* PAGE CONTENT */}
 
         <Suspense fallback={<div role="status" style={{...styles.pageContent,minHeight:180,display:"grid",placeItems:"center",fontWeight:800}}>Opening page…</div>}>
-        <div style={styles.pageContent}>
+        <div className="banksetu-page-transition" data-transition-phase={menuTransitionSequence % 2 === 0 ? "even" : "odd"} style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
           {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
