@@ -167,6 +167,42 @@
     background:var(--glass-fill-strong)!important;
     color:var(--glass-text)!important;border-color:var(--glass-line)!important;
   }
+
+  /* Additional Dark Mode micro-surfaces confirmed to contain hard-coded white
+     in Forms Send to Branch, Reports and the Sync/Backup workspace. */
+  .banksetu-app-shell[data-appearance="dark"] .banksetu-main-workspace :is(
+    .reports-panel,.reports-panel-header,.afsm-panel,.afsm-row,
+    .sync-center,.sync-header,.sync-body,.sync-summary,.sync-health,
+    .sync-card-grid>div,.sync-storage-details,.sync-maintenance,.sync-protection,
+    .sync-dialog-panel
+  ){
+    background:#19273d!important;color:#f8fafc!important;
+    border-color:#40536e!important;
+    box-shadow:inset 0 1px #ffffff16,0 7px 21px #02091740!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .banksetu-main-workspace :is(
+    .reports-panel,.afsm-panel,.sync-center
+  ) :is(h1,h2,h3,strong,label,p,span,small):not(.sync-error-card *){
+    color:#f8fafc!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .banksetu-main-workspace :is(
+    .reports-page,.afsm-panel,.sync-center
+  ) :is(input:not([type="checkbox"]),select,textarea){
+    background:#263650!important;color:#f8fafc!important;
+    border-color:#4c617d!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .banksetu-main-workspace :is(
+    .reports-page,.afsm-panel,.sync-center
+  ) :is(button:not(.sync-error-card *),a[role="button"]){
+    background:#30435d!important;color:#f8fafc!important;
+    border:1px solid #50647d!important;border-radius:10px;
+  }
+  /* Warning/error colors remain distinguishable rather than being painted over. */
+  .banksetu-app-shell[data-appearance="dark"] .sync-error-card {
+    background:#4a2634!important;color:#ffe1e6!important;
+    border-color:#a95772!important;
+  }
+
   /* Remaining menus: address small toolbars, subcards, buttons and filters.
      Never blanket-style all sections, which would corrupt printed page geometry. */
   html[data-appearance="glass"] .banksetu-app-shell .banksetu-main-workspace :is(
