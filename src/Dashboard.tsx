@@ -24,6 +24,7 @@ import "./MenuPageTransition.css";
 import "./DashboardSmokeReveal.css";
 import "./CompactGlassControls.css";
 import "./GlassDesignDynamics.css";
+import "./DialogThemeCompletion.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -2200,7 +2201,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       {advancedAdminOpen && !licenseReadOnly && userRole === "admin" && (
         <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
-          <div className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+          <div className="banksetu-glass-inline-dialog banksetu-advanced-admin-dialog" style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2461,7 +2462,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay}>
 
-          <div className="banksetu-glass-inline-dialog" style={styles.statusModal}>
+          <div className="banksetu-glass-inline-dialog banksetu-system-status-dialog" style={styles.statusModal}>
 
             <div style={styles.modalHeader}>
 
@@ -4040,7 +4041,7 @@ function StatusRow({
 
   return (
 
-    <div style={styles.statusRow}>
+    <div className="banksetu-system-status-row" style={styles.statusRow}>
 
       <span>
 
