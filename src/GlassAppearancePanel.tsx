@@ -76,7 +76,7 @@ export default function GlassAppearancePanel({
         <span className="glass-appearance-header-icon" aria-hidden="true">◉</span>
         <div><h2 id="glass-appearance-heading">Appearance &amp; Background <span>Glass Mode</span></h2>
           <p>Personalize BANK SETU on this device. Available only when Glass Mode is selected.</p></div>
-        <button type="button" aria-label="Close appearance settings" onClick={onClose} disabled={saving}>×</button>
+        <button type="button" aria-label="Close appearance settings" onClick={()=>onClose()} disabled={saving}>×</button>
       </header>
       <div className="glass-appearance-scroll">
         <fieldset><legend>Glass Design</legend>
