@@ -58,7 +58,7 @@ const markup=[
 ].join("");
 const sheets=["src/index.css","src/App.css","src/DashboardAccountOpeningReport.css","src/GlassTheme.css",
  "src/GlassCoverage.css","src/GlassVisualPolish.css","src/ThemeDeepCoverage.css",
- "src/GlassLuminance.css","src/GlassFormPopupPolish.css","src/MobileLiquidGlassFix.css"];
+ "src/GlassLuminance.css","src/GlassFormPopupPolish.css","src/MobileLiquidGlassFix.css","src/MobileGlassMotionPolish.css"];
 const browser=await chromium.launch({args:["--no-sandbox","--disable-dev-shm-usage","--no-zygote"]});
 fs.mkdirSync("test-evidence",{recursive:true});
 const style=(p,sel,ps)=>p.locator(sel).first().evaluate((el,ps)=>{
