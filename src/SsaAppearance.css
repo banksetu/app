@@ -16,7 +16,7 @@
     --ssa-secondary:var(--glass-muted);
     --ssa-border:var(--glass-line);
     position:relative;isolation:isolate;
-    background:linear-gradient(125deg,rgba(255,255,255,.045),rgba(255,255,255,.015))!important;
+    background:var(--glass-fill)!important;
     color:var(--ssa-foreground)!important;
     border:1px solid var(--ssa-border)!important;
     box-shadow:inset 0 1px rgba(255,255,255,.25),0 15px 33px rgba(4,12,33,.2)!important;
