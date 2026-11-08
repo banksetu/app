@@ -4,10 +4,10 @@ import {readFileSync} from 'node:fs';
 
 const read=path=>readFileSync(path,'utf8');
 
-test('macOS package is ARM64-only, unsigned, notarization-free and excludes the Windows bridge',()=>{
+test('macOS package is ARM64-only, ad-hoc signed, notarization-free and excludes the Windows bridge',()=>{
   const config=JSON.parse(read('electron-builder.mac.json'));
   assert.deepEqual(config.mac.target,[{target:'dmg',arch:['arm64']}]);
-  assert.equal(config.mac.identity,null);
+  assert.equal(config.mac.identity,'-');
   assert.equal(config.mac.notarize,false);
   assert.equal(config.mac.hardenedRuntime,false);
   assert.equal(config.dmg.sign,false);
@@ -38,6 +38,8 @@ test('One Click waits for and verifies the macOS DMG before publishing',()=>{
   assert.match(mac,/file .*MacOS\/Bank Setu.*grep -q 'arm64'/s);
   assert.match(mac,/grep -q 'x86_64'/);
   assert.match(mac,/shasum -a 256/);
+  assert.match(mac,/codesign --verify --deep --strict/);
+  assert.match(mac,/Signature=adhoc/);
   assert.match(JSON.parse(read('package.json')).scripts['desktop:pack:mac-arm64'],/prepare-macos-icon\.sh/);
 });
 

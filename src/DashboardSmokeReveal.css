@@ -1,0 +1,82 @@
+/*
+ * PR #108: fast smoke reveal of dashboard cards and sections.
+ * This overrides old 180/800/1060ms fixed delays. No additional timers,
+ * state, network calls, repeated loaders or background images.
+ * Speed + Motion Delay sliders feed --glass-entry-motion/--glass-stagger.
+ */
+@media screen {
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid > .dashboard-stat-card,
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid > .dashboard-quick-card,
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid > .dashboard-analytics-card {
+    animation-name:banksetu-smoke-card-reveal!important;
+    animation-duration:var(--glass-entry-motion,270ms)!important;
+    animation-timing-function:cubic-bezier(.17,.75,.22,1)!important;
+    animation-fill-mode:both!important;
+    animation-iteration-count:1!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid > .dashboard-stat-card:nth-child(1),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid > .dashboard-quick-card:nth-child(1),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid > .dashboard-analytics-card:nth-child(1) {
+    animation-delay:0ms!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid > .dashboard-stat-card:nth-child(2),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid > .dashboard-quick-card:nth-child(2),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid > .dashboard-analytics-card:nth-child(2) {
+    animation-delay:var(--glass-stagger,80ms)!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid > .dashboard-stat-card:nth-child(3),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid > .dashboard-quick-card:nth-child(3),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid > .dashboard-analytics-card:nth-child(3) {
+    animation-delay:calc(var(--glass-stagger,80ms) * 2)!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid > .dashboard-stat-card:nth-child(4),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid > .dashboard-quick-card:nth-child(4),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics-grid > .dashboard-analytics-card:nth-child(4) {
+    animation-delay:calc(var(--glass-stagger,80ms) * 3)!important;
+  }
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-stats-grid > .dashboard-stat-card:nth-child(n+5),
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-grid > .dashboard-quick-card:nth-child(n+5) {
+    animation-delay:calc(var(--glass-stagger,80ms) * 4)!important;
+  }
+  /* The sections no longer wait for a whole second before appearing. */
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-panel,
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics {
+    animation:banksetu-smoke-section-reveal var(--glass-entry-motion,270ms) ease-out both!important;
+    animation-delay:calc(var(--glass-stagger,80ms) * 1.5)!important;
+  }
+  @keyframes banksetu-smoke-card-reveal {
+    0% {opacity:0;transform:translate3d(0,12px,0) scale(.985);filter:blur(4px)}
+    50% {opacity:.78;filter:blur(1px)}
+    100% {opacity:1;transform:none;filter:none}
+  }
+  @keyframes banksetu-smoke-section-reveal {
+    from {opacity:.34;transform:translateY(7px);filter:blur(3px)}
+    to {opacity:1;transform:none;filter:none}
+  }
+}
+/* On low-powered phones avoid compounded filtering on nested card layers.
+   The card itself still does a short smoke fade; no permanent blur. */
+@media screen and (max-width:760px) {
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-quick-panel,
+  html[data-appearance="glass"] .banksetu-main-workspace .dashboard-analytics {
+    animation-delay:0ms!important;
+  }
+}
+@media screen and (prefers-reduced-motion:reduce) {
+  html[data-appearance="glass"] .banksetu-main-workspace :is(
+    .dashboard-stats-grid > .dashboard-stat-card,
+    .dashboard-quick-grid > .dashboard-quick-card,
+    .dashboard-analytics-grid > .dashboard-analytics-card,
+    .dashboard-quick-panel,.dashboard-analytics
+  ) {
+    animation:none!important;opacity:1!important;filter:none!important;transform:none!important;
+  }
+}
+@media print {
+  html[data-appearance="glass"] .banksetu-main-workspace :is(
+    .dashboard-stats-grid > .dashboard-stat-card,
+    .dashboard-quick-grid > .dashboard-quick-card,
+    .dashboard-analytics-grid > .dashboard-analytics-card,
+    .dashboard-quick-panel,.dashboard-analytics
+  ){animation:none!important;opacity:1!important;filter:none!important;transform:none!important}
+}

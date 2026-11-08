@@ -19,6 +19,12 @@ import "./GlassVisualPolish.css";
 import "./ThemeDeepCoverage.css";
 import "./GlassLuminance.css";
 import "./GlassFormPopupPolish.css";
+import "./MobileDashboardContainment.css";
+import "./MenuPageTransition.css";
+import "./DashboardSmokeReveal.css";
+import "./CompactGlassControls.css";
+import "./GlassDesignDynamics.css";
+import "./DialogThemeCompletion.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -379,6 +385,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
   const syncDashboard=()=>{window.dispatchEvent(new CustomEvent("banksetu-sync-request",{detail:{refresh:true}}));};
+  const [menuTransitionSequence, setMenuTransitionSequence] = useState(0);
   const [activePage, setActivePage] =
 
     useState<PageName>("dashboard");
@@ -978,6 +985,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       window.dispatchEvent(new CustomEvent("banksetu-notification", {detail:{type:"warning",title:"License activation required",message:"Your Bank Setu license is pending or expired. Please renew or activate your license to continue."}}));
       return;
     }
+    if (page !== activePage) setMenuTransitionSequence(sequence => sequence + 1);
     setActivePage(page);
 
     setMobileMenuOpen(false);
@@ -1549,7 +1557,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
         {/* PAGE CONTENT */}
 
         <Suspense fallback={<div role="status" style={{...styles.pageContent,minHeight:180,display:"grid",placeItems:"center",fontWeight:800}}>Opening page…</div>}>
-        <div style={styles.pageContent}>
+        <div className="banksetu-page-transition" data-transition-phase={menuTransitionSequence % 2 === 0 ? "even" : "odd"} style={styles.pageContent}>
           <LocalSyncStatus visible={activePage === "sync-backup"} readOnly={licenseReadOnly} />
           {licensePermission.plan==="demo" && licensePermission.canWrite && <p role="status" style={{background:"#dcf8fb",color:"#064e65",borderRadius:12,padding:16,marginBottom:14}}>DEMO · Full client access for {licensePermission.daysRemaining ?? 5} day(s). Connect your own verified Google workspace for synchronization.</p>}
           {licenseReadOnly && <p role="status" style={{background:"var(--app-dark-surface, #fff5dc)",color:"var(--app-dark-text, #6a3f00)",borderRadius:12,padding:16,marginBottom:14}}>{licenseWarning || "License renewal required."} {demoExpired?"Your customer data remains on this device and in your connected workspace. Upgrade requests remain available.":"Customer viewing, backup and license requests remain available."}</p>}
@@ -2193,7 +2201,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       {advancedAdminOpen && !licenseReadOnly && userRole === "admin" && (
         <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
-          <div className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+          <div className="banksetu-glass-inline-dialog banksetu-advanced-admin-dialog" style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2454,7 +2462,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay}>
 
-          <div className="banksetu-glass-inline-dialog" style={styles.statusModal}>
+          <div className="banksetu-glass-inline-dialog banksetu-system-status-dialog" style={styles.statusModal}>
 
             <div style={styles.modalHeader}>
 
@@ -3629,11 +3637,12 @@ function DashboardHome({
       <div className="dashboard-kpi-controls">
         <span className="dashboard-kpi-privacy-status" role="status" aria-live="polite">{kpiPrivacyHidden?"Dashboard figures hidden":"Dashboard figures visible"}</span>
         <button type="button" className="dashboard-kpi-privacy-toggle"
-          onClick={toggleKpiPrivacy} aria-pressed={kpiPrivacyHidden}
-          aria-label={kpiPrivacyHidden?"Show dashboard card figures":"Hide dashboard card figures"}
-          title={kpiPrivacyHidden?"Show figures":"Hide figures"}>
-          <span aria-hidden="true">{kpiPrivacyHidden?"◌":"◉"}</span>
-          <span className="dashboard-kpi-privacy-label">{kpiPrivacyHidden?"Show":"Hide"}</span>
+          role="switch" aria-checked={!kpiPrivacyHidden}
+          data-show={!kpiPrivacyHidden}
+          onClick={toggleKpiPrivacy}
+          aria-label="Show dashboard card numbers"
+          title={kpiPrivacyHidden?"Numbers hidden · switch right to show":"Numbers visible · switch left to hide"}>
+          <span className="dashboard-kpi-privacy-knob" aria-hidden="true"/>
         </button>
       </div>
       <section className={`dashboard-stats-grid${kpiPrivacyHidden?" stats-obscured":""}`} style={styles.statsGrid}>
@@ -3663,7 +3672,7 @@ function DashboardHome({
 
               <span className="dashboard-stat-badge" style={styles.statBadge}>
 
-                {statsLoading ? "SYNC" : "LIVE"}
+                {kpiPrivacyHidden ? "HIDE" : statsLoading ? "SYNC" : "LIVE"}
 
               </span>
 
@@ -4032,7 +4041,7 @@ function StatusRow({
 
   return (
 
-    <div style={styles.statusRow}>
+    <div className="banksetu-system-status-row" style={styles.statusRow}>
 
       <span>
 

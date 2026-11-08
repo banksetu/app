@@ -41,7 +41,7 @@
     ],
     "artifactName": "BankSetu-${version}-arm64.${ext}",
     "category": "public.app-category.finance",
-    "identity": null,
+    "identity": "-",
     "hardenedRuntime": false,
     "gatekeeperAssess": false,
     "notarize": false,

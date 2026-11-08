@@ -1,0 +1,79 @@
+/*
+ * BANK SETU mobile-only dashboard width containment.
+ * Intentional narrow scope: no changes to desktop layout, print previews,
+ * passbook geometry, customer records, routing or synchronization.
+ */
+@media screen and (max-width:760px) {
+  html,body,#root {
+    max-width:100%;
+    min-width:0;
+  }
+  .banksetu-app-shell {
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    overflow-x:clip!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace {
+    display:block;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    margin-inline:0!important;
+    overflow-x:clip!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace > div,
+  .banksetu-app-shell .banksetu-main-workspace > section,
+  .banksetu-app-shell .banksetu-main-workspace .dashboard-top-bar,
+  .banksetu-app-shell .banksetu-main-workspace .dashboard-stats-grid,
+  .banksetu-app-shell .banksetu-main-workspace .dashboard-quick-grid,
+  .banksetu-app-shell .banksetu-main-workspace .dashboard-analytics-grid,
+  .banksetu-app-shell .banksetu-main-workspace .dashboard-quick-panel {
+    min-width:0!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+  }
+  .banksetu-app-shell .dashboard-stats-grid,
+  .banksetu-app-shell .dashboard-quick-grid,
+  .banksetu-app-shell .dashboard-analytics-grid {
+    width:100%!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .banksetu-app-shell .dashboard-stats-grid > *,
+  .banksetu-app-shell .dashboard-quick-grid > *,
+  .banksetu-app-shell .dashboard-analytics-grid > * {
+    min-width:0!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .persistent-bank-header,
+  .banksetu-app-shell .dashboard-top-bar .bank-info-strip,
+  .banksetu-app-shell .dashboard-top-bar .bank-info-details {
+    min-width:0!important;
+    max-width:100%!important;
+    overflow-wrap:anywhere!important;
+  }
+  /* Constrain long bank names/addresses rather than scaling the whole page. */
+  .banksetu-app-shell .dashboard-top-bar .bank-info-strip :is(h1,h2,p,span) {
+    max-width:100%!important;
+    overflow-wrap:anywhere!important;
+  }
+}
+@media screen and (max-width:560px) {
+  .banksetu-app-shell .dashboard-stats-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .banksetu-app-shell .dashboard-quick-grid,
+  .banksetu-app-shell .dashboard-analytics-grid {
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  .banksetu-app-shell .dashboard-analytics-grid > *,
+  .banksetu-app-shell .dashboard-analytics-grid > :last-child {
+    grid-column:1/-1!important;
+  }
+}
+@media print {
+  /* Printing must use the existing approved document-specific styles. */
+}

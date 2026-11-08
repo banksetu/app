@@ -55,10 +55,15 @@ export function glassDarkSurface(s:GlassSettings):boolean{
 }
 export function glassVariables(settings:GlassSettings,customBackgroundUrl?:string):Record<string,string>{
   const s=sanitizeGlassSettings(settings);
-  const dark=glassDarkSurface(s),opacity=s.tone==="transparent"?Math.max(.035,(100-s.transparency)/100*.42):Math.max(.12,(100-s.transparency)/100*.74);
-  const fill=dark?"rgba(17,24,38,"+Math.min(.84,opacity+.16).toFixed(3)+")":"rgba(255,255,255,"+Math.min(.9,opacity+.15).toFixed(3)+")";
-  const strongAlpha=Math.min(.9,opacity+(dark?.28:.36)).toFixed(3);
-  const edgeAlpha=(.17+s.intensity*.0046).toFixed(3);
+  const dark=glassDarkSurface(s);
+  // At 100% transparency the old +.15/.16 fixed tint still looked opaque.
+  // Keep nearly-clear main panels, but stronger fields for text legibility.
+  const opacity=(100-s.transparency)/100;
+  const baseAlpha=s.tone==="transparent"?(.012+opacity*.40):(.025+opacity*.70);
+  const fillAlpha=Math.min(.84,baseAlpha+(dark?.032:.022));
+  const fill=dark?"rgba(17,24,38,"+fillAlpha.toFixed(3)+")":"rgba(255,255,255,"+fillAlpha.toFixed(3)+")";
+  const strongAlpha=Math.min(.9,Math.max(.16,baseAlpha+(dark?.18:.22))).toFixed(3);
+  const edgeAlpha=(.12+s.intensity*.0064).toFixed(3);
   const custom=customBackgroundUrl&&s.background==="custom"?'url("'+customBackgroundUrl.replace(/["\\]/g,"")+'")':null;
   const backgrounds:Record<Exclude<GlassBackground,"custom">,string>={
     default:"radial-gradient(ellipse at 75% 10%,#f2d9de 0%,transparent 55%),linear-gradient(135deg,#dfe9fb,#aabed9 50%,#d4b5c8)",
@@ -77,15 +82,22 @@ export function glassVariables(settings:GlassSettings,customBackgroundUrl?:strin
     "--glass-muted":dark?"#d6e1ef":"#35465b",
     "--glass-line":dark?"rgba(116,183,236,"+edgeAlpha+")":"rgba(65,119,181,"+Math.min(.66,.15+s.intensity*.0042).toFixed(3)+")",
     "--glass-rim-gradient":dark?"linear-gradient(135deg,rgba(126,236,255,.66),rgba(141,147,242,.16) 39%,rgba(143,100,255,.38) 78%,rgba(106,211,243,.55))":"linear-gradient(135deg,rgba(56,166,208,.58),rgba(88,139,200,.10) 39%,rgba(144,105,223,.34) 78%,rgba(47,177,207,.48))",
-    "--glass-luminance-opacity":(0.13+s.intensity*.0035).toFixed(3),
-    "--glass-rim-glow":Math.round(2+s.glow*.11)+"px",
+    "--glass-luminance-opacity":(0.07+s.intensity*.0073).toFixed(3),
+    "--glass-rim-glow":Math.round(s.glow*.26)+"px",
+    "--glass-intensity-strength":(s.intensity/100).toFixed(3),
+    "--glass-glow-opacity":(s.glow/100).toFixed(3),
+    "--glass-surface-alpha":fillAlpha.toFixed(3),
     "--glass-accent":dark?"#a6dfff":"#135b9f",
     "--glass-blur":blurPx+"px",
     "--glass-highlight":(0.05+s.intensity*.0022).toFixed(3),
-    "--glass-glow":Math.round(s.glow*.22)+"px",
+    "--glass-glow":Math.round(s.glow*.44)+"px",
     "--glass-shadow":Math.round(9+s.shadow*.33)+"px",
     "--glass-motion":transitionMs+"ms",
-    "--glass-entry-motion":Math.round(430+(100-s.animationSpeed)*2.4)+"ms",
-    "--glass-stagger":Math.round(130+s.motionDelay*1.05)+"ms",
+    // Entrances are about half the previous duration at the same slider value.
+    // Faster slider => shorter reveal AND shorter stagger, not only hover speed.
+    "--glass-entry-motion":Math.round((430+(100-s.animationSpeed)*2.4)*.5)+"ms",
+    // Motion Delay 0 means no card stagger; 100 makes the sequence pronounced.
+    "--glass-stagger":Math.round(s.motionDelay*1.18*(1.55-s.animationSpeed*.011))+"ms",
+    "--glass-menu-motion":Math.round(320+(100-s.animationSpeed)*3)+"ms",
   };
 }

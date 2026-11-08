@@ -12,4 +12,4 @@ const response = await fetch(`https://api.github.com/repos/banksetu/app/releases
 if (!response.ok) throw Error(`Published release v${version} not verified (${response.status})`);
 const release = await response.json();
 if (release.draft || release.prerelease || !expected.every(name => release.assets?.some(asset => asset.name === name && asset.state === 'uploaded' && asset.size > 0))) throw Error('Published release assets incomplete');
-console.log(`Published v${version}: Windows, signed Android, unsigned macOS ARM64 DMG, and Windows feed present.`);
+console.log(`Published v${version}: Windows, signed Android, ad-hoc signed macOS ARM64 DMG, and Windows feed present.`);

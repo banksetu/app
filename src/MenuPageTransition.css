@@ -1,0 +1,64 @@
+/*
+ * BANK SETU menu navigation: smoke rolls in and reveals the new window.
+ * Uses the same existing navigation sequence (no page remount, artificial
+ * loading or duplicate state). No full-window backdrop blur while scrolling.
+ */
+@media screen {
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition {
+    position:relative;isolation:isolate;
+  }
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase="odd"] {
+    animation:banksetu-menu-reveal-odd var(--glass-menu-motion,285ms) cubic-bezier(.18,.72,.24,1) both!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase="even"] {
+    animation:banksetu-menu-reveal-even var(--glass-menu-motion,285ms) cubic-bezier(.18,.72,.24,1) both!important;
+  }
+  @keyframes banksetu-menu-reveal-odd {
+    0% {opacity:.12;transform:translate3d(0,19px,0) scale(.986)}
+    42% {opacity:.72;transform:translate3d(0,7px,0) scale(.996)}
+    100% {opacity:1;transform:none}
+  }
+  @keyframes banksetu-menu-reveal-even {
+    0% {opacity:.12;transform:translate3d(0,19px,0) scale(.986)}
+    42% {opacity:.72;transform:translate3d(0,7px,0) scale(.996)}
+    100% {opacity:1;transform:none}
+  }
+  /* Lightweight smoke wash, not a blurred fixed/fullscreen layer. */
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase]::before {
+    content:"";position:absolute;inset:0 0 auto;height:min(240px,32vh);
+    border-radius:24px;pointer-events:none;z-index:2;
+    background:
+      radial-gradient(ellipse at 24% 40%,rgba(200,233,247,.48),transparent 56%),
+      radial-gradient(ellipse at 70% 32%,rgba(157,192,231,.34),transparent 61%);
+    animation:banksetu-menu-smoke-odd var(--glass-menu-motion,285ms) ease-out both!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase="even"]::before {
+    animation-name:banksetu-menu-smoke-even!important;
+  }
+  @keyframes banksetu-menu-smoke-odd {
+    0%{opacity:.85;transform:translate3d(-8px,13px,0) scale(1.03)}
+    55%{opacity:.34;transform:translate3d(5px,-7px,0)}
+    100%{opacity:0;transform:none;visibility:hidden}
+  }
+  @keyframes banksetu-menu-smoke-even {
+    0%{opacity:.85;transform:translate3d(-8px,13px,0) scale(1.03)}
+    55%{opacity:.34;transform:translate3d(5px,-7px,0)}
+    100%{opacity:0;transform:none;visibility:hidden}
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase] {
+    animation:none!important;transform:none!important;filter:none!important;opacity:1!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase]::before {
+    content:none!important;
+  }
+}
+@media print {
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase] {
+    animation:none!important;transform:none!important;opacity:1!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase]::before {
+    content:none!important;
+  }
+}
