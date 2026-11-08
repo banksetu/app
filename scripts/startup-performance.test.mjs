@@ -141,3 +141,6 @@ import "./ssa-theme.test.mjs";
 
 // Full feature-menu theme plus input/gesture regression audit.
 import "./theme-deep.test.mjs";
+
+// Luminance/3D rim, popup and KPI privacy regression.
+import "./glass-luminance.test.mjs";
