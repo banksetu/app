@@ -30,8 +30,9 @@ const LicenseOnboarding = lazy(() => import("./LicenseOnboarding"));
 const PublicPages = lazy(() => import("./PublicPages"));
 const SoftwareUpdateNotice = lazy(() => import("./SoftwareUpdateNotice"));
 
-function AppLoading() {
-  return <main className="app-loader"><div className="loader-logo"><img src="/banksetu-icon.png" alt="Bank Setu" width="72" height="72"/></div><p>Loading Bank Setu...</p></main>;
+// The sign-in and app-reopen paths share one animated brand loader.
+function SecureLoadingScreen() {
+  return <LoginTransition phase="startup" />;
 }
 
 type BankSetuRole = "admin" | "user";
@@ -510,25 +511,25 @@ function App() {
 
   const publicPath = window.location.pathname.split("/").filter(Boolean).join("/");
   if (publicPath === "about" || publicPath === "privacy-policy" || publicPath === "terms") {
-    return <Suspense fallback={<AppLoading/>}><PublicPages /></Suspense>;
+    return <Suspense fallback={<SecureLoadingScreen/>}><PublicPages /></Suspense>;
   }
 
   if (checkingSession) {
-    return <AppLoading/>;
+    return <SecureLoadingScreen/>;
   }
 
   if (!isLoggedIn && showLicenseWelcome && licenseWelcome && (pricingRequested||!knownAccount&&licenseWelcome.uiEnabled&&Boolean(licenseWelcome.turnstileSiteKey))) {
-    return <Suspense fallback={<AppLoading/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
+    return <Suspense fallback={<SecureLoadingScreen/>}><LicenseOnboarding settings={licenseWelcome} onSignIn={() => {setShowLicenseWelcome(false);setPricingRequested(false);}} /></Suspense>;
   }
 
   if (loginSuccess) {
-    return <LoginTransition/>;
+    return <LoginTransition phase="login"/>;
   }
 
   if (isLoggedIn) {
     return (
       <div className={`banksetu-session banksetu-role-${userRole}`}>
-        <Suspense fallback={<AppLoading/>}>
+        <Suspense fallback={<SecureLoadingScreen/>}>
           <Dashboard onLogout={handleLogout} userRole={userRole} accountRole={accountRole} licenseReadOnly={licenseReadOnly} licenseWarning={licenseWarning} licensePermission={licensePermission} demoExpired={licensePermission.state==="demo_expired"} />
           <SoftwareUpdateNotice />
         </Suspense>

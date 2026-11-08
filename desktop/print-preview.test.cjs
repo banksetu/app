@@ -6,6 +6,11 @@ test('print controls inherit app dark appearance without changing PDF pixels or 
  const {previewHtml}=require('./print-preview.cjs'),pdf=Buffer.from('%PDF synthetic white paper');
  const dark=previewHtml(pdf,[],'dark'),light=previewHtml(pdf,[],'light');
  assert(dark.includes('<html data-appearance="dark">'));assert(light.includes('<html data-appearance="light">'));
+ const glass=previewHtml(pdf,[],'glass');
+ assert(glass.includes('<html data-appearance="glass">'));
+ assert(glass.includes('html[data-appearance=glass] aside'),'app-owned preview controls use frosted Glass chrome');
+ assert(glass.includes('html[data-appearance=glass] .margin-sheet{background:#fff!important'),'physical paper ruler remains white');
+ assert(glass.includes(pdf.toString('base64')),'document bytes stay identical regardless of Glass mode');
  assert(dark.includes('color-scheme:dark'));assert(dark.includes(pdf.toString('base64')));
  assert(previewHtml(pdf,[],'"><script>bad</script>').includes('<html data-appearance="light">'));
  const preferred=previewHtml(pdf,[{name:'windows-default',isDefault:true},{name:'banksetu-printer'}],'light','banksetu-printer');
@@ -108,6 +113,9 @@ test('print capture scopes the snapshot to the active printable module and opens
  assert.match(source,/print-preview-settings\.json/);
  assert.match(source,/Always remember for this printer/);
  assert.match(source,/Preparing print preview/);
+ assert.match(source,/html\[data-appearance=glass\] \.box/);
+ assert.match(source,/html\[data-appearance=glass\] \.spinner/);
+ assert.match(source,/appearance=\["light","dark","glass"\]\.includes\(appearance\)\?appearance:"light"/);
  assert.match(source,/getPrintersAsync\(\).*\.then/);
  assert.doesNotMatch(source,/encodeURIComponent\(html\)/);
 });

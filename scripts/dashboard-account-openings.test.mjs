@@ -107,3 +107,30 @@ test("All Customer Data popup inherits portal-safe dark mode while printing stay
  assert.match(styles,/@media print \{/);
  assert.match(styles,/color-scheme:light!important/);
 });
+
+test("status analytics reuses This Month Account Openings count and the same existing popup",()=>{
+ const dashboard=readFileSync(new URL("../src/Dashboard.tsx",import.meta.url),"utf8");
+ const section=dashboard.slice(dashboard.indexOf("function DashboardAnalytics("),dashboard.indexOf("\nfunction QuickAction("));
+ assert.match(dashboard,/const monthOpenings=useMemo\(\(\)=>analyticsRows\?currentMonthOpeningCount\(analyticsRows\):0,\[analyticsRows\]\)/);
+ assert.match(dashboard,/onMonthOpeningsClick=\{\(\)=>setOpeningReportOpen\(true\)\}/);
+ assert.match(dashboard,/openingReportOpen&&<Suspense/);
+ assert.match(section,/title:'This Month Account Openings', count:monthOpenings/);
+ assert.match(section,/onClick=\{item\.onClick\}/);
+ assert.match(section,/title:'KYC Pending'.*onClick:onKycClick/);
+ assert.match(section,/title:'Passbook Pending'.*onClick:onPassbookClick/);
+ assert.doesNotMatch(section,/Inactive Accounts|Dormant Accounts|inactiveAccounts/);
+ assert.doesNotMatch(dashboard,/inactiveAccounts:/);
+});
+
+test("growth and monthly entry chart tooltips expose actual month and count on hover and keyboard focus",()=>{
+ const dashboard=readFileSync(new URL("../src/Dashboard.tsx",import.meta.url),"utf8");
+ const css=readFileSync(new URL("../src/App.css",import.meta.url),"utf8");
+ const section=dashboard.slice(dashboard.indexOf("function DashboardAnalytics("),dashboard.indexOf("\nfunction QuickAction("));
+ assert.match(section,/data-tooltip=\{\x60\$\{m\.key\}: \$\{m\.growth\} customers\x60\}/);
+ assert.match(section,/data-tooltip=\{\x60\$\{m\.key\}: \$\{m\.entries\} new customers\x60\}/);
+ assert.equal((section.match(/tabIndex=\{0\}/g)||[]).length,2);
+ assert.match(css,/\.dashboard-analytics-column:hover::after/);
+ assert.match(css,/\.dashboard-analytics-column:focus-visible::after/);
+ assert.match(css,/\.dashboard-analytics-status:hover/);
+ assert.match(css,/\.dashboard-analytics-status:focus-visible/);
+});

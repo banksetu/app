@@ -146,3 +146,31 @@ test('Union AOF reports long boxed values instead of silently dropping character
  assert(unionAofOverflow(result).some(box=>box.key==='lastName'));
  assert.equal(unionAofOverflow(unionAofValues({name:'RAVI KUMAR DAS'})).length,0);
 });
+
+
+test('AGVB and PNB account opening marital status defaults blank and is editable',async()=>{
+ const policySource=fs.readFileSync('src/bankDocumentPolicy.ts','utf8');
+ const policyOutput=ts.transpileModule(policySource,{
+   compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2023}
+ }).outputText;
+ const policy=await import('data:text/javascript;base64,'+Buffer.from(policyOutput).toString('base64'));
+ assert.equal(policy.usesAssamAccountOpeningLayout('Assam Gramin Vikas Bank'),true);
+ assert.equal(policy.usesAssamAccountOpeningLayout('Punjab National Bank'),true);
+ assert.equal(policy.usesAssamAccountOpeningLayout('Union Bank of India'),false);
+ const aof=fs.readFileSync('src/AccountOpeningPDF.tsx','utf8');
+ assert.match(aof,/const \[maritalStatus, setMaritalStatus\] = useState\(""\)/,
+   'Marital status must not default to Married or Unmarried');
+ const maritalBlock=aof.slice(aof.indexOf('<span>Marital Status</span>'),
+   aof.indexOf('<span>Name of Spouse (if married)</span>'));
+ assert.match(maritalBlock,/<EditableField/);
+ assert.match(maritalBlock,/value=\{maritalStatus\}/);
+ assert.match(maritalBlock,/onChange=\{setMaritalStatus\}/);
+ assert.match(maritalBlock,/selectOptions=\{\["", "MARRIED", "UNMARRIED"\]\}/);
+ assert.doesNotMatch(maritalBlock,/<span>UNMARRIED<\/span>/);
+ assert.equal((aof.match(/setMaritalStatus\(""\);/g)||[]).length,3,
+   'Changing customers and searching again must clear temporary marital selection');
+ assert.match(aof,/\.editable-value\.empty\s*\{[^}]*color:\s*transparent !important/s,
+   'Unset status should render blank in the printed PDF');
+ assert.match(aof,/color-scheme:\s*light;/,
+   'Editable controls should retain readable input and option contrast in either app theme');
+});

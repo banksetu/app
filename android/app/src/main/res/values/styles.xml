@@ -16,7 +16,13 @@
     </style>
 
 
+    <!-- Android's system-owned launch window cannot run WebView CSS animation.
+         Match the secure loader background and original launcher artwork until
+         the shared animated HTML loader appears, without a second old splash. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">#06142b</item>
+        <item name="windowSplashScreenBackground">#06142b</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

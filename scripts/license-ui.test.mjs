@@ -35,6 +35,8 @@ function render(page,blocked){
   if(path==='./core/localData')return {localModeEnabled:()=>false};
   if(path==='./platform/layoutEngineGate')return {windowsLayoutEngineAvailable:()=>false};
   if(path==='./core/appearance')return {storedAppearance:()=> 'light',appearanceStorageKey:()=> 'test'};
+  if(path==='./core/glassAppearance')return {DEFAULT_GLASS_SETTINGS:{design:'liquid',tone:'auto',background:'default'},storedGlassSettings:()=>({design:'liquid',tone:'auto',background:'default'}),glassVariables:()=>({}),glassDarkSurface:()=>true,glassScope:()=>'',glassStorageKey:()=>'',saveGlassSettings:()=>undefined};
+  if(path==='./core/glassBackgroundStore')return {readGlassWallpaper:async()=>undefined,saveGlassWallpaper:async()=>undefined};
   if(path.endsWith('.png'))return {__esModule:true,default:'logo.png'};
   if(path==='./tenantApi')return {tenantStorageKey:key=>key,getTenantApiUrl:()=>''};
   return {__esModule:true,default:component(path.slice(2)),getAuth:()=>({currentUser:{uid:'user-a'}})};
@@ -45,7 +47,7 @@ function render(page,blocked){
 test('read-only dashboard removes protected menus and blocks already selected routes in the same render',()=>{
  for(const page of ['customer-entry','quick-passbook','passbook','search','bank-formats']){
   const html=render(page,true);
-  for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF Sample'])assert(!html.includes(label),label);
+  for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF'])assert(!html.includes(label),label);
   assert(!html.includes('data-component="CustomerEntry"'));assert(!html.includes('data-component="SelectedBankDocument"'));assert(!html.includes('data-component="BankFormats"'));
   for(const label of ['Dashboard','All Customer Data','Customers','Settings','Sync &amp; Backup'])assert(html.includes(label),label);
   assert(html.includes('suspended'));
@@ -76,7 +78,7 @@ test('floating support position is temporary and returns to its bottom-right hom
 test('valid license retains protected menu access',()=>{
  const html=render('passbook',false);
  assert(html.includes('data-component="SelectedBankDocument"'),'the active paid passbook route must mount when settings are ready');
- for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF Sample'])assert(html.includes(label),label);
+ for(const label of ['Customer Entry','Quick Passbook','Passbook Print','Account Opening PDF'])assert(html.includes(label),label);
 });
 test('notice displays the same permission as the route model without an independent server request',()=>{
  const exports={};vm.runInNewContext(noticeSource,{exports,require:path=>path==='react/jsx-runtime'?jsx:{}});

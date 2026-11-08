@@ -1,0 +1,519 @@
+/*
+ * BANK SETU — GLASS COVERAGE AUDIT
+ * Covers body-level React portals, native <dialog>, Word-style studio ribbons,
+ * SSA report flow, license management, alignment controls, sync settings,
+ * camera, customer-entry actions, status chips and small interactive widgets.
+ *
+ * Exception: physical print/passbook paper, preview canvas and native OS
+ * printer/file dialogs are not glassified. Light/Dark selectors untouched.
+ */
+@media screen {
+  /* All modal backdrops, including portals outside the Dashboard DOM tree. */
+  html[data-appearance="glass"] :is(
+    .dashboard-opening-overlay,.ssa-export-overlay,.ssa-card-overlay,
+    .pr2-overlay,.print-alignment-overlay,.print-alignment-choice-overlay,
+    .license-modal-backdrop,.customer-delete-overlay,.update-backdrop,
+    .customer-preview-overlay,.match-modal-backdrop,.customer-camera-overlay,
+    .admin-users-overlay,.dashboard-status-overlay,.banksetu-support-popup-backdrop,
+    .pdf-overlay,.glass-appearance-overlay,.banksetu-glass-mapping-overlay,
+    .banksetu-glass-modal-overlay
+  ) {
+    background:rgba(5,11,24,.52)!important;
+    backdrop-filter:blur(8px)!important;
+    -webkit-backdrop-filter:blur(8px)!important;
+  }
+
+  /* Entire popup/dialog/window inventory: never rely on a parent shell selector. */
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,
+    .pr2-dialog,.print-alignment-window,.print-alignment-choice,
+    .customer-delete-dialog,.license-modal,.license-drawer,.update-dialog,
+    .customer-camera-dialog,.match-modal,.pdf-dialog,.admin-users-panel,
+    .dashboard-status-panel,.banksetu-support-popup,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-admin-menu,.banksetu-glass-mapping-dialog,
+    .banksetu-glass-inline-dialog
+  ) {
+    color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:0 19px var(--glass-shadow) rgba(2,13,31,.35),
+       inset 0 1px rgba(255,255,255,.48)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.2)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.2)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.dashboard-opening-panel,.pr2-dialog,.print-alignment-window,
+    .print-alignment-choice,.customer-delete-dialog,.license-drawer,.update-dialog,
+    .sync-dialog-panel,.app-message-dialog,.banksetu-glass-mapping-dialog,
+    .banksetu-glass-inline-dialog
+  ) {
+    animation:glass-popup-arrive var(--glass-motion) cubic-bezier(.2,.8,.2,1) both;
+  }
+  html[data-appearance="glass"] .app-message-dialog::backdrop {
+    background:rgba(5,11,24,.56)!important;
+    backdrop-filter:blur(8px);
+  }
+
+  /* High-level pages and sections that did not share the first paint layer. */
+  html[data-appearance="glass"] :is(
+    .ssa-campaign,.ssa-banner,.ssa-editor,.ssa-reports,.ssa-entries,.ssa-schemes,
+    .dashboard-opening-overview,.dashboard-opening-filters,.dashboard-opening-tabs,
+    .dashboard-opening-header,.dashboard-opening-footer,.dashboard-opening-preview-loading,
+    .ssa-export-heading,.ssa-export-body,.ssa-export-group,.ssa-export-options,
+    .ssa-export-preview,.ssa-export-matches,.ssa-export-actions,.ssa-card-summary,
+    .ssa-card-heading,.ssa-card-footer,.ssa-card-table-wrap,
+    .sync-center,.sync-header,.sync-body,.sync-summary,.sync-health,
+    .sync-storage-details,.sync-maintenance,.sync-error-card,
+    .master-client-create,.master-client-form,.master-client-fields,
+    .settings-admin-hero,.admin-owner-summary,.admin-client-workspace,
+    .license-banner,.license-summary,.license-tile,.license-request-board,
+    .license-quick-actions,.license-filters,.license-action-cards,
+    .license-reference-panels,.license-history-scroll,.license-manage-card,
+    .license-device,.license-note,.license-preview,.license-client-overview,
+    .support-hero,.support-home,.support-home-grid,.support-recent,
+    .conversation-list,.message-list,.chat-compose,.announcement-editor,
+    .announcement-feed,.support-selected-file,.faq-list,
+    .print-alignment-columns,.print-alignment-left,.print-alignment-settings,
+    .print-alignment-panel,.print-alignment-controls,.print-alignment-actions,
+    .pr2-actions,.customer-actions,.customer-action-buttons,
+    .customer-delete-dialog,.afsm-panel,.afsm-panels,.afsm-scroll,
+    .all-customer-data,.preview-wrapper,.edit-panel,.search-panel,
+    .match-list,.match-card,.match-modal-header,.pdf-actions,.pdf-fields,
+    .pdf-layout,.pdf-modes,.pdf-results,.pdf-detail,.reports-mobile,
+    .reports-desktop,.reports-panel-header,.reports-panel
+  ) {
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+
+  /* Cards, menu panels and settings surfaces that were still opaque. */
+  html[data-appearance="glass"] :is(
+    .ssa-banner,.ssa-editor,.ssa-reports,.ssa-entries,
+    .dashboard-opening-overview,.ssa-export-group,.ssa-export-preview,
+    .ssa-export-matches,.ssa-card-summary,.ssa-card-footer,
+    .sync-summary,.sync-health,.sync-storage-details,.sync-maintenance,
+    .sync-error-card,.master-client-form,.settings-admin-hero,
+    .admin-owner-summary,.admin-client-workspace,.license-banner,
+    .license-summary,.license-tile,.license-request-board,.license-note,
+    .license-preview,.license-client-overview,.support-hero,
+    .support-home,.support-recent,.conversation-list,.message-list,
+    .chat-compose,.announcement-editor,.announcement-feed,.faq-list,
+    .print-alignment-left,.print-alignment-settings,.print-alignment-panel,
+    .pr2-actions,.pdf-fields,.pdf-results,.reports-panel-header,
+    .banksetu-glass-mapping-row
+  ) {
+    background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:14px;
+    box-shadow:inset 0 1px rgba(255,255,255,.4),0 5px 18px rgba(5,16,34,.13)!important;
+  }
+
+  /* Body-level portal controls, not covered by .banksetu-main-workspace. */
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
+  ) :is(input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),select,textarea) {
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:9px!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.21)!important;
+    transition:border-color var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
+  ) :is(button,[role="button"]) {
+    border-radius:10px;
+    transition:transform var(--glass-motion),box-shadow var(--glass-motion),filter var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
+  ) :is(button,[role="button"]):not(:disabled):not(.banksetu-mapping-field-marker):hover {
+    transform:translateY(-2px);
+    box-shadow:0 0 var(--glass-glow) rgba(151,199,255,.52);
+    filter:brightness(1.1);
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
+  ) :is(button,[role="button"]):not(:disabled):not(.banksetu-mapping-field-marker):active { transform:scale(.985) }
+
+  /* Portal heading, labels, descriptions and tables; keep warning colors meaningful. */
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
+  ) :is(h1,h2,h3,h4,h5,h6,legend,label,th,td,strong):not(.license-error):not(.ssa-export-error) {
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.banksetu-glass-mapping-dialog
+  ) :is(p,small):not([role="alert"]):not(.ssa-export-error):not(.license-error) {
+    color:var(--glass-muted)!important;
+  }
+
+  /* Popover search results, auto-complete, cards and dropdown items. */
+  html[data-appearance="glass"] :is(
+    .ssa-export-matches button,.ssa-card-customer-link,.match-list,
+    .match-card,.search-results,.customer-search-results,.banksetu-admin-menu button,
+    .license-tabs button,.license-quick-actions button,.license-quick-actions a,
+    .dashboard-opening-tabs button,.dashboard-opening-number button,.ssa-export-actions button,
+    .customer-preview-actions button,.admin-users-toolbar button,.support-tabs button,
+    .print-alignment-actions button,.print-alignment-choice-actions button,
+    .pr2-actions button,.sync-actions button,.afsm-actions button,
+    .ls-word-tabs button,.ls-contextual-tab,.ls-tool-card,.ls-catalog-card
+  ) {
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.30)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-matches button,.match-card,.search-results,.customer-search-results,
+    .license-tabs button,.dashboard-opening-tabs button,.support-tabs button,
+    .ls-word-tabs button,.ls-contextual-tab
+  ):hover,
+  html[data-appearance="glass"] :is(
+    .ssa-export-matches button[aria-selected="true"],.license-tabs button.selected,
+    .dashboard-opening-tabs button[aria-pressed="true"],.ls-word-tabs button[aria-selected="true"],
+    .support-tabs button.active,.match-card.selected
+  ) {
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    box-shadow:0 0 var(--glass-glow) rgba(142,208,255,.36)!important;
+  }
+
+  /* All related tables, including the SSA export / month opening / license panels. */
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.sync-center,.admin-users-panel,.reports-page,.support-page,
+    .banksetu-glass-mapping-dialog
+  ) :is(table,thead,tbody,tr,td,th) {
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.sync-center,.admin-users-panel,.reports-page,.support-page,
+    .banksetu-glass-mapping-dialog
+  ) :is(thead,th) {
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.sync-center,.admin-users-panel,.reports-page,.support-page
+  ) tbody tr:nth-child(even) { background:rgba(145,187,237,.07)!important }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.sync-center,.admin-users-panel,.reports-page,.support-page
+  ) tbody tr:hover { background:rgba(145,204,255,.16)!important }
+
+  /* Badges, pills, progress tracks, image buttons, toggles and small controls. */
+  html[data-appearance="glass"] :is(
+    .license-plan-badge,.license-payment,.license-status,.dashboard-opening-status,
+    .customer-status-strip,.dashboard-status-row,.ssa-card-yes,.ssa-export-selected,
+    .status-chip,.banksetu-notice,.support-online,.sync-health,.sync-card-icon,
+    .license-tile-icon,.dashboard-stat-badge,.license-pagination,.pr2-progress
+  ) {
+    border:1px solid var(--glass-line)!important;
+    border-radius:12px;
+    box-shadow:inset 0 1px rgba(255,255,255,.24)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.banksetu-main-workspace,.sync-center,.support-page,.layout-studio
+  ) :is(input[type="checkbox"],input[type="radio"],input[type="range"],progress) {
+    accent-color:var(--glass-accent)!important;
+    transition:filter var(--glass-motion),transform var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.banksetu-main-workspace,.sync-center,.support-page,.layout-studio
+  ) :is(input[type="checkbox"],input[type="radio"]):focus-visible {
+    outline:2px solid var(--glass-accent)!important;outline-offset:3px!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-panel,
+    .license-drawer,.banksetu-main-workspace,.sync-center,.support-page,.layout-studio
+  ) :is(input[type="checkbox"],input[type="radio"]):checked {
+    filter:drop-shadow(0 0 5px rgba(118,177,255,.62));
+  }
+
+  /* The seven legacy Dashboard dialogs use inline styles, so supply a
+     class-based glass layer without changing how their forms save. */
+  html[data-appearance="glass"] .banksetu-glass-modal-overlay {
+    background:rgba(6,12,25,.5)!important;
+    backdrop-filter:blur(8px)!important;
+    -webkit-backdrop-filter:blur(8px)!important;
+  }
+  html[data-appearance="glass"] .banksetu-glass-inline-dialog {
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:0 18px var(--glass-shadow) rgba(3,15,33,.38),
+      inset 0 1px rgba(255,255,255,.46)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.1)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.1)!important;
+    animation:glass-popup-arrive var(--glass-motion) ease both;
+    overflow:auto;
+  }
+  html[data-appearance="glass"] .banksetu-glass-inline-dialog :is(
+    header,footer,.bank-info-form-grid,fieldset
+  ) {border-color:var(--glass-line)!important}
+  html[data-appearance="glass"] .banksetu-glass-inline-dialog :is(
+    h1,h2,h3,h4,h5,h6,label,legend,strong,small,p,span
+  ):not([role="alert"]):not(.error) { color:var(--glass-text)!important }
+  html[data-appearance="glass"] .banksetu-glass-inline-dialog :is(
+    input:not([type=checkbox]):not([type=radio]),textarea,select
+  ) {
+    color:var(--glass-text)!important;
+    background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:9px!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.25)!important;
+  }
+  html[data-appearance="glass"] .banksetu-glass-inline-dialog :is(
+    button,[role="button"]
+  ) {transition:transform var(--glass-motion),filter var(--glass-motion),box-shadow var(--glass-motion)!important}
+  html[data-appearance="glass"] .banksetu-glass-inline-dialog :is(
+    button,[role="button"]
+  ):not(:disabled):hover {transform:translateY(-2px);filter:brightness(1.09);box-shadow:0 0 var(--glass-glow) rgba(151,199,255,.4)!important}
+  /* Generic content widgets: content stays accessible even inside nested forms. */
+  html[data-appearance="glass"] :is(
+    .ssa-campaign,.license-panel,.support-page,.sync-center,.customers-page,
+    .reports-page,.layout-studio,.banksetu-main-workspace,.banksetu-glass-inline-dialog,
+    .glass-appearance-panel,.banksetu-glass-mapping-dialog
+  ) :is(details,summary,fieldset,legend,dl,dt,dd,output,progress,figure,figcaption) {
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-campaign,.license-panel,.support-page,.sync-center,.customers-page,
+    .reports-page,.layout-studio,.banksetu-main-workspace,.banksetu-glass-inline-dialog,
+    .glass-appearance-panel,.banksetu-glass-mapping-dialog
+  ) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea):not(
+    .paper *,.print-area *,.bank-format-print-document *,.central-bank-document *,
+    .passbook-print-area *,.workspace-template-page *
+  ) {
+    color:var(--glass-text)!important;
+    background:var(--glass-fill)!important;
+    border-color:var(--glass-line)!important;
+    border-radius:9px!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-campaign,.license-panel,.support-page,.sync-center,.customers-page,
+    .reports-page,.layout-studio,.banksetu-main-workspace
+  ) :is(button,a,[role="button"]):not(.paper *,.print-area *,.bank-format-print-document *,.central-bank-document *):focus-visible {
+    outline:2px solid var(--glass-accent)!important;outline-offset:3px!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-glass-inline-dialog,
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-drawer,
+    .support-page,.layout-studio) ::-webkit-scrollbar-thumb {
+    background:var(--glass-fill-strong);
+    border:1px solid var(--glass-line);border-radius:8px;
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-top-bar,.banksetu-sidebar,.dashboard-opening-header,
+    .ssa-export-heading,.ssa-card-heading,.print-alignment-window>header,
+    .license-banner,.support-hero,.banksetu-glass-inline-dialog
+  ) {text-shadow:0 1px 2px rgba(4,15,35,.16)}
+
+  /* Micro-controls detected in the component-by-component coverage audit. */
+  html[data-appearance="glass"] :is(
+    .ssa-search,.ssa-report-buttons,.ssa-save-buttons,.ssa-schemes,
+    .ssa-customer,.ssa-entry-meta,.ssa-chips,.ssa-help,
+    .passbook-search-card,.customer-photo-review,.banksetu-notices,
+    .admin-user-stats,.support-message-actions,.update-progress,
+    .dashboard-opening-number,.ssa-card-pdf,.ssa-check
+  ) {
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.27)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-search,.ssa-customer,.ssa-chips,.passbook-search-card,
+    .admin-user-stats,.update-progress
+  ) {
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:12px;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-save,.ssa-update,.ssa-edit-btn,.ssa-card-pdf,.ssa-search button,
+    .ssa-report-buttons button,.banksetu-floating-support,
+    .support-message-actions button,.update-actions button
+  ) {
+    border:1px solid var(--glass-line)!important;
+    border-radius:11px!important;
+    backdrop-filter:blur(8px) saturate(1.12);
+    -webkit-backdrop-filter:blur(8px) saturate(1.12);
+    box-shadow:inset 0 1px rgba(255,255,255,.33),0 5px 11px rgba(4,15,35,.14)!important;
+    transition:transform var(--glass-motion),filter var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] .ssa-save {
+    color:#fff!important;
+    background:linear-gradient(135deg,rgba(6,142,95,.88),rgba(28,175,121,.56))!important;
+  }
+  html[data-appearance="glass"] :is(.ssa-update,.ssa-edit-btn,.ssa-search button) {
+    color:#fff!important;
+    background:linear-gradient(135deg,rgba(15,101,205,.80),rgba(60,142,234,.47))!important;
+  }
+  html[data-appearance="glass"] .ssa-card-pdf {
+    color:#fff!important;
+    background:linear-gradient(130deg,rgba(157,38,73,.82),rgba(231,107,125,.49))!important;
+  }
+  html[data-appearance="glass"] :is(
+    .ssa-save,.ssa-update,.ssa-edit-btn,.ssa-card-pdf,.ssa-search button,
+    .ssa-report-buttons button,.banksetu-floating-support,
+    .support-message-actions button,.update-actions button
+  ):not(:disabled):hover {
+    transform:translate3d(0,-2px,0);
+    filter:brightness(1.11);
+    box-shadow:0 0 var(--glass-glow) rgba(144,207,255,.58)!important;
+  }
+  html[data-appearance="glass"] :is(.ssa-check,.banksetu-support-badge) {
+    border-radius:9px;
+    transition:filter var(--glass-motion),box-shadow var(--glass-motion)!important;
+  }
+  html[data-appearance="glass"] .ssa-check:hover {
+    box-shadow:0 0 var(--glass-glow) rgba(120,212,174,.45)!important;
+  }
+
+  /* Mapping editor has inline-only styles and is rendered in its own body portal. */
+  html[data-appearance="glass"] .banksetu-glass-mapping-dialog :is(
+    input:not([type=checkbox]):not([type=radio]),select,textarea
+  ) {
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;border-radius:9px!important;
+  }
+  html[data-appearance="glass"] .banksetu-glass-mapping-dialog :is(
+    header,footer
+  ) {
+    border-color:var(--glass-line)!important;
+  }
+
+  /* Mapping field markers are measurement objects, not floating action buttons.
+     Hover must NEVER shift a field's calibrated X/Y coordinates. */
+  html[data-appearance="glass"] .banksetu-mapping-canvas,
+  html[data-appearance="glass"] .banksetu-mapping-field-marker {
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    animation:none!important;filter:none!important;
+    transition:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-mapping-field-marker:hover {
+    transform:translate(-2px,-2px)!important;
+  }
+
+  /* Keyboard access and responsive popups for all glassed controls. */
+  html[data-appearance="glass"] :is(
+    button,a,input,select,textarea,[role="button"],[tabindex]
+  ):focus-visible {
+    outline:2px solid var(--glass-accent)!important;
+    outline-offset:2px!important;
+  }
+  html[data-appearance="glass"] :is(button,input,select,textarea):disabled {
+    cursor:not-allowed!important;opacity:.6!important;filter:saturate(.7)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis,
+    .license-summary,.license-action-cards,.sync-card-grid,.afsm-panels
+  ) > :nth-child(-n+8) {
+    animation:glass-section-arrive var(--glass-motion) cubic-bezier(.2,.8,.2,1) both;
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis,
+    .license-summary,.license-action-cards,.sync-card-grid,.afsm-panels
+  ) > :nth-child(2) { animation-delay:var(--glass-stagger) }
+  html[data-appearance="glass"] :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis,
+    .license-summary,.license-action-cards,.sync-card-grid,.afsm-panels
+  ) > :nth-child(3) { animation-delay:calc(var(--glass-stagger)*2) }
+  html[data-appearance="glass"] :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis,
+    .license-summary,.license-action-cards,.sync-card-grid,.afsm-panels
+  ) > :nth-child(4) { animation-delay:calc(var(--glass-stagger)*3) }
+  html[data-appearance="glass"] :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis,
+    .license-summary,.license-action-cards,.sync-card-grid,.afsm-panels
+  ) > :nth-child(n+5) { animation-delay:calc(var(--glass-stagger)*4) }
+  html[data-appearance="glass"] .banksetu-sidebar nav button:nth-child(-n+12) {
+    animation:glass-section-arrive 230ms ease both;
+  }
+  html[data-appearance="glass"] .banksetu-sidebar nav button:nth-child(2n) {
+    animation-delay:40ms;
+  }
+}
+@media screen and (max-width:900px) {
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.license-drawer,
+    .pr2-dialog,.print-alignment-window,.banksetu-glass-mapping-dialog,
+    .customer-delete-dialog,.app-message-dialog
+  ) {
+    max-width:calc(100vw - 8px)!important;
+    max-height:calc(100dvh - 8px)!important;
+    overflow:auto;
+  }
+  html[data-appearance="glass"] :is(
+    .layout-studio .ls-header,.layout-studio .ls-word-suite,
+    .layout-studio .ls-word-tabs,.layout-studio .ls-format-ribbon
+  ) { backdrop-filter:blur(10px)!important;-webkit-backdrop-filter:blur(10px)!important }
+  html[data-appearance="glass"] :is(
+    .license-drawer,.ssa-export-dialog,.ssa-card-dialog,.pr2-dialog,.sync-dialog-panel,
+    .print-alignment-window
+  ) { backdrop-filter:blur(11px)!important;-webkit-backdrop-filter:blur(11px)!important }
+  html[data-appearance="glass"] :is(
+    .license-summary,.ssa-export-date-row,.license-filters
+  ) { min-width:0 }
+}
+@media screen and (hover:none) {
+  html[data-appearance="glass"] :is(
+    .ssa-export-dialog,.ssa-card-dialog,.dashboard-opening-panel,.pr2-dialog,
+    .print-alignment-window,.print-alignment-choice,.license-modal,.license-drawer,
+    .customer-delete-dialog,.update-dialog,.customer-camera-dialog,.match-modal,
+    .pdf-dialog,.admin-users-panel,.dashboard-status-panel,.sync-dialog-panel,
+    .app-message-dialog,.banksetu-support-popup,.layout-studio
+  ) :is(button,[role="button"]):not(:disabled):not(.banksetu-mapping-field-marker):hover { transform:none!important;filter:none!important }
+}
+@media(prefers-reduced-motion:reduce) {
+  html[data-appearance="glass"] *,
+  html[data-appearance="glass"] *::before,
+  html[data-appearance="glass"] *::after {
+    animation-duration:.01ms!important;animation-delay:0ms!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important;
+  }
+}
+@media print {
+  html[data-appearance="glass"] :is(
+    .ssa-export-overlay,.ssa-card-overlay,.pr2-overlay,
+    .print-alignment-overlay,.print-alignment-choice-overlay,
+    .banksetu-glass-mapping-overlay,.glass-appearance-overlay
+  ) {display:none!important}
+  html[data-appearance="glass"] :is(
+    .paper,.print-area,.passbook-print-area,.bank-format-print-document,
+    .central-bank-document,.customer-pdf-page,.workspace-template-page,
+    .ls-page-sheet,.ls-catalog-mini-paper
+  ) {
+    background:#fff!important;color:#000!important;border:0!important;
+    box-shadow:none!important;backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;filter:none!important;animation:none!important;
+  }
+}

@@ -6,6 +6,7 @@ import {windowsLayoutEngineAvailable} from "./platform/layoutEngineGate";
 import {codespacesLayoutPreviewAvailable,previewLayoutKey} from "./platform/layoutCodespacesPreview";
 import "./CustomizeLayoutStudio.css";
 import "./CustomizeLayoutReferenceLock.css";
+import "./GlassStudioCoverage.css";
 import { estimatePassbookBounds, mapScannedPageToPassbook, calibrateScanBounds, type ScanBounds } from "./layoutScanGeometry";
 import { suggestPassbookLabel, findOverlappingPassbookText, type TextCollision } from "./layoutFieldInference";
 import { reconcileImportedText, textForOverlapReview } from "./layoutImportReview";

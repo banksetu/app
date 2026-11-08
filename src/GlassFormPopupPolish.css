@@ -1,0 +1,348 @@
+/*
+ * BANK SETU — form legibility + lightweight Liquid Glass popup finish.
+ * The real customer/AOF form values and PDF layout are unchanged.
+ * Scoped to screen-only Glass mode: document/print paper remains untouched.
+ */
+@media screen {
+  /* Customer Entry labels were inline-colored via --app-dark-text and became
+     nearly invisible on a photograph behind the glass workspace. */
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper {
+    color:var(--glass-text)!important;
+    --customer-field-text:var(--glass-text);
+    --customer-field-muted:var(--glass-muted);
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-entry-title,.customer-tool-card>h2,
+    .customer-tool-card>p,.customer-photo-card>p,
+    .customer-field>span,.customer-form-card>h2,
+    .customer-photo-review>p
+  ){
+    color:var(--glass-text)!important;
+    opacity:1!important;
+    -webkit-text-fill-color:currentColor!important;
+    text-shadow:0 1px 2px rgba(0,11,28,.23);
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-field>span {
+    display:block!important;
+    visibility:visible!important;
+    font-size:clamp(11px,.83vw,13px)!important;
+    font-weight:800!important;
+    line-height:1.4!important;
+    letter-spacing:.38px!important;
+    margin:0 0 3px!important;
+    min-height:16px;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-field>span>span {
+    color:#ffd19b!important;
+    -webkit-text-fill-color:#ffd19b!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-tool-card>p:not(:first-child) {
+    color:var(--glass-muted)!important;
+    -webkit-text-fill-color:var(--glass-muted)!important;
+    font-size:clamp(11px,.82vw,13px)!important;
+    line-height:1.5!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  ),
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card {
+    position:relative;
+    isolation:isolate;
+    overflow:hidden;
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:17px!important;
+    box-shadow:inset 1px 1px rgba(132,226,254,.30),
+      inset -1px -1px rgba(147,138,240,.17),
+      0 9px 26px rgba(4,14,33,.22)!important;
+    backdrop-filter:blur(min(13px,var(--glass-blur))) saturate(1.17)!important;
+    -webkit-backdrop-filter:blur(min(13px,var(--glass-blur))) saturate(1.17)!important;
+    transition:box-shadow 400ms ease,border-color 400ms ease,transform 400ms ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  )::after,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card::after {
+    content:"";position:absolute;inset:0;z-index:0;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(116deg,transparent 10%,rgba(116,218,248,.08) 26%,
+      rgba(171,218,255,.33) 36%,rgba(157,137,236,.13) 46%,transparent 67%);
+    background-size:250% 100%;background-position:130% center;
+    opacity:0;transition:opacity 480ms ease,background-position 690ms cubic-bezier(.17,.8,.2,1)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  ):hover,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card:hover {
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 1px 2px rgba(145,238,255,.43),0 14px 29px rgba(4,16,37,.28),
+      0 0 var(--glass-glow) rgba(111,206,251,.22)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  ):hover::after,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card:hover::after {
+    opacity:var(--glass-luminance-opacity,.29);background-position:3% center;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  )>*,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card>*{
+    position:relative;z-index:1;
+  }
+  /* Inputs are true semi-transparent fields, not solid black rectangles. */
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-field>input,.customer-field>textarea,.customer-field>select,
+    .customer-tool-card input:not([type=file]),.customer-tool-card select
+  ){
+    color:var(--glass-text)!important;
+    -webkit-text-fill-color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:11px!important;
+    box-shadow:inset 0 1px rgba(136,229,255,.23),0 2px 9px rgba(4,17,38,.12)!important;
+    backdrop-filter:blur(5px)!important;-webkit-backdrop-filter:blur(5px)!important;
+    transition:box-shadow 330ms ease,border-color 330ms ease,background-color 330ms ease!important;
+    min-width:0;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-field>input,.customer-field>textarea,.customer-field>select,
+    .customer-tool-card input:not([type=file])
+  ):hover{
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 0 1px rgba(165,235,255,.47),
+      0 0 var(--glass-rim-glow) rgba(111,203,245,.37)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-field>input,.customer-field>textarea,.customer-field>select,
+    .customer-tool-card input:not([type=file])
+  ):focus-visible {
+    outline:2px solid var(--glass-accent)!important;outline-offset:1px!important;
+    box-shadow:0 0 var(--glass-glow) rgba(102,207,248,.41)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(input,textarea)::placeholder {
+    color:var(--glass-muted)!important;opacity:.82;
+    -webkit-text-fill-color:var(--glass-muted)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper select option {
+    background:#1d304a;color:#f5faff;
+  }
+  /* Photo placeholders only: actual customer photos keep original pixels. */
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-photo-area:not(:has(img)){
+    border:1px solid var(--glass-line)!important;
+    background:var(--glass-fill-strong)!important;
+    box-shadow:inset 0 1px rgba(154,223,245,.27)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-photo-area:not(:has(img))>div{
+    background:transparent!important;color:var(--glass-muted)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-tool-card button,.customer-photo-card button,.customer-action-buttons button
+  ):not(:disabled){
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:10px!important;
+    box-shadow:inset 0 1px rgba(145,230,250,.28),0 4px 12px rgba(5,16,37,.19)!important;
+    transition:box-shadow 330ms ease,border-color 330ms ease,transform 330ms ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-tool-card button,.customer-photo-card button,.customer-action-buttons button
+  ):not(:disabled):hover{
+    border-color:var(--glass-accent)!important;
+    box-shadow:0 0 var(--glass-glow) rgba(112,206,251,.33)!important;
+    transform:translateY(-2px);
+  }
+
+  /* Account Opening PDF: search, controls and customer selection chrome only. */
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module :is(
+    .module-head h1,.module-head p,.search-label,.search-panel label
+  ){
+    color:var(--glass-text)!important;opacity:1!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module>.search-panel{
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(148,232,250,.3),0 10px 25px rgba(5,15,35,.22)!important;
+    backdrop-filter:blur(min(12px,var(--glass-blur)))!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module .search-row :is(input,button){
+    color:var(--glass-text)!important;background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(146,236,250,.3),0 5px 13px rgba(7,19,43,.15)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module .search-row :is(input,button):hover{
+    border-color:var(--glass-accent)!important;
+    box-shadow:0 0 var(--glass-rim-glow) rgba(127,213,245,.36)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module .search-row input::placeholder{
+    color:var(--glass-muted)!important;opacity:.86;
+  }
+
+  /* Body portals must use Glass rather than a dark solid window. Two modest
+     blur layers replace the former 8px backdrop + 25px nested blur stack. */
+  html[data-appearance="glass"] body :is(
+    .ssa-export-overlay,.ssa-card-overlay,.customer-preview-overlay,
+    .dashboard-opening-overlay,.dashboard-status-overlay,
+    .customer-delete-overlay,.match-modal-backdrop,
+    .pr2-overlay,.print-alignment-overlay,.print-alignment-choice-overlay,
+    .pdf-overlay,.license-modal-backdrop,.banksetu-support-popup-backdrop,
+    .glass-appearance-overlay,.banksetu-glass-modal-overlay
+  ){
+    background:rgba(7,15,31,.35)!important;
+    backdrop-filter:blur(3px)!important;-webkit-backdrop-filter:blur(3px)!important;
+  }
+  html[data-appearance="glass"] body :is(
+    .ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .dashboard-opening-panel,.dashboard-status-panel,.customer-delete-dialog,
+    .match-modal,.pr2-dialog,.print-alignment-window,.print-alignment-choice,
+    .pdf-dialog,.license-modal,.license-drawer,.banksetu-support-popup,
+    .banksetu-glass-inline-dialog,.banksetu-glass-mapping-dialog
+  ){
+    --glass-dialog-surface:color-mix(in srgb,var(--glass-fill-strong) 82%,transparent);
+    color:var(--glass-text)!important;
+    background:var(--glass-dialog-surface)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 1px 1px rgba(137,234,248,.32),
+      inset -1px -1px rgba(134,124,237,.14),
+      0 16px 36px rgba(4,14,37,.27)!important;
+    backdrop-filter:blur(min(12px,var(--glass-blur))) saturate(1.1)!important;
+    -webkit-backdrop-filter:blur(min(12px,var(--glass-blur))) saturate(1.1)!important;
+  }
+  html[data-appearance="glass"] body :is(
+    .ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .dashboard-opening-panel,.customer-delete-dialog,.match-modal,
+    .pdf-dialog,.license-drawer
+  ) :is(
+    .ssa-export-group,.ssa-export-preview,.ssa-export-matches,
+    .ssa-card-summary,.ssa-card-table-wrap,.customer-preview-content,
+    .customer-preview-section,.customer-preview-identity,
+    .customer-preview-account,.dashboard-opening-overview,
+    .dashboard-opening-filters,.match-list,.match-card,.pdf-fields,.pdf-results
+  ){
+    color:var(--glass-text)!important;
+    background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(142,233,251,.25),0 5px 14px rgba(6,15,34,.10)!important;
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+  html[data-appearance="glass"] body .customer-preview-card :is(
+    .customer-preview-heading,.customer-preview-section h3
+  ){
+    color:var(--glass-text)!important;
+    background:linear-gradient(114deg,rgba(48,105,166,.38),rgba(116,87,166,.25))!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] body .customer-preview-card :is(
+    .customer-preview-heading h2,.customer-preview-heading p,.customer-preview-name,
+    .customer-preview-account-label,.customer-preview-account-value,
+    .customer-preview-section dt,.customer-preview-section dd,
+    .customer-preview-section h3,.customer-preview-address,
+    .customer-preview-identity strong
+  ){
+    color:var(--glass-text)!important;
+    opacity:1!important;
+  }
+  html[data-appearance="glass"] body .customer-preview-card :is(
+    .customer-preview-account-label,.customer-preview-section dt
+  ){color:var(--glass-muted)!important}
+  html[data-appearance="glass"] body :is(
+    .ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .dashboard-opening-panel,.match-modal
+  ) :is(input:not([type=checkbox]):not([type=radio]),select,textarea,button){
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] body :is(
+    .ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .dashboard-opening-panel,.match-modal
+  ) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
+    background:var(--glass-fill)!important;
+    box-shadow:inset 0 1px rgba(139,221,251,.23)!important;
+  }
+  html[data-appearance="glass"] body :is(
+    .ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .dashboard-opening-panel,.match-modal
+  ) :is(button:not(:disabled),input,select,textarea):focus-visible{
+    outline:2px solid var(--glass-accent)!important;outline-offset:2px!important;
+  }
+  html[data-appearance="glass"] body .ssa-export-dialog :is(
+    .ssa-export-heading p,.ssa-export-note,.ssa-export-preview small,
+    .ssa-export-matches span,.ssa-export-date,.ssa-export-group legend
+  ){
+    color:var(--glass-muted)!important;
+  }
+  html[data-appearance="glass"] body .ssa-export-dialog :is(
+    .ssa-export-primary,.ssa-export-actions button,.ssa-export-matches button
+  ){
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;color:var(--glass-text)!important;
+    box-shadow:inset 0 1px rgba(135,232,251,.28),0 4px 12px rgba(4,17,38,.15)!important;
+  }
+  html[data-appearance="glass"] body .ssa-export-dialog .ssa-export-error{
+    color:#ffb3b9!important;
+  }
+  /* Hover luminance on popup surfaces; no infinite shader animations. */
+  html[data-appearance="glass"] body :is(
+    .ssa-export-group,.ssa-export-preview,.customer-preview-section,
+    .match-card,.dashboard-opening-overview,.ssa-export-actions button,
+    .customer-preview-actions button
+  ){
+    transition:border-color 360ms ease,box-shadow 360ms ease!important;
+  }
+  html[data-appearance="glass"] body :is(
+    .ssa-export-group,.ssa-export-preview,.customer-preview-section,
+    .match-card,.dashboard-opening-overview,.ssa-export-actions button,
+    .customer-preview-actions button
+  ):hover{
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 0 1px rgba(150,232,253,.45),
+      0 0 var(--glass-rim-glow) rgba(128,213,250,.34)!important;
+  }
+}
+@media screen and (max-width:780px){
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    min-width:0;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+}
+@media screen and (max-width:520px){
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-grid{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-field,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-full-address{
+    grid-column:1/-1!important;
+  }
+  html[data-appearance="glass"] body .customer-preview-card{
+    max-width:calc(100vw - 10px)!important;
+  }
+  html[data-appearance="glass"] body .customer-preview-card .customer-preview-content{
+    margin:10px!important;padding:12px!important;
+  }
+}
+@media screen and (hover:none) {
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-tool-card,.customer-photo-card,.customer-form-card
+  ):hover{transform:none!important}
+}
+@media screen and (prefers-reduced-motion:reduce) {
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-top-grid :is(
+    .customer-tool-card,.customer-photo-card
+  )::after,
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper .customer-form-card::after {
+    opacity:0!important;transition:none!important;animation:none!important
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .customer-entry-wrapper :is(
+    .customer-field>input,.customer-field>select,.customer-field>textarea,
+    .customer-tool-card button
+  ) {transition:none!important}
+}
+@media print {
+  html[data-appearance="glass"] :is(.ssa-export-overlay,.customer-preview-overlay,.match-modal-backdrop){
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+}

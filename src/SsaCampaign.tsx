@@ -3,7 +3,13 @@ import { auth } from "./firebase";
 import { getActiveLocalCustomers, localDataFetch } from "./core/localData";
 import { localSsaCampaignEntries, queueSsaCampaignEntry, refreshSsaCampaignEntries, type SsaCampaignEntry } from "./core/ssaCampaign";
 import { buildCustomerXlsx, saveCustomerXlsx } from "./exportXlsx";
+import { flushSync } from "react-dom";
+import SsaCampaignReportDialog from "./SsaCampaignReportDialog";
+import SsaCampaignCardDialog from "./SsaCampaignCardDialog";
+import type { SsaCardKind } from "./core/ssaCardDetails";
+import { selectSsaReportEntries, ssaReportCounts, type SsaReportKind, type SsaReportSelection } from "./core/ssaReportSelection";
 import "./SsaCampaign.css";
+import "./SsaAppearance.css";
 
 type CustomerRef={recordId:string;enrolId:string;accountNo:string;name:string;contact:string};
 type Preset="month"|"today"|"week"|"year"|"all"|"custom";
@@ -41,6 +47,9 @@ export default function SsaCampaign(){
   const [pmjjby,setPmjjby]=useState(false),[pmsby,setPmsby]=useState(false);
   const [preset,setPreset]=useState<Preset>("month"),[from,setFrom]=useState(monthStart),[to,setTo]=useState(today);
   const [filter,setFilter]=useState(""),[page,setPage]=useState(1);
+  const [reportKind,setReportKind]=useState<SsaReportKind|null>(null);
+  const [cardKind,setCardKind]=useState<SsaCardKind|null>(null);
+  const [printSelection,setPrintSelection]=useState<{rows:SsaCampaignEntry[];description:string}|null>(null);
   const reload=useCallback(async(remote:boolean)=>{
     try {
       const result=remote?await refreshSsaCampaignEntries():{entries:await localSsaCampaignEntries(),hasMore:false};
@@ -113,46 +122,113 @@ export default function SsaCampaign(){
     }catch(e){setError(e instanceof Error?e.message:"SSA entry could not be saved.");}
     finally{setBusy(false);}
   };
-  const report=async(kind:"pdf"|"excel"|"print"|"share")=>{
-    if(!filtered.length){setError("There are no entries for the selected period.");return;}
-    setLoading(true);setError("");
-    try{
-      const rows=reportRows(filtered);
+  const report=async(kind:SsaReportKind,selection:SsaReportSelection):Promise<boolean>=>{
+    setError("");
+    try {
+      const selected=selectSsaReportEntries(entries,selection);
+      if(!selected.rows.length)throw new Error("No SSA Campaign entries match the selected customer and dates.");
+      if(hasMore&&(selection.period==="all"||selection.audience==="all"))
+        throw new Error("Load the remaining Google Sheet entries before exporting all records.");
+      const counts=ssaReportCounts(selected.rows);
+      const fileStem="BankSetu-SSA-Campaign-"+today();
+      if(kind==="print"){
+        // Commit the selected rows to the real print tree before opening the
+        // existing browser/Windows print dialog. Never print the dashboard filter.
+        flushSync(()=>{setPrintSelection(selected);setReportKind(null);});
+        const cleanup=()=>document.body.classList.remove("ssa-campaign-printing");
+        document.body.classList.add("ssa-campaign-printing");
+        window.addEventListener("afterprint",cleanup,{once:true});
+        try { window.print(); }
+        finally { window.setTimeout(cleanup,2500); }
+        setNotice("A4 print preview opened with "+selected.rows.length+" selected entries.");
+        return true;
+      }
+      setLoading(true);
       if(kind==="excel"){
-        const blob=await buildCustomerXlsx(rows,{allFields:true,photos:false,autoResize:true,sheetName:"SSA Campaign",progress:()=>{}});
-        await saveCustomerXlsx(blob,"BankSetu-SSA-Campaign-"+today()+".xlsx");
-        setNotice("Excel report generated.");
-      }else if(kind==="pdf"){
+        const blob=await buildCustomerXlsx(reportRows(selected.rows),{
+          allFields:true,photos:false,autoResize:true,sheetName:"SSA Campaign",progress:()=>{}
+        });
+        await saveCustomerXlsx(blob,fileStem+".xlsx");
+        setNotice("Excel generated for "+selected.rows.length+" selected entries.");
+      }else{
         const {jsPDF}=await import("jspdf");
         const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-        const positions=[12,38,118,178,203,233],titles=["Date","Customer","Account No.","APY","PMJJBY","PMSBY"];
-        let y=31;
-        pdf.setFontSize(17);pdf.text("BANK SETU  |  SSA Campaign Report",12,16);
-        pdf.setFontSize(10);pdf.text("Entries: "+filtered.length+"  |  "+start+" to "+end,12,23);
-        const heading=()=>{pdf.setFont("helvetica","bold");titles.forEach((t,i)=>pdf.text(t,positions[i],y));pdf.setFont("helvetica","normal");y+=7;};
-        heading();
-        for(const row of rows){
-          if(y>193){pdf.addPage();y=17;heading();}
-          [row["Entry Date"],row["Customer Name"],row["Account Number"],row.APY,row.PMJJBY,row.PMSBY]
-            .forEach((val,i)=>pdf.text(String(val||"").slice(0,i===1?34:25),positions[i],y));
-          y+=6;
+        const x=[11,40,123,181,207,239];
+        const headings=["Entry Date","Customer Name","Account Number","APY","PMJJBY","PMSBY"];
+        const maxY=185;
+        let y=0;
+        const drawHeading=()=>{
+          pdf.setTextColor(25,44,77);
+          pdf.setFont("helvetica","bold");pdf.setFontSize(15);
+          pdf.text("BANK SETU | SSA Campaign Report",11,15);
+          pdf.setFontSize(9);pdf.setFont("helvetica","normal");
+          pdf.text(selected.description,11,22,{maxWidth:275});
+          pdf.text("Entries: "+counts.entries+" | APY: "+counts.apy+
+            " | PMJJBY: "+counts.pmjjby+" | PMSBY: "+counts.pmsby,11,28);
+          y=36;pdf.setFont("helvetica","bold");pdf.setFontSize(9);
+          headings.forEach((heading,i)=>pdf.text(heading,x[i],y));
+          pdf.line(11,y+2,285,y+2);y+=8;
+          pdf.setFont("helvetica","normal");
+        };
+        drawHeading();
+        selected.rows.forEach(entry=>{
+          const nameLines=pdf.splitTextToSize(entry.name||"",80) as string[];
+          const accountLines=pdf.splitTextToSize(entry.accountNo||"",52) as string[];
+          const lines=Math.max(1,nameLines.length,accountLines.length);
+          const height=Math.max(7,lines*4.2+3);
+          if(y+height>maxY){pdf.addPage();drawHeading();}
+          pdf.setFontSize(9);
+          pdf.text(entry.entryDate,x[0],y);
+          pdf.text(nameLines,x[1],y);
+          pdf.text(accountLines,x[2],y);
+          pdf.text(entry.apy?"Yes":"No",x[3],y);
+          pdf.text(entry.pmjjby?"Yes":"No",x[4],y);
+          pdf.text(entry.pmsby?"Yes":"No",x[5],y);
+          y+=height;
+          pdf.setDrawColor(210,220,230);pdf.line(11,y-2,285,y-2);
+        });
+        const pageCount=pdf.getNumberOfPages();
+        for(let page=1;page<=pageCount;page++){
+          pdf.setPage(page);pdf.setFontSize(8);
+          pdf.text("Page "+page+" / "+pageCount,276,200,{align:"right"});
         }
-        pdf.save("BankSetu-SSA-Campaign-"+today()+".pdf");setNotice("PDF report generated.");
-      }else if(kind==="print"){
-        document.body.classList.add("ssa-campaign-printing");
-        window.addEventListener("afterprint",()=>document.body.classList.remove("ssa-campaign-printing"),{once:true});
-        window.print();window.setTimeout(()=>document.body.classList.remove("ssa-campaign-printing"),1200);
-      }else{
-        const summary="BANK SETU SSA Campaign\n"+start+" to "+end+
-          "\nEntries: "+count.total+" | APY: "+count.apy+" | PMJJBY: "+count.pmjjby+" | PMSBY: "+count.pmsby;
-        if(navigator.share)await navigator.share({title:"SSA Campaign",text:summary});
-        else if(navigator.clipboard){await navigator.clipboard.writeText(summary);setNotice("Summary copied for sharing.");}
-        else throw new Error("Sharing is unavailable on this device.");
+        const blob=pdf.output("blob");
+        if(kind==="share"){
+          const shareFile=new File([blob],fileStem+".pdf",{type:"application/pdf"});
+          if(typeof navigator.share==="function" &&
+             typeof navigator.canShare==="function" && navigator.canShare({files:[shareFile]})){
+            await navigator.share({title:"BANK SETU SSA Campaign",files:[shareFile]});
+            setNotice("Selected SSA Campaign PDF shared.");
+          }else{
+            const url=URL.createObjectURL(blob);
+            try{
+              const anchor=document.createElement("a");anchor.href=url;anchor.download=shareFile.name;
+              document.body.append(anchor);anchor.click();anchor.remove();
+            }finally{window.setTimeout(()=>URL.revokeObjectURL(url),15000);}
+            setNotice("Direct PDF file sharing is unavailable here. The selected PDF was downloaded for manual sharing.");
+          }
+        }else{
+          pdf.save(fileStem+".pdf");
+          setNotice("PDF generated for "+selected.rows.length+" selected entries.");
+        }
       }
-    }catch(e){setError(e instanceof Error?e.message:"Could not prepare report.");}
-    finally{setLoading(false);}
+      setReportKind(null);
+      return true;
+    }catch(e){
+      if(e instanceof Error&&e.name==="AbortError")return false;
+      setError(e instanceof Error?e.message:"Could not generate SSA report.");
+      return false;
+    }finally{setLoading(false);}
   };
   return <div className="ssa-campaign">
+    {reportKind&&<SsaCampaignReportDialog kind={reportKind} entries={entries} hasMore={hasMore}
+      onClose={()=>setReportKind(null)} onGenerate={selection=>report(reportKind,selection)} />}
+    {cardKind&&<SsaCampaignCardDialog kind={cardKind} entries={filtered} hasMore={hasMore}
+      onClose={()=>setCardKind(null)}
+      onPdf={async entry=>{await report("pdf",{
+        period:"day",day:entry.entryDate,month:entry.entryDate.slice(0,7),
+        from:entry.entryDate,to:entry.entryDate,audience:"customer",accountNo:entry.accountNo
+      });}} />}
     <header className="ssa-banner">
       <h1><span>◎</span> SSA Campaign</h1>
       <div className="ssa-banner-controls">
@@ -169,10 +245,14 @@ export default function SsaCampaign(){
       </div>
     </header>
     <section className="ssa-kpis" aria-label="SSA Campaign totals">
-      <div className="ssa-kpi blue"><span>▤</span><div><b>Total Entry</b><strong>{count.total}</strong></div></div>
-      <div className="ssa-kpi green"><span>●</span><div><b>Total APY</b><strong>{count.apy}</strong></div></div>
-      <div className="ssa-kpi orange"><span>✚</span><div><b>Total PMJJBY</b><strong>{count.pmjjby}</strong></div></div>
-      <div className="ssa-kpi purple"><span>☂</span><div><b>Total PMSBY</b><strong>{count.pmsby}</strong></div></div>
+      <button type="button" className="ssa-kpi ssa-kpi-action blue" onClick={()=>setCardKind("total")}
+        aria-label={"View Total Entry customer list, "+count.total+" entries"}><span aria-hidden="true">▤</span><div><b>Total Entry</b><strong>{count.total}</strong></div></button>
+      <button type="button" className="ssa-kpi ssa-kpi-action green" onClick={()=>setCardKind("apy")}
+        aria-label={"View Total APY customer list, "+count.apy+" entries"}><span aria-hidden="true">●</span><div><b>Total APY</b><strong>{count.apy}</strong></div></button>
+      <button type="button" className="ssa-kpi ssa-kpi-action orange" onClick={()=>setCardKind("pmjjby")}
+        aria-label={"View Total PMJJBY customer list, "+count.pmjjby+" entries"}><span aria-hidden="true">✚</span><div><b>Total PMJJBY</b><strong>{count.pmjjby}</strong></div></button>
+      <button type="button" className="ssa-kpi ssa-kpi-action purple" onClick={()=>setCardKind("pmsby")}
+        aria-label={"View Total PMSBY customer list, "+count.pmsby+" entries"}><span aria-hidden="true">☂</span><div><b>Total PMSBY</b><strong>{count.pmsby}</strong></div></button>
     </section>
     <div className="ssa-main">
       <section className="ssa-panel ssa-editor" aria-label="Add or update SSA Campaign entry">
@@ -210,10 +290,10 @@ export default function SsaCampaign(){
       <section className="ssa-panel ssa-reports" aria-label="Reports and actions">
         <h2>▱ Reports &amp; Actions</h2>
         <div className="ssa-report-buttons">
-          <button className="pdf" type="button" disabled={loading} onClick={()=>void report("pdf")}><span>▣</span>PDF Report</button>
-          <button className="excel" type="button" disabled={loading} onClick={()=>void report("excel")}><span>▦</span>Excel Report</button>
-          <button className="print" type="button" disabled={loading} onClick={()=>void report("print")}><span>▤</span>Print</button>
-          <button className="share" type="button" disabled={loading} onClick={()=>void report("share")}><span>●</span>Share</button>
+          <button className="pdf" type="button" disabled={loading} onClick={()=>setReportKind("pdf")}><span>▣</span>PDF Report</button>
+          <button className="excel" type="button" disabled={loading} onClick={()=>setReportKind("excel")}><span>▦</span>Excel Report</button>
+          <button className="print" type="button" disabled={loading} onClick={()=>setReportKind("print")}><span>▤</span>Print</button>
+          <button className="share" type="button" disabled={loading} onClick={()=>setReportKind("share")}><span>●</span>Share</button>
         </div>
       </section>
     </div>
@@ -247,9 +327,9 @@ export default function SsaCampaign(){
       </footer>
     </section>
     <div className="ssa-print-report">
-      <h2>BANK SETU — SSA Campaign Report</h2><p>{start} to {end} · Total {count.total} · APY {count.apy} · PMJJBY {count.pmjjby} · PMSBY {count.pmsby}</p>
+      <h2>BANK SETU — SSA Campaign Report</h2><p>{printSelection?.description||""} · Total {printSelection?.rows.length||0} · APY {ssaReportCounts(printSelection?.rows||[]).apy} · PMJJBY {ssaReportCounts(printSelection?.rows||[]).pmjjby} · PMSBY {ssaReportCounts(printSelection?.rows||[]).pmsby}</p>
       <table><thead><tr><th>Date</th><th>Customer</th><th>Account Number</th><th>APY</th><th>PMJJBY</th><th>PMSBY</th></tr></thead>
-        <tbody>{filtered.map(e=><tr key={e.entryId}><td>{e.entryDate}</td><td>{e.name}</td><td>{e.accountNo}</td>
+        <tbody>{(printSelection?.rows||[]).map(e=><tr key={e.entryId}><td>{e.entryDate}</td><td>{e.name}</td><td>{e.accountNo}</td>
           <td>{e.apy?"Yes":"No"}</td><td>{e.pmjjby?"Yes":"No"}</td><td>{e.pmsby?"Yes":"No"}</td></tr>)}</tbody>
       </table>
     </div>

@@ -1,0 +1,276 @@
+/* BANK SETU SSA Campaign — real theme-specific UI, not the A4 print report.
+   Keep native Light UI and bank/SSA data operations untouched. */
+@media screen {
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign {
+    --ssa-surface:#172338;--ssa-surface-alt:#233249;--ssa-surface-soft:#1b2b45;
+    --ssa-foreground:#f8fafc;--ssa-secondary:#cbd5e1;--ssa-border:#40536f;
+    background:#111c30!important;color:var(--ssa-foreground)!important;
+    border:1px solid #30435d!important;
+    box-shadow:0 12px 32px rgba(2,10,25,.32)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign {
+    --ssa-surface:var(--glass-fill);
+    --ssa-surface-alt:var(--glass-fill-strong);
+    --ssa-surface-soft:var(--glass-fill);
+    --ssa-foreground:var(--glass-text);
+    --ssa-secondary:var(--glass-muted);
+    --ssa-border:var(--glass-line);
+    position:relative;isolation:isolate;
+    background:var(--glass-fill)!important;
+    color:var(--ssa-foreground)!important;
+    border:1px solid var(--ssa-border)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.25),0 15px 33px rgba(4,12,33,.2)!important;
+    backdrop-filter:blur(6px) saturate(1.12)!important;
+    -webkit-backdrop-filter:blur(6px) saturate(1.12)!important;
+  }
+  html[data-appearance="glass"][data-glass-dark="false"] .banksetu-app-shell .ssa-campaign {
+    background:rgba(255,255,255,.04)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign {
+    width:100%;max-width:100%;min-width:0;overflow-wrap:anywhere;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(.ssa-panel,.ssa-kpi,.ssa-customer,.ssa-schemes label,.ssa-chips,.ssa-matches,.ssa-matches button,.ssa-table-wrap,.ssa-report-buttons button,.ssa-customer-icon,.ssa-kpi>span,.ssa-report-buttons button span,.ssa-entries footer button,.ssa-save-buttons>button:last-child) {
+    background:var(--ssa-surface)!important;
+    color:var(--ssa-foreground)!important;
+    border:1px solid var(--ssa-border)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(.ssa-panel h2,.ssa-customer,.ssa-schemes label,.ssa-chips,.ssa-matches,.ssa-matches button,.ssa-save-buttons>button:last-child) {
+    background:var(--ssa-surface-alt)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-panel {
+    background:var(--ssa-surface)!important;
+    box-shadow:0 10px 24px rgba(3,9,24,.34)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-kpi{
+    background:linear-gradient(135deg,#202f4a,#18253b)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.13),0 7px 18px rgba(2,9,25,.26)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-banner {
+    background:linear-gradient(105deg,#1a3a69,#152944 55%,#194b60)!important;
+    border:1px solid #355875!important;
+    color:#f8fafc!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-report-buttons :is(.pdf,.excel,.print,.share) {
+    background:linear-gradient(140deg,#243451,#18283f)!important;
+    border-color:#425775!important;
+    color:#f8fafc!important;
+  }
+  /* Glass CSS uses the source's exact SSA classes; generic outer panels alone
+     leave inner headers, controls and action tiles looking opaque or white. */
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    .ssa-panel,.ssa-kpi,.ssa-customer,.ssa-schemes label,.ssa-chips,
+    .ssa-matches,.ssa-matches button,.ssa-table-wrap,.ssa-report-buttons button,
+    .ssa-customer-icon,.ssa-kpi>span,.ssa-report-buttons button span,
+    .ssa-entries footer button,.ssa-save-buttons>button:last-child
+  ) {
+    background:var(--ssa-surface)!important;
+    color:var(--ssa-foreground)!important;
+    border:1px solid var(--ssa-border)!important;
+    box-shadow:inset 1px 1px rgba(255,255,255,.42),inset -1px -1px rgba(162,196,255,.13),
+      0 10px 24px rgba(2,12,30,.22)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.24)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.24)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-kpi,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-report-buttons button,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-panel {
+    position:relative;overflow:hidden;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(.ssa-kpi,.ssa-report-buttons button,.ssa-panel)::before {
+    content:"";position:absolute;inset:0 0 auto;height:43%;pointer-events:none;
+    background:linear-gradient(168deg,rgba(255,255,255,.19),rgba(255,255,255,0) 70%);
+    border-radius:inherit;z-index:0;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(.ssa-kpi,.ssa-report-buttons button,.ssa-panel)>* {
+    position:relative;z-index:1;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-banner {
+    background:linear-gradient(115deg,rgba(50,115,215,.38),rgba(39,94,155,.24),rgba(102,95,185,.26))!important;
+    border:1px solid var(--glass-line)!important;color:var(--ssa-foreground)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.5),0 9px 20px rgba(3,15,39,.23)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.3)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-kpi {
+    box-shadow:inset 1px 2px rgba(255,255,255,.62),inset -2px -2px rgba(141,198,255,.2),
+      0 13px 26px rgba(3,14,36,.30),0 0 var(--glass-glow) rgba(123,182,255,.16)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-report-buttons button {
+    min-height:96px;
+    box-shadow:inset 1px 2px rgba(255,255,255,.5),
+      0 8px 19px rgba(3,13,37,.26),0 0 var(--glass-glow) rgba(143,207,255,.14)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    .ssa-kpi,.ssa-report-buttons button,.ssa-chips button,.ssa-matches button,
+    .ssa-save-buttons button,.ssa-search button
+  ) {
+    transition:transform var(--glass-motion) ease,box-shadow var(--glass-motion) ease,
+      filter var(--glass-motion) ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    .ssa-kpi,.ssa-report-buttons button,.ssa-chips button,.ssa-matches button,
+    .ssa-save-buttons button,.ssa-search button
+  ):not(:disabled):hover {
+    transform:translate3d(0,-3px,0) scale(1.008)!important;
+    box-shadow:inset 1px 2px rgba(255,255,255,.65),
+      0 14px 30px rgba(4,14,37,.37),0 0 var(--glass-glow) rgba(145,205,255,.38)!important;
+  }
+  /* Both Dark and Glass: readable labels, dates, controls and table bodies. */
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(
+    h1,h2,h3,b,strong,label,small,p,span,td,th,.ssa-customer b,
+    .ssa-entry-meta span,.ssa-help,.ssa-empty,.ssa-entries footer
+  ):not(.ssa-alert.error):not(.ssa-conflict):not(.ssa-pending):not(.ssa-synced):not(.ssa-check) {
+    color:var(--ssa-foreground)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    h1,h2,h3,b,strong,label,small,p,span,td,th,.ssa-customer b,
+    .ssa-entry-meta span,.ssa-help,.ssa-empty,.ssa-entries footer
+  ):not(.ssa-alert.error):not(.ssa-conflict):not(.ssa-pending):not(.ssa-synced):not(.ssa-check) {
+    color:var(--ssa-foreground)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(
+    .ssa-customer small,.ssa-entry-meta span,.ssa-help,.ssa-empty,.ssa-matches small
+  ),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    .ssa-customer small,.ssa-entry-meta span,.ssa-help,.ssa-empty,.ssa-matches small
+  ) {
+    color:var(--ssa-secondary)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(
+    input:not([type="checkbox"]),select,textarea,.ssa-banner-controls label
+  ) {
+    background:#233249!important;color:#f8fafc!important;border:1px solid #536884!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.12)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    input:not([type="checkbox"]),select,textarea,.ssa-banner-controls label
+  ) {
+    background:var(--ssa-surface-alt)!important;color:var(--ssa-foreground)!important;
+    border:1px solid var(--ssa-border)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.26)!important;
+    backdrop-filter:blur(10px)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(.ssa-banner-controls input[type="date"],.ssa-entry-meta input[type="date"]),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(.ssa-banner-controls input[type="date"],.ssa-entry-meta input[type="date"]) {
+    min-width:0;max-width:100%;color:var(--ssa-foreground)!important;
+    background:transparent!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign input[type="date"]::-webkit-calendar-picker-indicator,
+  html[data-appearance="glass"][data-glass-dark="true"] .banksetu-app-shell .ssa-campaign input[type="date"]::-webkit-calendar-picker-indicator {
+    filter:invert(1);opacity:.88;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(.ssa-panel h2,.ssa-chips),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(.ssa-panel h2,.ssa-chips) {
+    color:var(--ssa-foreground)!important;
+    background:var(--ssa-surface-alt)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-entries :is(th,thead),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-entries :is(th,thead) {
+    background:var(--ssa-surface-alt)!important;color:var(--ssa-foreground)!important;
+    border-color:var(--ssa-border)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-entries :is(td,tbody tr),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-entries :is(td,tbody tr) {
+    color:var(--ssa-foreground)!important;border-color:var(--ssa-border)!important;
+    background:transparent!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-entries tbody tr:nth-child(even),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-entries tbody tr:nth-child(even) {
+    background:rgba(154,188,233,.065)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(.ssa-chips button.active,.ssa-search button),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(.ssa-chips button.active,.ssa-search button) {
+    color:white!important;background:linear-gradient(135deg,#167ed7,#395fc4)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-save-buttons .ssa-save,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-save-buttons .ssa-save {
+    background:linear-gradient(115deg,#087c54,#12a777)!important;color:#fff!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-save-buttons .ssa-update,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-save-buttons .ssa-update {
+    background:linear-gradient(115deg,#0f65c8,#4388e7)!important;color:#fff!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-report-buttons button span,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-report-buttons button span {
+    background:var(--ssa-surface-alt)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign .ssa-chips button.active,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign .ssa-chips button.active {
+    box-shadow:inset 0 1px #ffffff60,0 0 10px #549bff44!important;
+  }
+  /* Do not recolor the existing informational status states or PRINT report. */
+  html[data-appearance="dark"] .banksetu-app-shell .ssa-campaign :is(.ssa-pending,.ssa-conflict,.ssa-synced),
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(.ssa-pending,.ssa-conflict,.ssa-synced) {
+    font-weight:800;
+  }
+  /* Glass stagger is deliberately visible without slowing the customer's data.
+     Delays only affect paint; never network, auth, submit, search or report actions. */
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign > :is(.ssa-banner,.ssa-kpis,.ssa-main,.ssa-entries) {
+    animation:ssa-glass-arrive 520ms cubic-bezier(.16,.78,.18,1) both;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign > .ssa-banner {animation-delay:60ms}
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign > .ssa-kpis {animation-delay:210ms}
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign > .ssa-main {animation-delay:420ms}
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign > .ssa-entries {animation-delay:640ms}
+  @keyframes ssa-glass-arrive {
+    from {opacity:.2;transform:translate3d(0,15px,0) scale(.99)}
+    to {opacity:1;transform:none}
+  }
+}
+@media screen and (max-width:850px) {
+  .ssa-campaign .ssa-banner {flex-direction:column;align-items:stretch;gap:10px}
+  .ssa-campaign .ssa-banner-controls {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;width:100%}
+  .ssa-campaign .ssa-banner-controls>select {grid-column:1/-1;width:100%;min-width:0}
+  .ssa-campaign .ssa-banner-controls label {width:100%;min-width:0}
+  .ssa-campaign .ssa-banner-controls label input[type="date"] {min-width:0;width:100%;max-width:100%;font-size:12px}
+  .ssa-campaign .ssa-banner-controls>button {grid-column:3;align-self:stretch}
+  .ssa-campaign .ssa-main {grid-template-columns:minmax(0,1fr)!important}
+  .ssa-campaign .ssa-kpis {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ssa-campaign .ssa-editor,.ssa-campaign .ssa-reports,.ssa-campaign .ssa-entries {min-width:0;width:100%}
+  .ssa-campaign .ssa-entries>header {display:grid;grid-template-columns:1fr;justify-items:stretch}
+  .ssa-campaign .ssa-entries>header>input {max-width:none;width:100%}
+  .ssa-campaign .ssa-chips {overflow-x:auto;flex-wrap:nowrap;max-width:100%;scrollbar-width:thin}
+  .ssa-campaign .ssa-report-buttons {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ssa-campaign .ssa-table-wrap {width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .ssa-campaign .ssa-entries table {min-width:760px}
+}
+@media screen and (max-width:500px) {
+  .ssa-campaign {padding:9px!important}
+  .ssa-campaign .ssa-banner {padding:12px}
+  .ssa-campaign .ssa-banner h1 {font-size:19px;white-space:normal}
+  .ssa-campaign .ssa-banner-controls {grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .ssa-campaign .ssa-banner-controls select {grid-column:1/-1}
+  .ssa-campaign .ssa-banner-controls>button {grid-column:1/-1;width:100%;height:38px}
+  .ssa-campaign .ssa-search {display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+  .ssa-campaign .ssa-search>input,.ssa-campaign .ssa-search>button {width:100%;min-width:0}
+  .ssa-campaign .ssa-kpis {gap:8px}
+  .ssa-campaign .ssa-kpi {padding:9px;min-height:82px;gap:9px}
+  .ssa-campaign .ssa-kpi>span {width:34px;height:34px;flex:0 0 34px}
+  .ssa-campaign .ssa-kpi b {white-space:normal;font-size:11px}
+  .ssa-campaign .ssa-kpi strong {font-size:clamp(21px,6vw,28px)}
+  .ssa-campaign .ssa-customer {display:grid;grid-template-columns:auto minmax(0,1fr)}
+  .ssa-campaign .ssa-customer>div {min-width:0}
+  .ssa-campaign .ssa-customer>div:last-child {grid-column:2}
+  .ssa-campaign .ssa-entry-meta {display:grid;grid-template-columns:1fr;gap:7px}
+  .ssa-campaign .ssa-entry-meta label {flex-wrap:wrap}
+  .ssa-campaign .ssa-save-buttons {display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ssa-campaign .ssa-save-buttons>button {white-space:normal!important;min-width:0}
+  .ssa-campaign .ssa-save-buttons>button:last-child {grid-column:1/-1}
+  .ssa-campaign .ssa-report-buttons button {min-height:90px;padding:12px 7px}
+  .ssa-campaign .ssa-entries footer {gap:8px}
+}
+@media screen and (max-width:340px) {
+  .ssa-campaign .ssa-kpis {grid-template-columns:1fr}
+  .ssa-campaign .ssa-schemes label {padding:8px 10px}
+}
+@media screen and (hover:none) {
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign :is(
+    .ssa-kpi,.ssa-report-buttons button,.ssa-chips button,.ssa-matches button,.ssa-save-buttons button,.ssa-search button
+  ):hover {transform:none!important}
+}
+@media screen and (prefers-reduced-motion:reduce) {
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign,
+  html[data-appearance="glass"] .banksetu-app-shell .ssa-campaign * {
+    animation:none!important;transition:none!important;
+  }
+}

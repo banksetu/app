@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync, readFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import vm from "node:vm";
 
@@ -10,6 +10,7 @@ const sourceUrl=new URL("../apps-script/Code.gs",import.meta.url);
 const publicUrl=new URL("../public/client-bridge/Code.gs",import.meta.url);
 const source=readFileSync(sourceUrl,"utf8");
 test("Settings and first-time setup distribute the complete SSA bridge source",()=>{
+  mkdirSync(new URL("../public/client-bridge/",import.meta.url),{recursive:true});
   copyFileSync(sourceUrl,publicUrl); // same source-of-truth operation as prepare-client-assets.mjs
   const publicSource=readFileSync(publicUrl,"utf8");
   const digest=value=>createHash("sha256").update(value).digest("hex");
@@ -131,3 +132,6 @@ test("SSA rejects a customer identity from a different tenant",()=>{
   assert.equal(blocked.success,false);assert.equal(blocked.code,"CUSTOMER_MISMATCH");
   assert.equal(x.books.tenantA.getSheetByName("SSA Campaign"),null);
 });
+
+// Report selection, export dialog, A4 printing and historical menu regression.
+import "./ssa-report-dialog.test.mjs";

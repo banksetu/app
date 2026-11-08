@@ -11,6 +11,14 @@ import { localDataFetch, getDataIdToken, getActiveLocalCustomers, localModeEnabl
 import { customerAnalytics } from "./core/dashboardAnalytics";
 import { currentMonthOpeningCount } from "./core/accountOpeningReport";
 import { appearanceStorageKey, storedAppearance, type Appearance } from "./core/appearance";
+import { DEFAULT_GLASS_SETTINGS, glassDarkSurface, glassScope, glassStorageKey, glassVariables, saveGlassSettings, storedGlassSettings, type GlassSettings } from "./core/glassAppearance";
+import { readGlassWallpaper, saveGlassWallpaper } from "./core/glassBackgroundStore";
+import "./GlassTheme.css";
+import "./GlassCoverage.css";
+import "./GlassVisualPolish.css";
+import "./ThemeDeepCoverage.css";
+import "./GlassLuminance.css";
+import "./GlassFormPopupPolish.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -64,6 +72,7 @@ const Customers = lazy(() => import("./Customers"));
 const FormsSendToBranch = lazy(() => import("./FormsSendToBranch"));
 const AllCustomerData = lazy(() => import("./AllCustomerData"));
 const DashboardAccountOpeningReport = lazy(() => import("./DashboardAccountOpeningReport"));
+const GlassAppearancePanel = lazy(() => import("./GlassAppearancePanel"));
 const Reports = lazy(() => import("./Reports"));
 
 
@@ -302,17 +311,70 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const canCustomizeLayout = windowsLayoutEngineAvailable() && !licenseReadOnly && ["master_owner", "admin", "client_admin", "client_user"].includes(accountRole);
   const appearanceIdentity = () => ({uid:getAuth().currentUser?.uid || '',tenantId:sessionStorage.getItem('bankSetuTenantId') || (['master_owner','admin'].includes(accountRole) ? 'master' : '')});
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
+  const [glassSettings,setGlassSettings]=useState<GlassSettings>(()=>{const {uid,tenantId}=appearanceIdentity();return storedGlassSettings(localStorage,uid,tenantId);});
+  const [glassDialogOpen,setGlassDialogOpen]=useState(false);
+  const [glassPreviewOriginal,setGlassPreviewOriginal]=useState<GlassSettings|null>(null);
+  const [glassWallpaperUrl,setGlassWallpaperUrl]=useState("");
+  const [glassScopeRevision,setGlassScopeRevision]=useState(0);
   useLayoutEffect(()=>{
-    document.documentElement.dataset.appearance=appearance;
+    const root=document.documentElement;
+    root.dataset.appearance=appearance;
+    const variableNames=Object.keys(glassVariables(DEFAULT_GLASS_SETTINGS));
+    if(appearance==="glass"){
+      const variables=glassVariables(glassSettings,glassWallpaperUrl);
+      for(const [key,value] of Object.entries(variables))root.style.setProperty(key,value);
+      root.dataset.glassDark=String(glassDarkSurface(glassSettings));
+      root.dataset.glassDesign=glassSettings.design;
+    }else{
+      for(const key of variableNames)root.style.removeProperty(key);
+      delete root.dataset.glassDark;
+      delete root.dataset.glassDesign;
+    }
     void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
-    return()=>{delete document.documentElement.dataset.appearance;};
-  },[appearance]);
+    return()=>{for(const key of variableNames)root.style.removeProperty(key);delete root.dataset.appearance;delete root.dataset.glassDark;delete root.dataset.glassDesign;};
+  },[appearance,glassSettings,glassWallpaperUrl]);
   useEffect(() => {
-    const restore = () => {const {uid,tenantId}=appearanceIdentity();setAppearance(storedAppearance(localStorage,uid,tenantId));};
+    const restore = () => {
+      const {uid,tenantId}=appearanceIdentity();
+      setAppearance(storedAppearance(localStorage,uid,tenantId));
+      setGlassSettings(storedGlassSettings(localStorage,uid,tenantId));
+      setGlassWallpaperUrl(""); // Clear previous workspace artwork before loading another tenant.
+      setGlassDialogOpen(false);
+      setGlassPreviewOriginal(null);
+      setGlassScopeRevision(value=>value+1);
+    };
     window.addEventListener('banksetu-workspace-change', restore);
     return () => window.removeEventListener('banksetu-workspace-change', restore);
   }, []);
-  const changeAppearance = (mode: Appearance) => { const {uid,tenantId}=appearanceIdentity();if(!uid)return;localStorage.setItem(appearanceStorageKey(uid,tenantId), mode);setAppearance(mode); };
+  useEffect(()=>{
+    if(appearance!=="glass")return;
+    const {uid,tenantId}=appearanceIdentity();
+    const key=glassScope(uid,tenantId);
+    if(!key){setGlassWallpaperUrl("");return;}
+    let active=true;
+    void readGlassWallpaper(key).then(blob=>{
+      if(active&&blob)setGlassWallpaperUrl(URL.createObjectURL(blob));
+      else if(active)setGlassWallpaperUrl("");
+    }).catch(()=>{if(active)setGlassWallpaperUrl("");});
+    return()=>{active=false;};
+  },[appearance,glassScopeRevision]);
+  useEffect(()=>()=>{if(glassWallpaperUrl.startsWith("blob:"))URL.revokeObjectURL(glassWallpaperUrl);},[glassWallpaperUrl]);
+  const changeAppearance = (mode: Appearance) => {
+    const {uid,tenantId}=appearanceIdentity();
+    if(!uid)return;
+    try{localStorage.setItem(appearanceStorageKey(uid,tenantId),mode);}catch{ /* Switching remains available if local storage is full. */ }
+    setAppearance(mode);
+    if(mode!=="glass")setGlassDialogOpen(false);
+  };
+  const saveGlassPreferences=async(settings:GlassSettings,wallpaper?:Blob,remember=true)=>{
+    const {uid,tenantId}=appearanceIdentity(),key=glassScope(uid,tenantId);
+    if(!key)throw new Error("Sign in to your workspace before saving appearance.");
+    if(wallpaper&&remember)await saveGlassWallpaper(key,wallpaper);
+    if(remember)saveGlassSettings(localStorage,uid,tenantId,settings);
+    else try{localStorage.removeItem(glassStorageKey(uid,tenantId));}catch{ /* Temporary changes still apply. */ }
+    if(wallpaper)setGlassWallpaperUrl(URL.createObjectURL(wallpaper));
+    setGlassSettings(settings);
+  };
 
   const syncStatus=useSyncStatus();
   const supportUnread=useSupportUnread(accountRole);
@@ -958,7 +1020,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
   return (
 
-    <main className="banksetu-app-shell" data-appearance={appearance} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
+    <main className="banksetu-app-shell" data-appearance={appearance} data-glass-design={appearance==="glass"?glassSettings.design:undefined} style={{ ...styles.page, "--dashboard-bg": useCustomDashboardColor ? `linear-gradient(145deg, ${customDashboardColor} 0%, color-mix(in srgb, ${customDashboardColor} 72%, #ffffff 28%) 100%)` : selectedDashboardTheme.background, "--menu-gradient": selectedMenuTheme.background, "--card-gradient-1": CARD_GRADIENTS[0], "--card-gradient-2": CARD_GRADIENTS[1], "--card-gradient-3": CARD_GRADIENTS[2], "--card-gradient-4": CARD_GRADIENTS[3] } as CSSProperties}>
       <SlideNotifications />
       <LicenseInquiryAlert enabled={canControlGlobalDashboard} onCount={setLicenseInquiryCount} openLicense={()=>openPage("license-management")}/>
 
@@ -1046,25 +1108,33 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <nav style={styles.nav}>
           <NavButton icon="dashboard" label="Dashboard" active={activePage === "dashboard"} onClick={() => openPage("dashboard")} />
-          <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
           {!licenseReadOnly && <NavButton icon="user-plus" label="Customer Entry" active={activePage === "customer-entry"} onClick={() => openPage("customer-entry")} />}
-          {!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF Sample" active={activePage === "search"} onClick={() => openPage("search")} />}
-          {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
-          {!licenseReadOnly && <NavButton icon="chart" label="SSA Campaign" active={activePage === "ssa-campaign"} onClick={() => openPage("ssa-campaign")} />}
           {!licenseReadOnly && <NavButton icon="book-check" label="Quick Passbook" active={activePage === "quick-passbook"} onClick={() => openPage("quick-passbook")} />}
-          {!licenseReadOnly && <NavButton icon="printer" label="Passbook Print (PR2)" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
-          {!licenseReadOnly && canCustomizeLayout && <NavButton icon="file-search" label="Auto Passbook Generator" active={activePage === "customize-passbook"} onClick={() => openPage("customize-passbook")} />}
+          {!licenseReadOnly && <NavButton icon="printer" label="Passbook Print" active={activePage === "passbook"} onClick={() => openPage("passbook")} />}
+          <NavButton icon="users-data" label="All Customer Data" active={activePage === "all-customer-data"} onClick={() => openPage("all-customer-data")} />
           <NavButton icon="contact" label="Customers" active={activePage === "customers"} onClick={() => openPage("customers")} />
-          {!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
+          {!licenseReadOnly && <NavButton icon="file-search" label="Account Opening PDF" active={activePage === "search"} onClick={() => openPage("search")} />}
+          {!licenseReadOnly && <NavButton icon="chart" label="SSA Campaign" active={activePage === "ssa-campaign"} onClick={() => openPage("ssa-campaign")} />}
+          {!licenseReadOnly && <NavButton icon="send" label="Forms Send to Branch" active={activePage === "forms-send-to-branch"} onClick={() => openPage("forms-send-to-branch")} />}
           {(licenseReadOnly || userRole === "admin") && <NavButton icon="settings" label="Settings" active={activePage === "settings"} onClick={() => openPage("settings")} />}
+          {!licenseReadOnly && <NavButton icon="chart" label="Reports" active={activePage === "reports"} onClick={() => openPage("reports")} />}
           {(licenseReadOnly || accountRole === "master_owner" || accountRole === "master_admin" || sessionStorage.getItem("bankSetuConnectionMode") === "option-b") && <NavButton icon="cloud-sync" label="Sync & Backup" active={activePage === "sync-backup"} spinning={syncStatus.syncing} onClick={() => openPage("sync-backup")} />}
         </nav>
-        <div className="banksetu-appearance" role="group" aria-label="Appearance">
-          <button type="button" className="banksetu-appearance-toggle" data-mode={appearance} aria-label={`Switch to ${appearance === 'dark' ? 'light' : 'dark'} appearance`} aria-pressed={appearance === 'dark'} onClick={() => changeAppearance(appearance === 'dark' ? 'light' : 'dark')}>
-            <span className="banksetu-appearance-sun" aria-hidden="true">☀</span>
-            <span className="banksetu-appearance-moon" aria-hidden="true">☾</span>
-            <span className="banksetu-appearance-thumb" aria-hidden="true" />
-          </button>
+        <div className="banksetu-appearance" role="group" aria-label="Appearance: Light, Dark, Glass">
+          <div className="banksetu-appearance-track" data-mode={appearance}
+            onPointerUp={event=>{
+              if(event.pointerType==="mouse"&&event.button!==0)return;
+              const bounds=event.currentTarget.getBoundingClientRect();
+              if(bounds.width<1)return;
+              const index=Math.max(0,Math.min(2,Math.floor((event.clientX-bounds.left)/bounds.width*3)));
+              changeAppearance((["light","dark","glass"] as Appearance[])[index]);
+            }}>
+            <span className="banksetu-appearance-thumb" aria-hidden="true"/>
+            {(["light","dark","glass"] as Appearance[]).map(mode=><button key={mode}
+              type="button" aria-label={mode==="glass"?"Glass Effect":mode==="dark"?"Dark Mode":"Light Mode"}
+              aria-pressed={appearance===mode} title={mode==="glass"?"Glass Effect":mode==="dark"?"Dark Mode":"Light Mode"}
+              onClick={()=>changeAppearance(mode)}>{mode==="light"?"☀":mode==="dark"?"☾":"◇"}</button>)}
+          </div>
         </div>
 
       </aside>
@@ -1368,7 +1438,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             {adminMenuOpen && createPortal(
 
-              <div style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
+              <div className="banksetu-admin-menu" style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
 
                 <button
 
@@ -1384,6 +1454,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
                 </button>
 
+
+                {appearance==="glass" && <button type="button" className="banksetu-glass-admin-action"
+                  style={styles.adminMenuItem} onClick={() => {setAdminMenuOpen(false);setGlassPreviewOriginal({...glassSettings});setGlassDialogOpen(true);}}>
+                  ◉ Appearance &amp; Background
+                </button>}
 
                 {canControlGlobalDashboard && <button
                   type="button" style={styles.adminMenuItem}
@@ -1502,6 +1577,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
               openPage={openPage}
               bankSettingsReady={bankSettingsReady}
               accountRole={accountRole}
+              privacyStorageKey={(()=>{
+                const {uid,tenantId}=appearanceIdentity();
+                return uid&&tenantId?"bankSetuKpiPrivacy:"+glassScope(uid,tenantId):"";
+              })()}
 
             />
 
@@ -1565,7 +1644,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div
 
-          style={styles.modalOverlay}
+          className="banksetu-glass-modal-overlay" style={styles.modalOverlay}
 
           onMouseDown={(event) => {
 
@@ -1579,7 +1658,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         >
 
-          <div style={styles.bankInfoModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.bankInfoModal}>
 
             <div style={styles.modalHeader}>
 
@@ -1909,13 +1988,20 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       )}
 
+      {glassDialogOpen&&appearance==="glass"&&<Suspense fallback={null}>
+        <GlassAppearancePanel initial={glassPreviewOriginal||glassSettings} existingCustomUrl={glassWallpaperUrl}
+          onPreview={setGlassSettings}
+          onClose={(saved=false)=>{if(!saved&&glassPreviewOriginal)setGlassSettings(glassPreviewOriginal);setGlassPreviewOriginal(null);setGlassDialogOpen(false);}}
+          onSave={saveGlassPreferences}/>
+      </Suspense>}
+
       {/* DASHBOARD COLOR */}
 
       {themeModalOpen && canControlGlobalDashboard && (
 
         <div
 
-          style={styles.modalOverlay}
+          className="banksetu-glass-modal-overlay" style={styles.modalOverlay}
 
           onMouseDown={(event) => {
 
@@ -1929,7 +2015,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         >
 
-          <div style={styles.themeModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.themeModal}>
 
             <div style={styles.modalHeader}>
 
@@ -2070,8 +2156,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {menuThemeModalOpen && canControlGlobalDashboard && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setMenuThemeModalOpen(false); }}>
+          <div className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(430px, 92vw)", maxHeight: "72vh", padding: "18px", display: "flex", flexDirection: "column" }}>
             <div style={styles.modalHeader}>
               <div>
                 <p style={styles.passwordEyebrow}>APPEARANCE</p>
@@ -2094,8 +2180,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {clientCreateOpen && userRole === "admin" && accountRole !== "client_admin" && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) {setClientCreateOpen(false);setClientInquiryPrefill(null);} }}>
-          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) {setClientCreateOpen(false);setClientInquiryPrefill(null);} }}>
+          <div role="dialog" aria-modal="true" aria-label="Create Client Admin" className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(760px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>Create Client Admin</h2>
               <button type="button" aria-label="Close create client" style={styles.modalClose} onClick={() => {setClientCreateOpen(false);setClientInquiryPrefill(null);}}>×</button>
@@ -2106,8 +2192,8 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {advancedAdminOpen && !licenseReadOnly && userRole === "admin" && (
-        <div style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
-          <div style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) setAdvancedAdminOpen(false); }}>
+          <div className="banksetu-glass-inline-dialog" style={{ ...styles.themeModal, width: "min(1100px, 94vw)", maxHeight: "90vh", overflow: "auto" }}>
             <div style={styles.modalHeader}>
               <div><p style={styles.passwordEyebrow}>ADMIN ONLY</p><h2 style={styles.modalTitle}>{accountRole === "client_admin" ? "Workspace Settings" : "Advanced Administrator Control"}</h2></div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2134,7 +2220,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         <div
 
-          style={styles.modalOverlay}
+          className="banksetu-glass-modal-overlay" style={styles.modalOverlay}
 
           onMouseDown={(event) => {
 
@@ -2154,7 +2240,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
         >
 
-          <div style={styles.passwordModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.passwordModal}>
 
             <div style={styles.modalHeader}>
 
@@ -2366,9 +2452,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
       {systemStatusOpen && (
 
-        <div style={styles.modalOverlay}>
+        <div className="banksetu-glass-modal-overlay" style={styles.modalOverlay}>
 
-          <div style={styles.statusModal}>
+          <div className="banksetu-glass-inline-dialog" style={styles.statusModal}>
 
             <div style={styles.modalHeader}>
 
@@ -2963,12 +3049,11 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
 \========================= */
 
-type StatusPanelType = "kyc" | "passbook" | "inactive";
+type StatusPanelType = "kyc" | "passbook";
 type StatusCustomer = Record<string, unknown> & {rowNumber?: number; recordId?: string};
 const statusPanelConfig = {
   kyc: {title:"KYC Pending Customers", field:"status", current:"Pending", next:"Active"},
   passbook: {title:"Passbook Pending Customers", field:"passbookStatus", current:"Pending", next:"Printed"},
-  inactive: {title:"Inactive Account Customers", field:"status", current:"Inactive", next:"Active"},
 } as const;
 
 function DashboardStatusPanel({type, accountRole, onClose}: {type:StatusPanelType;accountRole:string;onClose:()=>void}) {
@@ -3062,12 +3147,14 @@ function DashboardHome({
   openPage,
   bankSettingsReady,
   accountRole,
+  privacyStorageKey,
 
 }: {
 
   openPage: (page: PageName) => void;
   bankSettingsReady: boolean;
   accountRole: string;
+  privacyStorageKey:string;
 
 }) {
 
@@ -3078,8 +3165,6 @@ function DashboardHome({
     kycPending: number;
 
     passbookPending: number;
-
-    inactiveAccounts: number;
 
   };
 
@@ -3093,7 +3178,6 @@ function DashboardHome({
 
       passbookPending: 0,
 
-      inactiveAccounts: 0,
 
     });
   const [analyticsRows, setAnalyticsRows] = useState<Record<string, unknown>[] | null>(null);
@@ -3108,8 +3192,26 @@ function DashboardHome({
   const statsLoadedOnce = useRef(false);
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
-  const [statusPanel, setStatusPanel] = useState<"kyc" | "passbook" | "inactive" | null>(null);
+  const [statusPanel, setStatusPanel] = useState<StatusPanelType | null>(null);
   const [openingReportOpen,setOpeningReportOpen]=useState(false);
+  const [kpiPrivacyHidden,setKpiPrivacyHidden]=useState(()=>{
+    if(!privacyStorageKey)return false;
+    try{return localStorage.getItem(privacyStorageKey)==="hidden";}
+    catch{return false;}
+  });
+  useEffect(()=>{
+    const refresh=()=>{
+      try{setKpiPrivacyHidden(Boolean(privacyStorageKey&&localStorage.getItem(privacyStorageKey)==="hidden"));}
+      catch{setKpiPrivacyHidden(false);}
+    };
+    window.addEventListener("banksetu-workspace-change",refresh);
+    return()=>window.removeEventListener("banksetu-workspace-change",refresh);
+  },[privacyStorageKey]);
+  const toggleKpiPrivacy=()=>{
+    const next=!kpiPrivacyHidden;
+    setKpiPrivacyHidden(next);
+    if(privacyStorageKey)try{localStorage.setItem(privacyStorageKey,next?"hidden":"visible");}catch{ /* Privacy toggle works even if device storage is unavailable. */ }
+  };
   const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
   useEffect(() => {
@@ -3168,7 +3270,6 @@ function DashboardHome({
                 totalCustomers: records.length,
                 kycPending: records.filter((customer) => text(field(customer, ["status"])) === "pending").length,
                 passbookPending: records.filter((customer) => ["", "pending"].includes(text(field(customer, ["passbookstatus"])))).length,
-                inactiveAccounts: records.filter((customer) => text(field(customer, ["status"])) === "inactive").length,
               };
               if (!cancelled) {
                 setDashboardStats(localStats);
@@ -3399,7 +3500,6 @@ function DashboardHome({
             totalCustomers: customerIds.size,
             kycPending:active.filter(customer=>status(customer,"status")==="pending").length,
             passbookPending:active.filter(customer=>["","pending"].includes(status(customer,"passbookStatus"))).length,
-            inactiveAccounts:active.filter(customer=>status(customer,"status")==="inactive").length,
 
           });
           statsLoadedOnce.current=true;
@@ -3526,7 +3626,17 @@ function DashboardHome({
 
       )}
 
-      <section className="dashboard-stats-grid" style={styles.statsGrid}>
+      <div className="dashboard-kpi-controls">
+        <span className="dashboard-kpi-privacy-status" role="status" aria-live="polite">{kpiPrivacyHidden?"Dashboard figures hidden":"Dashboard figures visible"}</span>
+        <button type="button" className="dashboard-kpi-privacy-toggle"
+          onClick={toggleKpiPrivacy} aria-pressed={kpiPrivacyHidden}
+          aria-label={kpiPrivacyHidden?"Show dashboard card figures":"Hide dashboard card figures"}
+          title={kpiPrivacyHidden?"Show figures":"Hide figures"}>
+          <span aria-hidden="true">{kpiPrivacyHidden?"◌":"◉"}</span>
+          <span className="dashboard-kpi-privacy-label">{kpiPrivacyHidden?"Show":"Hide"}</span>
+        </button>
+      </div>
+      <section className={`dashboard-stats-grid${kpiPrivacyHidden?" stats-obscured":""}`} style={styles.statsGrid}>
 
         {stats.map(([icon, title, value], index) => (
 
@@ -3535,14 +3645,15 @@ function DashboardHome({
             key={title}
 
             className="dashboard-stat-card"
-            aria-label={`Open ${title}`}
+            aria-label={kpiPrivacyHidden?`${title} hidden`:`Open ${title}`}
+            disabled={kpiPrivacyHidden}
             onClick={() => index === 0 ? openPage("all-customer-data") : index===3 ? setOpeningReportOpen(true) : setStatusPanel(index === 1 ? "kyc" : "passbook")}
 
           style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
           >
 
-            <div className="dashboard-stat-top" style={styles.statTop}>
+            <div className="dashboard-stat-top" aria-hidden={kpiPrivacyHidden} style={styles.statTop}>
 
               <div className="dashboard-stat-icon" style={styles.statIcon}>
 
@@ -3558,13 +3669,13 @@ function DashboardHome({
 
             </div>
 
-            <div className="dashboard-stat-value" style={styles.statValue}>
+            <div className="dashboard-stat-value" aria-hidden={kpiPrivacyHidden} style={styles.statValue}>
 
               {(statsLoading || (index===3&&analyticsRows===null)) ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
-            <h3 className="dashboard-stat-title" style={styles.statTitle}>
+            <h3 className="dashboard-stat-title" aria-hidden={kpiPrivacyHidden} style={styles.statTitle}>
 
               {title}
 
@@ -3679,7 +3790,10 @@ function DashboardHome({
 
       </section>
 
-      <DashboardAnalytics rows={analyticsRows} stats={dashboardStats} loading={statsLoading} />
+      <DashboardAnalytics rows={analyticsRows} stats={dashboardStats} monthOpenings={monthOpenings}
+        loading={statsLoading} onKycClick={()=>setStatusPanel("kyc")}
+        onPassbookClick={()=>setStatusPanel("passbook")}
+        onMonthOpeningsClick={()=>setOpeningReportOpen(true)} />
 
     </>
 
@@ -3687,37 +3801,49 @@ function DashboardHome({
 
 }
 
-function DashboardAnalytics({ rows, stats, loading }: { rows: Record<string, unknown>[] | null; stats: { kycPending:number; passbookPending:number; inactiveAccounts:number }; loading:boolean }) {
+function DashboardAnalytics({rows,stats,monthOpenings,loading,onKycClick,onPassbookClick,onMonthOpeningsClick}:{
+  rows:Record<string,unknown>[] | null;
+  stats:{kycPending:number;passbookPending:number};monthOpenings:number;loading:boolean;
+  onKycClick:()=>void;onPassbookClick:()=>void;onMonthOpeningsClick:()=>void;
+}) {
   const analytics = rows === null ? null : customerAnalytics(rows);
   const months = analytics?.months || [];
   const maxEntries = Math.max(1, ...months.map(month => month.entries));
   const maxGrowth = Math.max(1, ...months.map(month => month.growth));
   const statuses = [
-    { title:'KYC Pending', count:stats.kycPending, color:'#38bdf8' },
-    { title:'Passbook Pending', count:stats.passbookPending, color:'#a78bfa' },
-    { title:'Inactive Accounts', count:stats.inactiveAccounts, color:'#fbbf24' },
+    { title:'KYC Pending', count:stats.kycPending, color:'#38bdf8', onClick:onKycClick },
+    { title:'Passbook Pending', count:stats.passbookPending, color:'#a78bfa', onClick:onPassbookClick },
+    { title:'This Month Account Openings', count:monthOpenings, color:'#fbbf24', onClick:onMonthOpeningsClick },
   ];
+  const maxStatus=Math.max(1,...statuses.map(item=>item.count));
   return <section className="dashboard-analytics" aria-label="Customer analytics">
     <h2>Analytics</h2>
     <div className="dashboard-analytics-grid">
       <article className="dashboard-analytics-card"><h3>Customer Growth</h3>
         {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable. No historical totals estimated.</p> : <>
           <p>Currently active customers with recorded entry dates · {analytics.known} known{analytics.undated ? ` · ${analytics.undated} undated excluded` : ''}</p>
-          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.growth}`).join(', ')}>
-            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar growth" style={{height:`${Math.max(2, m.growth / maxGrowth * 100)}%`}} title={`${m.key}: ${m.growth}`} /><small>{m.label}</small></div>)}
+          <div className="dashboard-analytics-bars" role="group" aria-label="Customer growth by month">
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key} tabIndex={0}
+              aria-label={`${m.key}: ${m.growth} total customers`} data-tooltip={`${m.key}: ${m.growth} customers`}><span className="dashboard-analytics-bar growth" style={{height:`${Math.max(2, m.growth / maxGrowth * 100)}%`}} /><small>{m.label}</small></div>)}
           </div><small>Deleted customers and records without entry dates are not included in historical totals.</small>
         </>}
       </article>
       <article className="dashboard-analytics-card"><h3>Monthly Customer Entries</h3>
         {!analytics || loading ? <p>Loading local history…</p> : analytics.known === 0 ? <p>Entry dates unavailable.</p> : <>
           <p>This month: {analytics.thisMonth} · Monthly average (12 months): {analytics.monthlyAverage.toFixed(2)}</p>
-          <div className="dashboard-analytics-bars" role="img" aria-label={months.map(m => `${m.label}: ${m.entries}`).join(', ')}>
-            {months.map(m => <div className="dashboard-analytics-column" key={m.key}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} title={`${m.key}: ${m.entries}`} /><small>{m.label}</small></div>)}
+          <div className="dashboard-analytics-bars" role="group" aria-label="Monthly customer entries">
+            {months.map(m => <div className="dashboard-analytics-column" key={m.key} tabIndex={0}
+              aria-label={`${m.key}: ${m.entries} customer entries`} data-tooltip={`${m.key}: ${m.entries} new customers`}><span className="dashboard-analytics-bar entries" style={{height:`${m.entries ? Math.max(3, m.entries / maxEntries * 100) : 2}%`}} /><small>{m.label}</small></div>)}
           </div><small>{analytics.undated} customer(s) without an entry date excluded.</small>
         </>}
       </article>
-      <article className="dashboard-analytics-card"><h3>Customer Status Analytics</h3><p>Current dashboard counts · categories may overlap</p>
-        {statuses.map(item => <div className="dashboard-analytics-status" key={item.title}><span>{item.title}</span><strong>{loading ? '…' : item.count}</strong><div className="dashboard-analytics-track"><span style={{width:`${stats.kycPending + stats.passbookPending + stats.inactiveAccounts ? item.count / Math.max(1, ...statuses.map(s=>s.count)) * 100 : 0}%`,background:item.color}} /></div></div>)}
+      <article className="dashboard-analytics-card"><h3>Customer Status Analytics</h3><p>Current dashboard counts · categories may overlap · click a status to view its list</p>
+        {statuses.map(item => <button type="button" className="dashboard-analytics-status" key={item.title}
+          disabled={loading||rows===null} aria-label={`Open ${item.title}: ${item.count} customers`}
+          onClick={item.onClick}>
+          <span>{item.title}</span><strong>{loading||rows===null ? "…" : item.count}</strong>
+          <span className="dashboard-analytics-track" aria-hidden="true"><span style={{width:`${item.count / maxStatus * 100}%`,background:item.color}} /></span>
+        </button>)}
       </article>
     </div>
   </section>;
