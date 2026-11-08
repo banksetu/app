@@ -16,7 +16,7 @@ const areas={
   "PR2 / Alignment / PDF mapping windows":["pr2-overlay","pr2-dialog","print-alignment-window","print-alignment-settings","print-alignment-choice","banksetu-glass-mapping-dialog","banksetu-mapping-field-marker"],
   "Licensing":["license-panel","license-card","license-banner","license-summary","license-tile","license-history","license-drawer","license-modal","license-plan-badge","license-tabs"],
   "Sync and Backup":["sync-center","sync-card","sync-dialog-panel","sync-maintenance","sync-error-card"],
-  "Support":["support-page","support-hero","chat-panel","message-list","conversation-list","chat-compose","announcement-editor","faq-list","banksetu-support-popup"],
+  "Support":["support-page","support-hero","chat-panel","message-list","conversation-list","chat-compose","announcement-editor","faq-list","banksetu-floating-support"],
   "Word-like template editor":["layout-studio","ls-header","ls-ribbon","ls-format-ribbon","ls-tool-card","ls-word-tabs","ls-page-setup-dialog","ls-page-setup","ls-map-overlay","ls-catalog-card"],
   "System, inline Admin and app dialogs":["app-message-dialog","banksetu-admin-menu","banksetu-glass-inline-dialog","banksetu-glass-modal-overlay","master-client-form","admin-users-panel","update-dialog"]
 };
