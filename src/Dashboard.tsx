@@ -323,6 +323,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [glassPreviewOriginal,setGlassPreviewOriginal]=useState<GlassSettings|null>(null);
   const [glassWallpaperUrl,setGlassWallpaperUrl]=useState("");
   const [glassScopeRevision,setGlassScopeRevision]=useState(0);
+  // Paint updated tokens in-place. Previously the cleanup removed every
+  // Glass variable on *every slider movement*, causing a blank-frame flicker
+  // in Android WebView before the next layout effect restored the tokens.
   useLayoutEffect(()=>{
     const root=document.documentElement;
     root.dataset.appearance=appearance;
@@ -337,9 +340,20 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       delete root.dataset.glassDark;
       delete root.dataset.glassDesign;
     }
-    void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
-    return()=>{for(const key of variableNames)root.style.removeProperty(key);delete root.dataset.appearance;delete root.dataset.glassDark;delete root.dataset.glassDesign;};
+    // No per-update cleanup: preserve CSS variables across preview renders.
   },[appearance,glassSettings,glassWallpaperUrl]);
+  // Native app appearance changes only when the mode actually changes,
+  // not on every Glass Design/Intensity/Glow slider movement.
+  useEffect(()=>{
+    void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
+  },[appearance]);
+  useEffect(()=>()=>{
+    const root=document.documentElement;
+    for(const key of Object.keys(glassVariables(DEFAULT_GLASS_SETTINGS)))root.style.removeProperty(key);
+    delete root.dataset.appearance;
+    delete root.dataset.glassDark;
+    delete root.dataset.glassDesign;
+  },[]);
   useEffect(() => {
     const restore = () => {
       const {uid,tenantId}=appearanceIdentity();
