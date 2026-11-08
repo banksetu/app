@@ -4088,3 +4088,45 @@ html[data-appearance="dark"] .central-bank-document :is(h1,h2,h3,h4,h5,h6,p,span
 .banksetu-appearance-track button:focus-visible{outline:2px solid #58f0ff!important;outline-offset:3px}
 .banksetu-appearance-track button:hover{filter:brightness(1.15)}
 @media(prefers-reduced-motion:reduce){.banksetu-appearance-track *{transition:none!important}}
+
+
+/* Private glance mode for the four dashboard KPIs. The cards keep their
+   layout while figures dissolve into a soft haze; hiding never mutates data. */
+.dashboard-kpi-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:5px 1px 0;min-height:30px}
+.dashboard-kpi-privacy-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.dashboard-kpi-privacy-toggle{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:60px;min-height:27px;padding:4px 9px;border-radius:15px;border:1px solid rgba(125,177,211,.38);background:rgba(68,95,124,.13);color:var(--ui-text,#e5eefb);font:650 11px/1.1 inherit;cursor:pointer;transition:background .24s ease,border-color .24s ease,transform .24s ease,box-shadow .24s ease}
+.dashboard-kpi-privacy-toggle:hover{background:rgba(91,148,183,.22);transform:translateY(-1px)}
+.dashboard-kpi-privacy-toggle:focus-visible{outline:2px solid #5ed4ff;outline-offset:2px}
+.dashboard-kpi-privacy-toggle[aria-pressed="true"]{border-color:rgba(127,215,235,.6)}
+.dashboard-stats-grid.stats-obscured .dashboard-stat-card{opacity:1!important;cursor:default!important}
+.dashboard-stats-grid .dashboard-stat-card>.dashboard-stat-top,
+.dashboard-stats-grid .dashboard-stat-card>.dashboard-stat-value,
+.dashboard-stats-grid .dashboard-stat-card>.dashboard-stat-title{
+  transition:filter .88s cubic-bezier(.18,.8,.2,1),opacity .88s ease,transform .88s cubic-bezier(.18,.8,.2,1)!important;
+}
+.dashboard-stats-grid.stats-obscured .dashboard-stat-card>.dashboard-stat-top,
+.dashboard-stats-grid.stats-obscured .dashboard-stat-card>.dashboard-stat-value,
+.dashboard-stats-grid.stats-obscured .dashboard-stat-card>.dashboard-stat-title{
+  filter:blur(15px)!important;opacity:0.035!important;transform:translateY(-7px) scale(.94)!important;
+}
+.dashboard-stats-grid.stats-obscured .dashboard-stat-card::before{
+  content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(ellipse at 26% 48%,rgba(223,240,255,.24),transparent 48%),
+             radial-gradient(ellipse at 78% 64%,rgba(155,185,235,.17),transparent 50%);
+  opacity:.5;filter:blur(9px);animation:banksetu-privacy-smoke .9s ease-out both!important;
+}
+@keyframes banksetu-privacy-smoke{
+  from{opacity:.05;transform:translate3d(-9px,12px,0) scale(.88);filter:blur(1px)}
+  55%{opacity:.6;transform:translate3d(5px,-3px,0) scale(1.04);filter:blur(5px)}
+  to{opacity:.36;transform:none;filter:blur(12px)}
+}
+@media(max-width:560px){
+.dashboard-kpi-controls{margin-top:8px}
+.dashboard-kpi-privacy-toggle{min-height:34px;padding:5px 11px}
+}
+@media(prefers-reduced-motion:reduce){
+.dashboard-stats-grid .dashboard-stat-card>.dashboard-stat-top,
+.dashboard-stats-grid .dashboard-stat-card>.dashboard-stat-value,
+.dashboard-stats-grid .dashboard-stat-card>.dashboard-stat-title{transition:none!important}
+.dashboard-stats-grid.stats-obscured .dashboard-stat-card::before{animation:none!important}
+}
