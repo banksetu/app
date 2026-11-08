@@ -1,18 +1,18 @@
 {
-  "latestVersion": "1.0.145",
-  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-Setup-1.0.145-x64.exe",
+  "latestVersion": "1.0.146",
+  "downloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.146/BankSetu-Setup-1.0.146-x64.exe",
   "notes": "See What's New in This Version.",
-  "version": "1.0.145",
-  "releaseTag": "v1.0.145",
-  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.145",
+  "version": "1.0.146",
+  "releaseTag": "v1.0.146",
+  "releaseUrl": "https://github.com/banksetu/app/releases/tag/v1.0.146",
   "releaseDate": "2026-11-08",
-  "windowsVersion": "1.0.145",
-  "androidBuild": 1000145,
-  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-Setup-1.0.145-x64.exe",
-  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-Android-1000145.apk",
+  "windowsVersion": "1.0.146",
+  "androidBuild": 1000146,
+  "windowsDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.146/BankSetu-Setup-1.0.146-x64.exe",
+  "androidDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.146/BankSetu-Android-1000146.apk",
   "changelog": {
     "windows": {
-      "version": "1.0.145",
+      "version": "1.0.146",
       "releaseDate": "2026-11-08",
       "categories": {
         "Improvements": [
@@ -24,7 +24,7 @@
       }
     },
     "android": {
-      "version": "1.0.145",
+      "version": "1.0.146",
       "releaseDate": "2026-11-08",
       "categories": {
         "Improvements": [
@@ -35,6 +35,6 @@
       }
     }
   },
-  "macVersion": "1.0.145",
-  "macDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.145/BankSetu-1.0.145-arm64.dmg"
+  "macVersion": "1.0.146",
+  "macDownloadUrl": "https://github.com/banksetu/app/releases/download/v1.0.146/BankSetu-1.0.146-arm64.dmg"
 }
