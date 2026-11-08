@@ -1,8 +1,8 @@
 import { readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { download } from '@electron/get';
-import extract from 'extract-zip';
 
 if (process.platform !== 'win32') throw new Error('Windows Electron preparation must run on a Windows runner.');
 
@@ -45,7 +45,10 @@ const zip = await download(version, {
 const dist = resolve('node_modules/electron/dist');
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
-await extract(zip, { dir: dist });
+execFileSync('powershell.exe', [
+  '-NoProfile', '-NonInteractive', '-Command',
+  'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force', zip, dist
+], { stdio: 'inherit' });
 if (!existsSync(resolve(dist, 'electron.exe'))) throw new Error('Verified Electron archive did not contain electron.exe.');
 await writeFile(resolve('node_modules/electron/path.txt'), 'electron.exe\n');
 console.log(`Prepared Electron v${version} win32-x64 from a mirror using the official SHA-256 checksum.`);
