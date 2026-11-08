@@ -1,0 +1,280 @@
+/* BANK SETU theme completeness pass — UI only, never the printable bank paper.
+ * Actual user workflows stay in their current components. Keep glass/dark
+ * scoped; light mode, PDF/A4, passbook alignment and original bank logos intact. */
+@media screen {
+  /* Account Opening PDF search/header chrome: document .paper and .print-area are excluded. */
+  .banksetu-app-shell[data-appearance="dark"] .aof-module {
+    background:#101a2d!important;color:#f8fafc!important;border:1px solid #30435e!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .aof-module > :is(.module-head,.search-panel),
+  .banksetu-app-shell[data-appearance="dark"] .aof-module .search-row,
+  .banksetu-app-shell[data-appearance="dark"] .aof-module .preview-wrap:not(.print-area) {
+    color:#f8fafc!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .aof-module .search-panel{
+    background:#1c2940!important;border:1px solid #405574!important;
+    box-shadow:0 9px 25px #02091755!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .aof-module :is(.module-head h1,.module-head p,.search-label){
+    color:#f8fafc!important;text-shadow:none!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .aof-module .search-row input {
+    background:#263751!important;color:#f8fafc!important;border:1px solid #516684!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .aof-module .search-row button{
+    background:linear-gradient(125deg,#1766b2,#2475ca)!important;color:white!important;
+    border:1px solid #5694cb!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module{
+    position:relative;background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;border-radius:18px!important;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 10px 24px rgba(6,14,32,.17)!important;
+    backdrop-filter:blur(min(12px,var(--glass-blur)))!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module > .module-head,
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module > .search-panel{
+    position:relative;min-width:0;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module > .search-panel{
+    background:var(--glass-fill)!important;border:1px solid var(--glass-line)!important;
+    border-radius:16px!important;color:var(--glass-text)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 9px 24px rgba(4,14,32,.2)!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.1)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.1)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module :is(
+    .module-head h1,.module-head p,.search-label
+  ) {color:var(--glass-text)!important;text-shadow:0 1px 2px #090d1826!important}
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module .search-row input{
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2))!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module :is(
+    .search-row button,.actions button,.match-select-button,.match-modal-close
+  ):not(.paper *):not(.print-area *){
+    color:var(--glass-text)!important;background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 6px 16px rgba(4,12,32,.2)!important;
+    backdrop-filter:blur(8px)!important;
+  }
+  /* Support Center: every nested home tile, chat message, announcement & reply
+     uses its own surface. Preserve message ownership and action semantics. */
+  .banksetu-app-shell[data-appearance="dark"] .support-page,
+  html[data-appearance="dark"] .banksetu-support-popup .support-page {
+    color:#f8fafc!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .support-page :is(
+    .support-hero,.support-home,.support-home-grid>button,.support-recent,
+    .support-recent>button,.chat-layout,.conversation-list,.chat-panel,
+    .chat-title,.message-list,.chat-compose,.message,.announcement-editor,
+    .announcement-feed,.announcement,.support-content-grid article,
+    .faq-list,.request-card,.empty-support,.support-reply-reference,
+    .support-selected-file,.support-delete-status,.support-home-whatsapp
+  ),
+  html[data-appearance="dark"] .banksetu-support-popup .support-page :is(
+    .support-hero,.support-home-grid>button,.support-recent,.support-recent>button,
+    .chat-layout,.conversation-list,.chat-panel,.chat-title,.message-list,
+    .chat-compose,.message,.announcement-editor,.announcement-feed,.announcement,
+    .support-content-grid article,.faq-list,.request-card,.empty-support,
+    .support-reply-reference,.support-selected-file,.support-delete-status
+  ){
+    background:#1b2a41!important;color:#f8fafc!important;
+    border-color:#42556f!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .support-page :is(.message.mine,.support-home-whatsapp){
+    background:linear-gradient(135deg,#175c9b,#304c86)!important;color:#fff!important;
+  }
+  .banksetu-app-shell[data-appearance="dark"] .support-page :is(
+    .support-home-grid small,.support-recent small,.support-recent time,
+    .chat-title span,.support-media-tools small,.empty-support
+  ),
+  html[data-appearance="dark"] .banksetu-support-popup .support-page :is(
+    .support-home-grid small,.support-recent small,.support-recent time,.chat-title span
+  ){color:#cbd5e1!important}
+  .banksetu-app-shell[data-appearance="dark"] .support-page :is(
+    button:not(.support-home-whatsapp),input,textarea,select,.support-media-tools>label
+  ){border-color:#4d607a!important;color:#f8fafc!important;background:#283b55!important}
+  .banksetu-app-shell[data-appearance="dark"] .support-page :is(
+    .support-tabs button.active,.support-users button.selected
+  ){background:#355780!important;color:#fff!important}
+  /* Glass applies to both the main Support page AND its body-level popup. */
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page){
+    color:var(--glass-text)!important;background:transparent!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) :is(
+    .support-hero,.support-home-grid>button,.support-recent,.support-recent>button,
+    .chat-layout,.conversation-list,.chat-panel,.chat-title,.message-list,
+    .chat-compose,.message,.announcement-editor,.announcement-feed,.announcement,
+    .support-content-grid article,.faq-list,.request-card,.empty-support,
+    .support-reply-reference,.support-reply-draft,.support-selected-file,
+    .support-delete-status,.support-users button
+  ){
+    color:var(--glass-text)!important;background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 8px 18px rgba(5,13,33,.18)!important;
+    backdrop-filter:blur(min(15px,var(--glass-blur))) saturate(1.12)!important;
+    -webkit-backdrop-filter:blur(min(15px,var(--glass-blur))) saturate(1.12)!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) .message.mine{
+    background:linear-gradient(125deg,rgba(18,106,193,.5),rgba(81,76,160,.35))!important;
+    border:1px solid var(--glass-line)!important;
+    color:var(--glass-text)!important;
+    align-self:flex-end!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) :is(
+    h1,h2,h3,small,p,span,li,time,label,strong
+  ):not(.support-error *) {color:var(--glass-text)!important}
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) :is(
+    .chat-title span,.support-recent small,.support-recent time,
+    .support-home-grid small,.message time,.empty-support
+  ){color:var(--glass-muted)!important}
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) :is(
+    .support-home-whatsapp,.whatsapp-support
+  ){
+    color:#eafff4!important;
+    background:linear-gradient(125deg,rgba(4,121,75,.68),rgba(25,170,109,.53))!important;
+    border:1px solid rgba(147,244,194,.44)!important;
+    box-shadow:inset 0 1px #ffffff70,0 8px 19px #032b1755!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) :is(
+    button:not(.support-home-whatsapp):not(.support-delete-conversation),
+    .support-media-tools>label,.support-message-actions summary,
+    .support-reply-draft>button,.faq-list summary
+  ){
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;border-radius:10px;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 4px 11px #08122435!important;
+  }
+  html[data-appearance="glass"] :is(.banksetu-app-shell .support-page,.banksetu-support-popup .support-page) :is(
+    input:not([type="file"]):not([type="checkbox"]),textarea,select
+  ){
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-support-popup,
+  html[data-appearance="glass"] .banksetu-support-popup-body{
+    color:var(--glass-text)!important;background:var(--glass-fill-strong)!important;
+    border-color:var(--glass-line)!important;
+    backdrop-filter:blur(var(--glass-blur))!important;
+  }
+  html[data-appearance="glass"] .banksetu-support-popup-header{
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;border-color:var(--glass-line)!important;
+  }
+  /* Remaining menus: address small toolbars, subcards, buttons and filters.
+     Never blanket-style all sections, which would corrupt printed page geometry. */
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-main-workspace :is(
+    .customer-top-grid>div,.customer-form-grid,.customer-photo-review,.customer-field,
+    .passbook-search-row,.passbook-actions,.passbook-empty,
+    .all-customer-data .customer-preview-sections,.reports-panel,
+    .reports-panel-header,.afsm-panel,.afsm-row,.afsm-actions,
+    .sync-header,.sync-body,.sync-summary,.sync-health,.sync-actions,
+    .sync-maintenance,.sync-protection,.license-request-board,.license-action-cards,
+    .customer-search-card,.passbook-search-card,.customer-preview-section
+  ):not(.paper *):not(.print-area *):not(.passbook-print-area *):not(.customer-pdf-page *){
+    border-color:var(--glass-line)!important;color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-main-workspace :is(
+    .customer-top-grid>div,.passbook-search-row,.reports-panel,
+    .reports-panel-header,.afsm-panel,.afsm-row,
+    .sync-summary,.sync-health,.sync-maintenance,.sync-protection
+  ){
+    background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;border-radius:12px;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2))!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-main-workspace :is(
+    .customer-action-buttons button,.customer-actions button,
+    .passbook-actions button,.passbook-search-row button,.passbook-button,
+    .all-customer-data button,.reports-page button,.afsm-actions button,
+    .sync-center button,.settings-page button,.customers-page button,
+    .passbook-page button,.aof-module .search-row button,.aof-module .actions button,
+    .customer-entry-wrapper button
+  ):not(.paper *):not(.print-area *):not(.passbook-print-area *):not(.customer-pdf-page *):not(.banksetu-mapping-field-marker){
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;border-radius:11px;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 5px 14px rgba(4,13,31,.16)!important;
+    backdrop-filter:blur(7px) saturate(1.08)!important;
+    -webkit-backdrop-filter:blur(7px) saturate(1.08)!important;
+    transition:transform var(--glass-motion) cubic-bezier(.16,.78,.19,1),
+      box-shadow var(--glass-motion) ease,filter var(--glass-motion) ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-main-workspace :is(
+    .customer-action-buttons button,.customer-actions button,
+    .passbook-actions button,.passbook-search-row button,.passbook-button,
+    .all-customer-data button,.reports-page button,.afsm-actions button,
+    .sync-center button,.settings-page button,.customers-page button,
+    .passbook-page button,.aof-module .search-row button,.aof-module .actions button,
+    .customer-entry-wrapper button
+  ):not(:disabled):not(.paper *):not(.print-area *):not(.passbook-print-area *):not(.banksetu-mapping-field-marker):hover{
+    transform:translateY(-2px)!important;
+    box-shadow:inset 0 1px rgba(255,255,255,var(--glass-highlight,.2)),
+      0 9px 22px rgba(4,13,31,.24),0 0 var(--glass-glow) #89bfff5b!important;
+  }
+  /* Keep destructive confirmations visually distinct, never imply safe actions. */
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .customer-delete-dialog button.danger,.admin-user-actions .delete,
+    .support-delete-conversation,.license-danger
+  ){
+    background:rgba(141,32,63,.39)!important;
+    color:#ffe0e7!important;border-color:rgba(255,151,179,.5)!important;
+  }
+  /* Source portrait/photo/media previews and physical document preview preserve their pixels. */
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .paper,.paper *,.print-area,.print-area *,.passbook-print-area,.passbook-print-area *,
+    .bank-format-print-document,.bank-format-print-document *,
+    .central-bank-document,.central-bank-document *,
+    .customer-pdf-page,.customer-pdf-page *,
+    .workspace-template-page,.workspace-template-page *
+  ){animation:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  /* No artificial delay to underlying tasks: polished, staggered paint only. */
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .support-home-grid>button,.support-recent>button,
+    .support-tabs button,.reports-panel,.afsm-panel,.sync-card-grid>div
+  ){
+    transition:transform var(--glass-motion) cubic-bezier(.19,.82,.17,1),
+      box-shadow var(--glass-motion) ease,filter var(--glass-motion) ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .support-home-grid>button:nth-child(-n+4){
+    animation:glass-section-arrive var(--glass-entry-motion) cubic-bezier(.19,.8,.17,1) both;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .support-home-grid>button:nth-child(1){animation-delay:80ms}
+  html[data-appearance="glass"] .banksetu-app-shell .support-home-grid>button:nth-child(2){animation-delay:calc(80ms + var(--glass-stagger))}
+  html[data-appearance="glass"] .banksetu-app-shell .support-home-grid>button:nth-child(3){animation-delay:calc(80ms + var(--glass-stagger)*2)}
+  html[data-appearance="glass"] .banksetu-app-shell .support-home-grid>button:nth-child(4){animation-delay:calc(80ms + var(--glass-stagger)*3)}
+}
+@media screen and (max-width:760px){
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module{
+    min-width:0;width:100%!important;padding:10px!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module > .search-panel{max-width:100%;padding:12px!important}
+  html[data-appearance="glass"] .banksetu-app-shell .support-page .support-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  html[data-appearance="glass"] .banksetu-app-shell .support-page .chat-layout{grid-template-columns:1fr}
+  html[data-appearance="glass"] .banksetu-app-shell .support-page .message{max-width:90%}
+  html[data-appearance="glass"] .banksetu-app-shell .support-page .chat-compose{flex-wrap:wrap}
+}
+@media screen and (hover:none){
+  html[data-appearance="glass"] .banksetu-app-shell .support-page button:hover,
+  html[data-appearance="glass"] .banksetu-app-shell .aof-module .search-row button:hover{
+    transform:none!important;
+  }
+}
+@media screen and (prefers-reduced-motion:reduce){
+  html[data-appearance="glass"] .banksetu-app-shell :is(
+    .support-home-grid>button,.support-recent>button,.support-tabs button,
+    .aof-module .search-row button,.reports-panel,.afsm-panel,.sync-card-grid>div
+  ){animation:none!important;transition:none!important}
+}
+@media print {
+  .aof-module .paper,.aof-module .print-area,.ssa-print-report{
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+    animation:none!important;box-shadow:none!important;
+  }
+}
