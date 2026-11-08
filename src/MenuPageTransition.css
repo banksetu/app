@@ -1,0 +1,35 @@
+/*
+ * Navigation-only microtransition. On each actual menu change, the page
+ * container alternates animation names so CSS replays without key/remount.
+ * Preserves child component state and avoids animation on sync refresh.
+ */
+@media screen {
+  .banksetu-app-shell .banksetu-page-transition[data-transition-phase="odd"] {
+    animation:banksetu-menu-arrive-odd 185ms cubic-bezier(.2,.78,.22,1) both;
+  }
+  .banksetu-app-shell .banksetu-page-transition[data-transition-phase="even"] {
+    animation:banksetu-menu-arrive-even 185ms cubic-bezier(.2,.78,.22,1) both;
+  }
+  @keyframes banksetu-menu-arrive-odd {
+    from {opacity:.86;transform:translateY(5px)}
+    to {opacity:1;transform:translateY(0)}
+  }
+  @keyframes banksetu-menu-arrive-even {
+    from {opacity:.86;transform:translateY(5px)}
+    to {opacity:1;transform:translateY(0)}
+  }
+}
+@media screen and (prefers-reduced-motion:reduce) {
+  .banksetu-app-shell .banksetu-page-transition[data-transition-phase] {
+    animation:none!important;
+    transform:none!important;
+    opacity:1!important;
+  }
+}
+@media print {
+  .banksetu-app-shell .banksetu-page-transition[data-transition-phase] {
+    animation:none!important;
+    transform:none!important;
+    opacity:1!important;
+  }
+}
