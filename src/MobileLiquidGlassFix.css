@@ -1,0 +1,417 @@
+/*
+ * BANK SETU mobile viewport containment + Liquid Glass report/table fixes.
+ * UI only; no changes to A4/Passbook document templates or database.
+ * Imported last to win older inline/white and 100%+padding rules.
+ */
+@media screen {
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data:not(:has(.customer-preview-card)),
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table-scroll {
+    color:var(--glass-text)!important;
+    background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:16px!important;
+    box-shadow:inset 0 1px rgba(112,216,245,.27),0 9px 26px rgba(5,16,39,.21)!important;
+    backdrop-filter:blur(min(13px,var(--glass-blur))) saturate(1.15)!important;
+    -webkit-backdrop-filter:blur(min(13px,var(--glass-blur))) saturate(1.15)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data :is(h1,h2,h3,p,label,span,strong),
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table :is(th,td){
+    color:var(--glass-text)!important;
+    -webkit-text-fill-color:currentColor!important;
+    opacity:1!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table{
+    color:var(--glass-text)!important;
+    background:transparent!important;
+    border-collapse:separate!important;
+    border-spacing:0 5px!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table thead th{
+    color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(122,219,248,.23)!important;
+    backdrop-filter:blur(min(9px,var(--glass-blur)))!important;
+    -webkit-backdrop-filter:blur(min(9px,var(--glass-blur)))!important;
+    z-index:2;
+  }
+  /* Overrides the inline white/pink background on every real customer row. */
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table tbody tr,
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table tbody tr:nth-child(even){
+    color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 1px 1px rgba(133,222,248,.2),0 4px 12px rgba(3,14,34,.1)!important;
+    transition:background-color 250ms ease,border-color 250ms ease,box-shadow 250ms ease!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table tbody tr:is(:hover,:focus-visible){
+    background:color-mix(in srgb,var(--glass-fill-strong) 78%,rgba(71,126,182,.56))!important;
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 0 1px rgba(148,241,255,.36),0 0 var(--glass-rim-glow) rgba(109,200,249,.28)!important;
+    outline:2px solid var(--glass-accent)!important;
+    outline-offset:-2px!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table tbody td{
+    background:transparent!important;color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+    overflow-wrap:anywhere;min-width:0;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data :is(
+    input[aria-label="Search all customer data"],.all-customer-table button
+  ){
+    color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:10px!important;
+    box-shadow:inset 0 1px rgba(135,222,248,.28),0 3px 11px rgba(5,16,34,.12)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data input::placeholder{
+    color:var(--glass-muted)!important;opacity:1;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data .all-customer-table button:is(:hover,:focus-visible){
+    border-color:var(--glass-accent)!important;
+    box-shadow:0 0 var(--glass-glow) rgba(105,216,248,.3)!important;
+  }
+
+  /* Account-opening report is a body-level React portal, not a descendant of
+     .banksetu-app-shell. Keep modal opaque enough to read yet translucent. */
+  html[data-appearance="glass"] body .dashboard-opening-overlay{
+    background:rgba(5,13,27,.57)!important;
+    backdrop-filter:blur(4px)!important;
+    -webkit-backdrop-filter:blur(4px)!important;
+    isolation:isolate;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel{
+    box-sizing:border-box!important;
+    min-width:0!important;max-width:calc(100vw - 12px)!important;
+    color:var(--glass-text)!important;
+    color-scheme:dark!important;
+    background:color-mix(in srgb,var(--glass-fill-strong) 74%,rgba(17,31,50,.93))!important;
+    border:1px solid var(--glass-line)!important;
+    box-shadow:inset 0 1px rgba(143,227,247,.37),0 18px 40px rgba(1,9,22,.45)!important;
+    backdrop-filter:blur(min(13px,var(--glass-blur))) saturate(1.08)!important;
+    -webkit-backdrop-filter:blur(min(13px,var(--glass-blur))) saturate(1.08)!important;
+    overscroll-behavior:contain;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    .dashboard-opening-header,.dashboard-opening-overview,.dashboard-opening-filters,
+    .dashboard-opening-tabs,.dashboard-opening-footer,.dashboard-opening-table-scroll
+  ){
+    box-sizing:border-box;min-width:0;max-width:100%;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    h2,p,label,strong,small,td,th,span
+  ):not(.dashboard-opening-status){
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    .dashboard-opening-header p,.dashboard-opening-overview small,.dashboard-opening-footer span
+  ){color:var(--glass-muted)!important;opacity:1!important}
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    .dashboard-opening-filters input,.dashboard-opening-tabs button,
+    .dashboard-opening-number button,.dashboard-opening-footer button,
+    .dashboard-opening-header button
+  ){
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:10px!important;
+    box-shadow:inset 0 1px rgba(151,226,250,.23)!important;
+    max-width:100%;min-width:0;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    .dashboard-opening-tabs button[aria-pressed="true"],
+    .dashboard-opening-footer button:last-child
+  ){
+    border-color:var(--glass-accent)!important;
+    background:color-mix(in srgb,var(--glass-fill-strong) 68%,rgba(40,114,182,.62))!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    .dashboard-opening-filters input,.dashboard-opening-tabs button,
+    .dashboard-opening-number button,.dashboard-opening-footer button
+  ):is(:hover,:focus-visible){
+    border-color:var(--glass-accent)!important;
+    box-shadow:inset 0 1px rgba(144,233,249,.34),0 0 var(--glass-rim-glow) rgba(96,205,245,.28)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel .dashboard-opening-overview,
+  html[data-appearance="glass"] body .dashboard-opening-panel .dashboard-opening-preview-loading{
+    background:var(--glass-fill)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:13px;
+    box-shadow:inset 0 1px rgba(139,227,252,.22)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel .dashboard-opening-table-scroll{
+    background:transparent!important;
+    border:0!important;overflow-x:hidden!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel table{
+    color:var(--glass-text)!important;
+    background:transparent!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel thead th{
+    color:var(--glass-text)!important;
+    background:var(--glass-fill-strong)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel tbody tr{
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    border-radius:13px;
+    box-shadow:inset 0 1px rgba(155,235,252,.24),0 5px 17px rgba(5,17,39,.14)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel tbody tr:is(:hover,:focus-visible){
+    background:color-mix(in srgb,var(--glass-fill-strong) 76%,rgba(64,129,189,.48))!important;
+    border-color:var(--glass-accent)!important;
+    outline:2px solid var(--glass-accent)!important;outline-offset:-2px!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel tbody :is(td,td strong,.dashboard-opening-number span){
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+    background:transparent!important;
+    overflow-wrap:anywhere;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel tbody td::before{
+    color:var(--glass-muted)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel .dashboard-opening-status.is-active{
+    color:#b7ffde!important;background:rgba(12,110,69,.45)!important;
+    border:1px solid rgba(127,244,183,.48)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel .dashboard-opening-status.is-inactive{
+    color:#ffe1a7!important;background:rgba(118,79,20,.45)!important;
+    border:1px solid rgba(255,206,118,.5)!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel .dashboard-opening-status:not(.is-active):not(.is-inactive){
+    color:var(--glass-text)!important;background:var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+}
+@media screen and (max-width:900px){
+  /* V8/V9 once set the workspace to width:100% PLUS padding without
+     border-box. That was physically wider than the Android viewport. */
+  html,body,#root{width:100%;max-width:100%;overflow-x:clip!important}
+  .banksetu-app-shell,
+  .banksetu-app-shell .banksetu-main-workspace{
+    box-sizing:border-box!important;
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    margin-left:0!important;margin-right:0!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace{
+    padding-left:9px!important;padding-right:9px!important;
+  }
+  .banksetu-app-shell .banksetu-main-workspace > :is(
+    header,section,article,div
+  ):not(.mobile-overlay){
+    box-sizing:border-box!important;min-width:0;max-width:100%;
+  }
+  .banksetu-app-shell .dashboard-top-bar,
+  .banksetu-app-shell .dashboard-quick-panel,
+  .banksetu-app-shell :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,
+    .customer-entry-wrapper,.passbook-page,.customers-page,.aof-module,
+    .all-customer-data,.reports-page,.settings-page,.ssa-campaign,
+    .sync-center,.support-page,.afsm-page
+  ){
+    box-sizing:border-box!important;
+    width:100%!important;max-width:100%!important;min-width:0!important;
+    margin-left:0!important;margin-right:0!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar{
+    grid-template-columns:44px minmax(0,1fr) 48px!important;
+    gap:7px!important;
+    padding:10px 9px!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar > :is(.persistent-bank-header,.admin-wrapper){
+    box-sizing:border-box!important;min-width:0!important;max-width:100%;
+  }
+  .banksetu-app-shell .dashboard-top-bar .persistent-bank-header{
+    min-width:0!important;width:100%!important;
+    overflow-wrap:anywhere!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar :is(
+    .bank-logo-zone,.bank-info-strip,.bank-info-strip h2,.bank-info-strip span,
+    .bank-info-strip p,.bank-info-details
+  ){
+    min-width:0!important;max-width:100%!important;overflow-wrap:anywhere!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar .bank-logo-zone img{
+    max-width:100%!important;height:auto!important;max-height:72px!important;
+    object-fit:contain!important;
+  }
+  .banksetu-app-shell :is(
+    .dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid
+  ){
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .banksetu-app-shell :is(
+    .dashboard-stat-card,.dashboard-quick-card,.dashboard-analytics-card,
+    .dashboard-kpi-controls
+  ){
+    box-sizing:border-box!important;min-width:0!important;max-width:100%!important;
+  }
+  .banksetu-app-shell :is(
+    .dashboard-quick-card,.dashboard-stat-title,.dashboard-stat-value,
+    .dashboard-analytics-card,.dashboard-kpi-controls
+  ){
+    overflow-wrap:anywhere;
+  }
+  /* Customer lists never expand page width; only their own scroll containers
+     scroll on desktop. On mobile they become readable stacked row cards. */
+  .banksetu-app-shell .all-customer-data .all-customer-table-scroll{
+    max-width:100%!important;
+    overflow-y:auto!important;overflow-x:hidden!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table{
+    min-width:0!important;width:100%!important;
+    display:block!important;
+    table-layout:fixed!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table thead{
+    position:absolute!important;width:1px!important;height:1px!important;
+    overflow:hidden!important;clip-path:inset(50%)!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table tbody{
+    display:block!important;width:100%!important;min-width:0!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table tbody tr{
+    display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+    width:100%!important;box-sizing:border-box!important;
+    padding:7px 11px!important;margin:0 0 10px!important;
+    border-radius:13px!important;overflow:hidden!important;
+    min-width:0!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table tbody td{
+    box-sizing:border-box!important;
+    width:100%!important;min-width:0!important;
+    display:grid!important;grid-template-columns:minmax(0,40%) minmax(0,1fr)!important;
+    gap:7px!important;align-items:start!important;
+    padding:9px 3px!important;
+    border-bottom:1px solid var(--glass-line,rgba(126,151,188,.25))!important;
+    overflow-wrap:anywhere!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table tbody td:last-child{
+    border-bottom:0!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table tbody td::before{
+    content:attr(data-label);
+    color:var(--glass-muted,#66809c)!important;
+    font-weight:700;font-size:12px;line-height:1.4;
+    align-self:start;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table tbody td[data-label="Account Number"]{
+    grid-template-columns:minmax(0,38%) minmax(0,1fr) auto!important;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table .all-customer-account-value{
+    min-width:0;overflow-wrap:anywhere;
+  }
+  .banksetu-app-shell .all-customer-data .all-customer-table button{
+    width:36px!important;min-width:36px!important;min-height:35px!important;
+    padding:4px!important;
+  }
+
+  /* Every report dialog stays inside the device viewport, and the CONTENT
+     scrolls vertically. Body/background never turns into a sideways canvas. */
+  .dashboard-opening-overlay{
+    box-sizing:border-box!important;
+    width:100vw!important;max-width:100vw!important;
+    left:0!important;right:0!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;
+    padding:max(5px,env(safe-area-inset-top,0px)) 5px max(5px,env(safe-area-inset-bottom,0px))!important;
+    overflow:hidden!important;
+    overscroll-behavior:contain;
+  }
+  .dashboard-opening-panel{
+    box-sizing:border-box!important;
+    width:100%!important;min-width:0!important;max-width:100%!important;
+    max-height:calc(100dvh - 10px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))!important;
+    margin:auto!important;padding:12px!important;
+    overflow-y:auto!important;overflow-x:hidden!important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  .dashboard-opening-panel .dashboard-opening-filters{
+    display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-tabs,
+  .dashboard-opening-panel .dashboard-opening-search{
+    grid-column:1/-1!important;min-width:0!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-tabs{
+    display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:4px!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-filters :is(input,label,button){
+    min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-filters input{
+    width:100%!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-overview{
+    display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-overview>div{
+    min-width:0!important;overflow-wrap:anywhere!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-table-scroll{
+    max-width:100%!important;min-width:0!important;
+    max-height:min(45dvh,450px)!important;
+    overflow-y:auto!important;overflow-x:hidden!important;
+  }
+  .dashboard-opening-panel :is(table,tbody){
+    display:block!important;width:100%!important;min-width:0!important;
+  }
+  .dashboard-opening-panel tbody tr{
+    display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+    width:100%!important;min-width:0!important;
+    overflow:hidden!important;box-sizing:border-box!important;
+  }
+  .dashboard-opening-panel tbody td{
+    width:100%!important;min-width:0!important;
+    box-sizing:border-box!important;overflow-wrap:anywhere!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-header{
+    position:sticky;top:-12px;z-index:5;
+    padding:10px 0!important;margin:0 0 10px!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-footer{
+    position:sticky;bottom:-12px;z-index:5;
+    padding:10px 0!important;margin-top:10px!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel :is(
+    .dashboard-opening-header,.dashboard-opening-footer
+  ){
+    background:color-mix(in srgb,var(--glass-fill-strong) 40%,rgba(15,30,49,.97))!important;
+    backdrop-filter:blur(9px)!important;
+    -webkit-backdrop-filter:blur(9px)!important;
+  }
+}
+@media screen and (max-width:380px){
+  .banksetu-app-shell :is(.dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid){
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  .banksetu-app-shell .dashboard-top-bar{
+    grid-template-columns:40px minmax(0,1fr) 42px!important;
+    padding:8px 5px!important;gap:4px!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-tabs button{
+    font-size:11px!important;padding:6px 3px!important;
+  }
+  .dashboard-opening-panel .dashboard-opening-overview{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+}
+@media screen and (prefers-reduced-motion:reduce){
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-table tbody tr{
+    animation:none!important;transition:none!important;
+  }
+  html[data-appearance="glass"] body .dashboard-opening-panel *{
+    animation:none!important;transition:none!important;
+  }
+}
