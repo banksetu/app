@@ -3187,6 +3187,27 @@ function DashboardHome({
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [statusPanel, setStatusPanel] = useState<StatusPanelType | null>(null);
   const [openingReportOpen,setOpeningReportOpen]=useState(false);
+  const [kpiPrivacyHidden,setKpiPrivacyHidden]=useState(()=>{
+    const {uid,tenantId}=appearanceIdentity();
+    if(!uid||!tenantId)return false;
+    try{return localStorage.getItem("bankSetuKpiPrivacy:"+glassScope(uid,tenantId))==="hidden";}
+    catch{return false;}
+  });
+  useEffect(()=>{
+    const refresh=()=>{
+      const {uid,tenantId}=appearanceIdentity();
+      try{setKpiPrivacyHidden(Boolean(uid&&tenantId&&localStorage.getItem("bankSetuKpiPrivacy:"+glassScope(uid,tenantId))==="hidden"));}
+      catch{setKpiPrivacyHidden(false);}
+    };
+    window.addEventListener("banksetu-workspace-change",refresh);
+    return()=>window.removeEventListener("banksetu-workspace-change",refresh);
+  },[]);
+  const toggleKpiPrivacy=()=>{
+    const next=!kpiPrivacyHidden;
+    setKpiPrivacyHidden(next);
+    const {uid,tenantId}=appearanceIdentity();
+    if(uid&&tenantId)try{localStorage.setItem("bankSetuKpiPrivacy:"+glassScope(uid,tenantId),next?"hidden":"visible");}catch{ /* Privacy toggle works even if device storage is unavailable. */ }
+  };
   const monthOpenings=useMemo(()=>analyticsRows?currentMonthOpeningCount(analyticsRows):0,[analyticsRows]);
 
   useEffect(() => {
@@ -3601,7 +3622,17 @@ function DashboardHome({
 
       )}
 
-      <section className="dashboard-stats-grid" style={styles.statsGrid}>
+      <div className="dashboard-kpi-controls">
+        <span className="dashboard-kpi-privacy-status" role="status" aria-live="polite">{kpiPrivacyHidden?"Dashboard figures hidden":"Dashboard figures visible"}</span>
+        <button type="button" className="dashboard-kpi-privacy-toggle"
+          onClick={toggleKpiPrivacy} aria-pressed={kpiPrivacyHidden}
+          aria-label={kpiPrivacyHidden?"Show dashboard card figures":"Hide dashboard card figures"}
+          title={kpiPrivacyHidden?"Show figures":"Hide figures"}>
+          <span aria-hidden="true">{kpiPrivacyHidden?"◌":"◉"}</span>
+          <span className="dashboard-kpi-privacy-label">{kpiPrivacyHidden?"Show":"Hide"}</span>
+        </button>
+      </div>
+      <section className={`dashboard-stats-grid${kpiPrivacyHidden?" stats-obscured":""}`} style={styles.statsGrid}>
 
         {stats.map(([icon, title, value], index) => (
 
@@ -3610,14 +3641,15 @@ function DashboardHome({
             key={title}
 
             className="dashboard-stat-card"
-            aria-label={`Open ${title}`}
+            aria-label={kpiPrivacyHidden?`${title} hidden`:`Open ${title}`}
+            disabled={kpiPrivacyHidden}
             onClick={() => index === 0 ? openPage("all-customer-data") : index===3 ? setOpeningReportOpen(true) : setStatusPanel(index === 1 ? "kyc" : "passbook")}
 
           style={{ ...styles.statCard, background: CARD_GRADIENTS[index % CARD_GRADIENTS.length] }}
 
           >
 
-            <div className="dashboard-stat-top" style={styles.statTop}>
+            <div className="dashboard-stat-top" aria-hidden={kpiPrivacyHidden} style={styles.statTop}>
 
               <div className="dashboard-stat-icon" style={styles.statIcon}>
 
@@ -3633,13 +3665,13 @@ function DashboardHome({
 
             </div>
 
-            <div className="dashboard-stat-value" style={styles.statValue}>
+            <div className="dashboard-stat-value" aria-hidden={kpiPrivacyHidden} style={styles.statValue}>
 
               {(statsLoading || (index===3&&analyticsRows===null)) ? "…" : <span key={`${title}:${value}`} className="dashboard-count-transition">{value}</span>}
 
             </div>
 
-            <h3 className="dashboard-stat-title" style={styles.statTitle}>
+            <h3 className="dashboard-stat-title" aria-hidden={kpiPrivacyHidden} style={styles.statTitle}>
 
               {title}
 
