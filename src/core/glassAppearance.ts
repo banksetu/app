@@ -85,7 +85,10 @@ export function glassVariables(settings:GlassSettings,customBackgroundUrl?:strin
     "--glass-glow":Math.round(s.glow*.22)+"px",
     "--glass-shadow":Math.round(9+s.shadow*.33)+"px",
     "--glass-motion":transitionMs+"ms",
-    "--glass-entry-motion":Math.round(430+(100-s.animationSpeed)*2.4)+"ms",
-    "--glass-stagger":Math.round(130+s.motionDelay*1.05)+"ms",
+    // Entrances are about half the previous duration at the same slider value.
+    // Faster slider => shorter reveal AND shorter stagger, not only hover speed.
+    "--glass-entry-motion":Math.round((430+(100-s.animationSpeed)*2.4)*.5)+"ms",
+    "--glass-stagger":Math.round((130+s.motionDelay*1.05)*.5*(1.55-s.animationSpeed*.011))+"ms",
+    "--glass-menu-motion":Math.round(160+(100-s.animationSpeed)*2.4)+"ms",
   };
 }
