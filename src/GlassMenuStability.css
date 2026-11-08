@@ -1,0 +1,142 @@
+/*
+ * PR #109 screenshot repair: Glass nav text, admin dropdown separation,
+ * and mobile Appearance editor paint stability.
+ *
+ * The sidebar is intentionally DARK regardless of White/Black/Transparent
+ * Glass tone: the user's fixed white menu text must remain readable.
+ * Only sidebar/menu chrome is fixed; the rest of the workspace still follows
+ * selected Classic / 3D / Liquid Glass and color/tone variables.
+ */
+@media screen {
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-sidebar {
+    --banksetu-menu-text:#f7fbff;
+    --banksetu-menu-muted:#e5ecfa;
+    color:#f7fbff!important;
+    background:linear-gradient(156deg,rgba(12,25,43,.88),rgba(20,35,55,.85)),
+      var(--glass-fill)!important;
+    border:1px solid var(--glass-line)!important;
+    backdrop-filter:blur(min(15px,var(--glass-blur))) saturate(1.1)!important;
+    -webkit-backdrop-filter:blur(min(15px,var(--glass-blur))) saturate(1.1)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-sidebar :is(
+    .banksetu-nav-item,.banksetu-nav-item span,.banksetu-nav-item strong,
+    .banksetu-nav-item .banksetu-nav-icon,.banksetu-nav-item svg
+  ) {
+    color:#f7fbff!important;
+    -webkit-text-fill-color:#f7fbff!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-sidebar .banksetu-nav-item {
+    background:rgba(177,205,239,.08)!important;
+    border:1px solid rgba(193,224,250,.17)!important;
+    text-shadow:none!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-sidebar .banksetu-nav-item.active {
+    color:#fff!important;
+    background:linear-gradient(125deg,rgba(27,108,177,.66),rgba(35,78,135,.73))!important;
+    border-color:rgba(161,223,252,.72)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .banksetu-sidebar .banksetu-nav-item:is(:hover,:focus-visible){
+    color:#fff!important;
+    background:rgba(59,129,191,.38)!important;
+  }
+
+  /* Admin menu is portaled to body. Its old translucent --glass-fill
+     exposed both dashboard labels and the open menu simultaneously. */
+  html[data-appearance="glass"] body .banksetu-admin-menu {
+    color:#f7fbff!important;
+    background:linear-gradient(155deg,rgba(14,25,42,.96),rgba(25,39,59,.94))!important;
+    border:1px solid var(--glass-line,rgba(125,192,238,.55))!important;
+    box-shadow:0 23px 58px rgba(3,10,23,.55),inset 0 1px rgba(255,255,255,.18)!important;
+    backdrop-filter:blur(22px) saturate(1.05)!important;
+    -webkit-backdrop-filter:blur(22px) saturate(1.05)!important;
+    isolation:isolate;
+    overflow-x:hidden!important;
+  }
+  html[data-appearance="glass"] body .banksetu-admin-menu :is(
+    button,button span,strong,small,a
+  ){
+    color:#f7fbff!important;
+    -webkit-text-fill-color:#f7fbff!important;
+    text-shadow:none!important;
+  }
+  html[data-appearance="glass"] body .banksetu-admin-menu button {
+    background:rgba(152,187,218,.09)!important;
+    border:1px solid rgba(175,215,244,.34)!important;
+    border-radius:10px!important;
+    box-shadow:none!important;
+  }
+  html[data-appearance="glass"] body .banksetu-admin-menu button:is(:hover,:focus-visible){
+    background:rgba(47,111,172,.4)!important;
+    border-color:var(--glass-line)!important;
+  }
+  /* Both preview and saved appearance use the same fixed-white nav text.
+     Variants differ via edges/depth only, never text contrast. */
+  html[data-appearance="glass"][data-glass-design="classic"] .banksetu-app-shell .banksetu-sidebar {
+    box-shadow:0 9px 30px #06142844,inset 0 1px #ffffff22!important;
+  }
+  html[data-appearance="glass"][data-glass-design="3d"] .banksetu-app-shell .banksetu-sidebar {
+    box-shadow:inset 2px 2px #ffffff39,inset -2px -2px #05122270,
+      0 17px 36px #06142877!important;
+  }
+  html[data-appearance="glass"][data-glass-design="liquid"] .banksetu-app-shell .banksetu-sidebar {
+    box-shadow:inset 0 2px #d3f4ff46,0 14px 40px #0614286b,
+      0 0 var(--glass-glow,8px) rgba(99,197,250,.18)!important;
+  }
+
+  /* A live Glass slider should not restart navigation/card animations,
+     multiply backdrop transitions, or cause the panel to jump. */
+  html[data-glass-editing="true"] .banksetu-app-shell,
+  html[data-glass-editing="true"] .banksetu-app-shell *,
+  html[data-glass-editing="true"] .banksetu-app-shell *::before,
+  html[data-glass-editing="true"] .banksetu-app-shell *::after {
+    animation:none!important;
+    transition:none!important;
+  }
+  html[data-glass-editing="true"] .glass-appearance-overlay {
+    background:rgba(4,10,22,.75)!important;
+    backdrop-filter:blur(12px)!important;
+    -webkit-backdrop-filter:blur(12px)!important;
+  }
+  html[data-glass-editing="true"] .glass-appearance-panel {
+    transform:none!important;
+    animation:none!important;
+    transition:none!important;
+    /* Avoid re-rasterizing the full wallpaper on each slider tick. */
+    background:linear-gradient(145deg,rgba(18,29,47,.98),rgba(29,40,62,.97))!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+  }
+  html[data-glass-editing="true"] .glass-appearance-panel::before {
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+  html[data-glass-editing="true"] .glass-appearance-panel fieldset {
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  }
+}
+@media screen and (max-width:760px) {
+  html[data-appearance="glass"] body .banksetu-admin-menu {
+    width:min(320px,calc(100vw - 20px))!important;
+    max-width:calc(100vw - 20px)!important;
+    box-sizing:border-box!important;
+    padding:8px!important;
+  }
+  html[data-appearance="glass"] body .banksetu-admin-menu button {
+    width:100%!important;
+    min-height:44px;
+    white-space:normal!important;
+    overflow-wrap:anywhere!important;
+    box-sizing:border-box!important;
+  }
+  html[data-glass-editing="true"] .glass-appearance-overlay {
+    overflow-x:hidden!important;
+    overscroll-behavior:contain;
+  }
+  html[data-glass-editing="true"] .glass-appearance-panel {
+    max-width:100%!important;
+    contain:layout style;
+  }
+}
+@media print {
+  html[data-appearance="glass"] .banksetu-admin-menu,
+  html[data-appearance="glass"] .glass-appearance-overlay {display:none!important}
+}
