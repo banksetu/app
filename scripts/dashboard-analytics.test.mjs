@@ -29,13 +29,15 @@ test('personal appearance cannot leak between users or tenants', () => {
   assert.equal(storedAppearance(storage,'','tenant-a'),'light');
 });
 
-test('sidebar uses the compact icon-only dynamic theme slider at the bottom',()=>{
+test('sidebar preserves compact icon-only switch with a third Glass position',()=>{
   const dashboard=fs.readFileSync('src/Dashboard.tsx','utf8');
   const css=fs.readFileSync('src/App.css','utf8');
-  assert.match(dashboard,/banksetu-appearance-toggle/);
-  assert.match(dashboard,/appearance === 'dark' \? 'light' : 'dark'/);
+  assert.match(dashboard,/banksetu-appearance-track/);
+  assert.match(dashboard,/\["light","dark","glass"\] as Appearance\[\]/);
+  assert.match(dashboard,/aria-pressed=\{appearance===mode\}/);
   assert.doesNotMatch(dashboard,/>\s*Light<|>\s*Dark</);
-  assert.match(css,/banksetu-appearance-toggle\{[^}]*width:72px[^}]*height:30px/);
+  assert.match(css,/\.banksetu-appearance-track\{/);
+  assert.match(css,/banksetu-appearance-track\[data-mode="glass"\]/);
   assert.match(css,/banksetu-sidebar \.banksetu-appearance\{[^}]*bottom:0/);
   assert.match(css,/banksetu-sidebar\{[^}]*padding-bottom:2px!important/);
 });
