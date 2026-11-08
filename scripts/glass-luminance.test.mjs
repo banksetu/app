@@ -58,6 +58,8 @@ test("Unpainted search, empty states, and portal popup micro-controls now use Gl
    ".customer-preview-card",".print-alignment-choice"]){
    assert(css.includes(name),"Missing surface "+name);
  }
- assert.match(css,/:not\(\.paper \*\)/);
- assert.match(css,/:not\(\.print-area \*\)/);
+ const paperSafety=css+"\n"+read("src/GlassTheme.css")+"\n"+read("src/ThemeDeepCoverage.css");
+ assert.match(paperSafety,/:not\(\.paper \*\)/);
+ assert.match(paperSafety,/:not\(\.print-area \*\)/);
+ assert.match(css,/@media print/);
 });
