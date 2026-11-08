@@ -65,7 +65,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['imageDataUrl','updatedAt'])
         && request.resource.data.keys().hasAll(['imageDataUrl','updatedAt'])
         && request.resource.data.imageDataUrl is string
-        && request.resource.data.imageDataUrl.size() <= 14000
+        && request.resource.data.imageDataUrl.size() <= 13680
         && request.resource.data.imageDataUrl.matches('^data:image/(webp|jpeg);base64,[A-Za-z0-9+/]+={0,2}
       allow get: if signedIn() && (request.auth.uid == userId || supportAdmin()
         || (isClientAdmin() && resource.data.tenantId == myTenantId()));
