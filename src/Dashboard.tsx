@@ -310,6 +310,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [appearance, setAppearance] = useState<Appearance>(() => {const {uid,tenantId}=appearanceIdentity();return storedAppearance(localStorage,uid,tenantId);});
   const [glassSettings,setGlassSettings]=useState<GlassSettings>(()=>{const {uid,tenantId}=appearanceIdentity();return storedGlassSettings(localStorage,uid,tenantId);});
   const [glassDialogOpen,setGlassDialogOpen]=useState(false);
+  const [glassPreviewOriginal,setGlassPreviewOriginal]=useState<GlassSettings|null>(null);
   const [glassWallpaperUrl,setGlassWallpaperUrl]=useState("");
   const [glassScopeRevision,setGlassScopeRevision]=useState(0);
   useLayoutEffect(()=>{
@@ -336,6 +337,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       setGlassSettings(storedGlassSettings(localStorage,uid,tenantId));
       setGlassWallpaperUrl(""); // Clear previous workspace artwork before loading another tenant.
       setGlassDialogOpen(false);
+      setGlassPreviewOriginal(null);
       setGlassScopeRevision(value=>value+1);
     };
     window.addEventListener('banksetu-workspace-change', restore);
@@ -1451,7 +1453,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
 
                 {appearance==="glass" && <button type="button" className="banksetu-glass-admin-action"
-                  style={styles.adminMenuItem} onClick={() => {setAdminMenuOpen(false);setGlassDialogOpen(true);}}>
+                  style={styles.adminMenuItem} onClick={() => {setAdminMenuOpen(false);setGlassPreviewOriginal({...glassSettings});setGlassDialogOpen(true);}}>
                   ◉ Appearance &amp; Background
                 </button>}
 
@@ -1980,8 +1982,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       )}
 
       {glassDialogOpen&&appearance==="glass"&&<Suspense fallback={null}>
-        <GlassAppearancePanel initial={glassSettings} existingCustomUrl={glassWallpaperUrl}
-          onClose={()=>setGlassDialogOpen(false)} onSave={saveGlassPreferences}/>
+        <GlassAppearancePanel initial={glassPreviewOriginal||glassSettings} existingCustomUrl={glassWallpaperUrl}
+          onPreview={setGlassSettings}
+          onClose={(saved=false)=>{if(!saved&&glassPreviewOriginal)setGlassSettings(glassPreviewOriginal);setGlassPreviewOriginal(null);setGlassDialogOpen(false);}}
+          onSave={saveGlassPreferences}/>
       </Suspense>}
 
       {/* DASHBOARD COLOR */}
