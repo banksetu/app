@@ -44,7 +44,7 @@ test("Settings client workspace and empty assigned users list use glass instead 
 test("Dashboard animation is staggered rather than artificially delaying app data",()=>{
   const vars=read("src/core/glassAppearance.ts");
   assert.match(vars,/"--glass-entry-motion"/);
-  assert.match(vars,/"--glass-stagger":Math\.round\(130\+s\.motionDelay\*1\.05\)/);
+  assert.match(vars,/"--glass-stagger":Math\.round\(s\.motionDelay\*1\.18\*\(1\.55-s\.animationSpeed\*\.011\)\)/);
   for(const cls of [".dashboard-top-bar",".dashboard-stats-grid",".dashboard-quick-grid",
     ".dashboard-analytics-grid"]){
     assert.ok(studio.includes(cls),cls);

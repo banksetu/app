@@ -42,7 +42,7 @@ test("All separate popup layers and small actions receive Glass presentation",()
   }
   const dash=read("src/Dashboard.tsx");
   assert.equal((dash.match(/className="banksetu-glass-modal-overlay"/g)||[]).length,7);
-  assert.equal((dash.match(/className="banksetu-glass-inline-dialog"/g)||[]).length,7);
+  assert.equal((dash.match(/className="banksetu-glass-inline-dialog(?:\s[^"}]*)?"/g)||[]).length,7);
   assert.match(dash,/import "\.\/GlassCoverage\.css";/);
   assert.match(dash,/appearance==="glass" && <button type="button" className="banksetu-glass-admin-action"/);
 });

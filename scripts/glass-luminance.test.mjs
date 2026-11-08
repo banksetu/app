@@ -41,9 +41,10 @@ test("SYNC LIVE remain plain text in Glass and KPI privacy toggle is accessible 
  assert.match(css,/\.dashboard-stat-badge\s*\{[\s\S]*?border:0!important/);
  assert.match(css,/\.dashboard-stat-badge::before/);
  assert.match(dash,/className="dashboard-kpi-privacy-toggle"/);
- assert.match(dash,/aria-pressed=\{kpiPrivacyHidden\}/);
+ assert.match(dash,/role="switch" aria-checked=\{!kpiPrivacyHidden\}/);
+ assert.match(dash,/data-show=\{!kpiPrivacyHidden\}/);
  assert.match(dash,/onClick=\{toggleKpiPrivacy\}/);
- assert.match(dash,/disabled=\{kpiPrivacyHidden\}/);
+ assert.doesNotMatch(dash,/dashboard-kpi-privacy-toggle"[\s\S]{0,240}disabled=/);
  assert.match(dash,/stats-obscured/);
  assert.match(dash,/bankSetuKpiPrivacy:/);
  assert.match(global,/@keyframes banksetu-privacy-smoke/);
