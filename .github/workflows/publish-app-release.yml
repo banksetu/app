@@ -16,6 +16,7 @@ on:
       - src/core/photoState.ts
       - apps-script/Code.gs
       - desktop/**
+      - android/gradle/wrapper/gradle-wrapper.properties
       - electron-builder.mac.json
       - scripts/prepare-windows-electron.mjs
       - scripts/macos-release.test.mjs
