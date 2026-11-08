@@ -56,7 +56,7 @@ html[data-appearance="glass"] :is(.dashboard-stat-card,.dashboard-quick-card,.da
   transform:translate3d(0,-4px,0) scale(1.008)!important;
   box-shadow:0 13px var(--glass-shadow) rgba(6,16,40,.28),0 0 var(--glass-glow) #bddeff88,inset 0 1px #fff9!important;
 }
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card,.ssa-card-dialog,.ssa-report-dialog) :is(input,textarea,select){
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card,.ssa-card-dialog,.ssa-report-dialog) :is(input,textarea,select):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *){
   background:var(--glass-fill)!important;
   color:var(--glass-text)!important;
   border:1px solid var(--glass-line)!important;
@@ -67,28 +67,28 @@ html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,
 html[data-appearance="glass"] :is(input,select,textarea):focus-visible{outline:2px solid var(--glass-accent)!important;outline-offset:2px!important;box-shadow:0 0 var(--glass-glow) #bbdfff9a!important}
 html[data-appearance="glass"] select option{background:#192a40!important;color:#fff!important}
 html[data-appearance="glass"][data-glass-dark="false"] select option{background:#f5f7ff!important;color:#152339!important}
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card,.ssa-card-dialog,.ssa-report-dialog) :is(button,[role="button"]){
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card,.ssa-card-dialog,.ssa-report-dialog) :is(button,[role="button"]):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *){
   backdrop-filter:blur(8px) saturate(1.25);
   -webkit-backdrop-filter:blur(8px) saturate(1.25);
   border-radius:10px;
   transition:transform var(--glass-motion) ease,box-shadow var(--glass-motion) ease,filter var(--glass-motion) ease!important;
 }
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card,.ssa-card-dialog,.ssa-report-dialog) :is(button,[role="button"]):not(:disabled):hover{
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.banksetu-admin-menu,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card,.ssa-card-dialog,.ssa-report-dialog) :is(button,[role="button"]):not(:disabled):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *):hover{
   filter:brightness(1.09);
   box-shadow:0 0 var(--glass-glow) rgba(151,199,255,.5);
   transform:translateY(-2px);
 }
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card) :is(button,[role="button"]):active{transform:scale(.985)}
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.glass-appearance-panel,.dashboard-status-panel,.customer-preview-card) :is(button,[role="button"]):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *):active{transform:scale(.985)}
 html[data-appearance="glass"] :is(.dashboard-top-bar,.banksetu-main-workspace,.banksetu-admin-menu,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(h1,h2,h3,h4,h5,h6,legend,label,strong,td,th,p,small):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *){
   color:var(--glass-text)!important;
 }
-html[data-appearance="glass"] :is(.dashboard-top-bar,.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(input,textarea)::placeholder{color:var(--glass-muted)!important}
+html[data-appearance="glass"] :is(.dashboard-top-bar,.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(input,textarea):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *)::placeholder{color:var(--glass-muted)!important}
 html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(table,thead,tbody,tr,td,th):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *){border-color:var(--glass-line)!important}
 html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) :is(thead,th){
   background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;backdrop-filter:blur(12px)
 }
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) tbody tr{transition:background-color var(--glass-motion),transform var(--glass-motion)}
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) tbody tr:hover{background:rgba(163,214,255,.16)!important}
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) tbody tr:not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *){transition:background-color var(--glass-motion),transform var(--glass-motion)}
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.dashboard-status-panel,.ssa-card-dialog,.ssa-report-dialog,.customer-preview-card) tbody tr:not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *):hover{background:rgba(163,214,255,.16)!important}
 html[data-appearance="glass"] :is(.dashboard-status-overlay,.customer-preview-overlay,.ssa-card-overlay,.ssa-report-overlay,.match-modal-overlay,.license-modal-backdrop,.banksetu-support-popup-backdrop,.customer-camera-overlay,.admin-users-overlay){
   background:rgba(8,13,25,.47)!important;backdrop-filter:blur(6px)
 }
@@ -103,8 +103,8 @@ html[data-appearance="glass"] :is(.dashboard-stats-grid,.dashboard-quick-grid,.d
 html[data-appearance="glass"] :is(.dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis)>:nth-child(3){animation:glass-section-arrive var(--glass-motion) ease both;animation-delay:calc(var(--glass-stagger)*3)}
 html[data-appearance="glass"] :is(.dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis)>:nth-child(4){animation:glass-section-arrive var(--glass-motion) ease both;animation-delay:calc(var(--glass-stagger)*4)}
 html[data-appearance="glass"] :is(.dashboard-stats-grid,.dashboard-quick-grid,.dashboard-analytics-grid,.ssa-kpis)>:nth-child(5){animation:glass-section-arrive var(--glass-motion) ease both;animation-delay:calc(var(--glass-stagger)*5)}
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.ssa-card-dialog,.dashboard-status-panel) tbody tr:nth-child(-n+8){animation:glass-row-arrive 220ms ease both}
-html[data-appearance="glass"] :is(.banksetu-main-workspace,.ssa-card-dialog,.dashboard-status-panel) tbody tr:nth-child(2n){animation-delay:40ms}
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.ssa-card-dialog,.dashboard-status-panel) tbody tr:nth-child(-n+8):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *){animation:glass-row-arrive 220ms ease both}
+html[data-appearance="glass"] :is(.banksetu-main-workspace,.ssa-card-dialog,.dashboard-status-panel) tbody tr:nth-child(2n):not(.paper *):not(.bank-format-print-document *):not(.central-bank-document *):not(.print-area *):not(.passbook-print-area *):not(.workspace-template-page *):not(.customer-pdf-page *){animation-delay:40ms}
 @keyframes glass-section-arrive{from{opacity:.3;transform:translate3d(0,10px,0) scale(.99)}to{opacity:1;transform:none}}
 @keyframes glass-popup-arrive{from{opacity:.2;transform:translate3d(0,10px,0) scale(.965)}to{opacity:1;transform:none}}
 @keyframes glass-row-arrive{from{opacity:.5;transform:translateY(5px)}to{opacity:1;transform:none}}
