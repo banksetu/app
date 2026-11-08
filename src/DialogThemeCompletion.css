@@ -238,3 +238,43 @@
   /* Browser/OS print paper is never converted into Glass or Dark. */
   .dashboard-opening-overlay,.print-alignment-overlay,.print-alignment-choice-overlay {display:none!important}
 }
+
+/* SlideNotifications (rendered outside the page flow) and app-owned
+   confirmation/alert dialogs follow current root appearance. Preserve
+   per-notification colored left border and the swipe-to-dismiss behavior. */
+@media screen {
+  html[data-appearance="dark"] .banksetu-notice {
+    background:#192a40!important;color:#f5f9ff!important;
+    border-top-color:#485d79!important;
+    border-right-color:#485d79!important;
+    border-bottom-color:#485d79!important;
+    box-shadow:0 12px 30px #020c1b88!important;
+  }
+  html[data-appearance="dark"] .banksetu-notice :is(strong,div,button) {
+    color:#f5f9ff!important;
+  }
+  html[data-appearance="glass"] .banksetu-notice {
+    background:var(--glass-fill-strong)!important;color:var(--glass-text)!important;
+    border-top-color:var(--glass-line)!important;
+    border-right-color:var(--glass-line)!important;
+    border-bottom-color:var(--glass-line)!important;
+    box-shadow:inset 0 1px #ffffff3a,0 10px var(--glass-shadow) #04122644!important;
+    backdrop-filter:blur(var(--glass-blur)) saturate(1.14)!important;
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.14)!important;
+  }
+  html[data-appearance="glass"] .banksetu-notice :is(strong,div,button) {
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="dark"] .app-message-dialog :is(
+    h2,p,.app-dialog-actions,button
+  ) {color:#f5f9ff!important}
+  html[data-appearance="glass"] .app-message-dialog :is(
+    h2,p,.app-dialog-actions,button
+  ) {color:var(--glass-text)!important}
+  html[data-appearance="dark"] .app-message-dialog .app-dialog-actions button {
+    background:#263b55!important;border:1px solid #536e8f!important;
+  }
+  html[data-appearance="glass"] .app-message-dialog .app-dialog-actions button {
+    background:var(--glass-fill-strong)!important;border:1px solid var(--glass-line)!important;
+  }
+}
