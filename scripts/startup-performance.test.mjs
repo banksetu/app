@@ -144,3 +144,6 @@ import "./theme-deep.test.mjs";
 
 // Luminance/3D rim, popup and KPI privacy regression.
 import "./glass-luminance.test.mjs";
+
+// Glass form legibility and body-level PDF/Customer Preview dialogs.
+import "./glass-form-popup.test.mjs";
