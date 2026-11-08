@@ -414,7 +414,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           {copyMessage&&<p role="status">{copyMessage}</p>}
           <div className="customer-preview-identity">
             <PreviewCustomerPhoto
-              key={[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(value).join("|")}
+              key={identity(selected)+":"+[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(item=>value(item).length).join(":")}
               sources={[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(value).filter(Boolean)}/>
             <div className="customer-preview-account">
               <div className="customer-preview-name">{value(selected.name) || "Customer"}</div>
