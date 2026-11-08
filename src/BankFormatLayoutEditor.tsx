@@ -99,7 +99,7 @@ export default function BankFormatLayoutEditor({
         <label>Paper height (mm) <input type="number" min={50} max={500} value={pageHeightMm} onChange={(event) => setPageHeightMm(Number(event.target.value))} /></label>
       </div>
       <label>Zoom <select aria-label="Mapping zoom" value={zoom} onChange={event=>setZoom(Number(event.target.value))}><option value={1}>100%</option><option value={1.5}>150%</option><option value={2}>200%</option></select></label>
-      <div style={{overflow:"auto",maxWidth:"100%"}}>{currentPage ? <div onClick={mode === "print" ? addPlacement : undefined} onPointerDown={event=>{
+      <div style={{overflow:"auto",maxWidth:"100%"}}>{currentPage ? <div className="banksetu-mapping-canvas" onClick={mode === "print" ? addPlacement : undefined} onPointerDown={event=>{
         if(mode!=="extraction")return;event.currentTarget.setPointerCapture(event.pointerId);drawing.current=point(event);setDraft({...drawing.current,width:0,height:0});
       }} onPointerMove={event=>{if(!drawing.current)return;const end=point(event),start=drawing.current;setDraft({x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),width:Math.abs(end.x-start.x),height:Math.abs(end.y-start.y)});}}
       onPointerUp={event=>{if(!drawing.current)return;const end=point(event),start=drawing.current;drawing.current=null;setDraft(null);
@@ -109,7 +109,7 @@ export default function BankFormatLayoutEditor({
         setFieldMap(current=>[...current.filter(item=>!(item.field===selectedField&&(item.page||1)===selectedPage)),next]);
       }} onPointerCancel={()=>{drawing.current=null;setDraft(null);}} style={{ ...canvas, touchAction:mode==="extraction"?"none":"auto", width: previewWidth, height: previewHeight, backgroundImage: `url(${currentPage.dataUrl})` }}>
         {draft && <div style={{position:"absolute",left:`${draft.x}%`,top:`${draft.y}%`,width:`${draft.width}%`,height:`${draft.height}%`,border:"2px solid #008fff",background:"rgba(0,140,255,.16)",pointerEvents:"none"}} />}
-        {fieldMap.map((item, index) => ({ item, index })).filter(({ item }) => (item.page || 1) === selectedPage).map(({ item, index }) => <button key={`${item.page || 1}-${item.field}`} type="button" draggable={mode==="print"} onDragEnd={(event) => {
+        {fieldMap.map((item, index) => ({ item, index })).filter(({ item }) => (item.page || 1) === selectedPage).map(({ item, index }) => <button className="banksetu-mapping-field-marker" key={`${item.page || 1}-${item.field}`} type="button" draggable={mode==="print"} onDragEnd={(event) => {
           const rect = event.currentTarget.parentElement!.getBoundingClientRect();
           const x = Math.max(0, Math.min(99, ((event.clientX - rect.left) / rect.width) * 100));
           const y = Math.max(0, Math.min(99, ((event.clientY - rect.top) / rect.height) * 100));
