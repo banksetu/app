@@ -333,6 +333,7 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       const {uid,tenantId}=appearanceIdentity();
       setAppearance(storedAppearance(localStorage,uid,tenantId));
       setGlassSettings(storedGlassSettings(localStorage,uid,tenantId));
+      setGlassWallpaperUrl(""); // Clear previous workspace artwork before loading another tenant.
       setGlassDialogOpen(false);
       setGlassScopeRevision(value=>value+1);
     };
