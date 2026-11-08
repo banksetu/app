@@ -4,7 +4,7 @@ import fs from "node:fs";
 const read=path=>fs.readFileSync(path,"utf8");
 const coverage=read("src/GlassCoverage.css");
 const theme=read("src/GlassTheme.css");
-const combined=theme+"\n"+coverage+"\n"+read("src/GlassAppearancePanel.css");
+const combined=theme+"\n"+coverage+"\n"+read("src/GlassAppearancePanel.css")+"\n"+read("src/GlassStudioCoverage.css");
 const source=fs.readdirSync("src").filter(name=>/\.(tsx|ts)$/.test(name))
   .map(name=>read("src/"+name)).join("\n");
 const areas={
