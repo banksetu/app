@@ -47,5 +47,5 @@ await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 execFileSync('tar.exe', ['-xf', zip, '-C', dist], { stdio: 'inherit' });
 if (!existsSync(resolve(dist, 'electron.exe'))) throw new Error('Verified Electron archive did not contain electron.exe.');
-await writeFile(resolve('node_modules/electron/path.txt'), 'electron.exe\n');
+await writeFile(resolve('node_modules/electron/path.txt'), 'electron.exe');
 console.log(`Prepared Electron v${version} win32-x64 from a mirror using the official SHA-256 checksum.`);
