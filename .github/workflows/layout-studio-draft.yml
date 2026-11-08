@@ -4,6 +4,9 @@ on:
     branches: [main]
     paths:
       - src/Dashboard.tsx
+      - src/MobileGlassMotionPolish.css
+      - src/GlassAppearancePanel.tsx
+      - scripts/mobile-glass-motion*.mjs
       - src/platform/layoutEngineGate.ts
       - src/platform/layoutUnavailable.tsx
       - vite.config.ts
@@ -113,6 +116,12 @@ jobs:
       - name: Mobile responsive Liquid Glass Chromium QA (320 to 768 px)
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
         run: node scripts/mobile-liquid-glass.browser.mjs
+      - name: Mobile Glass painter, flicker and theme switch source checks
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
+        run: node --test scripts/mobile-glass-motion.test.mjs
+      - name: Mobile Glass dialog, scroll, controls Chromium QA
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 107
+        run: node scripts/mobile-glass-motion.browser.mjs
       - name: Save synthetic Glass QA evidence (no customer data)
         if: always() && github.event_name == 'pull_request' && (github.event.pull_request.number == 105 || github.event.pull_request.number == 107)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -125,6 +134,7 @@ jobs:
             test-evidence/luminance-*.png
             test-evidence/glass-form-popup-*.png
             test-evidence/mobile-liquid-glass-*.png
+            test-evidence/mobile-glass-motion-*.png
           if-no-files-found: ignore
           retention-days: 7
 
