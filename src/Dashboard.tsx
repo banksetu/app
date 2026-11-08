@@ -25,6 +25,7 @@ import "./DashboardSmokeReveal.css";
 import "./CompactGlassControls.css";
 import "./GlassDesignDynamics.css";
 import "./DialogThemeCompletion.css";
+import "./ScreenshotThemeReadability.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
