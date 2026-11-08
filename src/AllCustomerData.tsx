@@ -385,7 +385,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           onKeyDown={event => { if (event.key === "Enter") void open(customer); }}
           style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee",...(index<25?{"--customer-row-index":index}:{})} as CSSProperties}>
           <td data-label="Customer ID" style={{padding:9}}>{value(customer.enrolId)}</td><td data-label="Name" style={{padding:9}}>{value(customer.name)}</td>
-          <td data-label="Account Number" style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
+          <td data-label="Account Number" style={{padding:9}}><span className="all-customer-account-value">{value(customer.accountNo)}</span> <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
             onClick={async event => {event.stopPropagation();try{if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(String(customer.accountNo ?? "")); else await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
           <td data-label="Mobile Number" style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td data-label="Aadhaar Number" style={{padding:9}}>{value(customer.uidaiNo || customer.aadhaarNo || customer.aadharNo)}</td>
           <td data-label="Account Opening Date" style={{padding:9}}>{value(customer.accountOpeningDate)}</td>
