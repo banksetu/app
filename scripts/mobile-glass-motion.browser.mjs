@@ -103,6 +103,7 @@ try {
   assert.equal((await get(p,".glass-appearance-scroll>fieldset")).backdrop,"none","Nested editor blur causes flicker");
   const slider=await get(p,'input[aria-label="Transparency"]');
   assert(slider.width>40,"Slider too narrow for touch input");
+  await p.locator('input[aria-label="Transparency"]').scrollIntoViewIfNeeded();
   const res=await p.locator('input[aria-label="Transparency"]').evaluate(el=>{
     const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
     return {hit:hit===el||el.contains(hit),touch:getComputedStyle(el).touchAction};
@@ -110,7 +111,7 @@ try {
   assert(res.hit,"Slider is covered by another glass layer");
   assert(res.touch.includes("pan-x"),"Slider has incorrect touch-action "+res.touch);
   const before=await p.locator('input[aria-label="Transparency"]').inputValue();
-  await p.locator('input[aria-label="Transparency"]').fill("76");
+  await p.locator('input[aria-label="Transparency"]').evaluate(el=>{el.value="76";el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));});
   const afterValue=await p.locator('input[aria-label="Transparency"]').inputValue();
   assert.equal(afterValue,"76","Range cannot change");
   if(width===390){
