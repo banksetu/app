@@ -1,0 +1,83 @@
+/*
+ * PR #109 – Scroll path tune-up.
+ * No animation timing, transitions, reveal keyframes, layout geometry,
+ * data fetches, print preview or theme colors are modified.
+ *
+ * Browser/Android owns touch scroll velocity. These properties select native
+ * momentum scrolling and avoid accidental horizontal/touch gesture handling.
+ */
+@media screen and (pointer:coarse) {
+  html[data-appearance="glass"] :is(
+    .banksetu-sidebar nav,.glass-appearance-scroll,
+    .all-customer-data > div:has(> table),.dashboard-opening-table-scroll,
+    .dashboard-opening-panel,.ssa-export-dialog,.ssa-card-dialog,
+    .customer-preview-overlay,.print-alignment-window,.pr2-dialog,
+    .sync-dialog-panel,.admin-users-panel,.reports-panel,
+    .banksetu-admin-menu,.banksetu-advanced-admin-dialog
+  ) {
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-y:contain;
+    touch-action:pan-y pinch-zoom;
+  }
+  /* Main page remains the browser's native scroll root; never use transform
+     scrolling or custom JS wheel/touch handlers on the document. */
+  html[data-appearance="glass"] .banksetu-main-workspace {
+    touch-action:pan-y pinch-zoom;
+  }
+}
+/* Liquid-specific coverage for existing UI chrome previously using only the
+ * generic Glass surface. No geometry/font changes; use already selected
+ * transparency, tone, luminance, border and glow variables. */
+@media screen {
+  html[data-appearance="glass"][data-glass-design="liquid"] .banksetu-app-shell :is(
+    .customer-search-card,.passbook-search-card,.customer-tool-card,
+    .customer-photo-card,.customer-top-grid > div,
+    .settings-page .admin-user-card,.settings-page .admin-client-workspace,
+    .settings-page .admin-users-toolbar,.reports-panel-header,
+    .reports-page .reports-panel,.ssa-panel,.ssa-kpi,
+    .aof-module > .search-panel,.afsm-panel,.afsm-row,
+    .license-card,.support-hero,.support-home,.support-recent,
+    .sync-health,.sync-storage-details,.sync-maintenance
+  ){
+    background:
+      linear-gradient(125deg,
+        rgba(143,231,250,calc(var(--glass-intensity-strength,.7) * .18)) 0%,
+        transparent 31%,
+        rgba(174,143,253,calc(var(--glass-intensity-strength,.7) * .13)) 74%,
+        rgba(157,222,253,calc(var(--glass-intensity-strength,.7) * .14)) 100%),
+      var(--glass-fill)!important;
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 1px 2px rgba(255,255,255,.42),
+      inset -2px -2px rgba(133,160,235,.17),
+      0 10px var(--glass-shadow) rgba(4,14,36,.20),
+      0 0 var(--glass-glow) rgba(95,210,248,calc(var(--glass-glow-opacity,.43) * .54))!important;
+  }
+  /* Body-level dialogs do not sit below .banksetu-app-shell. Protect the
+     stronger readable dialog base added after screenshot review, while
+     giving the inner controls the selected Liquid rim and hue. */
+  html[data-appearance="glass"][data-glass-design="liquid"] :is(
+    .dashboard-opening-overview,.dashboard-opening-filters,
+    .dashboard-opening-panel tbody tr,.ssa-export-group,.ssa-export-preview,
+    .ssa-card-summary,.customer-preview-section,.customer-preview-content,
+    .print-alignment-settings,.print-alignment-panel,
+    .print-alignment-controls,.pdf-detail,.pdf-results,
+    .sync-dialog-panel,.dashboard-status-list>div
+  ){
+    border-color:var(--glass-line)!important;
+    box-shadow:inset 1px 2px rgba(255,255,255,.30),
+      0 6px var(--glass-shadow) rgba(4,14,36,.16),
+      0 0 var(--glass-glow) rgba(95,210,248,calc(var(--glass-glow-opacity,.43) * .25))!important;
+  }
+}
+/* Never apply liquid styling to real printable bank documents or print
+ * alignment paper: they must retain their approved physical appearance. */
+@media print {
+  html[data-appearance="glass"] :is(
+    .paper,.print-area,.passbook-print-area,.bank-format-print-document,
+    .central-bank-document,.customer-pdf-page,.workspace-template-page
+  ) {
+    box-shadow:none!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+  }
+}
