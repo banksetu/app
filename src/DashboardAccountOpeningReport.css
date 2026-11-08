@@ -142,3 +142,100 @@ html[data-appearance="dark"] .dashboard-opening-preview-loading{
 @media(prefers-reduced-motion:reduce){
  .dashboard-opening-panel *{animation-duration:.01ms!important;transition-duration:.01ms!important}
 }
+
+
+/*
+ * Mobile Glass report portal fix: this report is portaled into document.body,
+ * outside .banksetu-app-shell. Scope to root appearance and phone widths.
+ * All light/dark styling above remains unchanged.
+ */
+@media screen and (max-width:760px) {
+  html[data-appearance="glass"] .dashboard-opening-overlay {
+    background:rgba(5,13,30,.58)!important;
+    backdrop-filter:blur(5px)!important;
+    -webkit-backdrop-filter:blur(5px)!important;
+    box-sizing:border-box!important;
+    width:100%!important;
+    max-width:100%!important;
+    overflow-x:hidden!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel {
+    color-scheme:normal!important;
+    width:100%!important;
+    max-width:min(100%,680px)!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    max-height:calc(100dvh - 12px)!important;
+    overflow-x:hidden!important;
+    overflow-y:auto!important;
+    background:var(--glass-fill-strong,rgba(24,37,58,.83))!important;
+    color:var(--glass-text,#f5f9ff)!important;
+    border:1px solid var(--glass-line,rgba(116,191,240,.55))!important;
+    box-shadow:inset 0 1px rgba(255,255,255,.18),0 18px 42px rgba(4,12,30,.32)!important;
+    backdrop-filter:blur(min(12px,var(--glass-blur,12px))) saturate(1.16)!important;
+    -webkit-backdrop-filter:blur(min(12px,var(--glass-blur,12px))) saturate(1.16)!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel :is(
+    .dashboard-opening-header,.dashboard-opening-filters,.dashboard-opening-overview,
+    .dashboard-opening-table-scroll,.dashboard-opening-footer
+  ) {
+    min-width:0!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+    border-color:var(--glass-line,rgba(116,191,240,.55))!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel :is(
+    .dashboard-opening-overview,.dashboard-opening-tabs button,
+    .dashboard-opening-panel-row,.dashboard-opening-table-scroll tbody tr
+  ) {
+    background:var(--glass-fill,rgba(48,65,88,.64))!important;
+    border:1px solid var(--glass-line,rgba(116,191,240,.55))!important;
+    color:var(--glass-text,#f5f9ff)!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel :is(h2,label,th,td,strong,span) {
+    color:var(--glass-text,#f5f9ff)!important;
+    -webkit-text-fill-color:currentColor!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel :is(
+    .dashboard-opening-header p,.dashboard-opening-overview small,
+    .dashboard-opening-footer span,.dashboard-opening-panel td::before
+  ) {
+    color:var(--glass-muted,#c7d5e8)!important;
+    opacity:1!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-filters input {
+    background:var(--glass-fill-strong,rgba(20,36,56,.85))!important;
+    color:var(--glass-text,#f5f9ff)!important;
+    -webkit-text-fill-color:currentColor!important;
+    border:1px solid var(--glass-line,rgba(116,191,240,.55))!important;
+    color-scheme:inherit!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-tabs button[aria-pressed="true"],
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-footer button {
+    background:var(--glass-accent,#217db0)!important;
+    color:#fff!important;
+    -webkit-text-fill-color:#fff!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-number button {
+    background:var(--glass-fill-strong,rgba(22,46,74,.88))!important;
+    color:var(--glass-text,#f5f9ff)!important;
+    border:1px solid var(--glass-line,rgba(116,191,240,.55))!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-status.is-active {
+    background:rgba(14,116,79,.3)!important;
+    color:#b7f9dd!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-status.is-inactive {
+    background:rgba(159,98,22,.35)!important;
+    color:#ffe3b1!important;
+  }
+  html[data-appearance="glass"][data-glass-dark="false"] .dashboard-opening-panel .dashboard-opening-status.is-active {
+    color:#075c3e!important;
+  }
+  html[data-appearance="glass"][data-glass-dark="false"] .dashboard-opening-panel .dashboard-opening-status.is-inactive {
+    color:#765012!important;
+  }
+  html[data-appearance="glass"] .dashboard-opening-panel .dashboard-opening-error {
+    color:var(--glass-text,#fff)!important;
+  }
+}
