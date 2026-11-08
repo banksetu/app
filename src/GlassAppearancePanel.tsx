@@ -31,18 +31,18 @@ export default function GlassAppearancePanel({
 }:{
   initial:GlassSettings;existingCustomUrl?:string;
   onSave:(settings:GlassSettings,wallpaper?:Blob,remember?:boolean)=>Promise<void>;
-  onPreview:(settings:GlassSettings)=>void;
+  onPreview:(settings:GlassSettings,previewWallpaperUrl?:string)=>void;
   onClose:(saved?:boolean)=>void;
 }){
   const [draft,setDraft]=useState<GlassSettings>({...initial});
-  // Sliders and design/background selectors update the actual glass workspace live.
+  // Paint-only live preview; do not re-render Dashboard/customer data on each touch move.
   // Parent restores the opening snapshot if the dialog closes without saving.
-  useEffect(()=>{onPreview(draft);},[draft,onPreview]);
   const [previewUrl,setPreviewUrl]=useState("");
   const [uploaded,setUploaded]=useState<Blob|undefined>(undefined);
   const [remember,setRemember]=useState(true);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
+  useEffect(()=>{onPreview(draft,previewUrl||existingCustomUrl);},[draft,onPreview,previewUrl,existingCustomUrl]);
   useEffect(()=>()=>{if(previewUrl)URL.revokeObjectURL(previewUrl);},[previewUrl]);
   useEffect(()=>{
     const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==="Escape"&&!saving)onClose();};
