@@ -1,35 +1,34 @@
 /*
- * Navigation-only microtransition. On each actual menu change, the page
- * container alternates animation names so CSS replays without key/remount.
- * Preserves child component state and avoids animation on sync refresh.
+ * BANK SETU draft PR #108 — visible, replayable window/menu navigation.
+ * Alternating animation names restart CSS when a different menu is selected,
+ * without key/remount and without interrupting React page/data state.
+ * The Glass Appearance speed slider drives --glass-menu-motion.
  */
 @media screen {
-  .banksetu-app-shell .banksetu-page-transition[data-transition-phase="odd"] {
-    animation:banksetu-menu-arrive-odd 185ms cubic-bezier(.2,.78,.22,1) both;
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase="odd"] {
+    animation:banksetu-page-window-odd var(--glass-menu-motion,260ms) cubic-bezier(.2,.76,.2,1) both!important;
   }
-  .banksetu-app-shell .banksetu-page-transition[data-transition-phase="even"] {
-    animation:banksetu-menu-arrive-even 185ms cubic-bezier(.2,.78,.22,1) both;
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase="even"] {
+    animation:banksetu-page-window-even var(--glass-menu-motion,260ms) cubic-bezier(.2,.76,.2,1) both!important;
   }
-  @keyframes banksetu-menu-arrive-odd {
-    from {opacity:.86;transform:translateY(5px)}
-    to {opacity:1;transform:translateY(0)}
+  @keyframes banksetu-page-window-odd {
+    from {opacity:.28;transform:translate3d(0,14px,0) scale(.975);filter:blur(3px)}
+    65% {opacity:.95;filter:blur(.6px)}
+    to {opacity:1;transform:none;filter:none}
   }
-  @keyframes banksetu-menu-arrive-even {
-    from {opacity:.86;transform:translateY(5px)}
-    to {opacity:1;transform:translateY(0)}
+  @keyframes banksetu-page-window-even {
+    from {opacity:.28;transform:translate3d(0,14px,0) scale(.975);filter:blur(3px)}
+    65% {opacity:.95;filter:blur(.6px)}
+    to {opacity:1;transform:none;filter:none}
   }
 }
-@media screen and (prefers-reduced-motion:reduce) {
-  .banksetu-app-shell .banksetu-page-transition[data-transition-phase] {
-    animation:none!important;
-    transform:none!important;
-    opacity:1!important;
+@media screen and (prefers-reduced-motion:reduce){
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase] {
+    animation:none!important;transform:none!important;filter:none!important;opacity:1!important;
   }
 }
 @media print {
-  .banksetu-app-shell .banksetu-page-transition[data-transition-phase] {
-    animation:none!important;
-    transform:none!important;
-    opacity:1!important;
+  .banksetu-app-shell .banksetu-main-workspace .banksetu-page-transition[data-transition-phase] {
+    animation:none!important;transform:none!important;filter:none!important;opacity:1!important;
   }
 }
