@@ -23,6 +23,15 @@ const visibleFields = (customer: Customer) => Object.entries(customer).filter(([
   item != null && typeof item !== "object" && value(item) !== ""
 );
 
+/* A failed/expired photo URL should never render a broken-image icon.
+ * Both All Customer Data and Monthly Opening Report share this preview. */
+function PreviewCustomerPhoto({src}:{src:string}){
+  const [failed,setFailed]=useState(false);
+  if(!src||failed)return <div className="customer-preview-photo-placeholder"
+    aria-label={failed?"Customer photograph unavailable":"No customer photograph"}>●</div>;
+  return <img src={src} alt="Customer photograph" onError={()=>setFailed(true)}/>;
+}
+
 async function request(body: Record<string, unknown>) {
   const apiUrl = getTenantApiUrl();
   if (!apiUrl || !getAuth().currentUser) throw new Error("An active, verified customer workspace is required.");
@@ -403,9 +412,8 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           {error&&<p role="alert" style={{color:"#ba2455"}}>{error}</p>}
           {copyMessage&&<p role="status">{copyMessage}</p>}
           <div className="customer-preview-identity">
-            {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)
-              ? <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" />
-              : <div className="customer-preview-photo-placeholder" aria-label="No customer photograph">●</div>}
+            <PreviewCustomerPhoto key={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)}
+              src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)}/>
             <div className="customer-preview-account">
               <div className="customer-preview-name">{value(selected.name) || "Customer"}</div>
               {value(selected.accountType || selected.acType || selected.accountCategory) && <span className="customer-preview-type">{value(selected.accountType || selected.acType || selected.accountCategory)}</span>}
