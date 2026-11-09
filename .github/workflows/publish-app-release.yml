@@ -200,8 +200,26 @@ jobs:
           import { readFileSync } from 'node:fs';
           const manifest = JSON.parse(readFileSync('portfolio-dist/version.json', 'utf8'));
           for (const key of ['windowsDownloadUrl', 'androidDownloadUrl', 'macDownloadUrl']) {
-            const response = await fetch(manifest[key], { method: 'HEAD', signal: AbortSignal.timeout(30000) });
-            if (!response.ok) throw Error(key + ' returned HTTP ' + response.status + ' without GitHub sign-in');
+            let lastError;
+            for (let attempt = 1; attempt <= 4; attempt += 1) {
+              try {
+                const response = await fetch(manifest[key], {
+                  method: 'HEAD',
+                  redirect: 'follow',
+                  signal: AbortSignal.timeout(30000),
+                });
+                if (response.ok) {
+                  lastError = undefined;
+                  break;
+                }
+                lastError = new Error(key + ' returned HTTP ' + response.status + ' without GitHub sign-in');
+                if (response.status < 500 && response.status !== 429) break;
+              } catch (error) {
+                lastError = error;
+              }
+              if (attempt < 4) await new Promise(resolve => setTimeout(resolve, attempt * 5000));
+            }
+            if (lastError) throw lastError;
           }
           NODE
       - name: Prepare Firebase credential
