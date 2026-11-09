@@ -55,6 +55,19 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved'
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus == 'active';
     }
+    // User-owned small avatar, isolated from role and tenant profile data.
+    match /profileAvatars/{userId} {
+      allow get: if approvedUser() && request.auth.uid == userId;
+      allow list: if false;
+      allow create, update: if approvedUser() && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['imageDataUrl','updatedAt'])
+        && request.resource.data.keys().hasAll(['imageDataUrl','updatedAt'])
+        && request.resource.data.imageDataUrl is string
+        && request.resource.data.imageDataUrl.size() <= 13680
+        && request.resource.data.imageDataUrl.matches('^data:image/(webp|jpeg);base64,[A-Za-z0-9+/]+={0,2}$')
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if approvedUser() && request.auth.uid == userId;
+    }
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || supportAdmin()
         || (isClientAdmin() && resource.data.tenantId == myTenantId()));

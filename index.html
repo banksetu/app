@@ -10,7 +10,7 @@
     <link rel="preload" href="/banksetu-logo.png" as="image" type="image/png" />
     <!-- First paint uses the same branded animation as the React loader, even before JS loads. -->
     <style>
-      #root>.banksetu-bootstrap-loader{position:fixed;inset:0;box-sizing:border-box;min-height:100dvh;padding:24px 16px;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow:hidden;background:radial-gradient(circle at 50% 42%,rgba(14,165,233,.23),transparent 28%),linear-gradient(145deg,#06142b,#111d42 58%,#170c36);color:#fff;font-family:Inter,Arial,sans-serif;text-align:center}
+      #banksetu-bootstrap-loader{z-index:9000;position:fixed;inset:0;box-sizing:border-box;min-height:100dvh;padding:24px 16px;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow:hidden;background:radial-gradient(circle at 50% 42%,rgba(14,165,233,.23),transparent 28%),linear-gradient(145deg,#06142b,#111d42 58%,#170c36);color:#fff;font-family:Inter,Arial,sans-serif;text-align:center}
       .banksetu-bootstrap-portal{width:clamp(196px,29vmin,244px);height:clamp(196px,29vmin,244px);position:relative;display:grid;place-items:center}
       .banksetu-bootstrap-portal>img{display:block;position:relative;z-index:2;width:62%;height:62%;object-fit:contain;object-position:center;filter:drop-shadow(0 12px 23px rgba(34,211,238,.28))}
       .banksetu-bootstrap-ring{position:absolute;inset:0;border:1px solid rgba(103,232,249,.42);border-radius:50%;box-shadow:0 0 45px rgba(14,165,233,.12);animation:banksetu-bootstrap-orbit 3s linear infinite}
@@ -21,16 +21,16 @@
       .banksetu-bootstrap-copy strong{font-size:17px;letter-spacing:.12em}
       .banksetu-bootstrap-copy>span{font-size:12px;color:#cbd5e1}
       .banksetu-bootstrap-progress{width:min(270px,76vw);height:5px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,.12);position:relative}
-      .banksetu-bootstrap-progress>i{position:absolute;inset:0 auto 0 0;width:34%;border-radius:inherit;background:linear-gradient(90deg,#22d3ee,#60a5fa,#a78bfa);animation:banksetu-bootstrap-sweep 1.25s ease-in-out infinite}
+      .banksetu-bootstrap-progress>i{position:absolute;inset:0 auto 0 0;width:6%;border-radius:inherit;background:linear-gradient(90deg,#22d3ee,#60a5fa,#a78bfa);animation:banksetu-bootstrap-fill 2.15s cubic-bezier(.18,.55,.32,1) forwards}
       .banksetu-bootstrap-copy small{color:#94a3b8;font-size:9px;line-height:1.5}
       @keyframes banksetu-bootstrap-orbit{to{transform:rotate(360deg)}}
-      @keyframes banksetu-bootstrap-sweep{from{transform:translateX(-105%)}to{transform:translateX(260%)}}
+      @keyframes banksetu-bootstrap-fill{from{width:6%}to{width:88%}}
+      #banksetu-bootstrap-loader[data-complete="true"] .banksetu-bootstrap-progress>i{animation:none!important;width:100%!important;transition:width .26s ease-out}
       @media(prefers-reduced-motion:reduce){.banksetu-bootstrap-loader *{animation:none!important}.banksetu-bootstrap-progress>i{width:100%;opacity:.7}}
     </style>
   </head>
   <body>
-    <div id="root">
-      <main class="banksetu-bootstrap-loader" role="status" aria-live="polite" aria-label="Bank Setu secure loading">
+    <main id="banksetu-bootstrap-loader" class="banksetu-bootstrap-loader" role="status" aria-live="polite" aria-label="Bank Setu secure loading">
         <div class="banksetu-bootstrap-portal" aria-hidden="true">
           <span class="banksetu-bootstrap-ring"></span>
           <span class="banksetu-bootstrap-ring"></span>
@@ -44,7 +44,7 @@
           <small>Authentication, licensing and offline recovery continue securely without artificial delay.</small>
         </div>
       </main>
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

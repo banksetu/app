@@ -23,6 +23,16 @@ const visibleFields = (customer: Customer) => Object.entries(customer).filter(([
   item != null && typeof item !== "object" && value(item) !== ""
 );
 
+/* A failed/expired photo URL should never render a broken-image icon.
+ * Both All Customer Data and Monthly Opening Report share this preview. */
+function PreviewCustomerPhoto({sources}:{sources:string[]}){
+  const [sourceIndex,setSourceIndex]=useState(0);
+  const src=sources[sourceIndex];
+  if(!src)return <div className="customer-preview-photo-placeholder"
+    aria-label={sources.length?"Customer photograph unavailable":"No customer photograph"}>●</div>;
+  return <img src={src} alt="Customer photograph" onError={()=>setSourceIndex(index=>index+1)}/>;
+}
+
 async function request(body: Record<string, unknown>) {
   const apiUrl = getTenantApiUrl();
   if (!apiUrl || !getAuth().currentUser) throw new Error("An active, verified customer workspace is required.");
@@ -271,7 +281,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
     setSelected(customer); setError("");
     try {
       const result = await request({action:"getCustomerByRowNumber",rowNumber:customer.rowNumber,recordId:customer.recordId});
-      if (result.success && identity(customer) === identity(result.customer || {})) setSelected({...customer,...result.customer});
+      if (result.success && identity(customer) === identity(result.customer || {})) setSelected({...customer,...result.customer,photoPreview:result.customer?.photoPreview || customer.photoPreview,photoDataUrl:result.customer?.photoDataUrl || customer.photoDataUrl,photoUrl:result.customer?.photoUrl || customer.photoUrl});
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Full customer preview unavailable."); }
   };
 
@@ -289,7 +299,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
         .then(customers=>{
           if(!active||customerListScope()!==intendedScope)return;
           const verified=customers.find(customer=>identity(customer)===identity(previewCustomer));
-          if(verified)setSelected({...previewCustomer,...verified});
+          if(verified)setSelected({...previewCustomer,...verified,photoPreview:verified.photoPreview || previewCustomer.photoPreview,photoDataUrl:verified.photoDataUrl || previewCustomer.photoDataUrl,photoUrl:verified.photoUrl || previewCustomer.photoUrl});
           else {setSelected(null);onPreviewClose?.();}
         })
         .catch(reason=>{
@@ -305,7 +315,7 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
         .then(result=>{
           if(active&&customerListScope()===intendedScope&&result.success&&
              identity(previewCustomer)===identity(result.customer||{}))
-            setSelected({...previewCustomer,...result.customer});
+            setSelected({...previewCustomer,...result.customer,photoPreview:result.customer?.photoPreview || previewCustomer.photoPreview,photoDataUrl:result.customer?.photoDataUrl || previewCustomer.photoDataUrl,photoUrl:result.customer?.photoUrl || previewCustomer.photoUrl});
         })
         .catch(reason=>{
           if(active&&customerListScope()===intendedScope)
@@ -384,11 +394,11 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
         <tbody>{rows.map((customer,index) => <tr className={index<25?"all-customer-row-enter":undefined} key={identity(customer) || index} tabIndex={0} onClick={() => void open(customer)}
           onKeyDown={event => { if (event.key === "Enter") void open(customer); }}
           style={{cursor:"pointer",background:index%2?"#fff8fa":"#fff",borderBottom:"1px solid #eee",...(index<25?{"--customer-row-index":index}:{})} as CSSProperties}>
-          <td style={{padding:9}}>{value(customer.enrolId)}</td><td style={{padding:9}}>{value(customer.name)}</td>
-          <td style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
+          <td data-label="Customer ID" style={{padding:9}}>{value(customer.enrolId)}</td><td data-label="Name" style={{padding:9}}>{value(customer.name)}</td>
+          <td data-label="Account Number" style={{padding:9}}>{value(customer.accountNo)} <button type="button" title="Copy account number" aria-label={"Copy account number " + value(customer.accountNo)}
             onClick={async event => {event.stopPropagation();try{if (desktopBridge()?.copyText) await desktopBridge()!.copyText!(String(customer.accountNo ?? "")); else await navigator.clipboard.writeText(String(customer.accountNo ?? ""));setCopyMessage("Account number copied.");}catch{setError("Clipboard unavailable.");}}}>⧉</button></td>
-          <td style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td style={{padding:9}}>{value(customer.uidaiNo || customer.aadhaarNo || customer.aadharNo)}</td>
-          <td style={{padding:9}}>{value(customer.accountOpeningDate)}</td>
+          <td data-label="Mobile Number" style={{padding:9}}>{value(customer.contact || customer.mobile)}</td><td data-label="Aadhaar Number" style={{padding:9}}>{value(customer.uidaiNo || customer.aadhaarNo || customer.aadharNo)}</td>
+          <td data-label="Account Opening Date" style={{padding:9}}>{value(customer.accountOpeningDate)}</td>
         </tr>)}</tbody>
       </table>
       {!rows.length && !loading && <p>No matching customers.</p>}
@@ -403,9 +413,9 @@ export default function AllCustomerData({previewCustomer,onPreviewClose}:{
           {error&&<p role="alert" style={{color:"#ba2455"}}>{error}</p>}
           {copyMessage&&<p role="status">{copyMessage}</p>}
           <div className="customer-preview-identity">
-            {value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)
-              ? <img src={value(selected.photoPreview || selected.photoDataUrl || selected.photoUrl)} alt="Customer photograph" />
-              : <div className="customer-preview-photo-placeholder" aria-label="No customer photograph">●</div>}
+            <PreviewCustomerPhoto
+              key={identity(selected)+":"+[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(item=>value(item).length).join(":")}
+              sources={[selected.photoPreview,selected.photoDataUrl,selected.photoUrl].map(value).filter(Boolean)}/>
             <div className="customer-preview-account">
               <div className="customer-preview-name">{value(selected.name) || "Customer"}</div>
               {value(selected.accountType || selected.acType || selected.accountCategory) && <span className="customer-preview-type">{value(selected.accountType || selected.acType || selected.accountCategory)}</span>}

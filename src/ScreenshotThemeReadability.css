@@ -1,0 +1,233 @@
+/*
+ * Screenshot-driven Dark/Glass readability fixes (PR stacked on #108).
+ * IMPORTANT: only on-screen chrome. Paper/passbook/PDF geometry and Create
+ * Client are explicitly excluded from these override rules.
+ * Modal readability takes priority over the user's adjustable transparency:
+ * window backdrop is darkened, and the dialog surface is locally denser.
+ */
+@media screen {
+  html[data-appearance="glass"] {
+    --bs-readable-dialog:linear-gradient(rgba(12,22,37,.79),rgba(12,22,37,.79)),var(--glass-fill);
+    --bs-readable-inset:linear-gradient(rgba(16,29,46,.72),rgba(16,29,46,.72)),var(--glass-fill);
+  }
+  html[data-appearance="glass"][data-glass-dark="false"] {
+    --bs-readable-dialog:linear-gradient(rgba(246,250,255,.85),rgba(246,250,255,.85)),var(--glass-fill);
+    --bs-readable-inset:linear-gradient(rgba(236,245,253,.82),rgba(236,245,253,.82)),var(--glass-fill);
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-opening-overlay,.ssa-export-overlay,.ssa-card-overlay,
+    .customer-preview-overlay,.print-alignment-overlay,.print-alignment-choice-overlay,
+    .pdf-overlay,.customer-delete-overlay,.match-modal-backdrop,
+    .dashboard-status-overlay
+  ) {
+    background:rgba(4,10,23,.76)!important;
+    backdrop-filter:blur(19px) saturate(.76)!important;
+    -webkit-backdrop-filter:blur(19px) saturate(.76)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-opening-panel,.ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .print-alignment-window,.print-alignment-choice,.pdf-dialog,.dashboard-status-panel
+  ) {
+    background:var(--bs-readable-dialog)!important;
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+    isolation:isolate;
+    backdrop-filter:blur(14px) saturate(1.04)!important;
+    -webkit-backdrop-filter:blur(14px) saturate(1.04)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-opening-panel tbody tr,.dashboard-opening-overview,
+    .ssa-export-group,.ssa-export-preview,.ssa-export-matches,
+    .ssa-card-summary,.ssa-card-table-wrap,.customer-preview-content,
+    .customer-preview-section,.print-alignment-settings,.print-alignment-panel,
+    .print-alignment-saved,.print-alignment-info,.print-alignment-help,
+    .print-alignment-control-row,.pdf-mode,.pdf-detail,.pdf-results
+  ){
+    background:var(--bs-readable-inset)!important;
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .dashboard-opening-panel,.ssa-export-dialog,.ssa-card-dialog,.customer-preview-card,
+    .print-alignment-window,.print-alignment-choice,.pdf-dialog
+  ) :is(h1,h2,h3,h4,legend,label,small,p,span,strong,summary) {
+    color:var(--glass-text)!important;
+  }
+  /* Keep contextual muted text legible without making it pale on white. */
+  html[data-appearance="glass"] :is(
+    .dashboard-opening-panel,.ssa-export-dialog,.customer-preview-card,.pdf-dialog
+  ) :is(input,textarea,select) {
+    background:var(--bs-readable-inset)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .pdf-dialog,.ssa-export-dialog,.ssa-card-dialog
+  ) :is(.pdf-mode,.pdf-detail,.pdf-results,.pdf-mode:has(input:checked),
+    .ssa-export-group,.ssa-export-preview,.ssa-export-matches) {
+    background:var(--bs-readable-inset)!important;
+    color:var(--glass-text)!important;
+  }
+
+  /* Action labels must not disappear: don't alter original button intent or
+     click handlers; selected/primary actions remain distinguishable. */
+  html[data-appearance="glass"] :is(
+    .passbook-page,.passbook-shell,.passbook-search-card,.bank-format-print-wrap,
+    .customer-preview-actions,.pdf-dialog,.ssa-export-dialog,.print-alignment-window
+  ) :is(button,.passbook-button,[role="button"]):not(:disabled) {
+    color:var(--glass-text)!important;
+    -webkit-text-fill-color:currentColor!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] :is(
+    .passbook-page,.passbook-shell,.bank-format-print-wrap
+  ) :is(.print-button,.passbook-button,.bank-format-print-actions button,
+      .passbook-action button,.passbook-print-button) {
+    background:var(--glass-fill-strong)!important;
+    color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+    text-shadow:none!important;
+  }
+  html[data-appearance="glass"] :is(.pdf-dialog,.ssa-export-dialog) :is(
+    .pdf-mode:has(input:checked),label:has(input:checked)
+  ){
+    background:var(--bs-readable-dialog)!important;
+    border-color:var(--glass-accent)!important;
+  }
+
+  /* All Customer Data: row whites + inherited pale text made data invisible.
+     Retain semantic table and scroll; narrow viewport additionally uses cards. */
+  html[data-appearance="dark"] .banksetu-app-shell .all-customer-data {
+    background:#142237!important;color:#f3f7ff!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .all-customer-data :is(tbody tr,td) {
+    background:#1a2b42!important;color:#f5f8ff!important;
+    border-color:#354f6d!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data {
+    background:var(--glass-fill)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data :is(tbody tr,td){
+    background:var(--bs-readable-inset)!important;
+    color:var(--glass-text)!important;
+    border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data thead th {
+    background:var(--bs-readable-dialog)!important;
+    color:var(--glass-text)!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .all-customer-data input {
+    background:var(--bs-readable-inset)!important;color:var(--glass-text)!important;
+    border:1px solid var(--glass-line)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .all-customer-data input {
+    background:#263952!important;color:#f3f7ff!important;border-color:#526b8a!important;
+  }
+
+  /* Admin management: only the account-access page, never Create Client. */
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page :is(
+    .admin-users-toolbar,.admin-users-toolbar input,.admin-users-toolbar button,
+    .admin-client-children,.admin-user-card
+  ) {
+    background:var(--bs-readable-inset)!important;
+    color:var(--glass-text)!important;border-color:var(--glass-line)!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .settings-page :is(
+    .admin-users-toolbar,.admin-users-toolbar input,.admin-users-toolbar button,
+    .admin-client-children,.admin-user-card
+  ){
+    background:#20324a!important;color:#f2f7ff!important;border-color:#49627e!important;
+  }
+  html[data-appearance="glass"] .banksetu-app-shell .settings-page .admin-users-toolbar input::placeholder {
+    color:var(--glass-muted)!important;opacity:1!important;
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .settings-page .admin-users-toolbar input::placeholder {
+    color:#b9c9e2!important;opacity:1!important;
+  }
+}
+/* Avoid rows clipped at Account Number on mobile without hiding fields. */
+@media screen and (max-width:680px) {
+  .banksetu-app-shell .all-customer-data {
+    min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+    padding:12px!important;
+  }
+  .banksetu-app-shell .all-customer-data table {
+    min-width:0!important;width:100%!important;display:block!important;
+  }
+  .banksetu-app-shell .all-customer-data thead {
+    position:absolute!important;width:1px!important;height:1px!important;
+    padding:0!important;margin:-1px!important;overflow:hidden!important;
+    clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;
+  }
+  .banksetu-app-shell .all-customer-data tbody {display:block!important}
+  .banksetu-app-shell .all-customer-data tbody tr {
+    display:grid!important;grid-template-columns:minmax(0,1fr)!important;
+    min-width:0!important;margin:0 0 9px!important;
+    border:1px solid var(--glass-line,#52677e)!important;
+    border-radius:11px!important;overflow:hidden!important;
+  }
+  .banksetu-app-shell .all-customer-data tbody td {
+    display:flex!important;gap:10px!important;justify-content:space-between!important;
+    align-items:center!important;min-width:0!important;max-width:100%!important;
+    word-break:break-word!important;overflow-wrap:anywhere!important;
+    padding:9px!important;border-bottom:1px solid rgba(128,168,199,.20)!important;
+  }
+  .banksetu-app-shell .all-customer-data tbody td::before {
+    content:attr(data-label);font-size:11px;font-weight:750;
+    flex:0 0 36%;max-width:36%;white-space:normal;
+    color:var(--glass-muted,#b8cbe0);
+  }
+  html[data-appearance="dark"] .banksetu-app-shell .all-customer-data tbody td::before {color:#c1d1e7}
+  .banksetu-app-shell .all-customer-data tbody td:last-child{border-bottom:0!important}
+  .banksetu-app-shell .all-customer-data tbody td button{flex:none}
+  .customer-preview-card .customer-preview-identity {
+    min-width:0!important;max-width:100%!important;
+  }
+  .customer-preview-card .customer-preview-account {min-width:0!important;overflow-wrap:anywhere!important}
+}
+@media(prefers-reduced-motion:reduce){
+ .banksetu-app-shell .all-customer-data .all-customer-row-enter{animation:none!important}
+}
+@media print {
+ /* UI overrides must never affect PDF/Passbook output. */
+ .all-customer-data tbody tr,.all-customer-data tbody td{background:unset!important}
+}
+
+/* Dark-mode PDF/SSA dialog options previously kept opaque light cards. */
+@media screen {
+  html[data-appearance="dark"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) :is(
+    .pdf-mode,.pdf-detail,.pdf-results,.ssa-export-group,
+    .ssa-export-preview,.ssa-export-matches,.ssa-card-summary
+  ){
+    background:#20334d!important;color:#eef5ff!important;
+    border:1px solid #4d6785!important;
+  }
+  html[data-appearance="dark"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) :is(
+    h2,h3,p,small,strong,label,.pdf-mode span,.pdf-detail span
+  ){color:#f0f6ff!important;}
+  html[data-appearance="dark"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) label:has(input:checked){
+    background:#2c4666!important;border-color:#83b8e4!important;
+    color:#ffffff!important;
+  }
+  html[data-appearance="glass"] :is(.pdf-dialog,.ssa-export-dialog,.ssa-card-dialog) :is(
+    .pdf-results,.pdf-detail,.ssa-export-preview
+  ) :is(p,small,span,strong){
+    color:var(--glass-text)!important;
+    opacity:1!important;
+  }
+  html[data-appearance="dark"] :is(
+    .print-alignment-saved,.print-alignment-info,.print-alignment-help,
+    .print-alignment-control-row
+  ){
+    background:#263c56!important;color:#f3f8ff!important;
+    border:1px solid #506f90!important;
+  }
+  html[data-appearance="glass"] :is(
+    .print-alignment-window,.print-alignment-choice
+  ) :is(.print-alignment-saved,.print-alignment-info,.print-alignment-help,
+    .print-alignment-control-row) :is(p,small,strong,span,label){
+    color:var(--glass-text)!important;
+    opacity:1!important;
+  }
+}

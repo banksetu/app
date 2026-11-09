@@ -25,6 +25,10 @@ import "./DashboardSmokeReveal.css";
 import "./CompactGlassControls.css";
 import "./GlassDesignDynamics.css";
 import "./DialogThemeCompletion.css";
+import "./ScreenshotThemeReadability.css";
+import "./GlassMenuStability.css";
+import "./GlassScrollLiquidCoverage.css";
+import "./ProfileAvatar.css";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -48,6 +52,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "./firebase";
+import {optimizeProfileAvatar, removeMyProfileAvatar, saveMyProfileAvatar, subscribeMyProfileAvatar} from "./core/profileAvatar";
 import { callBankSetuWorker } from "./workerApi";
 import { prepareBankLogo, restoreWorkspaceBankSettings } from "./workspaceBankSettings";
 import { getTenantApiUrl, setTenantApiUrl, tenantSettingsPath, tenantStorageKey } from "./tenantApi";
@@ -322,6 +327,9 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
   const [glassPreviewOriginal,setGlassPreviewOriginal]=useState<GlassSettings|null>(null);
   const [glassWallpaperUrl,setGlassWallpaperUrl]=useState("");
   const [glassScopeRevision,setGlassScopeRevision]=useState(0);
+  // Paint updated tokens in-place. Previously the cleanup removed every
+  // Glass variable on *every slider movement*, causing a blank-frame flicker
+  // in Android WebView before the next layout effect restored the tokens.
   useLayoutEffect(()=>{
     const root=document.documentElement;
     root.dataset.appearance=appearance;
@@ -336,9 +344,20 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
       delete root.dataset.glassDark;
       delete root.dataset.glassDesign;
     }
-    void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
-    return()=>{for(const key of variableNames)root.style.removeProperty(key);delete root.dataset.appearance;delete root.dataset.glassDark;delete root.dataset.glassDesign;};
+    // No per-update cleanup: preserve CSS variables across preview renders.
   },[appearance,glassSettings,glassWallpaperUrl]);
+  // Native app appearance changes only when the mode actually changes,
+  // not on every Glass Design/Intensity/Glow slider movement.
+  useEffect(()=>{
+    void import('./platform/appearance').then(module=>module.setNativeAppearance(appearance)).catch(()=>undefined);
+  },[appearance]);
+  useEffect(()=>()=>{
+    const root=document.documentElement;
+    for(const key of Object.keys(glassVariables(DEFAULT_GLASS_SETTINGS)))root.style.removeProperty(key);
+    delete root.dataset.appearance;
+    delete root.dataset.glassDark;
+    delete root.dataset.glassDesign;
+  },[]);
   useEffect(() => {
     const restore = () => {
       const {uid,tenantId}=appearanceIdentity();
@@ -396,6 +415,42 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
     useState(false);
 
+  const currentAvatarUid = getAuth().currentUser?.uid || "";
+  const [profileAvatar,setProfileAvatar] = useState<string|null>(null);
+  const [profileAvatarWorking,setProfileAvatarWorking] = useState(false);
+  const avatarFileInput = useRef<HTMLInputElement|null>(null);
+  useEffect(()=>{
+    setProfileAvatar(null);
+    if(!currentAvatarUid)return;
+    return subscribeMyProfileAvatar(currentAvatarUid,image=>setProfileAvatar(image),error=>{
+      // Read permission may not be deployed yet; keep the initial avatar.
+      console.warn("Profile photo unavailable:",error.message);
+    });
+  },[currentAvatarUid]);
+  const onAvatarFile = async (event:ChangeEvent<HTMLInputElement>)=>{
+    const file=event.currentTarget.files?.[0];
+    event.currentTarget.value="";
+    if(!file || !currentAvatarUid || profileAvatarWorking)return;
+    setProfileAvatarWorking(true);
+    try{
+      const optimized=await optimizeProfileAvatar(file);
+      await saveMyProfileAvatar(currentAvatarUid,optimized);
+      setProfileAvatar(optimized);
+      showMessage("Profile photo saved (10 KB or less). It will sync on your other devices.");
+    }catch(error){
+      showMessage(error instanceof Error?error.message:"Unable to save the profile photo.");
+    }finally{setProfileAvatarWorking(false);}
+  };
+  const onRemoveAvatar=async()=>{
+    if(!currentAvatarUid || profileAvatarWorking)return;
+    setProfileAvatarWorking(true);
+    try{
+      await removeMyProfileAvatar(currentAvatarUid);
+      setProfileAvatar(null);
+      showMessage("Profile photo removed.");
+    }catch(error){showMessage(error instanceof Error?error.message:"Unable to remove the profile photo.");}
+    finally{setProfileAvatarWorking(false);}
+  };
   const [adminMenuOpen, setAdminMenuOpen] =
 
     useState(false);
@@ -1408,10 +1463,10 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
 
             >
 
-              <div style={styles.adminAvatar}>
-
-                {userRole === "admin" ? "A" : "U"}
-
+              <div className="banksetu-profile-avatar" style={styles.adminAvatar}>
+                {profileAvatar
+                  ? <img src={profileAvatar} alt="" draggable={false} />
+                  : (userRole === "admin" ? "A" : "U")}
               </div>
 
               <span
@@ -1447,6 +1502,26 @@ function Dashboard({ onLogout, userRole, accountRole, licenseReadOnly = true, li
             {adminMenuOpen && createPortal(
 
               <div className="banksetu-admin-menu" style={{ ...styles.adminMenu, position: "fixed", top: adminMenuPosition.top, right: adminMenuPosition.right, maxHeight: `calc(100dvh - ${adminMenuPosition.top + 12}px)`, overflowY: "auto", zIndex: 2000 }}>
+
+                <div className="banksetu-profile-settings">
+                  <div className="banksetu-profile-settings-preview">
+                    <div className="banksetu-profile-avatar banksetu-profile-avatar-large">
+                      {profileAvatar ? <img src={profileAvatar} alt="Your profile" /> : (userRole === "admin" ? "A" : "U")}
+                    </div>
+                    <div><strong>My Profile Picture</strong><small>Private to your account · max 10 KB</small></div>
+                  </div>
+                  <input ref={avatarFileInput} type="file" accept="image/jpeg,image/png,image/webp"
+                    aria-label="Choose profile photo" onChange={onAvatarFile}
+                    className="banksetu-profile-file-input" disabled={profileAvatarWorking} />
+                  <div className="banksetu-profile-settings-actions">
+                    <button type="button" disabled={profileAvatarWorking}
+                      onClick={()=>avatarFileInput.current?.click()}>
+                      {profileAvatarWorking ? "Saving…" : profileAvatar ? "Change Photo" : "Upload Photo"}
+                    </button>
+                    {profileAvatar && <button type="button" disabled={profileAvatarWorking}
+                      onClick={()=>void onRemoveAvatar()}>Remove</button>}
+                  </div>
+                </div>
 
                 <button
 

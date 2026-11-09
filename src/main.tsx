@@ -1,14 +1,20 @@
-import {StrictMode} from "react";
+import {StrictMode,useEffect} from "react";
 import {createRoot} from "react-dom/client";
 import {codespacesLayoutPreviewAvailable} from "./platform/layoutCodespacesPreview";
 import "./index.css";
+import {finishStartupSplash} from "./core/startupSplash";
+
+function LayoutPreviewReady(){
+  useEffect(()=>{finishStartupSplash();},[]);
+  return null;
+}
 
 async function launch(){
   // Development-only Codespaces preview never starts Firebase authentication,
   // standard sync, PR2 bridges, print hooks or a production service worker.
   if(codespacesLayoutPreviewAvailable()&&!new URLSearchParams(window.location.search).has("normal-app")){
     const {default:CodespacesLayoutPreview}=await import("./CodespacesLayoutPreview");
-    createRoot(document.getElementById("root")!).render(<StrictMode><CodespacesLayoutPreview/></StrictMode>);
+    createRoot(document.getElementById("root")!).render(<StrictMode><LayoutPreviewReady/><CodespacesLayoutPreview/></StrictMode>);
     return;
   }
   const [{showMessage},{requireLicensedWrite},{isAndroid,startAndroidRuntime},{default:App}]=await Promise.all([
